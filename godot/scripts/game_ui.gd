@@ -111,34 +111,49 @@ func setup_ui() -> void:
 	print("[SETUP] 开始设置 UI")
 
 	# 首先验证所有UI组件
+	print("[SETUP] 验证组件...")
 	if not _verify_ui_components():
 		print("[SETUP] ⚠ 关键组件缺失，放弃 setup_ui")
 		return
 
-	# 只有在所有变量都非 nil 的情况下才继续
-	if player_stats == null or player_stats == nil:
-		print("[SETUP] ⚠ player_stats 仍为 nil，放弃")
+	# 单独检查每个组件，确保不是 nil
+	print("[SETUP] 单独检查 player_stats...")
+	if player_stats == null or player_stats == nil or not player_stats:
+		print("[SETUP] ⚠ player_stats 为 nil/null，放弃 setup_ui")
 		return
+	print("[SETUP] ✓ player_stats 检查通过")
 
-	if game_log == null or game_log == nil:
-		print("[SETUP] ⚠ game_log 仍为 nil，放弃")
+	print("[SETUP] 单独检查 game_log...")
+	if game_log == null or game_log == nil or not game_log:
+		print("[SETUP] ⚠ game_log 为 nil/null，放弃 setup_ui")
 		return
+	print("[SETUP] ✓ game_log 检查通过")
 
-	if game_info == null or game_info == nil:
-		print("[SETUP] ⚠ game_info 仍为 nil，放弃")
+	print("[SETUP] 单独检查 game_info...")
+	if game_info == null or game_info == nil or not game_info:
+		print("[SETUP] ⚠ game_info 为 nil/null，放弃 setup_ui")
 		return
+	print("[SETUP] ✓ game_info 检查通过")
 
-	# 现在安全地设置文本
-	print("[SETUP] 设置 player_stats 文本")
-	player_stats.text = "等待游戏开始..."
+	# 三重检查：确保对象仍然有效
+	print("[SETUP] 检查对象有效性...")
+	if not is_instance_valid(player_stats):
+		print("[SETUP] ⚠ player_stats 无效，放弃 setup_ui")
+		return
+	if not is_instance_valid(game_log):
+		print("[SETUP] ⚠ game_log 无效，放弃 setup_ui")
+		return
+	if not is_instance_valid(game_info):
+		print("[SETUP] ⚠ game_info 无效，放弃 setup_ui")
+		return
+	print("[SETUP] ✓ 所有对象有效")
 
-	print("[SETUP] 设置 game_log 文本")
-	game_log.text = ""
-
-	print("[SETUP] 设置 game_info 文本")
-	game_info.text = "游戏信息"
-
-	print("[SETUP] UI 设置完成")
+	# 现在开始设置文本
+	print("[SETUP] 所有检查通过，现在设置文本...")
+	
+	# 使用 call_deferred 来绝对确保安全
+	call_deferred("_do_setup_text")
+	print("[SETUP] 文本设置已排队到下一帧")
 
 func try_set_text(node: Control, text: String) -> void:
 	"""安全地设置文本 - 已废弃，使用 setup_ui 中的直接代码"""
