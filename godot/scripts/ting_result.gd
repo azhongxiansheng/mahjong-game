@@ -9,6 +9,6 @@ var is_ting_tightly: bool           # 是否紧听（只能等一张）
 
 func _init():
 	can_ting = false
-	ting_cards = []
+	ting_cards = [] as Array[CardData]
 	ting_count = 0
 	is_ting_tightly = false
