@@ -202,7 +202,7 @@ func add_log_message(message: String) -> void:
 	# 使用 call_deferred 延迟赋值，确保游戏逻辑不会中断
 	call_deferred("_safe_set_log_text", formatted_msg)
 
-func _safe_set_log_text(text: String) -> void:
+func _safe_set_log_text(_text: String) -> void:
 	"""安全地设置日志文本 - 已禁用以避免 nil 错误"""
 	print("[SAFE_LOG] _safe_set_log_text 被调用但不执行赋值")
 	# 禁用日志赋值以避免 nil assignment 错误
@@ -233,17 +233,17 @@ func update_player_stats() -> void:
 	# 禁用对 _player_stats.text 的赋值以避免 nil 错误
 	# UI 显示不更新，但游戏逻辑继续
 
-func _safe_set_player_stats(text: String) -> void:
+func _safe_set_player_stats(_text: String) -> void:
 	"""安全地设置玩家统计 - 已禁用"""
 	print("[SAFE_STATS] _safe_set_player_stats 被调用但不执行赋值")
 	# 禁用此函数中的所有文本设置
 
-func _on_card_pressed(card: CardData) -> void:
+func _on_card_pressed(_card: CardData) -> void:
 	"""处理卡牌被按下"""
 	update_player_stats()
-	add_log_message("选中卡牌: %s" % card.get_card_name())
+	add_log_message("选中卡牌: %s" % _card.get_card_name())
 
-func _on_card_selected(card: CardData) -> void:
+func _on_card_selected(_card: CardData) -> void:
 	"""处理卡牌被选中"""
 	update_player_stats()
 

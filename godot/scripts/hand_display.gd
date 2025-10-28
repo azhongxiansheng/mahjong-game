@@ -97,10 +97,10 @@ func remove_card_display(card: CardData) -> bool:
 		if card_tiles[i].card_data == card:
 			# ✓ 先保存要移除的卡牌引用
 			var removed_tile = card_tiles[i]
-			
+
 			# 从场景树中移除
 			removed_tile.queue_free()
-			
+
 			# 从数组中移除
 			card_tiles.remove_at(i)
 

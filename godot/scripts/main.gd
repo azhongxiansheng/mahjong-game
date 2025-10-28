@@ -11,7 +11,7 @@ func _ready() -> void:
 
 	# ✓ 初始化对象池（需要在其他初始化前）
 	initialize_object_pool()
-	
+
 	# 初始化游戏UI
 	initialize_game_ui()
 

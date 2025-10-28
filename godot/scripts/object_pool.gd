@@ -22,7 +22,7 @@ func _init() -> void:
 	# ✓ 创建一个父节点来容纳所有池节点
 	pool_parent = Node.new()
 	pool_parent.name = "ObjectPoolParent"
-	
+
 	_initialize_pools()
 	print("ObjectPool: 已初始化")
 
@@ -34,21 +34,21 @@ func _initialize_pools() -> void:
 		pool_parent.add_child(btn)  # ✓ 添加到池父节点
 		btn.visible = false
 		button_pool.append(btn)
-	
+
 	# 预创建标签
 	for i in range(initial_label_count):
 		var lbl = Label.new()
 		pool_parent.add_child(lbl)  # ✓ 添加到池父节点
 		lbl.visible = false
 		label_pool.append(lbl)
-	
+
 	# 预创建面板
 	for i in range(initial_panel_count):
 		var pnl = PanelContainer.new()
 		pool_parent.add_child(pnl)  # ✓ 添加到池父节点
 		pnl.visible = false
 		panel_pool.append(pnl)
-	
+
 	print("ObjectPool: 对象池已初始化 (Button:%d, Label:%d, Panel:%d)" % [
 		button_pool.size(),
 		label_pool.size(),
@@ -60,7 +60,7 @@ func _initialize_pools() -> void:
 func get_button(text: String = "") -> Button:
 	"""从池中获取按钮"""
 	var button: Button
-	
+
 	if button_pool.is_empty():
 		# 池为空，创建新按钮
 		button = Button.new()
@@ -69,30 +69,30 @@ func get_button(text: String = "") -> Button:
 	else:
 		# 从池中取出
 		button = button_pool.pop_back()
-	
+
 	# 安全检查：确保button不为null
 	if button == null:
 		button = Button.new()
 		pool_parent.add_child(button)  # ✓ 添加到场景树
 		print("ObjectPool: 池中按钮为null，创建新按钮")
-	
+
 	# 重置按钮状态
 	button.text = text
 	button.disabled = false
 	button.visible = true
-	
+
 	return button
 
 func return_button(button: Button) -> void:
 	"""归还按钮到池中"""
 	if button == null:
 		return
-	
+
 	# 重置按钮状态
 	button.text = ""
 	# 不能直接清空信号连接，只重置状态
 	button.visible = false
-	
+
 	# 归还到池
 	button_pool.append(button)
 
@@ -105,7 +105,7 @@ func get_button_pool_size() -> int:
 func get_label(text: String = "") -> Label:
 	"""从池中获取标签"""
 	var label: Label
-	
+
 	if label_pool.is_empty():
 		# 池为空，创建新标签
 		label = Label.new()
@@ -114,28 +114,28 @@ func get_label(text: String = "") -> Label:
 	else:
 		# 从池中取出
 		label = label_pool.pop_back()
-	
+
 	# 安全检查：确保label不为null
 	if label == null:
 		label = Label.new()
 		pool_parent.add_child(label)  # ✓ 添加到场景树
 		print("ObjectPool: 池中标签为null，创建新标签")
-	
+
 	# 重置标签状态
 	label.text = text
 	label.visible = true
-	
+
 	return label
 
 func return_label(label: Label) -> void:
 	"""归还标签到池中"""
 	if label == null:
 		return
-	
+
 	# 重置标签状态
 	label.text = ""
 	label.visible = false
-	
+
 	# 归还到池
 	label_pool.append(label)
 
@@ -148,7 +148,7 @@ func get_label_pool_size() -> int:
 func get_panel() -> PanelContainer:
 	"""从池中获取面板"""
 	var panel: PanelContainer
-	
+
 	if panel_pool.is_empty():
 		# 池为空，创建新面板
 		panel = PanelContainer.new()
@@ -157,23 +157,23 @@ func get_panel() -> PanelContainer:
 	else:
 		# 从池中取出
 		panel = panel_pool.pop_back()
-	
+
 	# 重置面板状态
 	panel.visible = true
-	
+
 	return panel
 
 func return_panel(panel: PanelContainer) -> void:
 	"""归还面板到池中"""
 	if panel == null:
 		return
-	
+
 	# 清空面板的子节点
 	for child in panel.get_children():
 		child.queue_free()
-	
+
 	panel.visible = false
-	
+
 	# 归还到池
 	panel_pool.append(panel)
 
