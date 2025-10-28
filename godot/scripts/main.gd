@@ -508,3 +508,126 @@ func test_week5_hu_algorithm() -> void:
 	print("\n" + separator)
 	print("第5周测试完成！")
 	print(separator)
+
+
+func test_week6_ai_and_ting() -> void:
+	"""第6周测试：听牌检测和AI玩家"""
+	print("\n【测试9】听牌检测和AI玩家...")
+	
+	# 测试1：听牌检测
+	print("\n--- 测试1：听牌检测 ---")
+	var hand = CardHand.new()
+	
+	# 构造一个能听牌的手牌
+	# 缺条9就能胡：万1万1 万2万3万4 筒5筒5筒5 条6条7条8
+	hand.add_card(CardData.new(0, 1))
+	hand.add_card(CardData.new(0, 1))
+	hand.add_card(CardData.new(0, 2))
+	hand.add_card(CardData.new(0, 3))
+	hand.add_card(CardData.new(0, 4))
+	hand.add_card(CardData.new(1, 5))
+	hand.add_card(CardData.new(1, 5))
+	hand.add_card(CardData.new(1, 5))
+	hand.add_card(CardData.new(2, 6))
+	hand.add_card(CardData.new(2, 7))
+	hand.add_card(CardData.new(2, 8))
+	hand.add_card(CardData.new(2, 9))
+	
+	print("手牌: 万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9")
+	var ting_result = TingChecker.check_ting(hand)
+	
+	if ting_result.can_ting:
+		print("✓ 能听牌！")
+		print("  听牌描述: %s" % TingChecker.get_ting_description(ting_result))
+		print("  听牌数量: %d" % ting_result.ting_count)
+	else:
+		print("✗ 无法听牌")
+	
+	await get_tree().create_timer(0.3).timeout
+	
+	# 测试2：AI玩家创建和难度等级
+	print("\n--- 测试2：AI玩家创建 ---")
+	
+	var ai_easy = AIPlayer.new(0, AIPlayer.Difficulty.EASY)
+	var ai_normal = AIPlayer.new(1, AIPlayer.Difficulty.NORMAL)
+	var ai_hard = AIPlayer.new(2, AIPlayer.Difficulty.HARD)
+	var ai_expert = AIPlayer.new(3, AIPlayer.Difficulty.EXPERT)
+	
+	print("✓ 已创建4个AI玩家:")
+	print("  - %s (简单)" % ai_easy.name)
+	print("  - %s (普通)" % ai_normal.name)
+	print("  - %s (困难)" % ai_hard.name)
+	print("  - %s (专家)" % ai_expert.name)
+	
+	await get_tree().create_timer(0.3).timeout
+	
+	# 测试3：AI发牌和出牌
+	print("\n--- 测试3：AI发牌和出牌模拟 ---")
+	
+	# 给AI发初始手牌
+	var deck = MahjongDeck.new()
+	deck.shuffle()
+	
+	for ai in [ai_easy, ai_normal, ai_hard, ai_expert]:
+		for i in range(13):
+			var card = deck.draw_one()
+			if card:
+				ai.receive_card(card)
+	
+	print("✓ 已给每个AI发13张初始手牌")
+	print("\n--- 每个AI的状态 ---")
+	for ai in [ai_easy, ai_normal, ai_hard, ai_expert]:
+		print("  %s" % ai.get_status_string())
+	
+	await get_tree().create_timer(0.3).timeout
+	
+	# 测试4：模拟游戏回合
+	print("\n--- 测试4：游戏回合模拟 ---")
+	
+	for round_num in range(1, 4):
+		print("\n【第 %d 回合】" % round_num)
+		
+		# 每个AI抽一张牌并出牌
+		for ai in [ai_easy, ai_normal, ai_hard, ai_expert]:
+			# 抽卡
+			var drawn = deck.draw_one()
+			if drawn:
+				ai.receive_card(drawn)
+				print("  %s 抽卡: %s (现有: %d张)" % [ai.name, drawn.get_card_name(), ai.hand.get_card_count()])
+			
+			# 更新听牌
+			ai.update_ting_info()
+			
+			# 出牌
+			var discarded = ai.discard_card()
+			if discarded:
+				print("    → 出牌: %s" % discarded.get_card_name())
+				if ai.is_ting:
+					print("    → [已听牌] %s" % TingChecker.get_ting_description(ai.ting_info))
+			
+			await get_tree().create_timer(0.1).timeout
+	
+	await get_tree().create_timer(0.3).timeout
+	
+	# 测试5：性能测试
+	print("\n--- 测试5：性能测试 ---")
+	var test_hand = CardHand.new()
+	# 构造一个复杂的手牌
+	for suit in range(3):
+		for num in range(1, 7):
+			test_hand.add_card(CardData.new(suit, num))
+	
+	print("测试手牌 (%d张): 进行1000次听牌检测..." % test_hand.get_card_count())
+	var start_time = Time.get_ticks_msec()
+	
+	for i in range(1000):
+		var result = TingChecker.check_ting(test_hand)
+	
+	var elapsed = Time.get_ticks_msec() - start_time
+	print("✓ 完成! 耗时: %d ms (平均: %.2f ms/次)" % [elapsed, float(elapsed) / 1000.0])
+	
+	await get_tree().create_timer(0.3).timeout
+	
+	print("\n" + separator)
+	print("第6周测试完成！")
+	print(separator)
