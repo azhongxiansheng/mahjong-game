@@ -14,14 +14,19 @@ var game_stats: Dictionary = {
 
 func _init() -> void:
 	"""初始化游戏控制器"""
-	game_state = GameState.new()
+	# 延迟初始化 - 不在这里创建对象
+	game_state = null
 	deck = null
 	player_hand = null
-	print("游戏控制器已初始化")
 
 func init_game() -> void:
 	"""初始化游戏"""
 	print("\n【游戏初始化】")
+	
+	# 创建游戏状态管理器
+	if game_state == null:
+		game_state = GameState.new()
+	
 	game_state.set_state(GameState.State.INIT)
 
 	# 创建牌池
