@@ -1,10 +1,10 @@
 class_name CardHand
 
-var cards: Array = []
+var cards: Array[CardData] = []
 
 func _init() -> void:
 	"""初始化空手牌"""
-	cards = []
+	cards = [] as Array[CardData]
 
 # 添加卡牌
 func add_card(card: CardData) -> void:
@@ -31,9 +31,9 @@ func remove_card(card: CardData) -> bool:
 	return false
 
 # 获取指定花色的所有卡牌
-func get_cards_by_suit(suit: int) -> Array:
+func get_cards_by_suit(suit: int) -> Array[CardData]:
 	"""获取所有同花色的卡牌"""
-	var result: Array = []
+	var result: Array[CardData] = [] as Array[CardData]
 	for card in cards:
 		if card.suit == suit:
 			result.append(card)
