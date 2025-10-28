@@ -3,7 +3,7 @@ extends Node
 class_name GameManager
 
 var player: Player
-var enemies: Array[Enemy] = []
+var enemies: Array = []
 var score = 0
 
 func _ready() -> void:
@@ -28,8 +28,9 @@ func _ready() -> void:
 	# 获取所有敌人并连接它们的信号
 	enemies = get_tree().get_nodes_in_group("enemies")
 	for enemy in enemies:
-		enemy.connect("enemy_died", Callable(self, "_on_enemy_died").bindv([enemy]))
-		print("GameManager: 已连接 Enemy 信号")
+		if enemy is Enemy:
+			enemy.connect("enemy_died", Callable(self, "_on_enemy_died").bindv([enemy]))
+			print("GameManager: 已连接 Enemy 信号")
 
 func _input(event: InputEvent) -> void:
 	"""处理用户输入 - 用于测试"""
@@ -47,7 +48,7 @@ func _input(event: InputEvent) -> void:
 		# 测试：按 E 键让所有敌人受伤
 		elif event.keycode == KEY_E:
 			for enemy in enemies:
-				if is_instance_valid(enemy):
+				if is_instance_valid(enemy) and enemy is Enemy:
 					enemy.take_damage(20)
 
 func _on_player_health_changed(health: int) -> void:

@@ -12,13 +12,14 @@ func _ready() -> void:
 	"""
 	print("欢迎来到麻将游戏！")
 	print("游戏已启动")
-	print("="*40)
+	var separator = "========================================"
+	print(separator)
 	print("测试快捷键:")
 	print("  P - Player 受伤 10 点")
 	print("  H - Player 恢复 20 点")
 	print("  E - 所有 Enemy 受伤 20 点")
 	print("  ESC - 退出游戏")
-	print("="*40)
+	print(separator)
 	
 	# 创建 GameManager 来管理游戏
 	game_manager = GameManager.new()
