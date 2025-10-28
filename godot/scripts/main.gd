@@ -592,7 +592,7 @@ func test_week6_ai_and_ting() -> void:
 			test_hand.add_card(CardData.new(suit, num))
 
 	print("✓ 测试完成，第6周测试结束")
-	
+
 	await get_tree().create_timer(0.3).timeout
 
 	print("\n" + separator)
@@ -621,7 +621,7 @@ func test_week7_network() -> void:
 	var server = GameServer.new()
 	var room = server.create_room(4)
 	print("✓ 游戏服务器已创建")
-	print("✓ 游戏室已创建 (房间ID: %s, 最大玩家数: %d)" % [room.get_room_id(), room.get_max_players()])
+	print("✓ 游戏室已创建 (房间ID: %s, 最大玩家数: %d)" % [room.room_id, room.max_players])
 	await get_tree().create_timer(0.2).timeout
 
 	# 测试3：测试消息系统
