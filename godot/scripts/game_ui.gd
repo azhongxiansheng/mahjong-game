@@ -53,10 +53,23 @@ func connect_signals() -> void:
 	if quit_button:
 		quit_button.pressed.connect(_on_quit_pressed)
 
-	# 连接手牌显示信号
+	# 连接手牌显示信号 - 添加安全检查
 	if player_hand_display:
-		player_hand_display.card_pressed.connect(_on_card_pressed)
-		player_hand_display.card_selected.connect(_on_card_selected)
+		# 验证对象是否是HandDisplay类型
+		if player_hand_display is HandDisplay:
+			if player_hand_display.has_signal("card_pressed"):
+				player_hand_display.card_pressed.connect(_on_card_pressed)
+			else:
+				print("⚠ HandDisplay没有card_pressed信号")
+			
+			if player_hand_display.has_signal("card_selected"):
+				player_hand_display.card_selected.connect(_on_card_selected)
+			else:
+				print("⚠ HandDisplay没有card_selected信号")
+		else:
+			print("⚠ player_hand_display 不是 HandDisplay 类型，而是: ", player_hand_display.get_class())
+	else:
+		print("⚠ player_hand_display 为空")
 
 func apply_theme() -> void:
 	"""应用主题颜色"""
