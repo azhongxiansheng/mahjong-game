@@ -19,15 +19,15 @@ func _ready() -> void:
 
 func initialize_game_ui() -> void:
 	"""初始化游戏UI"""
-	# 获取或创建GameUI
-	game_ui = get_node_or_null("GameUI")
-
+	# 获取或创建GameUI - 修正节点路径
+	game_ui = get_node_or_null("UILayer/GameUI")
+	
 	if not game_ui:
-		print("⚠ 场景中没有GameUI，尝试动态创建")
+		print("⚠ 无法找到 UILayer/GameUI，尝试动态创建")
 		var game_ui_scene = preload("res://scenes/game_ui.tscn")
 		game_ui = game_ui_scene.instantiate()
 		add_child(game_ui)
-
+	
 	if game_ui:
 		print("✓ GameUI已初始化")
 		# 显示测试手牌
