@@ -24,7 +24,7 @@ var db_manager: DatabaseManager
 func _ready() -> void:
 	"""初始化注册界面"""
 	super()
-	
+
 	# 创建标题
 	title_label = Label.new()
 	title_label.text = "创建账户"
@@ -33,7 +33,7 @@ func _ready() -> void:
 	title_label.anchor_top = 0.05
 	title_label.offset_left = -80
 	add_child(title_label)
-	
+
 	# 创建用户名标签和输入框
 	var username_label = Label.new()
 	username_label.text = "用户名:"
@@ -41,7 +41,7 @@ func _ready() -> void:
 	username_label.anchor_top = 0.15
 	username_label.offset_left = -250
 	add_child(username_label)
-	
+
 	username_input = LineEdit.new()
 	username_input.placeholder_text = "输入用户名 (3-20字符)"
 	username_input.custom_minimum_size = Vector2(300, 40)
@@ -50,7 +50,7 @@ func _ready() -> void:
 	username_input.offset_left = -150
 	username_input.offset_top = 20
 	add_child(username_input)
-	
+
 	# 创建邮箱标签和输入框
 	var email_label = Label.new()
 	email_label.text = "邮箱:"
@@ -58,7 +58,7 @@ func _ready() -> void:
 	email_label.anchor_top = 0.28
 	email_label.offset_left = -250
 	add_child(email_label)
-	
+
 	email_input = LineEdit.new()
 	email_input.placeholder_text = "输入邮箱地址"
 	email_input.custom_minimum_size = Vector2(300, 40)
@@ -67,7 +67,7 @@ func _ready() -> void:
 	email_input.offset_left = -150
 	email_input.offset_top = 20
 	add_child(email_input)
-	
+
 	# 创建密码标签和输入框
 	var password_label = Label.new()
 	password_label.text = "密码:"
@@ -75,7 +75,7 @@ func _ready() -> void:
 	password_label.anchor_top = 0.41
 	password_label.offset_left = -250
 	add_child(password_label)
-	
+
 	password_input = LineEdit.new()
 	password_input.placeholder_text = "输入密码 (6-50字符)"
 	password_input.secret = true
@@ -85,7 +85,7 @@ func _ready() -> void:
 	password_input.offset_left = -150
 	password_input.offset_top = 20
 	add_child(password_input)
-	
+
 	# 创建密码确认标签和输入框
 	var password_confirm_label = Label.new()
 	password_confirm_label.text = "确认密码:"
@@ -93,7 +93,7 @@ func _ready() -> void:
 	password_confirm_label.anchor_top = 0.54
 	password_confirm_label.offset_left = -250
 	add_child(password_confirm_label)
-	
+
 	password_confirm_input = LineEdit.new()
 	password_confirm_input.placeholder_text = "再次输入密码"
 	password_confirm_input.secret = true
@@ -103,7 +103,7 @@ func _ready() -> void:
 	password_confirm_input.offset_left = -150
 	password_confirm_input.offset_top = 20
 	add_child(password_confirm_input)
-	
+
 	# 创建错误标签
 	error_label = Label.new()
 	error_label.text = ""
@@ -112,7 +112,7 @@ func _ready() -> void:
 	error_label.anchor_top = 0.65
 	error_label.offset_left = -150
 	add_child(error_label)
-	
+
 	# 创建信息标签
 	info_label = Label.new()
 	info_label.text = "密码需包含大小写字母和数字"
@@ -121,7 +121,7 @@ func _ready() -> void:
 	info_label.anchor_top = 0.67
 	info_label.offset_left = -150
 	add_child(info_label)
-	
+
 	# 创建注册按钮
 	register_button = Button.new()
 	register_button.text = "创建账户"
@@ -131,7 +131,7 @@ func _ready() -> void:
 	register_button.offset_left = -200
 	register_button.pressed.connect(_on_register_pressed)
 	add_child(register_button)
-	
+
 	# 创建返回按钮
 	back_button = Button.new()
 	back_button.text = "返回登录"
@@ -141,7 +141,7 @@ func _ready() -> void:
 	back_button.offset_left = 50
 	back_button.pressed.connect(_on_back_pressed)
 	add_child(back_button)
-	
+
 	print("RegisterUI: 已初始化")
 
 func on_enter() -> void:
@@ -160,13 +160,13 @@ func _on_register_pressed() -> void:
 	var email = email_input.text.strip_edges()
 	var password = password_input.text
 	var password_confirm = password_confirm_input.text
-	
+
 	# 验证输入
 	var error = _validate_registration(username, email, password, password_confirm)
 	if error != "":
 		show_error(error)
 		return
-	
+
 	# 调用数据库注册
 	if db_manager.register_user(username, email, password):
 		show_message("✓ 注册成功！即将返回登录...")
@@ -187,26 +187,26 @@ func _validate_registration(username: String, email: String, password: String, p
 		return "请输入用户名"
 	if not FormValidator.is_valid_username(username):
 		return "用户名格式不正确 (3-20字符，字母开头)"
-	
+
 	# 检查邮箱
 	if FormValidator.is_empty(email):
 		return "请输入邮箱"
 	if not FormValidator.is_valid_email(email):
 		return "邮箱格式不正确"
-	
+
 	# 检查密码
 	if FormValidator.is_empty(password):
 		return "请输入密码"
 	if not FormValidator.is_valid_password(password):
 		return "密码强度不足 (需要大小写字母和数字)"
-	
+
 	# 检查密码确认
 	if FormValidator.is_empty(password_confirm):
 		return "请确认密码"
-	
+
 	if password != password_confirm:
 		return "两次输入的密码不一致"
-	
+
 	return ""
 
 func clear_inputs() -> void:

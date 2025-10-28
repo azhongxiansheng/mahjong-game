@@ -89,21 +89,21 @@ func get_center_position() -> Vector2:
 	"""获取屏幕中心位置"""
 	return get_viewport_rect().get_center()
 
-func create_button(text: String, callback: Callable, position: Vector2 = Vector2.ZERO) -> Button:
+func create_button(text: String, callback: Callable, pos: Vector2 = Vector2.ZERO) -> Button:
 	"""创建一个按钮"""
 	var button = Button.new()
 	button.text = text
 	button.pressed.connect(callback)
-	if position != Vector2.ZERO:
-		button.position = position
+	if pos != Vector2.ZERO:
+		button.position = pos
 	add_child(button)
 	return button
 
-func create_label(text: String, position: Vector2 = Vector2.ZERO) -> Label:
+func create_label(text: String, pos: Vector2 = Vector2.ZERO) -> Label:
 	"""创建一个标签"""
 	var label = Label.new()
 	label.text = text
-	if position != Vector2.ZERO:
-		label.position = position
+	if pos != Vector2.ZERO:
+		label.position = pos
 	add_child(label)
 	return label
