@@ -506,6 +506,12 @@ func test_week5_hu_algorithm() -> void:
 	print("第5周测试完成！")
 	print(separator)
 
+	# 第6周测试
+	print("\n" + separator)
+	print("第6周：听牌检测和基础AI玩家测试")
+	print(separator)
+	await test_week6_ai_and_ting()
+
 
 func test_week6_ai_and_ting() -> void:
 	"""第6周测试：听牌检测和AI玩家"""
@@ -627,4 +633,47 @@ func test_week6_ai_and_ting() -> void:
 
 	print("\n" + separator)
 	print("第6周测试完成！")
+	print(separator)
+
+	# 第7周测试
+	print("\n" + separator)
+	print("第7周：网络系统测试")
+	print(separator)
+	await test_week7_network()
+
+
+func test_week7_network() -> void:
+	"""第7周测试：网络系统"""
+	print("\n【测试10】网络系统测试...")
+
+	# 测试1：创建网络客户端
+	print("\n--- 测试1：创建网络客户端 ---")
+	var client = NetworkClient.new()
+	print("✓ 网络客户端已创建")
+	await get_tree().create_timer(0.2).timeout
+
+	# 测试2：创建游戏室
+	print("\n--- 测试2：创建游戏室 ---")
+	var room = GameRoom.new()
+	room.init(1, 4)
+	print("✓ 游戏室已创建 (房间ID: %d, 最大玩家数: %d)" % [room.get_room_id(), room.get_max_players()])
+	await get_tree().create_timer(0.2).timeout
+
+	# 测试3：测试消息系统
+	print("\n--- 测试3：测试消息系统 ---")
+	var msg = NetworkMessage.Message.new()
+	msg.type = NetworkMessage.MessageType.PLAYER_ACTION
+	msg.data = {"action": "play_card", "card_id": 5}
+	print("✓ 消息已创建: 类型=%s, 数据=%s" % [msg.type, msg.data])
+	await get_tree().create_timer(0.2).timeout
+
+	# 测试4：测试游戏服务器
+	print("\n--- 测试4：测试游戏服务器 ---")
+	var server = GameServer.new()
+	print("✓ 游戏服务器已创建")
+	print("  服务器状态: 房间数=%d" % server.get_room_count())
+	await get_tree().create_timer(0.2).timeout
+
+	print("\n" + separator)
+	print("第7周测试完成！")
 	print(separator)
