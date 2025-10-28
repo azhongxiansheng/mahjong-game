@@ -3,6 +3,8 @@ extends Node2D
 # 麻将游戏主场景脚本
 # 这里管理游戏的整体逻辑和流程
 
+var game_manager: GameManager
+
 func _ready() -> void:
 	"""
 	当场景准备好时调用一次
@@ -10,6 +12,17 @@ func _ready() -> void:
 	"""
 	print("欢迎来到麻将游戏！")
 	print("游戏已启动")
+	print("="*40)
+	print("测试快捷键:")
+	print("  P - Player 受伤 10 点")
+	print("  H - Player 恢复 20 点")
+	print("  E - 所有 Enemy 受伤 20 点")
+	print("  ESC - 退出游戏")
+	print("="*40)
+	
+	# 创建 GameManager 来管理游戏
+	game_manager = GameManager.new()
+	add_child(game_manager)
 
 
 func _process(delta: float) -> void:
