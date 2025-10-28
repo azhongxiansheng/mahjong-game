@@ -13,36 +13,36 @@ var is_game_running: bool = false
 
 func _ready() -> void:
 	print("========== 游戏集成初始化 ==========")
-	
+
 	# 获取UI引用
 	game_ui = get_tree().root.get_child(0).get_node("GameUI") if has_node("/root/Main/GameUI") else null
-	
+
 	if game_ui:
 		print("✓ GameUI引用已获取")
 	else:
 		print("⚠ GameUI节点未找到")
-	
+
 	print("========== 游戏集成准备就绪 ==========")
 
 func start_game() -> void:
 	"""启动游戏"""
 	is_game_running = true
 	print("✓ 游戏已启动")
-	
+
 	# 初始化手牌（13张）
 	initialize_hand()
-	
+
 	# 发送第一个抽卡信号
 	draw_card()
 
 func initialize_hand() -> void:
 	"""初始化手牌"""
 	current_hand = []
-	
+
 	# 创建13张初始卡牌
 	var suits = ["万", "筒", "条", "字"]
 	var card_count = 0
-	
+
 	for suit_idx in range(4):
 		for num in range(1, 10):
 			if card_count < 13:
@@ -57,7 +57,7 @@ func initialize_hand() -> void:
 				break
 		if card_count >= 13:
 			break
-	
+
 	print("✓ 初始手牌已创建: ", current_hand.size(), " 张卡牌")
 	update_ui_hand()
 
@@ -82,7 +82,7 @@ func play_card(card_index: int) -> void:
 		print("✓ 出牌: ", card.suit, card.number)
 		current_hand.remove_at(card_index)
 		update_ui_hand()
-		
+
 		# 检查是否胡牌
 		check_win()
 	else:
@@ -106,16 +106,16 @@ func update_ui_hand() -> void:
 		for card in game_ui.cards:
 			card.queue_free()
 		game_ui.cards.clear()
-		
+
 		# 添加新卡牌
 		for i in range(current_hand.size()):
 			var card_data = current_hand[i]
 			var card_label = Label.new()
-			
+
 			card_label.text = card_data.suit + str(card_data.number)
 			card_label.add_theme_font_size_override("font_size", 16)
 			card_label.modulate = Color.WHITE
-			
+
 			# 设置位置
 			var x_pos = 30 + (i * 85)
 			var y_pos = 420
@@ -124,15 +124,15 @@ func update_ui_hand() -> void:
 			card_label.alignment = HORIZONTAL_ALIGNMENT_CENTER
 			card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			card_label.mouse_filter = Control.MOUSE_FILTER_STOP
-			
+
 			game_ui.add_child(card_label)
 			game_ui.cards.append(card_label)
-			
+
 			# 连接鼠标事件
 			card_label.gui_input.connect(game_ui._on_card_clicked.bind(i))
 			card_label.mouse_entered.connect(game_ui._on_card_hover.bind(i))
 			card_label.mouse_exited.connect(game_ui._on_card_unhover.bind(i))
-		
+
 		print("✓ UI手牌已更新: ", current_hand.size(), " 张卡牌")
 
 func show_win_message() -> void:
