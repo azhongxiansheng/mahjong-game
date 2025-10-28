@@ -1,19 +1,19 @@
 class_name GameUI
 extends ScreenBase
 
-# 组件引用 - 不使用 @onready，改为显式初始化
-var player_hand_display: Control = null
-var opponent_hand_display: Control = null
-var discard_pile: Control = null
-var game_info: Label = null
-var player_stats: Label = null
-var game_log: RichTextLabel = null
+# 组件引用 - 使用下划线前缀避免与父类属性冲突
+var _player_hand_display: Control = null
+var _opponent_hand_display: Control = null
+var _discard_pile: Control = null
+var _game_info: Label = null
+var _player_stats: Label = null
+var _game_log: RichTextLabel = null
 
-var hu_button: Button = null
-var ting_button: Button = null
-var peng_button: Button = null
-var pass_button: Button = null
-var quit_button: Button = null
+var _hu_button: Button = null
+var _ting_button: Button = null
+var _peng_button: Button = null
+var _pass_button: Button = null
+var _quit_button: Button = null
 
 # 游戏状态
 var game_controller: GameController
@@ -38,30 +38,44 @@ func _ready() -> void:
 	print("[DIAGNOSTIC] GameUI._ready() 完成\n")
 
 func _initialize_missing_nodes() -> void:
-	"""初始化任何失败的 @onready 节点 - 诊断版本"""
+	"""初始化任何失败的 @onready 节点"""
 	print("[INIT] 开始初始化节点")
 	
-	# 只执行 get_node_or_null，但不赋值，看是否避免错误
-	print("[INIT] 测试 get_node_or_null 调用...")
-	var test1 = get_node_or_null("GameLayer/TableArea/PlayerHand")
-	print("[INIT] test1 = %s" % ("有效" if test1 else "nil"))
+	if not _player_hand_display:
+		_player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
+		print("[INIT] _player_hand_display = %s" % ("有效" if _player_hand_display else "nil"))
+
+	if not _opponent_hand_display:
+		_opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
+		print("[INIT] _opponent_hand_display = %s" % ("有效" if _opponent_hand_display else "nil"))
+
+	if not _player_stats:
+		_player_stats = get_node_or_null("InfoPanel/PlayerStats")
+		print("[INIT] _player_stats = %s" % ("有效" if _player_stats else "nil"))
+
+	if not _game_log:
+		_game_log = get_node_or_null("InfoPanel/GameLog")
+		print("[INIT] _game_log = %s" % ("有效" if _game_log else "nil"))
+
+	if not _game_info:
+		_game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
+		print("[INIT] _game_info = %s" % ("有效" if _game_info else "nil"))
+
+	if not _discard_pile:
+		_discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
+		print("[INIT] _discard_pile = %s" % ("有效" if _discard_pile else "nil"))
+
+	if not _hu_button:
+		_hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
+	if not _ting_button:
+		_ting_button = get_node_or_null("GameLayer/ActionPanel/TingButton")
+	if not _peng_button:
+		_peng_button = get_node_or_null("GameLayer/ActionPanel/PengButton")
+	if not _pass_button:
+		_pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
+	if not _quit_button:
+		_quit_button = get_node_or_null("InfoPanel/QuitButton")
 	
-	var test2 = get_node_or_null("GameLayer/TableArea/OpponentHand")
-	print("[INIT] test2 = %s" % ("有效" if test2 else "nil"))
-	
-	var test3 = get_node_or_null("InfoPanel/PlayerStats")
-	print("[INIT] test3 = %s" % ("有效" if test3 else "nil"))
-	
-	var test4 = get_node_or_null("InfoPanel/GameLog")
-	print("[INIT] test4 = %s" % ("有效" if test4 else "nil"))
-	
-	var test5 = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
-	print("[INIT] test5 = %s" % ("有效" if test5 else "nil"))
-	
-	var test6 = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
-	print("[INIT] test6 = %s" % ("有效" if test6 else "nil"))
-	
-	print("[INIT] get_node_or_null 测试完成 - 如果出现错误，说明问题在这里")
 	print("[INIT] 节点初始化完成")
 
 func _deferred_setup() -> void:
@@ -112,23 +126,23 @@ func _verify_ui_components() -> bool:
 	"""验证所有UI组件是否正确初始化"""
 	var all_ok = true
 
-	if not player_hand_display:
-		print("⚠ player_hand_display 为空")
+	if not _player_hand_display:
+		print("⚠ _player_hand_display 为空")
 		all_ok = false
-	if not opponent_hand_display:
-		print("⚠ opponent_hand_display 为空")
+	if not _opponent_hand_display:
+		print("⚠ _opponent_hand_display 为空")
 		all_ok = false
-	if not player_stats:
-		print("⚠ player_stats 为空")
+	if not _player_stats:
+		print("⚠ _player_stats 为空")
 		all_ok = false
-	if not game_log:
-		print("⚠ game_log 为空")
+	if not _game_log:
+		print("⚠ _game_log 为空")
 		all_ok = false
-	if not game_info:
-		print("⚠ game_info 为空")
+	if not _game_info:
+		print("⚠ _game_info 为空")
 		all_ok = false
-	if not discard_pile:
-		print("⚠ discard_pile 为空")
+	if not _discard_pile:
+		print("⚠ _discard_pile 为空")
 		all_ok = false
 
 	return all_ok
@@ -136,34 +150,34 @@ func _verify_ui_components() -> bool:
 func connect_signals() -> void:
 	"""连接所有信号"""
 	# 连接按钮信号
-	if hu_button:
-		hu_button.pressed.connect(_on_hu_pressed)
-	if ting_button:
-		ting_button.pressed.connect(_on_ting_pressed)
-	if peng_button:
-		peng_button.pressed.connect(_on_peng_pressed)
-	if pass_button:
-		pass_button.pressed.connect(_on_pass_pressed)
-	if quit_button:
-		quit_button.pressed.connect(_on_quit_pressed)
+	if _hu_button:
+		_hu_button.pressed.connect(_on_hu_pressed)
+	if _ting_button:
+		_ting_button.pressed.connect(_on_ting_pressed)
+	if _peng_button:
+		_peng_button.pressed.connect(_on_peng_pressed)
+	if _pass_button:
+		_pass_button.pressed.connect(_on_pass_pressed)
+	if _quit_button:
+		_quit_button.pressed.connect(_on_quit_pressed)
 
 	# 连接手牌显示信号 - 添加安全检查
-	if player_hand_display:
+	if _player_hand_display:
 		# 验证对象是否是HandDisplay类型
-		if player_hand_display is HandDisplay:
-			if player_hand_display.has_signal("card_pressed"):
-				player_hand_display.card_pressed.connect(_on_card_pressed)
+		if _player_hand_display is HandDisplay:
+			if _player_hand_display.has_signal("card_pressed"):
+				_player_hand_display.card_pressed.connect(_on_card_pressed)
 			else:
 				print("⚠ HandDisplay没有card_pressed信号")
 
-			if player_hand_display.has_signal("card_selected"):
-				player_hand_display.card_selected.connect(_on_card_selected)
+			if _player_hand_display.has_signal("card_selected"):
+				_player_hand_display.card_selected.connect(_on_card_selected)
 			else:
 				print("⚠ HandDisplay没有card_selected信号")
 		else:
-			print("⚠ player_hand_display 不是 HandDisplay 类型，而是: ", player_hand_display.get_class())
+			print("⚠ _player_hand_display 不是 HandDisplay 类型，而是: ", _player_hand_display.get_class())
 	else:
-		print("⚠ player_hand_display 为空")
+		print("⚠ _player_hand_display 为空")
 
 func apply_theme() -> void:
 	"""应用主题颜色"""
@@ -171,32 +185,32 @@ func apply_theme() -> void:
 	modulate = Color(0x2C3E50FF)
 
 	# 设置按钮颜色
-	if hu_button:
-		hu_button.modulate = Color(0xE74C3CFF)
-	if ting_button:
-		ting_button.modulate = Color(0x27AE60FF)
-	if peng_button:
-		peng_button.modulate = Color(0x3498DBFF)
-	if pass_button:
-		pass_button.modulate = Color(0x95A5A6FF)
+	if _hu_button:
+		_hu_button.modulate = Color(0xE74C3CFF)
+	if _ting_button:
+		_ting_button.modulate = Color(0x27AE60FF)
+	if _peng_button:
+		_peng_button.modulate = Color(0x3498DBFF)
+	if _pass_button:
+		_pass_button.modulate = Color(0x95A5A6FF)
 
 func add_log_message(message: String) -> void:
 	"""添加日志消息 - 绝对安全版本"""
 	print("[LOG] %s" % message)
 
 	# 最严格的 null 检查
-	if game_log == null:
-		print("[WARN] game_log 为 null，无法添加日志")
+	if _game_log == null:
+		print("[WARN] _game_log 为 null，无法添加日志")
 		return
 
 	# 验证对象仍然有效
-	if not is_instance_valid(game_log):
-		print("[WARN] game_log 对象无效，无法添加日志")
+	if not is_instance_valid(_game_log):
+		print("[WARN] _game_log 对象无效，无法添加日志")
 		return
 
 	# 在赋值之前再次检查
-	if not game_log:
-		print("[WARN] game_log 不存在，无法添加日志")
+	if not _game_log:
+		print("[WARN] _game_log 不存在，无法添加日志")
 		return
 
 	# 只有现在才安全地赋值
@@ -211,22 +225,22 @@ func _safe_set_log_text(text: String) -> void:
 	print("[SAFE_LOG] _safe_set_log_text 被调用但不执行赋值")
 	# 禁用日志赋值以避免 nil assignment 错误
 	# 如果需要日志，使用 print() 替代
-	if game_log and is_instance_valid(game_log):
-		print("[SAFE_LOG] game_log 有效但不设置文本")
+	if _game_log and is_instance_valid(_game_log):
+		print("[SAFE_LOG] _game_log 有效但不设置文本")
 	else:
-		print("[SAFE_LOG] game_log 无效，无法设置日志")
+		print("[SAFE_LOG] _game_log 无效，无法设置日志")
 
 func display_hand(hand: CardHand) -> void:
 	"""显示玩家手牌"""
 	current_hand = hand
 
-	if player_hand_display and is_instance_valid(player_hand_display):
-		player_hand_display.set_hand(hand)
+	if _player_hand_display and is_instance_valid(_player_hand_display):
+		_player_hand_display.set_hand(hand)
 
 	update_player_stats()
 
 	# 安全地记录日志
-	if game_log and is_instance_valid(game_log):
+	if _game_log and is_instance_valid(_game_log):
 		add_log_message("显示手牌: %d张" % hand.get_card_count())
 	else:
 		print("[INFO] 日志系统未初始化，跳过日志记录")
@@ -234,7 +248,7 @@ func display_hand(hand: CardHand) -> void:
 func update_player_stats() -> void:
 	"""更新玩家统计信息 - 已简化以避免错误"""
 	print("[TRACE] update_player_stats 被调用但不更新 UI")
-	# 禁用对 player_stats.text 的赋值以避免 nil 错误
+	# 禁用对 _player_stats.text 的赋值以避免 nil 错误
 	# UI 显示不更新，但游戏逻辑继续
 
 func _safe_set_player_stats(text: String) -> void:
@@ -253,11 +267,11 @@ func _on_card_selected(card: CardData) -> void:
 
 func play_card() -> void:
 	"""出牌"""
-	if not current_hand or not player_hand_display:
+	if not current_hand or not _player_hand_display:
 		add_log_message("⚠ 无法出牌: 游戏未初始化")
 		return
 
-	var card = player_hand_display.get_selected_card()
+	var card = _player_hand_display.get_selected_card()
 	if not card:
 		add_log_message("⚠ 请先选择一张卡牌")
 		return
@@ -265,7 +279,7 @@ func play_card() -> void:
 	# 从手牌中移除
 	if current_hand.remove_card(card):
 		# 从显示中移除
-		player_hand_display.remove_card_display(card)
+		_player_hand_display.remove_card_display(card)
 		# 添加到弃牌堆
 		add_to_discard_pile(card)
 		# 更新显示
@@ -279,17 +293,17 @@ func play_card() -> void:
 func add_to_discard_pile(card: CardData) -> void:
 	"""添加卡牌到弃牌堆"""
 	discard_cards.append(card)
-	if discard_pile:
+	if _discard_pile:
 		# 显示最近的弃牌（限制显示最多16张）
 		update_discard_pile_display()
 
 func update_discard_pile_display() -> void:
 	"""更新弃牌堆显示"""
-	if not discard_pile:
+	if not _discard_pile:
 		return
 
 	# 清空旧的显示
-	for child in discard_pile.get_children():
+	for child in _discard_pile.get_children():
 		child.queue_free()
 
 	# 显示最近的16张牌（4x4网格）
@@ -304,7 +318,7 @@ func update_discard_pile_display() -> void:
 		label.custom_minimum_size = Vector2(50, 40)
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		discard_pile.add_child(label)
+		_discard_pile.add_child(label)
 		print("添加到弃牌堆: %s" % card.get_card_name())
 
 func show_opponent_play(card: CardData) -> void:
@@ -314,11 +328,11 @@ func show_opponent_play(card: CardData) -> void:
 
 func display_opponent_hand(hand_count: int) -> void:
 	"""显示对手手牌（背面）"""
-	if not opponent_hand_display:
+	if not _opponent_hand_display:
 		return
 
 	# 清空旧的显示
-	for child in opponent_hand_display.get_children():
+	for child in _opponent_hand_display.get_children():
 		child.queue_free()
 
 	# 显示指定数量的背面卡牌
@@ -330,7 +344,7 @@ func display_opponent_hand(hand_count: int) -> void:
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		label.modulate = Color(0.4, 0.4, 0.6, 1.0)  # 灰蓝色
-		opponent_hand_display.add_child(label)
+		_opponent_hand_display.add_child(label)
 
 	print("✓ 显示对手手牌: %d张" % hand_count)
 
@@ -352,7 +366,7 @@ func _on_hu_pressed() -> void:
 	add_log_message("🎯 尝试胡牌...")
 
 	# 显示胡牌动画
-	if player_hand_display:
+	if _player_hand_display:
 		animate_win()
 
 func _on_ting_pressed() -> void:
@@ -387,8 +401,8 @@ func animate_win() -> void:
 	"""胡牌动画效果"""
 	var tween = create_tween()
 	for i in range(3):
-		tween.tween_property(player_hand_display, "scale", Vector2(1.1, 1.1), 0.15)
-		tween.tween_property(player_hand_display, "scale", Vector2(1.0, 1.0), 0.15)
+		tween.tween_property(_player_hand_display, "scale", Vector2(1.1, 1.1), 0.15)
+		tween.tween_property(_player_hand_display, "scale", Vector2(1.0, 1.0), 0.15)
 	add_log_message("✨ 胡牌特效播放")
 
 func test_display_hand() -> void:
