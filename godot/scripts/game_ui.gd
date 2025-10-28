@@ -55,7 +55,7 @@ func create_card_display() -> void:
 		var y_pos = 420
 		card_label.position = Vector2(x_pos, y_pos)
 		card_label.custom_minimum_size = Vector2(70, 150)
-		card_label.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 		# 鼠标检测
