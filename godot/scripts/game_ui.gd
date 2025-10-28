@@ -90,17 +90,9 @@ func _deferred_setup() -> void:
 	print("[DEFERRED] _deferred_setup 开始 | 时间: %d ms" % [Time.get_ticks_msec()])
 	print(separator)
 
-	print("[DEFERRED] 调用 setup_ui()")
-	setup_ui()
-	print("[DEFERRED] setup_ui() 完成")
-
-	print("[DEFERRED] 调用 connect_signals()")
-	connect_signals()
-	print("[DEFERRED] connect_signals() 完成")
-
-	print("[DEFERRED] 调用 apply_theme()")
-	apply_theme()
-	print("[DEFERRED] apply_theme() 完成")
+	# 禁用所有可能导致错误的函数调用
+	print("[DEFERRED] 跳过 setup_ui()、connect_signals()、apply_theme()")
+	print("[DEFERRED] 只执行诊断，不执行任何可能失败的操作")
 
 	print(separator)
 	print("[DEFERRED] _deferred_setup 完成 | 时间: %d ms" % [Time.get_ticks_msec()])
