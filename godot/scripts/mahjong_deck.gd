@@ -8,14 +8,17 @@ func _init() -> void:
 	generate_standard_deck()
 
 func generate_standard_deck() -> void:
-	"""生成标准麻将牌（万、筒、条、字各36张）"""
+	"""生成标准麻将牌（108张）"""
 	print("生成标准麻将牌池...")
-	# 各花色 1-9，每种 4 张
-	for suit in range(4):
+	
+	# 标准麻将: 万、筒、条各36张 (1-9每种4张)
+	# 共108张
+	for suit in range(3):  # 只生成万、筒、条三种花色
 		for number in range(1, 10):
-			for count in range(4):
+			for count in range(4):  # 每种4张
 				var card = CardData.new(suit, number)
 				cards.append(card)
+	
 	print("✓ 麻将牌池已生成：%d 张卡牌" % cards.size())
 
 func draw_initial_hand(count: int = 13) -> Array:

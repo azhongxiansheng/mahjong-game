@@ -23,12 +23,12 @@ func init_game() -> void:
 	"""初始化游戏"""
 	print("\n【游戏初始化】")
 	game_state.set_state(GameState.State.INIT)
-	
+
 	# 创建牌池
 	deck = MahjongDeck.new()
 	deck.shuffle()
 	game_state.set_state(GameState.State.READY)
-	
+
 	print("✓ 游戏初始化完成")
 
 func start_game() -> void:
@@ -36,19 +36,19 @@ func start_game() -> void:
 	if game_state.get_state() != GameState.State.READY:
 		print("错误：游戏不在准备状态")
 		return
-	
+
 	print("\n【游戏开始】")
 	game_state.set_state(GameState.State.DEALING)
-	
+
 	# 发初始手牌（13张）
 	player_hand = CardHand.new()
 	var initial_cards = deck.draw_initial_hand(13)
 	for card in initial_cards:
 		player_hand.add_card(card)
-	
+
 	game_stats["rounds"] += 1
 	game_stats["total_cards_drawn"] += 13
-	
+
 	game_state.set_state(GameState.State.PLAYING)
 	print("✓ 游戏已开始，发放初始手牌")
 	print_player_hand()
@@ -58,7 +58,7 @@ func draw_card() -> CardData:
 	if not (game_state.get_state() == GameState.State.PLAYING or game_state.get_state() == GameState.State.WAITING_ACTION):
 		print("错误：无法抽卡（当前状态：%s）" % game_state.get_state_name())
 		return null
-	
+
 	game_state.set_state(GameState.State.DRAW)
 	var card = deck.draw_one()
 	if card:
@@ -67,7 +67,7 @@ func draw_card() -> CardData:
 		print("✓ 抽卡: %s" % card.get_card_name())
 	else:
 		print("牌池已空！")
-	
+
 	game_state.set_state(GameState.State.WAITING_ACTION)
 	return card
 
@@ -76,7 +76,7 @@ func discard_card(card: CardData) -> bool:
 	if not game_state.can_discard():
 		print("错误：无法出牌")
 		return false
-	
+
 	game_state.set_state(GameState.State.DISCARD)
 	if player_hand.remove_card(card):
 		game_stats["total_cards_discarded"] += 1
