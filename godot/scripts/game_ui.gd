@@ -34,21 +34,44 @@ func _ready() -> void:
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
+	# 验证所有UI组件已初始化
+	if not _verify_ui_components():
+		print("⚠ 部分UI组件初始化失败，继续运行")
+	
 	# 设置初始文本 - 添加空检查
 	if player_stats:
 		player_stats.text = "等待游戏开始..."
-	else:
-		print("⚠ player_stats 为空")
 	
 	if game_log:
 		game_log.text = ""
-	else:
-		print("⚠ game_log 为空")
 	
 	if game_info:
 		game_info.text = "游戏信息"
-	else:
+
+func _verify_ui_components() -> bool:
+	"""验证所有UI组件是否正确初始化"""
+	var all_ok = true
+	
+	if not player_hand_display:
+		print("⚠ player_hand_display 为空")
+		all_ok = false
+	if not opponent_hand_display:
+		print("⚠ opponent_hand_display 为空")
+		all_ok = false
+	if not player_stats:
+		print("⚠ player_stats 为空")
+		all_ok = false
+	if not game_log:
+		print("⚠ game_log 为空")
+		all_ok = false
+	if not game_info:
 		print("⚠ game_info 为空")
+		all_ok = false
+	if not discard_pile:
+		print("⚠ discard_pile 为空")
+		all_ok = false
+	
+	return all_ok
 
 func connect_signals() -> void:
 	"""连接所有信号"""
@@ -103,15 +126,22 @@ func display_hand(hand: CardHand) -> void:
 	if player_hand_display:
 		player_hand_display.set_hand(hand)
 	update_player_stats()
-	add_log_message("显示手牌: %d张" % hand.get_card_count())
+	if game_log:
+		add_log_message("显示手牌: %d张" % hand.get_card_count())
+	else:
+		print("日志系统未初始化，跳过日志记录")
 
 func add_log_message(message: String) -> void:
-	"""添加日志消息"""
-	if game_log:
-		var timestamp = Time.get_ticks_msec() / 1000
-		var formatted_msg = "[%.1f] %s" % [timestamp, message]
-		game_log.text += formatted_msg + "\n"
-		# 滚动到底部
+	"""添加日志消息 - 安全版本"""
+	if not game_log:
+		print("⚠ game_log 未初始化，日志消息: %s" % message)
+		return
+	
+	var timestamp = Time.get_ticks_msec() / 1000
+	var formatted_msg = "[%.1f] %s" % [timestamp, message]
+	game_log.text += formatted_msg + "\n"
+	# 滚动到底部
+	if game_log.get_line_count() > 0:
 		game_log.scroll_to_line(game_log.get_line_count() - 1)
 
 func update_player_stats() -> void:
