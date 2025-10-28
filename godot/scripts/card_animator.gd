@@ -25,16 +25,16 @@ func animate_play_card(node: Node, target_pos: Vector2) -> void:
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_IN_OUT)
-	
+
 	# 移动到目标位置
 	tween.tween_property(node, "position", target_pos, ANIMATION_SPEED)
-	
+
 	# 同时缩小（出牌效果）
 	tween.parallel().tween_property(node, "scale", Vector2(0.8, 0.8), ANIMATION_SPEED)
-	
+
 	# 淡出
 	tween.parallel().tween_property(node, "modulate:a", 0.5, ANIMATION_SPEED)
-	
+
 	print("✓ 出牌动画: ", node.name)
 
 func animate_win(node: Node) -> void:
@@ -43,14 +43,14 @@ func animate_win(node: Node) -> void:
 	tween.set_loops(2)  # 重复2次
 	tween.set_trans(Tween.TRANS_ELASTIC)
 	tween.set_ease(Tween.EASE_OUT)
-	
+
 	# 旋转
 	tween.tween_property(node, "rotation", TAU, ANIMATION_SPEED * 2)
-	
+
 	# 跳跃（Y轴移动）
 	tween.parallel().tween_property(node, "position:y", node.position.y - 50, ANIMATION_SPEED)
 	tween.tween_property(node, "position:y", node.position.y, ANIMATION_SPEED)
-	
+
 	print("✓ 胡牌动画: ", node.name)
 
 func animate_hover(node: Node) -> void:
@@ -77,7 +77,7 @@ func animate_shuffle(nodes: Array) -> void:
 		tween.set_ease(Tween.EASE_IN_OUT)
 		tween.tween_property(node, "rotation", TAU * 0.5, ANIMATION_SPEED * 0.5)
 		tween.tween_property(node, "rotation", 0, ANIMATION_SPEED * 0.5)
-	
+
 	print("✓ 洗牌动画: 已应用到 ", nodes.size(), " 张卡牌")
 
 func animate_draw_card(node: Node, from_pos: Vector2, to_pos: Vector2) -> void:
@@ -85,11 +85,11 @@ func animate_draw_card(node: Node, from_pos: Vector2, to_pos: Vector2) -> void:
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_QUAD)
 	tween.set_ease(Tween.EASE_OUT)
-	
+
 	node.position = from_pos
 	node.scale = Vector2(0.5, 0.5)
-	
+
 	tween.tween_property(node, "position", to_pos, ANIMATION_SPEED)
 	tween.parallel().tween_property(node, "scale", Vector2(1.0, 1.0), ANIMATION_SPEED)
-	
+
 	print("✓ 抽卡动画: ", node.name)
