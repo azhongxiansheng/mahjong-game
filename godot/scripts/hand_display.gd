@@ -15,7 +15,7 @@ signal card_pressed(card: CardData)
 
 func _ready() -> void:
 	print("HandDisplay初始化完成")
-	
+
 	# 设置背景
 	var panel = Panel.new()
 	var style = StyleBoxFlat.new()
@@ -38,12 +38,12 @@ func refresh_display() -> void:
 		tile.queue_free()
 	card_tiles.clear()
 	selected_tile = null
-	
+
 	# 如果没有手牌，返回
 	if not hand:
 		print("⚠ 没有手牌数据")
 		return
-	
+
 	# 创建新的卡牌显示
 	print("显示 %d 张卡牌" % hand.cards.size())
 	for i in range(hand.cards.size()):
@@ -54,16 +54,16 @@ func add_card_display(card: CardData, index: int = -1) -> void:
 	var tile: CardTile = card_tile_scene.instantiate()
 	tile.set_card(card)
 	add_child(tile)
-	
+
 	# 设置位置
 	var x_pos = 20 + (card_tiles.size() * 85)
 	var y_pos = 35
 	tile.position = Vector2(x_pos, y_pos)
-	
+
 	# 连接信号
 	tile.card_pressed.connect(_on_card_pressed.bind(tile))
 	tile.card_selected.connect(_on_card_selected.bind(tile))
-	
+
 	card_tiles.append(tile)
 	print("添加卡牌显示: %s (位置: %d)" % [card.get_card_name(), x_pos])
 
@@ -73,11 +73,11 @@ func remove_card_display(card: CardData) -> bool:
 		if card_tiles[i].card_data == card:
 			card_tiles[i].queue_free()
 			card_tiles.remove_at(i)
-			
+
 			# 如果移除的是选中的卡牌
 			if selected_tile == card_tiles[i] if i < card_tiles.size() else null:
 				selected_tile = null
-			
+
 			print("移除卡牌显示: %s" % card.get_card_name())
 			return true
 	return false
@@ -87,7 +87,7 @@ func select_card(tile: CardTile) -> void:
 	# 取消之前的选择
 	if selected_tile and selected_tile != tile:
 		selected_tile.deselect()
-	
+
 	# 选择新卡牌
 	selected_tile = tile
 	tile.select()

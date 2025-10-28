@@ -14,7 +14,7 @@ var game_controller: GameController
 
 func _ready() -> void:
 	print("========== UIManager 初始化 ==========")
-	
+
 	# 初始化游戏UI
 	initialize_game_ui()
 
@@ -22,18 +22,18 @@ func initialize_game_ui() -> void:
 	"""初始化游戏UI"""
 	# 实例化GameUI
 	var game_ui = game_ui_scene.instantiate() as GameUI
-	
+
 	if not game_ui:
 		print("⚠ 无法创建GameUI")
 		return
-	
+
 	# 设置GameUI
 	screens["game_ui"] = game_ui
 	add_child(game_ui)
-	
+
 	# 显示GameUI
 	show_screen("game_ui")
-	
+
 	print("✓ GameUI已初始化")
 
 func show_screen(screen_name: String) -> void:
@@ -41,11 +41,11 @@ func show_screen(screen_name: String) -> void:
 	if not screen_name in screens:
 		print("⚠ 屏幕不存在: %s" % screen_name)
 		return
-	
+
 	# 隐藏当前屏幕
 	if current_screen:
 		current_screen.hide_screen()
-	
+
 	# 显示新屏幕
 	current_screen = screens[screen_name]
 	current_screen.show_screen()

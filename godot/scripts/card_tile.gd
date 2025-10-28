@@ -19,7 +19,7 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	custom_minimum_size = Vector2(80, 120)
-	
+
 	# 设置默认样式
 	modulate = Color.WHITE
 
