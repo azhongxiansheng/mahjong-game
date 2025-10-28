@@ -28,11 +28,11 @@ func _ready() -> void:
 	var main = get_tree().root.get_node_or_null("/root/Main")
 	if main:
 		game_ui = main.get_node_or_null("UILayer/GameUI")
-	
+
 	# ✓ 方案 2: 如果失败，尝试通过 find_child
 	if not game_ui:
 		game_ui = get_tree().root.find_child("GameUI", true, false)
-	
+
 	if not game_ui:
 		print("⚠ 无法找到GameUI")
 		return
