@@ -6,7 +6,7 @@ var selected_card_index = -1
 
 func _ready() -> void:
 	print("========== GameUI 初始化 ==========")
-	
+
 	# 设置Node大小和位置
 	custom_minimum_size = Vector2(1200, 800)
 	anchor_right = 1.0
@@ -58,26 +58,25 @@ func create_card_display() -> void:
 
 	for i in range(test_cards.size()):
 		var card_data = test_cards[i]
-		
+
 		# 创建卡牌容器（Panel作为卡牌背景）
 		var card_container = Panel.new()
 		var card_style = StyleBoxFlat.new()
 		card_style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
-		card_style.set_border_enabled_all(true)
-		card_style.set_border_width_all(2)
-		card_style.set_border_color_all(Color(0.3, 0.2, 0.1, 1.0))  # 深色边框
-		card_style.set_corner_radius_all(3)
+		card_style.border_color = Color(0.3, 0.2, 0.1, 1.0)  # 深色边框
+		card_style.set_border_width(2, 2, 2, 2)  # 左上右下
+		card_style.set_corner_radius(3, 3, 3, 3)  # 四个角
 		card_container.add_theme_stylebox_override("panel", card_style)
-		
+
 		# 设置卡牌大小和位置
 		var x_pos = 30 + (i * 85)
 		var y_pos = 370
 		card_container.position = Vector2(x_pos, y_pos)
 		card_container.custom_minimum_size = Vector2(75, 145)
 		card_container.mouse_filter = Control.MOUSE_FILTER_STOP
-		
+
 		add_child(card_container)
-		
+
 		# 创建卡牌内容
 		var vbox = VBoxContainer.new()
 		vbox.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -90,7 +89,7 @@ func create_card_display() -> void:
 		vbox.offset_left = 5
 		vbox.offset_right = -5
 		card_container.add_child(vbox)
-		
+
 		# 花色标签（上方）
 		var suit_label = Label.new()
 		suit_label.text = card_data.suit
@@ -99,7 +98,7 @@ func create_card_display() -> void:
 		suit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		suit_label.custom_minimum_size = Vector2(65, 25)
 		vbox.add_child(suit_label)
-		
+
 		# 数字标签（中间）
 		var number_label = Label.new()
 		number_label.text = card_data.number
@@ -108,7 +107,7 @@ func create_card_display() -> void:
 		number_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		number_label.custom_minimum_size = Vector2(65, 50)
 		vbox.add_child(number_label)
-		
+
 		# 花色标签（下方）
 		var suit_label_bottom = Label.new()
 		suit_label_bottom.text = card_data.suit
@@ -117,12 +116,12 @@ func create_card_display() -> void:
 		suit_label_bottom.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		suit_label_bottom.custom_minimum_size = Vector2(65, 25)
 		vbox.add_child(suit_label_bottom)
-		
+
 		# 连接鼠标事件
 		card_container.gui_input.connect(_on_card_clicked.bind(i, card_container))
-		
+
 		cards.append(card_container)
-		
+
 		print("✓ 添加卡牌: ", card_data.suit, card_data.number, " 位置: (", x_pos, ", ", y_pos, ")")
 
 	print("✓ 已添加 ", cards.size(), " 张卡牌")
@@ -163,20 +162,18 @@ func select_card(index: int, card_container: Panel) -> void:
 		if selected_card_index >= 0 and selected_card_index < cards.size():
 			var old_style = StyleBoxFlat.new()
 			old_style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
-			old_style.set_border_enabled_all(true)
-			old_style.set_border_width_all(2)
-			old_style.set_border_color_all(Color(0.3, 0.2, 0.1, 1.0))
-			old_style.set_corner_radius_all(3)
+			old_style.border_color = Color(0.3, 0.2, 0.1, 1.0)
+			old_style.set_border_width(2, 2, 2, 2)
+			old_style.set_corner_radius(3, 3, 3, 3)
 			cards[selected_card_index].add_theme_stylebox_override("panel", old_style)
 
 		# 选中新卡
 		selected_card_index = index
 		var new_style = StyleBoxFlat.new()
 		new_style.bg_color = Color(1.0, 0.95, 0.5, 1.0)  # 高亮黄色
-		new_style.set_border_enabled_all(true)
-		new_style.set_border_width_all(3)
-		new_style.set_border_color_all(Color(1.0, 0.8, 0.0, 1.0))  # 金色边框
-		new_style.set_corner_radius_all(3)
+		new_style.border_color = Color(1.0, 0.8, 0.0, 1.0)  # 金色边框
+		new_style.set_border_width(3, 3, 3, 3)
+		new_style.set_corner_radius(3, 3, 3, 3)
 		card_container.add_theme_stylebox_override("panel", new_style)
 		print("✓ 选中卡牌: ", index)
 
@@ -204,9 +201,8 @@ func _on_cancel_pressed() -> void:
 	if selected_card_index >= 0 and selected_card_index < cards.size():
 		var style = StyleBoxFlat.new()
 		style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
-		style.set_border_enabled_all(true)
-		style.set_border_width_all(2)
-		style.set_border_color_all(Color(0.3, 0.2, 0.1, 1.0))
-		style.set_corner_radius_all(3)
+		style.border_color = Color(0.3, 0.2, 0.1, 1.0)
+		style.set_border_width(2, 2, 2, 2)
+		style.set_corner_radius(3, 3, 3, 3)
 		cards[selected_card_index].add_theme_stylebox_override("panel", style)
 	selected_card_index = -1
