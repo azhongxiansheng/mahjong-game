@@ -9,7 +9,7 @@ var score = 0
 func _ready() -> void:
 	"""初始化游戏管理器"""
 	# 获取 Player 节点
-	player = get_tree().get_first_child_in_group("player")
+	player = get_tree().get_first_node_in_group("player")
 	
 	# 如果找不到，手动获取
 	if not player:
