@@ -49,11 +49,11 @@ func connect_to_server(p_player_id: int, p_player_name: String) -> bool:
 	player_name = p_player_name
 	connection_state = ConnectionState.CONNECTING
 	
-	var error = websocket.connect_to_url(server_url)
-	if error != OK:
-		print("NetworkClient: 连接失败 - %s" % error)
+	var error_code = websocket.connect_to_url(server_url)
+	if error_code != OK:
+		print("NetworkClient: 连接失败 - %s" % error_code)
 		connection_state = ConnectionState.FAILED
-		error.emit("连接失败: %s" % error)
+		self.error.emit("连接失败: %s" % error_code)
 		return false
 	
 	print("✓ NetworkClient: 连接中... (%s)" % server_url)
@@ -74,9 +74,9 @@ func send_message(message: NetworkMessage.Message) -> bool:
 		return false
 	
 	var json_str = message.to_json()
-	var error = websocket.send_text(json_str)
-	if error != OK:
-		print("NetworkClient: 发送消息失败 - %s" % error)
+	var send_error = websocket.send_text(json_str)
+	if send_error != OK:
+		print("NetworkClient: 发送消息失败 - %s" % send_error)
 		return false
 	
 	print("📤 NetworkClient: 发送 %s" % NetworkMessage.get_type_name(message.type))
@@ -146,7 +146,7 @@ func get_connection_state_name() -> String:
 		ConnectionState.FAILED: return "连接失败"
 		_: return "未知"
 
-func is_connected() -> bool:
+func check_connected() -> bool:
 	"""检查是否已连接"""
 	return connection_state == ConnectionState.CONNECTED
 
