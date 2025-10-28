@@ -13,9 +13,13 @@ var failed_tests: Array = []
 
 func run_all_tests() -> void:
 	"""运行所有单元测试"""
-	print("\n" + "="*60)
+	var separator = "="
+	for i in range(60):
+		separator += "="
+	
+	print("\n" + separator)
 	print("【开始运行单元测试】")
-	print("="*60 + "\n")
+	print(separator + "\n")
 	
 	# 重置统计
 	tests_run = 0
@@ -148,24 +152,24 @@ func test_object_pool() -> void:
 # ==================== Logger 测试 ====================
 
 func test_logger() -> void:
-	"""测试 Logger 类"""
-	print("\n【测试 Logger】")
+	"""测试 GameLogger 类"""
+	print("\n【测试 GameLogger】")
 	
 	# 测试 1: 日志输出
-	var initial_size = Logger.get_buffer_size()
-	Logger.info("测试信息", "TEST")
-	_assert_greater("日志缓冲区增长", Logger.get_buffer_size(), initial_size)
+	var initial_size = GameLogger.get_buffer_size()
+	GameLogger.info("测试信息", "TEST")
+	_assert_greater("日志缓冲区增长", GameLogger.get_buffer_size(), initial_size)
 	
 	# 测试 2: 日志级别
-	Logger.set_log_level(Logger.LogLevel.ERROR)
-	var size_before = Logger.get_buffer_size()
-	Logger.debug("调试信息", "TEST")  # 不应该输出
-	_assert_equal("调试信息被过滤", Logger.get_buffer_size(), size_before)
+	GameLogger.set_log_level(GameLogger.LogLevel.ERROR)
+	var size_before = GameLogger.get_buffer_size()
+	GameLogger.debug("调试信息", "TEST")
+	_assert_equal("调试信息被过滤", GameLogger.get_buffer_size(), size_before)
 	
 	# 重置日志级别
-	Logger.set_log_level(Logger.LogLevel.DEBUG)
+	GameLogger.set_log_level(GameLogger.LogLevel.DEBUG)
 	
-	print("✓ Logger 测试完成")
+	print("✓ GameLogger 测试完成")
 
 # ==================== ConfigManager 测试 ====================
 
@@ -301,9 +305,13 @@ func _assert_greater(test_name: String, actual, expected) -> void:
 
 func _print_test_summary() -> void:
 	"""打印测试总结"""
-	print("\n" + "="*60)
+	var separator = "="
+	for i in range(60):
+		separator += "="
+	
+	print("\n" + separator)
 	print("【测试总结】")
-	print("="*60)
+	print(separator)
 	print("总测试数: %d" % tests_run)
 	print("通过: %d ✓" % tests_passed)
 	print("失败: %d ✗" % tests_failed)
@@ -315,7 +323,7 @@ func _print_test_summary() -> void:
 	
 	var pass_rate = (float(tests_passed) / float(tests_run) * 100.0) if tests_run > 0 else 0
 	print("\n通过率: %.1f%%" % pass_rate)
-	print("="*60 + "\n")
+	print(separator + "\n")
 
 func get_test_results() -> Dictionary:
 	"""获取测试结果"""

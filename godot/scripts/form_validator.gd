@@ -37,11 +37,12 @@ static func is_valid_username(username: String) -> bool:
 		print("FormValidator: 用户名过长，最多 %d 个字符" % MAX_USERNAME_LENGTH)
 		return false
 	
-	# 检查是否包含有效字符
-	if not username[0].is_valid_identifier():
+	# 检查是否以字母开头
+	if not username[0].is_alpha():
 		print("FormValidator: 用户名必须以字母开头")
 		return false
 	
+	# 检查是否包含有效字符（字母、数字、下划线）
 	for char in username:
 		if not (char.is_alphanumeric() or char == "_"):
 			print("FormValidator: 用户名只能包含字母、数字和下划线")

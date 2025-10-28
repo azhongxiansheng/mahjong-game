@@ -1,6 +1,6 @@
-class_name Logger
+class_name GameLogger
 
-# 日志系统
+# 游戏日志系统
 # 提供统一的日志管理和输出
 
 # 日志级别枚举
@@ -19,30 +19,30 @@ static var max_buffer_size: int = 1000
 static func debug(message: String, tag: String = "DEBUG") -> void:
 	"""输出调试信息"""
 	if current_log_level <= LogLevel.DEBUG:
-		_log(message, tag, Color.LIGHT_GRAY)
+		_log(message, tag)
 
 static func info(message: String, tag: String = "INFO") -> void:
 	"""输出信息"""
 	if current_log_level <= LogLevel.INFO:
-		_log(message, tag, Color.WHITE)
+		_log(message, tag)
 
 static func warn(message: String, tag: String = "WARN") -> void:
 	"""输出警告"""
 	if current_log_level <= LogLevel.WARN:
-		_log(message, tag, Color.YELLOW)
+		_log(message, tag)
 
 static func error(message: String, tag: String = "ERROR") -> void:
 	"""输出错误"""
 	if current_log_level <= LogLevel.ERROR:
-		_log(message, tag, Color.RED)
+		_log(message, tag)
 
 static func success(message: String, tag: String = "SUCCESS") -> void:
 	"""输出成功消息"""
-	_log(message, tag, Color.GREEN)
+	_log(message, tag)
 
 # ==================== 内部方法 ====================
 
-static func _log(message: String, tag: String, color: Color) -> void:
+static func _log(message: String, tag: String) -> void:
 	"""内部日志处理"""
 	var timestamp = _get_timestamp()
 	var formatted_message = "[%s] <%s> %s" % [timestamp, tag, message]

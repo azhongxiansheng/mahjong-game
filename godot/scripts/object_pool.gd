@@ -66,7 +66,7 @@ func return_button(button: Button) -> void:
 	
 	# 重置按钮状态
 	button.text = ""
-	button.pressed.disconnect_all()
+	# 不能直接清空信号连接，只重置状态
 	button.visible = false
 	
 	# 归还到池

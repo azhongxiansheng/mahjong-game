@@ -6,7 +6,6 @@ extends ScreenBase
 
 # 信号
 signal register_success(user_id: String)
-signal back_pressed
 
 # UI组件
 var title_label: Label
@@ -226,7 +225,7 @@ func show_error(error: String) -> void:
 	error_label.text = error
 	print("RegisterUI: 错误 - %s" % error)
 
-func show_message(message: String) -> void:
+func show_message(message: String, duration: float = 2.0) -> void:
 	"""显示成功消息"""
 	error_label.text = message
 	error_label.add_theme_color_override("font_color", Color.GREEN)

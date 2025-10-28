@@ -7,7 +7,6 @@ extends ScreenBase
 # 信号
 signal login_pressed(username: String, password: String)
 signal register_pressed
-signal back_pressed
 
 # UI组件
 var title_label: Label
