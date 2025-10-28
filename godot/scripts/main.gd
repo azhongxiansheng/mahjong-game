@@ -399,15 +399,15 @@ func _input(event: InputEvent) -> void:
 func test_week5_hu_algorithm() -> void:
 	"""第5周测试：胡牌算法"""
 	print("\n【测试8】胡牌算法和规则判断...")
-	
+
 	# 创建麻将牌池
 	var deck = MahjongDeck.new()
 	deck.shuffle()
-	
+
 	# 测试1：基本胡牌
 	print("\n--- 测试1：基本胡牌 ---")
 	var hand1 = CardHand.new()
-	
+
 	# 构造一个能胡的手牌
 	# 胡牌：万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9
 	hand1.add_card(CardData.new(0, 1))
@@ -423,7 +423,7 @@ func test_week5_hu_algorithm() -> void:
 	hand1.add_card(CardData.new(2, 8))
 	hand1.add_card(CardData.new(2, 9))
 	hand1.add_card(CardData.new(2, 9))
-	
+
 	print("手牌: 万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9")
 	var result1 = WinChecker.check_win(hand1)
 	if result1.can_win:
@@ -433,9 +433,9 @@ func test_week5_hu_algorithm() -> void:
 		HuRule.print_win_info(result1, hand1)
 	else:
 		print("✗ 无法胡牌")
-	
+
 	await get_tree().create_timer(0.3).timeout
-	
+
 	# 测试2：全刻
 	print("\n--- 测试2：全刻胡牌 ---")
 	var hand2 = CardHand.new()
@@ -450,7 +450,7 @@ func test_week5_hu_algorithm() -> void:
 		hand2.add_card(CardData.new(2, 4))
 	for i in range(2):
 		hand2.add_card(CardData.new(2, 5))
-	
+
 	print("手牌: 万1万1万1 万2万2万2 筒3筒3筒3 条4条4条4 条5条5")
 	var result2 = WinChecker.check_win(hand2)
 	if result2.can_win:
@@ -460,9 +460,9 @@ func test_week5_hu_algorithm() -> void:
 		HuRule.print_win_info(result2, hand2)
 	else:
 		print("✗ 无法胡牌")
-	
+
 	await get_tree().create_timer(0.3).timeout
-	
+
 	# 测试3：清一色
 	print("\n--- 测试3：清一色胡牌 ---")
 	var hand3 = CardHand.new()
@@ -480,7 +480,7 @@ func test_week5_hu_algorithm() -> void:
 	hand3.add_card(CardData.new(0, 8))
 	hand3.add_card(CardData.new(0, 9))
 	hand3.add_card(CardData.new(0, 9))
-	
+
 	print("手牌: 万1万1 万2万3万4 万5万5万5 万6万7万8 万9万9")
 	var result3 = WinChecker.check_win(hand3)
 	if result3.can_win:
@@ -490,21 +490,21 @@ func test_week5_hu_algorithm() -> void:
 		HuRule.print_win_info(result3, hand3)
 	else:
 		print("✗ 无法胡牌")
-	
+
 	await get_tree().create_timer(0.3).timeout
-	
+
 	# 测试4：牌型识别
 	print("\n--- 测试4：牌型识别 ---")
 	var chow_cards = [CardData.new(0, 1), CardData.new(0, 2), CardData.new(0, 3)]
 	var pung_cards = [CardData.new(1, 5), CardData.new(1, 5), CardData.new(1, 5)]
 	var pair_cards = [CardData.new(2, 7), CardData.new(2, 7)]
-	
+
 	print("识别顺子 (万1万2万3): %s" % WinPattern.get_pattern_name(WinPattern.identify_pattern(chow_cards)))
 	print("识别刻子 (筒5筒5筒5): %s" % WinPattern.get_pattern_name(WinPattern.identify_pattern(pung_cards)))
 	print("识别对子 (条7条7): %s" % WinPattern.get_pattern_name(WinPattern.identify_pattern(pair_cards)))
-	
+
 	await get_tree().create_timer(0.3).timeout
-	
+
 	print("\n" + separator)
 	print("第5周测试完成！")
 	print(separator)

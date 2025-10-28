@@ -3,17 +3,6 @@ class_name WinChecker
 # 胡牌判断器类
 # 使用递归回溯法判断是否能胡牌
 
-## 胡牌结果信息
-class WinResult:
-	var can_win: bool
-	var win_patterns: Array  # 赢的方式（不同的组合）
-	var eye_card: CardData  # 眼睛（将）
-	
-	func _init():
-		can_win = false
-		win_patterns = []
-		eye_card = null
-
 # 检查是否能胡牌
 static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 	"""
@@ -23,10 +12,10 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 	返回：胡牌结果
 	"""
 	var result = WinResult.new()
-	
+
 	if not hand or hand.get_card_count() == 0:
 		return result
-	
+
 	# 获取要检查的牌
 	var cards_to_check: Array[CardData] = []
 	if drawn_card:
@@ -34,11 +23,11 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 		cards_to_check.append(drawn_card)
 	else:
 		cards_to_check = hand.cards.duplicate()
-	
+
 	# 检查牌数是否正确（14张或13张）
 	if cards_to_check.size() != 14 and cards_to_check.size() != 13:
 		return result
-	
+
 	# 尝试找到眼睛（对子）
 	var pair_map = _count_cards(cards_to_check)
 	for suit_idx in range(4):
@@ -47,7 +36,7 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 			if card_key in pair_map and pair_map[card_key] >= 2:
 				# 找到可能的对子
 				var remaining = cards_to_check.duplicate()
-				
+
 				# 移除对子
 				var removed_count = 0
 				var eye_card_found: CardData = null
@@ -58,7 +47,7 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 							eye_card_found = card
 							remaining.remove_at(i)
 							removed_count += 1
-				
+
 				# 检查剩余的牌是否能组成完整的顺序
 				if _can_form_melds(remaining):
 					result.can_win = true
@@ -67,7 +56,7 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 						"eye": eye_card_found,
 						"melds": _extract_melds(remaining)
 					})
-	
+
 	return result
 
 # 检查是否能听牌（缺一张牌就能胡）
@@ -77,23 +66,23 @@ static func check_can_hear(hand: CardHand) -> Array:
 	返回：能听的牌列表
 	"""
 	var winnable_cards: Array = []
-	
+
 	# 尝试所有可能的牌
 	for suit in range(4):
 		var max_num = 9 if suit < 3 else 7  # 字牌只有7种
 		for number in range(1, max_num + 1):
 			var test_card = CardData.new(suit, number)
-			
+
 			# 创建临时手牌进行测试
 			var test_hand = CardHand.new()
 			for card in hand.cards:
 				test_hand.add_card(card)
-			
+
 			# 测试能否胡这张牌
 			var result = check_win(test_hand, test_card)
 			if result.can_win:
 				winnable_cards.append(test_card)
-	
+
 	return winnable_cards
 
 # 私有方法：计算牌的数量
@@ -113,7 +102,7 @@ static func _can_form_melds(cards: Array[CardData]) -> bool:
 	"""
 	if cards.is_empty():
 		return true
-	
+
 	# 按花色和数字排序
 	var sorted_cards = cards.duplicate()
 	sorted_cards.sort_custom(func(a: CardData, b: CardData) -> bool:
@@ -121,16 +110,16 @@ static func _can_form_melds(cards: Array[CardData]) -> bool:
 			return a.suit < b.suit
 		return a.number < b.number
 	)
-	
+
 	# 尝试第一张牌开始的所有可能组合
 	var first_card = sorted_cards[0]
-	
+
 	# 尝试刻子（三张相同）
 	if _count_matching_cards(sorted_cards, first_card.suit, first_card.number) >= 3:
 		var remaining = _remove_cards(sorted_cards, first_card.suit, first_card.number, 3)
 		if _can_form_melds(remaining):
 			return true
-	
+
 	# 尝试顺子（只有数字牌）
 	if first_card.suit < 3 and first_card.number <= 7:
 		if _has_card(sorted_cards, first_card.suit, first_card.number + 1) and \
@@ -140,7 +129,7 @@ static func _can_form_melds(cards: Array[CardData]) -> bool:
 			remaining = _remove_cards(remaining, first_card.suit, first_card.number + 2, 1)
 			if _can_form_melds(remaining):
 				return true
-	
+
 	return false
 
 # 私有方法：计算匹配的牌数
@@ -178,10 +167,10 @@ static func _extract_melds(cards: Array[CardData]) -> Array:
 	"""提取面子信息"""
 	var melds: Array = []
 	var sorted_cards = cards.duplicate()
-	
+
 	while not sorted_cards.is_empty():
 		var first = sorted_cards[0]
-		
+
 		# 检查是否为刻子
 		if _count_matching_cards(sorted_cards, first.suit, first.number) >= 3:
 			melds.append({
@@ -201,5 +190,5 @@ static func _extract_melds(cards: Array[CardData]) -> Array:
 			sorted_cards = _remove_cards(sorted_cards, first.suit, first.number + 2, 1)
 		else:
 			break
-	
+
 	return melds

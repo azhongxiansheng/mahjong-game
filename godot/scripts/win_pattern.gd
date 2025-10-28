@@ -13,28 +13,17 @@ enum PatternType {
 	SINGLE,       # 单张
 }
 
-## 牌型结构
-class Pattern:
-	var type: PatternType
-	var cards: Array[CardData]
-	var score: int
-	
-	func _init(p_type: PatternType, p_cards: Array[CardData]):
-		type = p_type
-		cards = p_cards
-		score = 0
-
 # 检测顺子（三张连续的数字牌）
 static func is_chow(cards: Array[CardData]) -> bool:
 	"""检测是否为顺子（必须是三张连续的数字牌）"""
 	if cards.size() != 3:
 		return false
-	
+
 	# 字牌不能组成顺子
 	for card in cards:
 		if card.suit == 3:  # suit 3 是字牌
 			return false
-	
+
 	# 对所有花色中的数字牌进行排序
 	var sorted_cards = cards.duplicate()
 	sorted_cards.sort_custom(func(a: CardData, b: CardData) -> bool:
@@ -42,12 +31,12 @@ static func is_chow(cards: Array[CardData]) -> bool:
 			return a.suit < b.suit
 		return a.number < b.number
 	)
-	
+
 	# 检测是否连续
 	if sorted_cards[0].suit == sorted_cards[1].suit and sorted_cards[1].suit == sorted_cards[2].suit:
 		if sorted_cards[0].number + 1 == sorted_cards[1].number and sorted_cards[1].number + 1 == sorted_cards[2].number:
 			return true
-	
+
 	return false
 
 # 检测刻子（三张相同的牌）
@@ -55,7 +44,7 @@ static func is_pung(cards: Array[CardData]) -> bool:
 	"""检测是否为刻子（三张相同）"""
 	if cards.size() != 3:
 		return false
-	
+
 	return cards[0].suit == cards[1].suit and cards[1].suit == cards[2].suit and \
 		   cards[0].number == cards[1].number and cards[1].number == cards[2].number
 
@@ -64,7 +53,7 @@ static func is_kong(cards: Array[CardData]) -> bool:
 	"""检测是否为杠（四张相同）"""
 	if cards.size() != 4:
 		return false
-	
+
 	return cards[0].suit == cards[1].suit and cards[1].suit == cards[2].suit and cards[2].suit == cards[3].suit and \
 		   cards[0].number == cards[1].number and cards[1].number == cards[2].number and cards[2].number == cards[3].number
 
@@ -73,7 +62,7 @@ static func is_pair(cards: Array[CardData]) -> bool:
 	"""检测是否为对子（两张相同）"""
 	if cards.size() != 2:
 		return false
-	
+
 	return cards[0].suit == cards[1].suit and cards[0].number == cards[1].number
 
 # 检测牌型
@@ -89,7 +78,7 @@ static func identify_pattern(cards: Array[CardData]) -> PatternType:
 		return PatternType.PAIR
 	elif cards.size() == 1:
 		return PatternType.SINGLE
-	
+
 	return PatternType.UNKNOWN
 
 # 牌型名称
@@ -137,7 +126,7 @@ static func check_single_suit(cards: Array[CardData]) -> bool:
 	"""检测是否清一色（只有一种花色）"""
 	if cards.is_empty():
 		return false
-	
+
 	var suit = cards[0].suit
 	for card in cards:
 		if card.suit != suit:
