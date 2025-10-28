@@ -152,19 +152,19 @@ func test_ting_check() -> void:
 	"""测试听牌检查 - 完整测试套件"""
 	print("\n========== 听牌检查完整测试 ==========")
 	print("执行 4 个听牌检查测试用例...\n")
-	
+
 	# 测试 2.1: 基础听牌 (听1种牌)
 	test_case_2_1_basic_ting()
-	
+
 	# 测试 2.2: 多种听牌
 	test_case_2_2_multiple_ting()
-	
+
 	# 测试 2.3: 无法听牌
 	test_case_2_3_cannot_ting()
-	
+
 	# 测试 2.4: 复杂听法
 	test_case_2_4_complex_ting()
-	
+
 	print("\n========== 听牌测试完成 ==========")
 
 func test_case_1_1_standard_win() -> void:
@@ -339,7 +339,7 @@ func test_case_1_5_no_eye() -> void:
 func test_case_2_1_basic_ting() -> void:
 	"""Test Case 2.1: 基础听牌 - 听1种牌"""
 	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 (顺1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -359,9 +359,9 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
 	# 字1 (还缺1张眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	
+
 	var ting_cards = WinChecker.check_can_hear(hand)
-	
+
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
 		print("  📊 听数: %d 种" % ting_cards.size())
@@ -370,13 +370,13 @@ func test_case_2_1_basic_ting() -> void:
 			print("  🎯 可听牌: %s" % first_card.get_card_name())
 	else:
 		print("  ❌ 失败: 应该能听牌")
-	
+
 	print("")
 
 func test_case_2_2_multiple_ting() -> void:
 	"""Test Case 2.2: 多种听牌"""
 	print("📋 Test Case 2.2: 多种听牌")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 (顺1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -396,21 +396,21 @@ func test_case_2_2_multiple_ting() -> void:
 	# 字1 字1 (眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	
+
 	var ting_cards = WinChecker.check_can_hear(hand)
-	
+
 	if ting_cards.size() > 1:
 		print("  ✅ 通过: 多种听牌")
 		print("  📊 听数: %d 种" % ting_cards.size())
 	else:
 		print("  ⚠️ 听数较少: %d 种" % ting_cards.size())
-	
+
 	print("")
 
 func test_case_2_3_cannot_ting() -> void:
 	"""Test Case 2.3: 无法听牌 - 距离太远"""
 	print("📋 Test Case 2.3: 无法听牌 (距离太远)")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 (缺1张完成顺)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -430,20 +430,20 @@ func test_case_2_3_cannot_ting() -> void:
 	# 字1 字1 (眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	
+
 	var ting_cards = WinChecker.check_can_hear(hand)
-	
+
 	if ting_cards.size() == 0:
 		print("  ✅ 通过: 正确识别无法听牌")
 	else:
 		print("  ❌ 失败: 不应该能听牌 (听数: %d)" % ting_cards.size())
-	
+
 	print("")
 
 func test_case_2_4_complex_ting() -> void:
 	"""Test Case 2.4: 复杂听法 - 多种可能"""
 	print("📋 Test Case 2.4: 复杂听法")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 万4 万5 (可以听万0或万6)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -464,15 +464,15 @@ func test_case_2_4_complex_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	# 字3 (还缺眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
-	
+
 	var ting_cards = WinChecker.check_can_hear(hand)
-	
+
 	if ting_cards.size() > 2:
 		print("  ✅ 通过: 复杂听法识别")
 		print("  📊 听数: %d 种" % ting_cards.size())
 	else:
 		print("  ⚠️ 听数: %d 种" % ting_cards.size())
-	
+
 	print("")
 
 func test_discard_pile() -> void:
