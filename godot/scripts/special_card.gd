@@ -18,7 +18,7 @@ func get_card_name() -> String:
 		return base_name + " <%s>" % effect_name
 	return base_name
 
-func apply_effect(target) -> void:
+func apply_effect(_target) -> void:
 	"""应用特殊效果"""
 	print("应用效果 %s，数值 %d" % [effect_name, effect_value])
 
