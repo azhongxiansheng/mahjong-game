@@ -1,5 +1,3 @@
-extends Node
-
 class_name CardHand
 
 var cards: Array = []
@@ -12,7 +10,7 @@ func _init() -> void:
 func add_card(card: CardData) -> void:
 	"""添加卡牌到手牌"""
 	cards.append(card)
-	print("添加卡牌: " + card.get_name())
+	print("添加卡牌: " + card.get_card_name())
 
 # 查找卡牌
 func find_card(suit: int, number: int) -> CardData:
@@ -28,7 +26,7 @@ func remove_card(card: CardData) -> bool:
 	for i in range(cards.size()):
 		if cards[i] == card:
 			cards.remove_at(i)
-			print("移除卡牌: " + card.get_name())
+			print("移除卡牌: " + card.get_card_name())
 			return true
 	return false
 
@@ -56,7 +54,7 @@ func print_hand() -> void:
 	"""打印当前手牌"""
 	print("\n当前手牌 (%d张):" % cards.size())
 	for i in range(cards.size()):
-		print("  %d. %s" % [i + 1, cards[i].get_name()])
+		print("  %d. %s" % [i + 1, cards[i].get_card_name()])
 	print("")
 
 # 获取手牌数量

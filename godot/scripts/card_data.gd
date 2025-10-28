@@ -1,5 +1,3 @@
-extends Node
-
 class_name CardData
 
 # 卡牌花色枚举
@@ -16,7 +14,7 @@ func _init(p_suit: Suit, p_number: int) -> void:
 	number = p_number
 	id = int(suit) * 10 + p_number
 
-func get_name() -> String:
+func get_card_name() -> String:
 	"""获取卡牌名称"""
 	var suit_names = ["万", "筒", "条", "字"]
 	return suit_names[suit] + str(number)
@@ -36,4 +34,4 @@ func get_rank() -> String:
 
 func _to_string() -> String:
 	"""转换为字符串"""
-	return get_name()
+	return get_card_name()
