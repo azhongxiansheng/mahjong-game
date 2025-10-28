@@ -102,14 +102,14 @@ static func get_pattern_name(pattern_type: PatternType) -> String:
 static func check_all_pung(patterns: Array) -> bool:
 	"""检测是否全是刻子"""
 	for pattern in patterns:
-		if pattern is Pattern and pattern.type != PatternType.PUNG and pattern.type != PatternType.KONG:
+		if pattern is Dictionary and pattern.get("type") != PatternType.PUNG and pattern.get("type") != PatternType.KONG:
 			return false
 	return true
 
 static func check_all_chow(patterns: Array) -> bool:
 	"""检测是否全是顺子"""
 	for pattern in patterns:
-		if pattern is Pattern and pattern.type != PatternType.CHOW:
+		if pattern is Dictionary and pattern.get("type") != PatternType.CHOW:
 			return false
 	return true
 
