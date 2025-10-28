@@ -25,16 +25,15 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	print("========== GameUI 初始化 ==========")
+	print("========== GameUI 初始化开始 ==========")
 	super()
 
 	# 尝试手动初始化任何失败的 @onready 变量
 	_initialize_missing_nodes()
-
-	setup_ui()
-	connect_signals()
-	apply_theme()
-	print("========== GameUI 初始化完成 ==========")
+	
+	# 延迟 UI 设置到下一帧，完全避免初始化时的问题
+	call_deferred("_deferred_setup")
+	print("========== GameUI 初始化计划完成 ==========")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 防护性编程"""
@@ -73,39 +72,58 @@ func _initialize_missing_nodes() -> void:
 	if not quit_button:
 		quit_button = get_node_or_null("InfoPanel/QuitButton")
 
+func _deferred_setup() -> void:
+	"""延迟的 UI 设置"""
+	print("[DEFERRED] 开始延迟 UI 设置")
+	setup_ui()
+	connect_signals()
+	apply_theme()
+	print("[DEFERRED] UI 设置完成")
+
 func setup_ui() -> void:
-	"""设置UI初始状态"""
-	# 验证所有UI组件已初始化
-	print("[DEBUG] 开始 setup_ui 验证")
-	if not _verify_ui_components():
-		print("⚠ 部分UI组件初始化失败，继续运行")
-
-	# 设置初始文本 - 添加空检查和详细日志
-	print("[DEBUG] 检查 player_stats...")
-	if player_stats:
-		print("[DEBUG] player_stats 存在，设置文本...")
-		player_stats.text = "等待游戏开始..."
-		print("[DEBUG] player_stats 文本已设置")
-	else:
-		print("[DEBUG] ⚠ player_stats 为空，跳过设置")
-
-	print("[DEBUG] 检查 game_log...")
-	if game_log:
-		print("[DEBUG] game_log 存在，设置文本...")
-		game_log.text = ""
-		print("[DEBUG] game_log 文本已设置")
-	else:
-		print("[DEBUG] ⚠ game_log 为空，跳过设置")
-
-	print("[DEBUG] 检查 game_info...")
-	if game_info:
-		print("[DEBUG] game_info 存在，设置文本...")
-		game_info.text = "游戏信息"
-		print("[DEBUG] game_info 文本已设置")
-	else:
-		print("[DEBUG] ⚠ game_info 为空，跳过设置")
+	"""设置UI初始状态 - 最安全的版本"""
+	print("[SETUP] 开始设置 UI")
 	
-	print("[DEBUG] setup_ui 完成")
+	# 验证所有UI组件已初始化
+	if not _verify_ui_components():
+		print("[SETUP] ⚠ 部分UI组件初始化失败，跳过 setup_ui")
+		return
+
+	# 设置初始文本 - 最保守的方法
+	try_set_text(player_stats, "等待游戏开始...")
+	try_set_text(game_log, "")
+	try_set_text(game_info, "游戏信息")
+	
+	print("[SETUP] UI 设置完成")
+
+func try_set_text(node: Control, text: String) -> void:
+	"""安全地设置文本，捕获所有可能的错误"""
+	if not node:
+		print("[SETUP] ⚠ 节点为 nil，跳过")
+		return
+	
+	if node == null:
+		print("[SETUP] ⚠ 节点明确为 null，跳过")
+		return
+	
+	var node_name = node.name if node else "unknown"
+	print("[SETUP] 尝试设置 %s 的文本为: %s" % [node_name, text])
+	
+	# 使用 get_property_list 来验证属性
+	var props = node.get_property_list()
+	var has_text = false
+	for prop in props:
+		if prop.name == "text":
+			has_text = true
+			break
+	
+	if not has_text:
+		print("[SETUP] ⚠ 节点 %s 没有 text 属性" % node_name)
+		return
+	
+	# 最后才尝试赋值
+	node.text = text
+	print("[SETUP] ✓ %s 的文本已设置" % node_name)
 
 func _verify_ui_components() -> bool:
 	"""验证所有UI组件是否正确初始化"""
@@ -193,26 +211,26 @@ func display_hand(hand: CardHand) -> void:
 func add_log_message(message: String) -> void:
 	"""添加日志消息 - 安全版本"""
 	print("[TRACE] add_log_message 被调用: %s" % message)
-	
+
 	if not game_log:
 		print("[WARN] game_log 为 nil，无法添加日志: %s" % message)
 		return
-	
+
 	# 分步调试每个操作
 	var timestamp = Time.get_ticks_msec() / 1000
 	var formatted_msg = "[%.1f] %s" % [timestamp, message]
-	
+
 	print("[TRACE] 准备写入日志: %s" % formatted_msg)
-	
+
 	# 验证游戏日志有必要的属性
 	if not game_log.has_property("text"):
 		print("[ERROR] game_log 没有 text 属性")
 		return
-	
+
 	# 添加文本
 	game_log.text += formatted_msg + "\n"
 	print("[TRACE] 日志文本已添加")
-	
+
 	# 滚动到底部
 	if game_log.get_line_count() > 0:
 		game_log.scroll_to_line(game_log.get_line_count() - 1)
@@ -221,29 +239,29 @@ func add_log_message(message: String) -> void:
 func update_player_stats() -> void:
 	"""更新玩家统计信息"""
 	print("[TRACE] update_player_stats 被调用")
-	
+
 	if not player_stats:
 		print("[WARN] player_stats 为 nil")
 		return
-	
+
 	if not current_hand:
 		print("[WARN] current_hand 为 nil")
 		return
-	
+
 	var card_count = current_hand.get_card_count()
 	var selected_card = ""
-	
+
 	if player_hand_display and player_hand_display.get_selected_card():
 		selected_card = " | 选中: " + player_hand_display.get_selected_card().get_card_name()
-	
+
 	var stats_text = "手牌数: %d%s" % [card_count, selected_card]
 	print("[TRACE] 准备设置玩家统计: %s" % stats_text)
-	
+
 	# 验证有text属性
 	if not player_stats.has_property("text"):
 		print("[ERROR] player_stats 没有 text 属性")
 		return
-	
+
 	player_stats.text = stats_text
 	print("[TRACE] 玩家统计已设置")
 
