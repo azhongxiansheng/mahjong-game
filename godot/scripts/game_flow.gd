@@ -24,9 +24,15 @@ signal game_ended(winner_index: int)
 func _ready() -> void:
 	print("========== GameFlow 初始化 ==========")
 
-	# 获取GameUI和GameController
-	game_ui = get_tree().root.get_node_or_null("Main/GameUI")
-
+	# ✓ 方案 1: 尝试正确的相对路径
+	var main = get_tree().root.get_node_or_null("/root/Main")
+	if main:
+		game_ui = main.get_node_or_null("UILayer/GameUI")
+	
+	# ✓ 方案 2: 如果失败，尝试通过 find_child
+	if not game_ui:
+		game_ui = get_tree().root.find_child("GameUI", true, false)
+	
 	if not game_ui:
 		print("⚠ 无法找到GameUI")
 		return

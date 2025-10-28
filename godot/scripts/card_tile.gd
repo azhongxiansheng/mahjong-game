@@ -26,6 +26,33 @@ func _ready() -> void:
 	visible = true  # 确保可见
 	z_index = 10  # 提高层级
 	
+	# ✓ 如果标签不存在，动态创建它们
+	if not has_node("Label"):
+		card_label = Label.new()
+		card_label.name = "Label"
+		add_child(card_label)
+		card_label.anchor_left = 0.5
+		card_label.anchor_top = 0.5
+		card_label.offset_left = -40  # 居中
+		card_label.offset_top = -60   # 上部分
+		card_label.size = Vector2(80, 50)
+		print("[CardTile] 动态创建 Label 节点")
+	else:
+		card_label = $Label
+	
+	if not has_node("SuitLabel"):
+		suit_label = Label.new()
+		suit_label.name = "SuitLabel"
+		add_child(suit_label)
+		suit_label.anchor_left = 0.5
+		suit_label.anchor_top = 0.5
+		suit_label.offset_left = -40  # 居中
+		suit_label.offset_top = -10   # 下部分
+		suit_label.size = Vector2(80, 50)
+		print("[CardTile] 动态创建 SuitLabel 节点")
+	else:
+		suit_label = $SuitLabel
+	
 	print("[CardTile] _ready完成, 位置:", position, " 大小:", size, " 可见:", visible)
 	
 	# 如果已经设置了卡牌数据，更新显示
