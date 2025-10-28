@@ -1,19 +1,19 @@
 class_name GameUI
 extends ScreenBase
 
-# 组件引用
-@onready var player_hand_display = $GameLayer/TableArea/PlayerHand
-@onready var opponent_hand_display = $GameLayer/TableArea/OpponentHand
-@onready var discard_pile = $GameLayer/TableArea/GameCenter/DiscardPile
-@onready var game_info = $GameLayer/TableArea/GameCenter/GameInfo
-@onready var player_stats = $InfoPanel/PlayerStats
-@onready var game_log = $InfoPanel/GameLog
+# 组件引用 - 不使用 @onready，改为显式初始化
+var player_hand_display: Control = null
+var opponent_hand_display: Control = null
+var discard_pile: Control = null
+var game_info: Label = null
+var player_stats: Label = null
+var game_log: RichTextLabel = null
 
-@onready var hu_button = $GameLayer/ActionPanel/HuButton
-@onready var ting_button = $GameLayer/ActionPanel/TingButton
-@onready var peng_button = $GameLayer/ActionPanel/PengButton
-@onready var pass_button = $GameLayer/ActionPanel/PassButton
-@onready var quit_button = $InfoPanel/QuitButton
+var hu_button: Button = null
+var ting_button: Button = null
+var peng_button: Button = null
+var pass_button: Button = null
+var quit_button: Button = null
 
 # 游戏状态
 var game_controller: GameController
@@ -25,15 +25,25 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	print("========== GameUI 初始化开始 ==========")
+	print("\n" + "="*60)
+	print("GameUI._ready() 开始 | 时间: %d ms" % Time.get_ticks_msec())
+	print("="*60)
+	
+	print("[TRACE] 调用 super()")
 	super()
+	print("[TRACE] super() 完成")
 
-	# 尝试手动初始化任何失败的 @onready 变量
+	print("[TRACE] 调用 _initialize_missing_nodes()")
 	_initialize_missing_nodes()
+	print("[TRACE] _initialize_missing_nodes() 完成")
 	
 	# 延迟 UI 设置到下一帧，完全避免初始化时的问题
+	print("[TRACE] 注册 _deferred_setup 到下一帧")
 	call_deferred("_deferred_setup")
-	print("========== GameUI 初始化计划完成 ==========")
+	
+	print("="*60)
+	print("GameUI._ready() 完成 | 时间: %d ms" % Time.get_ticks_msec())
+	print("="*60 + "\n")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 防护性编程"""
@@ -74,11 +84,25 @@ func _initialize_missing_nodes() -> void:
 
 func _deferred_setup() -> void:
 	"""延迟的 UI 设置"""
-	print("[DEFERRED] 开始延迟 UI 设置")
+	print("\n" + "="*60)
+	print("[DEFERRED] _deferred_setup 开始 | 时间: %d ms" % Time.get_ticks_msec())
+	print("="*60)
+	
+	print("[DEFERRED] 调用 setup_ui()")
 	setup_ui()
+	print("[DEFERRED] setup_ui() 完成")
+	
+	print("[DEFERRED] 调用 connect_signals()")
 	connect_signals()
+	print("[DEFERRED] connect_signals() 完成")
+	
+	print("[DEFERRED] 调用 apply_theme()")
 	apply_theme()
-	print("[DEFERRED] UI 设置完成")
+	print("[DEFERRED] apply_theme() 完成")
+	
+	print("="*60)
+	print("[DEFERRED] _deferred_setup 完成 | 时间: %d ms" % Time.get_ticks_msec())
+	print("="*60 + "\n")
 
 func setup_ui() -> void:
 	"""设置UI初始状态 - 最安全的版本"""
