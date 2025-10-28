@@ -32,9 +32,9 @@ func _ready() -> void:
 			enemy.connect("enemy_died", Callable(self, "_on_enemy_died").bindv([enemy]))
 			print("GameManager: 已连接 Enemy 信号")
 
-func _on_player_health_changed(health: int) -> void:
+func _on_player_health_changed(_health: int) -> void:
 	"""玩家血量改变时"""
-	print("GameManager: 玩家血量更新 -> %d" % health)
+	print("GameManager: 玩家血量更新 -> %d" % _health)
 
 func _on_player_died() -> void:
 	"""玩家死亡时"""
@@ -42,10 +42,10 @@ func _on_player_died() -> void:
 	await get_tree().create_timer(2.0).timeout
 	get_tree().reload_current_scene()
 
-func _on_enemy_died(enemy: Enemy) -> void:
+func _on_enemy_died(_enemy: Enemy) -> void:
 	"""敌人死亡时"""
 	print("GameManager: 敌人死亡！")
-	enemies.erase(enemy)
+	enemies.erase(_enemy)
 	score += 10
 
 	if enemies.is_empty():

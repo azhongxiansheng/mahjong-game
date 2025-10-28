@@ -78,10 +78,10 @@ func show_error(error: String) -> void:
 	"""显示错误消息"""
 	print("ScreenBase (%s): 错误 - %s" % [name, error])
 
-func _input(event: InputEvent) -> void:
+func _input(_event: InputEvent) -> void:
 	"""处理输入事件"""
-	if event is InputEventKey and event.pressed:
-		if event.keycode == KEY_ESCAPE:
+	if _event is InputEventKey and _event.pressed:
+		if _event.keycode == KEY_ESCAPE:
 			back_pressed.emit()
 			get_tree().root.set_input_as_handled()
 
