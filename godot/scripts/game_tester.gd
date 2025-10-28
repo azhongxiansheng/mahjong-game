@@ -138,11 +138,11 @@ func test_win_check() -> void:
 func test_discard_pile() -> void:
 	"""测试弃牌堆显示"""
 	print("\n========== 测试弃牌堆显示 ==========")
-	
+
 	if not game_ui:
 		print("⚠ GameUI为空")
 		return
-	
+
 	# 添加多张卡牌到弃牌堆
 	for i in range(16):
 		var suit = i % 3
@@ -150,17 +150,17 @@ func test_discard_pile() -> void:
 		var card = CardData.new(suit, number)
 		game_ui.add_to_discard_pile(card)
 		await get_tree().create_timer(0.05).timeout
-	
+
 	print("✓ 弃牌堆显示测试完成 - 已添加16张牌")
 
 func test_opponent_hand() -> void:
 	"""测试对手手牌显示"""
 	print("\n========== 测试对手手牌显示 ==========")
-	
+
 	if not game_ui:
 		print("⚠ GameUI为空")
 		return
-	
+
 	# 显示对手的13张背面牌
 	game_ui.display_opponent_hand(13)
 	print("✓ 对手手牌显示测试完成 - 显示13张背面牌")
@@ -168,31 +168,31 @@ func test_opponent_hand() -> void:
 func test_complete_flow() -> void:
 	"""完整流程测试"""
 	print("\n========== 完整游戏流程测试 ==========\n")
-	
+
 	# 1. 显示手牌
 	print("[步骤1/5] 显示玩家手牌...")
 	test_display_hand()
 	await get_tree().create_timer(1.0).timeout
-	
+
 	# 2. 显示对手手牌
 	print("\n[步骤2/5] 显示对手手牌...")
 	test_opponent_hand()
 	await get_tree().create_timer(1.0).timeout
-	
+
 	# 3. 测试卡牌选择
 	print("\n[步骤3/5] 测试卡牌选择...")
 	test_card_selection()
 	await get_tree().create_timer(1.0).timeout
-	
+
 	# 4. 显示弃牌堆
 	print("\n[步骤4/5] 显示弃牌堆...")
 	test_discard_pile()
 	await get_tree().create_timer(1.0).timeout
-	
+
 	# 5. 显示动画
 	print("\n[步骤5/5] 显示胡牌动画...")
 	await test_animations()
-	
+
 	print("\n========== 完整流程测试完成 ==========\n")
 
 func run_all_tests() -> void:
