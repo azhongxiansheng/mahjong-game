@@ -1,34 +1,18 @@
 [gd_scene load_steps=2 format=3 uid="uid://degn8mmjpfnpa"]
 
-[sub_resource type="GDScript" id="GDScript_lbl7f"]
-script/source = "extends Control
-
-func _ready() -> void:
-	# 设置背景为白色，这样能看见
-	modulate = Color.WHITE
-	
-	# 创建13个Label显示卡牌
-	var card_data = [
-		\"万1\", \"万2\", \"万3\",
-		\"筒4\", \"筒5\", \"筒6\",
-		\"条7\", \"条8\", \"条9\",
-		\"字1\", \"万5\", \"筒2\", \"条4\"
-	]
-	
-	for i in range(card_data.size()):
-		var label = Label.new()
-		label.text = card_data[i]
-		label.position = Vector2(20 + i * 70, 50)
-		label.add_theme_font_size_override(\"font_size\", 16)
-		add_child(label)
-		print(\"添加卡牌: \" + card_data[i])
-	
-	print(\"HandDisplay运行完成\")
-"
+[ext_resource type="Script" path="res://scripts/hand_display.gd" id="1_hand"]
 
 [node name="HandDisplay" type="Control"]
-layout_mode = 3
-anchors_preset = 0
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 offset_right = 40.0
 offset_bottom = 40.0
-script = SubResource("GDScript_lbl7f")
+script = ExtResource("1_hand")
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0

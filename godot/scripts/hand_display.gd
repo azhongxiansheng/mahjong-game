@@ -2,16 +2,20 @@ class_name HandDisplay
 extends Control
 
 # 属性
-var cards: Array = []
-var card_scenes: Array = []
-var selected_card = null
-var card_start_x = 20
-var card_spacing = 70
-var card_y = 35
+var hand: CardHand
+var card_tiles: Array[CardTile] = []
+var selected_tile: CardTile = null
+
+# 预加载场景
+var card_tile_scene: PackedScene = preload("res://scenes/card_tile.tscn")
+
+# 信号
+signal card_selected(card: CardData)
+signal card_pressed(card: CardData)
 
 func _ready() -> void:
 	print("HandDisplay初始化完成")
-
+	
 	# 设置背景
 	var panel = Panel.new()
 	var style = StyleBoxFlat.new()
@@ -22,115 +26,104 @@ func _ready() -> void:
 	add_child(panel)
 	move_child(panel, 0)
 
-	# 创建测试卡牌
-	create_test_cards()
+func set_hand(h: CardHand) -> void:
+	"""设置并显示手牌"""
+	hand = h
+	refresh_display()
 
-func create_test_cards() -> void:
-	"""创建13张测试卡牌"""
-	# 测试卡牌数据
-	var test_cards = [
-		{"suit": 0, "number": 1},  # 万1
-		{"suit": 0, "number": 2},  # 万2
-		{"suit": 0, "number": 3},  # 万3
-		{"suit": 1, "number": 4},  # 筒4
-		{"suit": 1, "number": 5},  # 筒5
-		{"suit": 1, "number": 6},  # 筒6
-		{"suit": 2, "number": 7},  # 条7
-		{"suit": 2, "number": 8},  # 条8
-		{"suit": 2, "number": 9},  # 条9
-		{"suit": 3, "number": 1},  # 字1
-		{"suit": 0, "number": 5},  # 万5
-		{"suit": 1, "number": 2},  # 筒2
-		{"suit": 2, "number": 4},  # 条4
-	]
+func refresh_display() -> void:
+	"""刷新卡牌显示"""
+	# 清空旧的卡牌显示
+	for tile in card_tiles:
+		tile.queue_free()
+	card_tiles.clear()
+	selected_tile = null
+	
+	# 如果没有手牌，返回
+	if not hand:
+		print("⚠ 没有手牌数据")
+		return
+	
+	# 创建新的卡牌显示
+	print("显示 %d 张卡牌" % hand.cards.size())
+	for i in range(hand.cards.size()):
+		add_card_display(hand.cards[i], i)
 
-	# 为每个卡牌创建一个Label来显示
-	for i in range(test_cards.size()):
-		var card_info = test_cards[i]
-		var card_label = Label.new()
+func add_card_display(card: CardData, index: int = -1) -> void:
+	"""添加单张卡牌显示"""
+	var tile: CardTile = card_tile_scene.instantiate()
+	tile.set_card(card)
+	add_child(tile)
+	
+	# 设置位置
+	var x_pos = 20 + (card_tiles.size() * 85)
+	var y_pos = 35
+	tile.position = Vector2(x_pos, y_pos)
+	
+	# 连接信号
+	tile.card_pressed.connect(_on_card_pressed.bind(tile))
+	tile.card_selected.connect(_on_card_selected.bind(tile))
+	
+	card_tiles.append(tile)
+	print("添加卡牌显示: %s (位置: %d)" % [card.get_card_name(), x_pos])
 
-		# 设置卡牌显示
-		var suit_name = get_suit_name(card_info.suit)
-		card_label.text = suit_name + str(card_info.number)
-		card_label.add_theme_font_size_override("font_size", 14)
+func remove_card_display(card: CardData) -> bool:
+	"""移除指定卡牌的显示"""
+	for i in range(card_tiles.size()):
+		if card_tiles[i].card_data == card:
+			card_tiles[i].queue_free()
+			card_tiles.remove_at(i)
+			
+			# 如果移除的是选中的卡牌
+			if selected_tile == card_tiles[i] if i < card_tiles.size() else null:
+				selected_tile = null
+			
+			print("移除卡牌显示: %s" % card.get_card_name())
+			return true
+	return false
 
-		# 设置位置和大小
-		var x_pos = card_start_x + (i * card_spacing)
-		card_label.position = Vector2(x_pos, card_y)
-		card_label.custom_minimum_size = Vector2(60, 80)
-		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+func select_card(tile: CardTile) -> void:
+	"""选中指定卡牌"""
+	# 取消之前的选择
+	if selected_tile and selected_tile != tile:
+		selected_tile.deselect()
+	
+	# 选择新卡牌
+	selected_tile = tile
+	tile.select()
+	print("选中卡牌: %s" % tile.card_data.get_card_name())
 
-		# 添加到场景
-		add_child(card_label)
-		cards.append(card_label)
-		card_scenes.append(card_info)
-
-		print("添加卡牌: ", suit_name, card_info.number)
-
-func get_suit_name(suit: int) -> String:
-	"""获取花色名称"""
-	match suit:
-		0: return "万"
-		1: return "筒"
-		2: return "条"
-		3: return "字"
-	return ""
-
-func add_card(suit: int, number: int) -> void:
-	"""添加卡牌"""
-	var card_label = Label.new()
-	var suit_name = get_suit_name(suit)
-	card_label.text = suit_name + str(number)
-	card_label.custom_minimum_size = Vector2(60, 80)
-	card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-
-	var x_pos = card_start_x + (cards.size() * card_spacing)
-	card_label.position = Vector2(x_pos, card_y)
-
-	add_child(card_label)
-	cards.append(card_label)
-	card_scenes.append({"suit": suit, "number": number})
-	print("添加卡牌: ", suit_name, number)
-
-func remove_card_at(index: int) -> void:
-	"""移除指定索引的卡牌"""
-	if index >= 0 and index < cards.size():
-		var card = cards[index]
-		card.queue_free()
-		cards.remove_at(index)
-		card_scenes.remove_at(index)
-		print("移除卡牌在索引: ", index)
-
-func select_card(index: int) -> void:
-	"""选中指定索引的卡牌"""
-	if index >= 0 and index < cards.size():
-		# 取消前一个选中
-		if selected_card != null:
-			selected_card.modulate = Color.WHITE
-
-		# 选中新卡牌
-		selected_card = cards[index]
-		selected_card.modulate = Color.YELLOW
-		print("选中卡牌: ", card_scenes[index].suit, " - ", card_scenes[index].number)
-
-func deselect_all() -> void:
-	"""取消选中所有卡牌"""
-	if selected_card != null:
-		selected_card.modulate = Color.WHITE
-		selected_card = null
-	print("已取消选中")
+func get_selected_card() -> CardData:
+	"""获取当前选中的卡牌"""
+	if selected_tile:
+		return selected_tile.card_data
+	return null
 
 func get_card_count() -> int:
 	"""获取手牌数量"""
-	return cards.size()
+	if hand:
+		return hand.get_card_count()
+	return 0
 
 func clear_hand() -> void:
-	"""清空手牌"""
-	for card in cards:
-		card.queue_free()
-	cards.clear()
-	card_scenes.clear()
-	selected_card = null
+	"""清空所有手牌显示"""
+	for tile in card_tiles:
+		tile.queue_free()
+	card_tiles.clear()
+	selected_tile = null
 	print("已清空手牌")
+
+func deselect_all() -> void:
+	"""取消所有选中状态"""
+	if selected_tile:
+		selected_tile.deselect()
+		selected_tile = null
+
+func _on_card_pressed(tile: CardTile) -> void:
+	"""卡牌被点击"""
+	select_card(tile)
+	card_pressed.emit(tile.card_data)
+
+func _on_card_selected(tile: CardTile) -> void:
+	"""卡牌被选中信号"""
+	card_selected.emit(tile.card_data)

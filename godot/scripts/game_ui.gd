@@ -1,165 +1,222 @@
-extends Control
+class_name GameUI
+extends ScreenBase
 
-# 属性
-var cards: Array = []
-var selected_card_index = -1
-var animator: CardAnimator = CardAnimator.new()
+# 组件引用
+@onready var player_hand_display = $GameLayer/TableArea/PlayerHand
+@onready var opponent_hand_display = $GameLayer/TableArea/OpponentHand
+@onready var discard_pile = $GameLayer/TableArea/GameCenter/DiscardPile
+@onready var game_info = $GameLayer/TableArea/GameCenter/GameInfo
+@onready var player_stats = $InfoPanel/PlayerStats
+@onready var game_log = $InfoPanel/GameLog
+
+@onready var hu_button = $GameLayer/ActionPanel/HuButton
+@onready var ting_button = $GameLayer/ActionPanel/TingButton
+@onready var peng_button = $GameLayer/ActionPanel/PengButton
+@onready var pass_button = $GameLayer/ActionPanel/PassButton
+@onready var quit_button = $InfoPanel/QuitButton
+
+# 游戏状态
+var game_controller: GameController
+var current_hand: CardHand
+var discard_cards: Array[CardData] = []
+
+# 信号
+signal card_played(card: CardData)
+signal player_action(action: String)
 
 func _ready() -> void:
 	print("========== GameUI 初始化 ==========")
-	add_child(animator)
-
-	# 设置背景
-	var bg = ColorRect.new()
-	bg.color = Color(0.15, 0.15, 0.15, 1.0)
-	bg.anchor_right = 1.0
-	bg.anchor_bottom = 1.0
-	add_child(bg)
-	move_child(bg, 0)
-	print("✓ 背景已添加")
-
-	# 创建卡牌显示区域
-	create_card_display()
-
-	# 创建按钮区域
-	create_buttons()
-
+	super()
+	setup_ui()
+	connect_signals()
+	apply_theme()
 	print("========== GameUI 初始化完成 ==========")
 
-func create_card_display() -> void:
-	"""创建卡牌显示区域"""
-	var card_panel = Panel.new()
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.2, 0.2, 0.2, 1.0)
-	card_panel.add_theme_stylebox_override("panel", style)
-	card_panel.position = Vector2(20, 400)
-	card_panel.custom_minimum_size = Vector2(1160, 200)
-	add_child(card_panel)
+func setup_ui() -> void:
+	"""设置UI初始状态"""
+	# 设置初始文本
+	player_stats.text = "等待游戏开始..."
+	game_log.text = ""
+	game_info.text = "游戏信息"
 
-	# 创建13张卡牌
-	var test_cards = [
-		"万1", "万2", "万3",
-		"筒4", "筒5", "筒6",
-		"条7", "条8", "条9",
-		"字1", "万5", "筒2", "条4"
-	]
+func connect_signals() -> void:
+	"""连接所有信号"""
+	# 连接按钮信号
+	if hu_button:
+		hu_button.pressed.connect(_on_hu_pressed)
+	if ting_button:
+		ting_button.pressed.connect(_on_ting_pressed)
+	if peng_button:
+		peng_button.pressed.connect(_on_peng_pressed)
+	if pass_button:
+		pass_button.pressed.connect(_on_pass_pressed)
+	if quit_button:
+		quit_button.pressed.connect(_on_quit_pressed)
+	
+	# 连接手牌显示信号
+	if player_hand_display:
+		player_hand_display.card_pressed.connect(_on_card_pressed)
+		player_hand_display.card_selected.connect(_on_card_selected)
 
-	for i in range(test_cards.size()):
-		var card_label = Label.new()
-		card_label.text = test_cards[i]
-		card_label.add_theme_font_size_override("font_size", 16)
-		card_label.modulate = Color.WHITE
+func apply_theme() -> void:
+	"""应用主题颜色"""
+	# 设置背景颜色
+	modulate = Color(0x2C3E50FF)
+	
+	# 设置按钮颜色
+	if hu_button:
+		hu_button.modulate = Color(0xE74C3CFF)
+	if ting_button:
+		ting_button.modulate = Color(0x27AE60FF)
+	if peng_button:
+		peng_button.modulate = Color(0x3498DBFF)
+	if pass_button:
+		pass_button.modulate = Color(0x95A5A6FF)
 
-		# 设置位置（手动排列）
-		var x_pos = 30 + (i * 85)
-		var y_pos = 420
-		card_label.position = Vector2(x_pos, y_pos)
-		card_label.custom_minimum_size = Vector2(70, 150)
-		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+func display_hand(hand: CardHand) -> void:
+	"""显示玩家手牌"""
+	current_hand = hand
+	if player_hand_display:
+		player_hand_display.set_hand(hand)
+	update_player_stats()
+	add_log_message("显示手牌: %d张" % hand.get_card_count())
 
-		# 鼠标检测
-		card_label.mouse_filter = Control.MOUSE_FILTER_STOP
+func add_log_message(message: String) -> void:
+	"""添加日志消息"""
+	if game_log:
+		var timestamp = Time.get_ticks_msec() / 1000
+		var formatted_msg = "[%.1f] %s" % [timestamp, message]
+		game_log.text += formatted_msg + "\n"
+		# 滚动到底部
+		game_log.scroll_to_line(game_log.get_line_count() - 1)
 
-		add_child(card_label)
-		cards.append(card_label)
+func update_player_stats() -> void:
+	"""更新玩家统计信息"""
+	if player_stats and current_hand:
+		var card_count = current_hand.get_card_count()
+		var selected_card = ""
+		if player_hand_display and player_hand_display.get_selected_card():
+			selected_card = " | 选中: " + player_hand_display.get_selected_card().get_card_name()
+		player_stats.text = "手牌数: %d%s" % [card_count, selected_card]
 
-		# 连接鼠标事件
-		card_label.gui_input.connect(_on_card_clicked.bind(i))
-		card_label.mouse_entered.connect(_on_card_hover.bind(i))
-		card_label.mouse_exited.connect(_on_card_unhover.bind(i))
+func _on_card_pressed(card: CardData) -> void:
+	"""处理卡牌被按下"""
+	update_player_stats()
+	add_log_message("选中卡牌: %s" % card.get_card_name())
 
-	print("✓ 已添加 ", cards.size(), " 张卡牌")
+func _on_card_selected(card: CardData) -> void:
+	"""处理卡牌被选中"""
+	update_player_stats()
 
-func create_buttons() -> void:
-	"""创建操作按钮"""
-	var button_data = [
-		{"text": "出牌", "callback": "_on_play_card_pressed"},
-		{"text": "胡", "callback": "_on_win_pressed"},
-		{"text": "不要", "callback": "_on_pass_pressed"},
-		{"text": "取消", "callback": "_on_cancel_pressed"}
-	]
-
-	for i in range(button_data.size()):
-		var btn = Button.new()
-		btn.text = button_data[i].text
-		btn.custom_minimum_size = Vector2(200, 50)
-		btn.position = Vector2(50 + (i * 220), 650)
-
-		# 连接信号
-		var callback_name = button_data[i].callback
-		btn.pressed.connect(Callable(self, callback_name))
-
-		add_child(btn)
-
-	print("✓ 按钮已创建")
-
-func _on_card_clicked(event: InputEvent, index: int) -> void:
-	"""卡牌被点击"""
-	if event is InputEventMouseButton and event.pressed:
-		select_card(index)
-
-func _on_card_hover(index: int) -> void:
-	"""鼠标进入卡牌"""
-	if index >= 0 and index < cards.size():
-		if selected_card_index != index:
-			animator.animate_hover(cards[index])
-
-func _on_card_unhover(index: int) -> void:
-	"""鼠标离开卡牌"""
-	if index >= 0 and index < cards.size():
-		if selected_card_index != index:
-			animator.animate_unhover(cards[index], cards[index].position.y)
-
-func select_card(index: int) -> void:
-	"""选中卡牌 - 带动画"""
-	if index >= 0 and index < cards.size():
-		# 取消前一个
-		if selected_card_index >= 0 and selected_card_index < cards.size():
-			cards[selected_card_index].modulate = Color.WHITE
-			animator.animate_deselect(cards[selected_card_index])
-
-		# 选中新卡
-		selected_card_index = index
-		cards[index].modulate = Color.YELLOW
-		animator.animate_select(cards[index])
-		print("✓ 选中卡牌: ", cards[index].text)
-
-func _on_play_card_pressed() -> void:
-	"""出牌按钮 - 带动画"""
-	if selected_card_index >= 0 and selected_card_index < cards.size():
-		var card_text = cards[selected_card_index].text
-		var target_pos = Vector2(640, 100)  # 屏幕中心上方
-
-		print("✓ 出牌: ", card_text)
-
-		# 执行出牌动画
-		animator.animate_play_card(cards[selected_card_index], target_pos)
-
-		# 动画完成后移除卡牌
-		await get_tree().create_timer(0.3).timeout
-		cards[selected_card_index].queue_free()
-		cards.remove_at(selected_card_index)
-		selected_card_index = -1
+func play_card() -> void:
+	"""出牌"""
+	if not current_hand or not player_hand_display:
+		add_log_message("⚠ 无法出牌: 游戏未初始化")
+		return
+	
+	var card = player_hand_display.get_selected_card()
+	if not card:
+		add_log_message("⚠ 请先选择一张卡牌")
+		return
+	
+	# 从手牌中移除
+	if current_hand.remove_card(card):
+		# 从显示中移除
+		player_hand_display.remove_card_display(card)
+		# 添加到弃牌堆
+		add_to_discard_pile(card)
+		# 更新显示
+		update_player_stats()
+		# 发送信号
+		card_played.emit(card)
+		add_log_message("✓ 出牌: %s" % card.get_card_name())
 	else:
-		print("⚠ 请先选择一张卡牌")
+		add_log_message("⚠ 出牌失败")
 
-func _on_win_pressed() -> void:
-	"""胡牌按钮 - 特效动画"""
-	print("✓ 胡牌!")
+func add_to_discard_pile(card: CardData) -> void:
+	"""添加卡牌到弃牌堆"""
+	discard_cards.append(card)
+	if discard_pile:
+		# 这里可以添加显示弃牌的逻辑
+		pass
 
-	# 对所有卡牌执行胡牌动画
-	for card in cards:
-		animator.animate_win(card)
+func show_opponent_play(card: CardData) -> void:
+	"""显示对手出牌"""
+	add_to_discard_pile(card)
+	add_log_message("对手出牌: %s" % card.get_card_name())
+
+func show_win_result(result: WinResult) -> void:
+	"""显示胡牌结果"""
+	if result.eye_card:
+		add_log_message("✓ 胡牌! 将: %s" % result.eye_card.get_card_name())
+	for pattern in result.win_patterns:
+		add_log_message("  胡牌类型: %s" % str(pattern))
+
+func _on_hu_pressed() -> void:
+	"""胡牌按钮"""
+	print("胡牌按钮按下")
+	if not current_hand:
+		add_log_message("⚠ 无法胡牌: 没有手牌")
+		return
+	
+	# 这里应该调用WinChecker检查是否能胡
+	add_log_message("🎯 尝试胡牌...")
+	
+	# 显示胡牌动画
+	if player_hand_display:
+		animate_win()
+
+func _on_ting_pressed() -> void:
+	"""听牌按钮"""
+	print("听牌按钮按下")
+	if not current_hand:
+		add_log_message("⚠ 无法听牌: 没有手牌")
+		return
+	
+	# 这里应该调用TingChecker检查是否能听
+	add_log_message("👂 尝试听牌...")
+
+func _on_peng_pressed() -> void:
+	"""碰按钮"""
+	print("碰按钮按下")
+	add_log_message("✋ 碰")
+	player_action.emit("peng")
 
 func _on_pass_pressed() -> void:
-	"""不要按钮"""
-	print("✓ 不要")
+	"""跳过按钮"""
+	print("跳过按钮按下")
+	add_log_message("⏭ 跳过")
+	player_action.emit("pass")
 
-func _on_cancel_pressed() -> void:
-	"""取消按钮"""
-	print("✓ 取消操作")
-	if selected_card_index >= 0 and selected_card_index < cards.size():
-		cards[selected_card_index].modulate = Color.WHITE
-		animator.animate_deselect(cards[selected_card_index])
-	selected_card_index = -1
+func _on_quit_pressed() -> void:
+	"""退出游戏"""
+	print("退出游戏")
+	add_log_message("📌 退出游戏")
+	get_tree().quit()
+
+func animate_win() -> void:
+	"""胡牌动画效果"""
+	var tween = create_tween()
+	for i in range(3):
+		tween.tween_property(player_hand_display, "scale", Vector2(1.1, 1.1), 0.15)
+		tween.tween_property(player_hand_display, "scale", Vector2(1.0, 1.0), 0.15)
+	add_log_message("✨ 胡牌特效播放")
+
+func test_display_hand() -> void:
+	"""测试用: 显示测试手牌"""
+	var test_hand = CardHand.new()
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 4))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 6))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 7))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 8))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 9))
+	test_hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 2))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
+	
+	display_hand(test_hand)
