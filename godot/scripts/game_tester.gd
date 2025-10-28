@@ -130,28 +130,28 @@ func test_win_check() -> void:
 	"""测试胡牌检查 - 完整测试套件"""
 	print("\n========== 胡牌检查完整测试 ==========")
 	print("执行 5 个胡牌检查测试用例...\n")
-	
+
 	# 测试 1.1: 标准胡牌 (平胡)
 	test_case_1_1_standard_win()
-	
+
 	# 测试 1.2: 全刻胡牌
 	test_case_1_2_all_pungs_win()
-	
+
 	# 测试 1.3: 清一色胡牌
 	test_case_1_3_clean_win()
-	
+
 	# 测试 1.4: 牌数错误 (13张)
 	test_case_1_4_wrong_card_count()
-	
+
 	# 测试 1.5: 眼不够
 	test_case_1_5_no_eye()
-	
+
 	print("\n========== 胡牌测试完成 ==========")
 
 func test_case_1_1_standard_win() -> void:
 	"""Test Case 1.1: 标准胡牌 - 平胡"""
 	print("📋 Test Case 1.1: 标准胡牌 (平胡)")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 (顺1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -172,21 +172,21 @@ func test_case_1_1_standard_win() -> void:
 	# 字1 字1 (眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	
+
 	var result = WinChecker.check_win(hand)
-	
+
 	if result.can_win:
 		print("  ✅ 通过: 可以胡牌")
 		print("  📊 结果: %s" % ("胡牌成功" if result.can_win else "无法胡牌"))
 	else:
 		print("  ❌ 失败: 应该能胡牌但无法识别")
-	
+
 	print("")
 
 func test_case_1_2_all_pungs_win() -> void:
 	"""Test Case 1.2: 全刻胡牌"""
 	print("📋 Test Case 1.2: 全刻胡牌")
-	
+
 	var hand = CardHand.new()
 	# 万1 万1 万1 (刻1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -207,14 +207,14 @@ func test_case_1_2_all_pungs_win() -> void:
 	# 万5 万5 (眼)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
-	
+
 	var result = WinChecker.check_win(hand)
-	
+
 	if result.can_win:
 		print("  ✅ 通过: 全刻胡牌")
 	else:
 		print("  ❌ 失败: 应该能胡牌")
-	
+
 	print("")
 
 func test_case_1_3_clean_win() -> void:
@@ -237,9 +237,10 @@ func test_case_1_3_clean_win() -> void:
 	# 万1 万1 万1 (刻)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
-	# 万2 万2 (眼)
-	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
-	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	# 万9 万9 (眼) - 修改: 使用万9作为眼，避免重复
+	hand.add_card(CardData.new(CardData.Suit.WAN, 9))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 9))
 	
 	var result = WinChecker.check_win(hand)
 	
@@ -247,13 +248,15 @@ func test_case_1_3_clean_win() -> void:
 		print("  ✅ 通过: 清一色胡牌")
 	else:
 		print("  ❌ 失败: 应该能胡牌")
+		# 调试信息
+		print("  🔍 调试: 手牌数量 = %d" % hand.get_card_count())
 	
 	print("")
 
 func test_case_1_4_wrong_card_count() -> void:
 	"""Test Case 1.4: 牌数错误 (13张 - 应该失败)"""
 	print("📋 Test Case 1.4: 牌数错误 (13张)")
-	
+
 	var hand = CardHand.new()
 	# 只添加13张牌 (错误)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -269,20 +272,20 @@ func test_case_1_4_wrong_card_count() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	
+
 	var result = WinChecker.check_win(hand)
-	
+
 	if not result.can_win:
 		print("  ✅ 通过: 正确拒绝 (牌数不对)")
 	else:
 		print("  ❌ 失败: 应该拒绝 (牌数不对)")
-	
+
 	print("")
 
 func test_case_1_5_no_eye() -> void:
 	"""Test Case 1.5: 眼不够"""
 	print("📋 Test Case 1.5: 眼不够")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 (顺1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -304,14 +307,14 @@ func test_case_1_5_no_eye() -> void:
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
-	
+
 	var result = WinChecker.check_win(hand)
-	
+
 	if not result.can_win:
 		print("  ✅ 通过: 正确拒绝 (没有眼)")
 	else:
 		print("  ❌ 失败: 应该拒绝 (没有眼)")
-	
+
 	print("")
 
 func test_discard_pile() -> void:
