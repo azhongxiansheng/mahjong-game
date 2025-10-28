@@ -11,19 +11,18 @@ config_version=5
 [application]
 
 config/name="MahjongGame"
-config/version="0.1.0"
 config/description="自主开发的棋牌游戏项目"
+config/version="0.1.0"
 run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.5")
 
 [debug]
 
-gdscript/warnings/unused_variable=1
 gdscript/warnings/unused_argument=1
 
 [physics]
 
 physics_engine="GodotPhysics2D"
-common/physics_ticks_per_second=60
 
 [rendering]
 

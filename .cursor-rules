@@ -1,0 +1,110 @@
+# 🚫 严格规则 - Cursor AI 助手执行规则
+
+## 规则1: 禁止使用 run_terminal_cmd 工具
+
+### ❌ 禁止
+- 不使用 `run_terminal_cmd` 工具执行任何命令
+- 不使用 shell/terminal 工具
+- 不在PowerShell中运行命令（通过AI工具）
+
+### ⚠️ 原因
+- Windows PowerShell 中文输出会出现乱码
+- git commit 消息变成中文乱码
+- 文件操作反馈无法正常读取
+- 造成开发困扰和信息丢失
+
+### ✅ 替代方案
+
+**创建/修改文件**
+→ 使用 `edit_file` 工具
+
+**读取文件内容**
+→ 使用 `read_file` 工具
+
+**浏览目录结构**
+→ 使用 `list_dir` 工具
+
+**搜索文件**
+→ 使用 `glob_file_search` 工具
+
+**需要运行命令**
+→ 用户在 Cursor 内置终端或 PowerShell 中手动运行
+
+---
+
+## 规则2: 文件操作规范
+
+### 创建文件
+使用 `edit_file` 工具直接创建，不通过shell
+
+### 修改文件
+使用 `edit_file` 工具直接修改，不通过shell
+
+### 删除文件
+使用 `delete_file` 工具，不通过shell
+
+---
+
+## 规则3: 项目持久化
+
+### 项目文档
+所有项目指南和规则都保存在项目目录中：
+- `TODO.md` - 任务列表
+- `QUICKSTART.md` - 快速开始
+- `README.md` - 项目说明
+- `.cursor-rules` - 这个规则文件
+
+### Git管理
+- 不通过AI工具执行git命令
+- 用户在Cursor终端手动执行git命令
+- 所有重要操作都在Git历史中记录
+
+---
+
+## 规则4: 代码质量
+
+### 版本控制
+- 每完成一个功能就提交一次
+- commit message 清晰明了
+- 保持完整的开发历史
+
+### 代码规范
+- 遵循 `.editorconfig` 配置
+- 使用 `MahjongGame.code-workspace` 工作区配置
+- GDScript: 4空格缩进
+- Go: Tab缩进
+
+---
+
+## 规则5: 文档同步
+
+### 更新流程
+1. 修改代码 (edit_file)
+2. 更新文档 (edit_file)
+3. 用户在Cursor终端提交: `git add . && git commit -m "描述"`
+
+### 重要文件
+- `TODO.md` - 实时更新任务进度
+- `docs/开发日志.md` - 记录每日进度
+- `docs/学习指南.md` - 学习参考
+
+---
+
+## 执行检查表
+
+```
+每次工作前检查:
+☐ 在Cursor中打开项目
+☐ 查看TODO.md了解待办事项
+☐ 按照规则执行任务
+☐ 使用edit_file修改代码
+☐ 使用edit_file更新文档
+☐ 在Cursor终端提交Git命令
+☐ 更新开发日志
+```
+
+---
+
+**这个规则文件适用于整个项目及所有后续工作。**
+
+最后更新: 2025-10-28
