@@ -148,6 +148,25 @@ func test_win_check() -> void:
 
 	print("\n========== 胡牌测试完成 ==========")
 
+func test_ting_check() -> void:
+	"""测试听牌检查 - 完整测试套件"""
+	print("\n========== 听牌检查完整测试 ==========")
+	print("执行 4 个听牌检查测试用例...\n")
+	
+	# 测试 2.1: 基础听牌 (听1种牌)
+	test_case_2_1_basic_ting()
+	
+	# 测试 2.2: 多种听牌
+	test_case_2_2_multiple_ting()
+	
+	# 测试 2.3: 无法听牌
+	test_case_2_3_cannot_ting()
+	
+	# 测试 2.4: 复杂听法
+	test_case_2_4_complex_ting()
+	
+	print("\n========== 听牌测试完成 ==========")
+
 func test_case_1_1_standard_win() -> void:
 	"""Test Case 1.1: 标准胡牌 - 平胡"""
 	print("📋 Test Case 1.1: 标准胡牌 (平胡)")
@@ -220,7 +239,7 @@ func test_case_1_2_all_pungs_win() -> void:
 func test_case_1_3_clean_win() -> void:
 	"""Test Case 1.3: 清一色胡牌"""
 	print("📋 Test Case 1.3: 清一色胡牌")
-	
+
 	var hand = CardHand.new()
 	# 万1 万2 万3 (顺1)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
@@ -241,16 +260,16 @@ func test_case_1_3_clean_win() -> void:
 	# 万9 万9 (眼) - 修改: 使用万9作为眼，避免重复
 	hand.add_card(CardData.new(CardData.Suit.WAN, 9))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 9))
-	
+
 	var result = WinChecker.check_win(hand)
-	
+
 	if result.can_win:
 		print("  ✅ 通过: 清一色胡牌")
 	else:
 		print("  ❌ 失败: 应该能胡牌")
 		# 调试信息
 		print("  🔍 调试: 手牌数量 = %d" % hand.get_card_count())
-	
+
 	print("")
 
 func test_case_1_4_wrong_card_count() -> void:
@@ -315,6 +334,145 @@ func test_case_1_5_no_eye() -> void:
 	else:
 		print("  ❌ 失败: 应该拒绝 (没有眼)")
 
+	print("")
+
+func test_case_2_1_basic_ting() -> void:
+	"""Test Case 2.1: 基础听牌 - 听1种牌"""
+	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 (顺1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万4 万4 (刻1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	# 筒5 筒5 筒5 (刻2)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	# 条6 条6 条6 (刻3)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	# 字1 (还缺1张眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	
+	var ting_cards = WinChecker.check_can_hear(hand)
+	
+	if ting_cards.size() > 0:
+		print("  ✅ 通过: 可以听牌")
+		print("  📊 听数: %d 种" % ting_cards.size())
+		if ting_cards.size() > 0:
+			var first_card = ting_cards[0]
+			print("  🎯 可听牌: %s" % first_card.get_card_name())
+	else:
+		print("  ❌ 失败: 应该能听牌")
+	
+	print("")
+
+func test_case_2_2_multiple_ting() -> void:
+	"""Test Case 2.2: 多种听牌"""
+	print("📋 Test Case 2.2: 多种听牌")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 (顺1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万5 万6 (顺2)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	# 筒7 筒8 (还差1张完成顺/刻)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 7))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 8))
+	# 条1 条2 条3 (顺3)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 3))
+	# 字1 字1 (眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	
+	var ting_cards = WinChecker.check_can_hear(hand)
+	
+	if ting_cards.size() > 1:
+		print("  ✅ 通过: 多种听牌")
+		print("  📊 听数: %d 种" % ting_cards.size())
+	else:
+		print("  ⚠️ 听数较少: %d 种" % ting_cards.size())
+	
+	print("")
+
+func test_case_2_3_cannot_ting() -> void:
+	"""Test Case 2.3: 无法听牌 - 距离太远"""
+	print("📋 Test Case 2.3: 无法听牌 (距离太远)")
+	
+	var hand = CardHand.new()
+	# 万1 万2 (缺1张完成顺)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	# 万4 万4 万4 (刻)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	# 筒5 筒5 筒5 (刻)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	# 条6 条6 条6 (刻)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	# 字1 字1 (眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	
+	var ting_cards = WinChecker.check_can_hear(hand)
+	
+	if ting_cards.size() == 0:
+		print("  ✅ 通过: 正确识别无法听牌")
+	else:
+		print("  ❌ 失败: 不应该能听牌 (听数: %d)" % ting_cards.size())
+	
+	print("")
+
+func test_case_2_4_complex_ting() -> void:
+	"""Test Case 2.4: 复杂听法 - 多种可能"""
+	print("📋 Test Case 2.4: 复杂听法")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 万4 万5 (可以听万0或万6)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	# 万6 万6 (可以组成对或刻)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	# 筒1 筒1 筒1 (刻)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	# 条2 条2 条2 (刻)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	# 字3 (还缺眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
+	
+	var ting_cards = WinChecker.check_can_hear(hand)
+	
+	if ting_cards.size() > 2:
+		print("  ✅ 通过: 复杂听法识别")
+		print("  📊 听数: %d 种" % ting_cards.size())
+	else:
+		print("  ⚠️ 听数: %d 种" % ting_cards.size())
+	
 	print("")
 
 func test_discard_pile() -> void:
