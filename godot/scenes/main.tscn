@@ -11,6 +11,7 @@ script = ExtResource("1_main_script")
 layer = 0
 
 [node name="Player" parent="GameLayer" instance=ExtResource("2_player_scene")]
+position = Vector2(100, 200)
 
 [node name="Enemy1" parent="GameLayer" instance=ExtResource("3_enemy_scene")]
 position = Vector2(400, 150)
