@@ -258,6 +258,81 @@ func test_week3_inheritance() -> void:
 	print("\n" + separator)
 	print("第3周测试完成！")
 	print(separator)
+	
+	# 第4周测试
+	print("\n" + separator)
+	print("第4周：游戏状态管理和完整游戏流程")
+	print(separator)
+	await test_week4_game_flow()
+
+
+func test_week4_game_flow() -> void:
+	"""第4周测试：游戏状态机和完整流程"""
+	print("\n【测试7】GameState 和 GameController 系统...")
+	
+	# 创建游戏控制器
+	var game = GameController.new()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 初始化游戏
+	print("\n--- 游戏初始化 ---")
+	game.init_game()
+	print("当前状态: %s" % game.game_state.get_state_name())
+	await get_tree().create_timer(0.5).timeout
+	
+	# 开始游戏
+	print("\n--- 开始游戏 ---")
+	game.start_game()
+	print("当前状态: %s" % game.game_state.get_state_name())
+	print("手牌数量: %d" % game.player_hand.get_card_count())
+	await get_tree().create_timer(0.5).timeout
+	
+	# 模拟游戏流程
+	print("\n--- 游戏流程模拟 ---")
+	for i in range(3):
+		print("\n【回合 %d】" % (i + 1))
+		
+		# 抽卡
+		var drawn_card = game.draw_card()
+		print("当前状态: %s" % game.game_state.get_state_name())
+		print("手牌数量: %d" % game.player_hand.get_card_count())
+		await get_tree().create_timer(0.3).timeout
+		
+		# 出卡
+		if drawn_card:
+			var success = game.discard_card(drawn_card)
+			if success:
+				print("当前状态: %s" % game.game_state.get_state_name())
+				print("手牌数量: %d" % game.player_hand.get_card_count())
+		
+		await get_tree().create_timer(0.3).timeout
+	
+	# 显示游戏状态
+	print("\n--- 游戏状态信息 ---")
+	game.game_state.print_state_info()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 显示游戏统计
+	print("\n--- 游戏统计 ---")
+	game.print_game_stats()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 获取游戏状态
+	print("\n--- 游戏状态快照 ---")
+	var status = game.get_game_status()
+	print("当前状态: %s" % status["current_state"])
+	print("手牌数: %d" % status["hand_count"])
+	print("牌池剩余: %d" % status["deck_remaining"])
+	print("轮数: %d" % status["rounds"])
+	await get_tree().create_timer(0.5).timeout
+	
+	# 结束游戏
+	print("\n--- 结束游戏 ---")
+	game.end_game()
+	
+	print("\n" + separator)
+	print("第4周测试完成！")
+	print(separator)
 
 
 func _process(delta: float) -> void:
