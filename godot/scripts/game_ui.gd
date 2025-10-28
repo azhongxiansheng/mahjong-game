@@ -34,10 +34,21 @@ func _ready() -> void:
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
-	# 设置初始文本
-	player_stats.text = "等待游戏开始..."
-	game_log.text = ""
-	game_info.text = "游戏信息"
+	# 设置初始文本 - 添加空检查
+	if player_stats:
+		player_stats.text = "等待游戏开始..."
+	else:
+		print("⚠ player_stats 为空")
+	
+	if game_log:
+		game_log.text = ""
+	else:
+		print("⚠ game_log 为空")
+	
+	if game_info:
+		game_info.text = "游戏信息"
+	else:
+		print("⚠ game_info 为空")
 
 func connect_signals() -> void:
 	"""连接所有信号"""
@@ -61,7 +72,7 @@ func connect_signals() -> void:
 				player_hand_display.card_pressed.connect(_on_card_pressed)
 			else:
 				print("⚠ HandDisplay没有card_pressed信号")
-			
+
 			if player_hand_display.has_signal("card_selected"):
 				player_hand_display.card_selected.connect(_on_card_selected)
 			else:
