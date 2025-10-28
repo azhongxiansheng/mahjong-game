@@ -38,13 +38,13 @@ static func is_valid_username(username: String) -> bool:
 		return false
 
 	# 检查是否以字母开头
-	if not username[0].is_alpha():
+	if not username[0] in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz":
 		print("FormValidator: 用户名必须以字母开头")
 		return false
 
 	# 检查是否包含有效字符（字母、数字、下划线）
 	for char in username:
-		if not (char.is_alphanumeric() or char == "_"):
+		if not (char in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_"):
 			print("FormValidator: 用户名只能包含字母、数字和下划线")
 			return false
 
@@ -66,11 +66,11 @@ static func is_valid_password(password: String) -> bool:
 	var has_digit = false
 
 	for char in password:
-		if char.is_uppercase():
+		if char in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
 			has_upper = true
-		elif char.is_lowercase():
+		elif char in "abcdefghijklmnopqrstuvwxyz":
 			has_lower = true
-		elif char.is_digit():
+		elif char in "0123456789":
 			has_digit = true
 
 	if not (has_upper and has_lower and has_digit):

@@ -60,13 +60,13 @@ func _init() -> void:
 
 # ==================== 基本操作 ====================
 
-func get(key: String, default_value = null):
+func get_config(key: String, default_value = null):
 	"""获取配置值"""
 	if key in config:
 		return config[key]
 	return default_value
 
-func set(key: String, value) -> void:
+func set_config(key: String, value) -> void:
 	"""设置配置值"""
 	config[key] = value
 	print("ConfigManager: 配置已更新 - %s = %s" % [key, str(value)])
@@ -128,36 +128,36 @@ func reset_to_default() -> void:
 func get_game_config() -> Dictionary:
 	"""获取游戏相关配置"""
 	return {
-		"max_players": get("max_players"),
-		"min_players": get("min_players"),
-		"initial_tiles": get("initial_tiles"),
-		"max_tiles": get("max_tiles")
+		"max_players": get_config("max_players"),
+		"min_players": get_config("min_players"),
+		"initial_tiles": get_config("initial_tiles"),
+		"max_tiles": get_config("max_tiles")
 	}
 
 func get_network_config() -> Dictionary:
 	"""获取网络相关配置"""
 	return {
-		"server_host": get("server_host"),
-		"server_port": get("server_port"),
-		"connection_timeout": get("connection_timeout"),
-		"max_reconnect_attempts": get("max_reconnect_attempts")
+		"server_host": get_config("server_host"),
+		"server_port": get_config("server_port"),
+		"connection_timeout": get_config("connection_timeout"),
+		"max_reconnect_attempts": get_config("max_reconnect_attempts")
 	}
 
 func get_ui_config() -> Dictionary:
 	"""获取UI相关配置"""
 	return {
-		"ui_scale": get("ui_scale"),
-		"animation_speed": get("animation_speed"),
-		"debug_ui": get("debug_ui")
+		"ui_scale": get_config("ui_scale"),
+		"animation_speed": get_config("animation_speed"),
+		"debug_ui": get_config("debug_ui")
 	}
 
 func get_performance_config() -> Dictionary:
 	"""获取性能相关配置"""
 	return {
-		"max_frame_rate": get("max_frame_rate"),
-		"vsync_enabled": get("vsync_enabled"),
-		"enable_object_pool": get("enable_object_pool"),
-		"object_pool_initial_size": get("object_pool_initial_size")
+		"max_frame_rate": get_config("max_frame_rate"),
+		"vsync_enabled": get_config("vsync_enabled"),
+		"enable_object_pool": get_config("enable_object_pool"),
+		"object_pool_initial_size": get_config("object_pool_initial_size")
 	}
 
 # ==================== 统计信息 ====================

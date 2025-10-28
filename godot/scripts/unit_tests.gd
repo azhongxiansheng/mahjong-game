@@ -180,12 +180,12 @@ func test_config_manager() -> void:
 	var config = ConfigManager.new()
 
 	# 测试 1: 获取配置
-	_assert_equal("获取配置", config.get("max_players"), 4)
-	_assert_equal("获取不存在的配置", config.get("non_existent", 99), 99)
+	_assert_equal("获取配置", config.get_config("max_players"), 4)
+	_assert_equal("获取不存在的配置", config.get_config("non_existent", 99), 99)
 
 	# 测试 2: 设置配置
-	config.set("test_key", "test_value")
-	_assert_equal("设置配置", config.get("test_key"), "test_value")
+	config.set_config("test_key", "test_value")
+	_assert_equal("设置配置", config.get_config("test_key"), "test_value")
 
 	# 测试 3: 检查配置
 	_assert_true("配置存在", config.has("max_players"))

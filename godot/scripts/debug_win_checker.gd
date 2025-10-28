@@ -5,11 +5,17 @@ class_name DebugWinChecker
 static func debug_clear_win() -> void:
 	"""调试清一色胡牌"""
 	print("\n【调试】清一色（All One Suit）胡牌测试")
-	print("="*60)
+	var separator = ""
+	for i in range(60):
+		separator += "="
+	print(separator)
 
 	# 测试1: 简单的清一色
 	print("\n测试1: 简单清一色")
-	print("-"*40)
+	var sep1 = ""
+	for i in range(40):
+		sep1 += "-"
+	print(sep1)
 	var hand1 = CardHand.new()
 	# 万1万1万1 万2万3万4 万5万6万7 万8万9万9万9 (14张)
 	hand1.add_card(CardData.new(0, 1))
@@ -68,11 +74,17 @@ static func debug_clear_win() -> void:
 static func debug_ting_detection() -> void:
 	"""调试听牌检测"""
 	print("\n【调试】听牌检测测试")
-	print("="*60)
+	var sep = ""
+	for i in range(60):
+		sep += "="
+	print(sep)
 
 	# 测试1: 基本听牌（13张手牌）
 	print("\n测试1: 基本听牌")
-	print("-"*40)
+	var sep2 = ""
+	for i in range(40):
+		sep2 += "-"
+	print(sep2)
 	var hand1 = CardHand.new()
 	# 万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9 (13张)
 	hand1.add_card(CardData.new(0, 1))
@@ -125,13 +137,17 @@ static func _debug_hand(hand: CardHand) -> void:
 # 运行所有调试
 static func run_all_debug() -> void:
 	"""运行所有调试测试"""
-	print("\n" + "="*60)
+	var sep = ""
+	for i in range(60):
+		sep += "="
+	
+	print("\n" + sep)
 	print("开始详细调试...")
-	print("="*60)
-
+	print(sep)
+	
 	debug_clear_win()
 	debug_ting_detection()
-
-	print("\n" + "="*60)
+	
+	print("\n" + sep)
 	print("调试完成！")
-	print("="*60)
+	print(sep)
