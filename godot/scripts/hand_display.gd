@@ -52,35 +52,35 @@ func refresh_display() -> void:
 func add_card_display(card: CardData, index: int = -1) -> void:
 	"""添加单张卡牌显示"""
 	var tile = card_tile_scene.instantiate()
-	
+
 	# 验证是否是CardTile类型
 	if not tile is CardTile:
 		print("⚠ 场景未能正确实例化为CardTile类型")
 		tile.queue_free()
 		return
-	
+
 	# 转换为CardTile类型
 	var card_tile: CardTile = tile as CardTile
-	
+
 	card_tile.set_card(card)
 	add_child(card_tile)
-	
+
 	# 设置位置
 	var x_pos = 20 + (card_tiles.size() * 85)
 	var y_pos = 35
 	card_tile.position = Vector2(x_pos, y_pos)
-	
+
 	# 连接信号 - 使用更安全的方式
 	if card_tile.has_signal("card_pressed"):
 		card_tile.card_pressed.connect(_on_card_pressed.bind(card_tile))
 	else:
 		print("⚠ CardTile没有card_pressed信号")
-	
+
 	if card_tile.has_signal("card_selected"):
 		card_tile.card_selected.connect(_on_card_selected.bind(card_tile))
 	else:
 		print("⚠ CardTile没有card_selected信号")
-	
+
 	card_tiles.append(card_tile)
 	print("添加卡牌显示: %s (位置: %d)" % [card.get_card_name(), x_pos])
 
