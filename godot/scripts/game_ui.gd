@@ -29,11 +29,7 @@ func _ready() -> void:
 	
 	print("[DIAGNOSTIC] 调用 super()")
 	super()
-	print("[DIAGNOSTIC] super() 完成")
-	
-	print("[DIAGNOSTIC] 调用 _initialize_missing_nodes()")
-	_initialize_missing_nodes()
-	print("[DIAGNOSTIC] _initialize_missing_nodes() 完成")
+	print("[DIAGNOSTIC] super() 完成 - 如果这行出现，说明错误在 super() 之后")
 	
 	print("[DIAGNOSTIC] GameUI._ready() 完成\n")
 
