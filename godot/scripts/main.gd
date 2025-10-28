@@ -30,8 +30,8 @@ func initialize_game_ui() -> void:
 
 	if game_ui:
 		print("✓ GameUI已初始化")
-		# 显示测试手牌
-		game_ui.test_display_hand()
+		# 延迟显示测试手牌，确保GameUI已完全初始化
+		game_ui.call_deferred("test_display_hand")
 	else:
 		print("⚠ 无法初始化GameUI")
 
