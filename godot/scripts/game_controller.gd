@@ -22,11 +22,11 @@ func _init() -> void:
 func init_game() -> void:
 	"""初始化游戏"""
 	print("\n【游戏初始化】")
-	
+
 	# 创建游戏状态管理器
 	if game_state == null:
 		game_state = GameState.new()
-	
+
 	game_state.set_state(GameState.State.INIT)
 
 	# 创建牌池
