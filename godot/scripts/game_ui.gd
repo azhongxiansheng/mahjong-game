@@ -20,6 +20,16 @@ var game_controller: GameController
 var current_hand: CardHand
 var discard_cards: Array[CardData] = []
 
+# 公开 getter 属性（允许只读访问）
+var player_hand_display: Control:
+	get: return _player_hand_display
+
+var opponent_hand_display: Control:
+	get: return _opponent_hand_display
+
+var discard_pile: Control:
+	get: return _discard_pile
+
 # 信号
 signal card_played(card: CardData)
 signal player_action(action: String)
