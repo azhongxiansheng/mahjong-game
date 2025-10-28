@@ -9,41 +9,41 @@ var config: Dictionary = {
 	"game_version": "0.1.0",
 	"game_name": "麻将游戏",
 	"game_state": "playing",
-	
+
 	# 游戏规则
 	"max_players": 4,
 	"min_players": 2,
 	"initial_tiles": 13,
 	"max_tiles": 14,
 	"draw_tile_count": 1,
-	
+
 	# 游戏平衡
 	"base_points": 1000,
 	"elo_base_rating": 1600,
 	"elo_k_factor": 32,
-	
+
 	# UI设置
 	"ui_scale": 1.0,
 	"animation_speed": 1.0,
 	"debug_ui": true,
-	
+
 	# 网络设置
 	"server_host": "localhost",
 	"server_port": 8080,
 	"connection_timeout": 30,
 	"max_reconnect_attempts": 3,
-	
+
 	# 性能设置
 	"max_frame_rate": 60,
 	"vsync_enabled": true,
 	"enable_object_pool": true,
 	"object_pool_initial_size": 50,
-	
+
 	# 数据库设置
 	"enable_local_storage": true,
 	"auto_save_interval": 300,
 	"save_directory": "user://saves",
-	
+
 	# 日志设置
 	"log_level": 0,
 	"log_to_file": false,
@@ -86,10 +86,10 @@ func remove(key: String) -> void:
 func save_config() -> bool:
 	"""保存配置到文件"""
 	var config_file = ConfigFile.new()
-	
+
 	for key in config.keys():
 		config_file.set_value("game", key, config[key])
-	
+
 	var result = config_file.save(config_file_path)
 	if result == OK:
 		print("ConfigManager: 配置已保存到 %s" % config_file_path)
@@ -103,18 +103,18 @@ func load_config() -> bool:
 	if not FileAccess.file_exists(config_file_path):
 		print("ConfigManager: 配置文件不存在，使用默认配置")
 		return true
-	
+
 	var config_file = ConfigFile.new()
 	var result = config_file.load(config_file_path)
-	
+
 	if result != OK:
 		print("ConfigManager: 加载配置失败 - %d" % result)
 		return false
-	
+
 	# 合并加载的配置
 	for key in config_file.get_section_keys("game"):
 		config[key] = config_file.get_value("game", key)
-	
+
 	print("ConfigManager: 配置已加载 - %s" % config_file_path)
 	return true
 
@@ -175,7 +175,7 @@ func print_config() -> void:
 func print_config_section(section: String) -> void:
 	"""打印指定分组的配置"""
 	var section_config = Dictionary()
-	
+
 	match section:
 		"game":
 			section_config = get_game_config()
@@ -185,7 +185,7 @@ func print_config_section(section: String) -> void:
 			section_config = get_ui_config()
 		"performance":
 			section_config = get_performance_config()
-	
+
 	print("【%s配置】" % section)
 	for key in section_config.keys():
 		print("  %s: %s" % [key, str(section_config[key])])
@@ -200,21 +200,21 @@ func validate_config() -> bool:
 	"""验证配置的有效性"""
 	# 检查必要的字段
 	var required_fields = ["max_players", "initial_tiles", "max_tiles"]
-	
+
 	for field in required_fields:
 		if not field in config:
 			print("ConfigManager: 缺少必要配置 - %s" % field)
 			return false
-	
+
 	# 验证数值范围
 	if config["max_players"] < config["min_players"]:
 		print("ConfigManager: max_players 不能小于 min_players")
 		return false
-	
+
 	if config["max_tiles"] < config["initial_tiles"]:
 		print("ConfigManager: max_tiles 不能小于 initial_tiles")
 		return false
-	
+
 	print("ConfigManager: 配置验证通过")
 	return true
 
