@@ -27,10 +27,10 @@ signal player_action(action: String)
 func _ready() -> void:
 	print("========== GameUI 初始化 ==========")
 	super()
-	
+
 	# 尝试手动初始化任何失败的 @onready 变量
 	_initialize_missing_nodes()
-	
+
 	setup_ui()
 	connect_signals()
 	apply_theme()
@@ -41,27 +41,27 @@ func _initialize_missing_nodes() -> void:
 	if not player_hand_display:
 		player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
 		print("⚠ player_hand_display 从 @onready 重新获取: %s" % ("成功" if player_hand_display else "失败"))
-	
+
 	if not opponent_hand_display:
 		opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
 		print("⚠ opponent_hand_display 从 @onready 重新获取: %s" % ("成功" if opponent_hand_display else "失败"))
-	
+
 	if not player_stats:
 		player_stats = get_node_or_null("InfoPanel/PlayerStats")
 		print("⚠ player_stats 从 @onready 重新获取: %s" % ("成功" if player_stats else "失败"))
-	
+
 	if not game_log:
 		game_log = get_node_or_null("InfoPanel/GameLog")
 		print("⚠ game_log 从 @onready 重新获取: %s" % ("成功" if game_log else "失败"))
-	
+
 	if not game_info:
 		game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
 		print("⚠ game_info 从 @onready 重新获取: %s" % ("成功" if game_info else "失败"))
-	
+
 	if not discard_pile:
 		discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
 		print("⚠ discard_pile 从 @onready 重新获取: %s" % ("成功" if discard_pile else "失败"))
-	
+
 	if not hu_button:
 		hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
 	if not ting_button:
@@ -76,23 +76,41 @@ func _initialize_missing_nodes() -> void:
 func setup_ui() -> void:
 	"""设置UI初始状态"""
 	# 验证所有UI组件已初始化
+	print("[DEBUG] 开始 setup_ui 验证")
 	if not _verify_ui_components():
 		print("⚠ 部分UI组件初始化失败，继续运行")
-	
-	# 设置初始文本 - 添加空检查
+
+	# 设置初始文本 - 添加空检查和详细日志
+	print("[DEBUG] 检查 player_stats...")
 	if player_stats:
+		print("[DEBUG] player_stats 存在，设置文本...")
 		player_stats.text = "等待游戏开始..."
-	
+		print("[DEBUG] player_stats 文本已设置")
+	else:
+		print("[DEBUG] ⚠ player_stats 为空，跳过设置")
+
+	print("[DEBUG] 检查 game_log...")
 	if game_log:
+		print("[DEBUG] game_log 存在，设置文本...")
 		game_log.text = ""
-	
+		print("[DEBUG] game_log 文本已设置")
+	else:
+		print("[DEBUG] ⚠ game_log 为空，跳过设置")
+
+	print("[DEBUG] 检查 game_info...")
 	if game_info:
+		print("[DEBUG] game_info 存在，设置文本...")
 		game_info.text = "游戏信息"
+		print("[DEBUG] game_info 文本已设置")
+	else:
+		print("[DEBUG] ⚠ game_info 为空，跳过设置")
+	
+	print("[DEBUG] setup_ui 完成")
 
 func _verify_ui_components() -> bool:
 	"""验证所有UI组件是否正确初始化"""
 	var all_ok = true
-	
+
 	if not player_hand_display:
 		print("⚠ player_hand_display 为空")
 		all_ok = false
@@ -111,7 +129,7 @@ func _verify_ui_components() -> bool:
 	if not discard_pile:
 		print("⚠ discard_pile 为空")
 		all_ok = false
-	
+
 	return all_ok
 
 func connect_signals() -> void:
@@ -174,25 +192,60 @@ func display_hand(hand: CardHand) -> void:
 
 func add_log_message(message: String) -> void:
 	"""添加日志消息 - 安全版本"""
+	print("[TRACE] add_log_message 被调用: %s" % message)
+	
 	if not game_log:
-		print("⚠ game_log 未初始化，日志消息: %s" % message)
+		print("[WARN] game_log 为 nil，无法添加日志: %s" % message)
 		return
 	
+	# 分步调试每个操作
 	var timestamp = Time.get_ticks_msec() / 1000
 	var formatted_msg = "[%.1f] %s" % [timestamp, message]
+	
+	print("[TRACE] 准备写入日志: %s" % formatted_msg)
+	
+	# 验证游戏日志有必要的属性
+	if not game_log.has_property("text"):
+		print("[ERROR] game_log 没有 text 属性")
+		return
+	
+	# 添加文本
 	game_log.text += formatted_msg + "\n"
+	print("[TRACE] 日志文本已添加")
+	
 	# 滚动到底部
 	if game_log.get_line_count() > 0:
 		game_log.scroll_to_line(game_log.get_line_count() - 1)
+		print("[TRACE] 已滚动到日志底部")
 
 func update_player_stats() -> void:
 	"""更新玩家统计信息"""
-	if player_stats and current_hand:
-		var card_count = current_hand.get_card_count()
-		var selected_card = ""
-		if player_hand_display and player_hand_display.get_selected_card():
-			selected_card = " | 选中: " + player_hand_display.get_selected_card().get_card_name()
-		player_stats.text = "手牌数: %d%s" % [card_count, selected_card]
+	print("[TRACE] update_player_stats 被调用")
+	
+	if not player_stats:
+		print("[WARN] player_stats 为 nil")
+		return
+	
+	if not current_hand:
+		print("[WARN] current_hand 为 nil")
+		return
+	
+	var card_count = current_hand.get_card_count()
+	var selected_card = ""
+	
+	if player_hand_display and player_hand_display.get_selected_card():
+		selected_card = " | 选中: " + player_hand_display.get_selected_card().get_card_name()
+	
+	var stats_text = "手牌数: %d%s" % [card_count, selected_card]
+	print("[TRACE] 准备设置玩家统计: %s" % stats_text)
+	
+	# 验证有text属性
+	if not player_stats.has_property("text"):
+		print("[ERROR] player_stats 没有 text 属性")
+		return
+	
+	player_stats.text = stats_text
+	print("[TRACE] 玩家统计已设置")
 
 func _on_card_pressed(card: CardData) -> void:
 	"""处理卡牌被按下"""
