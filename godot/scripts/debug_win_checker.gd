@@ -45,7 +45,10 @@ static func debug_clear_win() -> void:
 
 	# 测试2: 另一个清一色变体
 	print("测试2: 清一色变体")
-	print("-"*40)
+	var sep2b = ""
+	for i in range(40):
+		sep2b += "-"
+	print(sep2b)
 	var hand2 = CardHand.new()
 	# 万2万2万2 万3万4万5 万6万7万8 万9万9 万1万1万1 (14张)
 	hand2.add_card(CardData.new(0, 2))
@@ -140,14 +143,14 @@ static func run_all_debug() -> void:
 	var sep = ""
 	for i in range(60):
 		sep += "="
-	
+
 	print("\n" + sep)
 	print("开始详细调试...")
 	print(sep)
-	
+
 	debug_clear_win()
 	debug_ting_detection()
-	
+
 	print("\n" + sep)
 	print("调试完成！")
 	print(sep)
