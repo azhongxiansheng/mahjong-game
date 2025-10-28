@@ -55,8 +55,8 @@ func start_game() -> void:
 
 func draw_card() -> CardData:
 	"""玩家抽一张卡"""
-	if not game_state.can_discard() and game_state.get_state() != GameState.State.DRAW:
-		print("错误：无法抽卡")
+	if not (game_state.get_state() == GameState.State.PLAYING or game_state.get_state() == GameState.State.WAITING_ACTION):
+		print("错误：无法抽卡（当前状态：%s）" % game_state.get_state_name())
 		return null
 	
 	game_state.set_state(GameState.State.DRAW)
