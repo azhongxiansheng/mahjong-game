@@ -25,45 +25,44 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	print("\n[DIAGNOSTIC] GameUI._ready() 开始")
-
-	print("[DIAGNOSTIC] 调用 super()")
+	print("\n========== GameUI 初始化 ==========")
+	
 	super()
-	print("[DIAGNOSTIC] super() 完成")
-
-	print("[DIAGNOSTIC] 调用 _initialize_missing_nodes()")
 	_initialize_missing_nodes()
-	print("[DIAGNOSTIC] _initialize_missing_nodes() 完成")
+	call_deferred("_deferred_setup")
+	
+	print("========== GameUI 初始化完成 ==========\n")
 
-	print("[DIAGNOSTIC] GameUI._ready() 完成\n")
+func _deferred_setup() -> void:
+	"""延迟的 UI 设置"""
+	print("[DEFERRED] 开始延迟 UI 设置")
+	
+	setup_ui()
+	connect_signals()
+	apply_theme()
+	
+	print("[DEFERRED] UI 设置完成")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点"""
-	print("[INIT] 开始初始化节点")
 	
 	if not _player_hand_display:
 		_player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
-		print("[INIT] _player_hand_display = %s" % ("有效" if _player_hand_display else "nil"))
 
 	if not _opponent_hand_display:
 		_opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
-		print("[INIT] _opponent_hand_display = %s" % ("有效" if _opponent_hand_display else "nil"))
 
 	if not _player_stats:
 		_player_stats = get_node_or_null("InfoPanel/PlayerStats")
-		print("[INIT] _player_stats = %s" % ("有效" if _player_stats else "nil"))
 
 	if not _game_log:
 		_game_log = get_node_or_null("InfoPanel/GameLog")
-		print("[INIT] _game_log = %s" % ("有效" if _game_log else "nil"))
 
 	if not _game_info:
 		_game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
-		print("[INIT] _game_info = %s" % ("有效" if _game_info else "nil"))
 
 	if not _discard_pile:
 		_discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
-		print("[INIT] _discard_pile = %s" % ("有效" if _discard_pile else "nil"))
 
 	if not _hu_button:
 		_hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
@@ -75,23 +74,6 @@ func _initialize_missing_nodes() -> void:
 		_pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
 	if not _quit_button:
 		_quit_button = get_node_or_null("InfoPanel/QuitButton")
-	
-	print("[INIT] 节点初始化完成")
-
-func _deferred_setup() -> void:
-	"""延迟的 UI 设置"""
-	var separator = "============================================================"
-	print("\n" + separator)
-	print("[DEFERRED] _deferred_setup 开始 | 时间: %d ms" % [Time.get_ticks_msec()])
-	print(separator)
-
-	# 禁用所有可能导致错误的函数调用
-	print("[DEFERRED] 跳过 setup_ui()、connect_signals()、apply_theme()")
-	print("[DEFERRED] 只执行诊断，不执行任何可能失败的操作")
-
-	print(separator)
-	print("[DEFERRED] _deferred_setup 完成 | 时间: %d ms" % [Time.get_ticks_msec()])
-	print(separator + "\n")
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
