@@ -32,25 +32,6 @@ func _ready() -> void:
 			enemy.connect("enemy_died", Callable(self, "_on_enemy_died").bindv([enemy]))
 			print("GameManager: 已连接 Enemy 信号")
 
-func _input(event: InputEvent) -> void:
-	"""处理用户输入 - 用于测试"""
-	if event is InputEventKey and event.pressed:
-		# 测试：按 P 键让 player 受伤
-		if event.keycode == KEY_P:
-			if player:
-				player.take_damage(10)
-		
-		# 测试：按 H 键让 player 治疗
-		elif event.keycode == KEY_H:
-			if player:
-				player.heal(20)
-		
-		# 测试：按 E 键让所有敌人受伤
-		elif event.keycode == KEY_E:
-			for enemy in enemies:
-				if is_instance_valid(enemy) and enemy is Enemy:
-					enemy.take_damage(20)
-
 func _on_player_health_changed(health: int) -> void:
 	"""玩家血量改变时"""
 	print("GameManager: 玩家血量更新 -> %d" % health)
