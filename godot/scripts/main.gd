@@ -7,6 +7,12 @@ var game_manager: GameManager
 var player: Player
 var enemies: Array = []
 
+# 防止连续触发的标志
+var last_p_press_time = 0.0
+var last_h_press_time = 0.0
+var last_e_press_time = 0.0
+var key_cooldown = 0.3  # 0.3秒的冷却时间
+
 func _ready() -> void:
 	"""
 	当场景准备好时调用一次
@@ -32,66 +38,58 @@ func _ready() -> void:
 	enemies = get_tree().get_nodes_in_group("enemies")
 	
 	print("Main: Player 和 Enemy 引用已获取")
-	print("Main: _input 函数已准备好接收输入")
+	print("Main: 开始接收输入...")
 
 
 func _process(delta: float) -> void:
 	"""
 	每一帧调用一次
-	使用轮询方式检查按键状态（备用方案）
+	使用轮询方式检查按键状态
 	"""
-	# 使用 Input 类轮询按键状态
+	var current_time = Time.get_ticks_msec() / 1000.0
+	
+	# 检查 P 键
 	if Input.is_key_pressed(KEY_P):
-		if player:
-			print("Main (_process): 检测到 P 键，触发 Player 受伤")
-			player.take_damage(10)
-			await get_tree().create_timer(0.2).timeout  # 防止连续触发
+		if current_time - last_p_press_time > key_cooldown:
+			if player:
+				print("✓ 检测到 P 键，Player 受伤")
+				player.take_damage(10)
+				last_p_press_time = current_time
 	
+	# 检查 H 键
 	if Input.is_key_pressed(KEY_H):
-		if player:
-			print("Main (_process): 检测到 H 键，触发 Player 治疗")
-			player.heal(20)
-			await get_tree().create_timer(0.2).timeout
+		if current_time - last_h_press_time > key_cooldown:
+			if player:
+				print("✓ 检测到 H 键，Player 治疗")
+				player.heal(20)
+				last_h_press_time = current_time
 	
+	# 检查 E 键
 	if Input.is_key_pressed(KEY_E):
-		print("Main (_process): 检测到 E 键，触发所有 Enemy 受伤")
-		for enemy in enemies:
-			if is_instance_valid(enemy) and enemy is Enemy:
-				enemy.take_damage(20)
-		await get_tree().create_timer(0.2).timeout
+		if current_time - last_e_press_time > key_cooldown:
+			print("✓ 检测到 E 键，所有 Enemy 受伤")
+			for enemy in enemies:
+				if is_instance_valid(enemy) and enemy is Enemy:
+					enemy.take_damage(20)
+			last_e_press_time = current_time
+	
+	# 检查 ESC 键
+	if Input.is_key_pressed(KEY_ESCAPE):
+		print("按下 ESC，退出游戏")
+		get_tree().quit()
 
 
 func _input(event: InputEvent) -> void:
 	"""
-	处理用户输入 - 测试信号系统
+	处理用户输入事件（备用方案）
 	"""
-	if event is InputEventKey:
-		print("Main _input: 检测到按键事件，keycode=%d, pressed=%s" % [event.keycode, event.pressed])
-		
-		if event.pressed:
-			if event.keycode == KEY_ESCAPE:
-				print("按下 ESC，退出游戏")
-				get_tree().quit()
-			
-			# 按 P 键让 player 受伤
-			elif event.keycode == KEY_P:
-				if player:
-					print("Main _input: 触发 Player 受伤")
-					player.take_damage(10)
-				else:
-					print("Main _input: 警告 - Player 为空")
-			
-			# 按 H 键让 player 治疗
-			elif event.keycode == KEY_H:
-				if player:
-					print("Main _input: 触发 Player 治疗")
-					player.heal(20)
-				else:
-					print("Main _input: 警告 - Player 为空")
-			
-			# 按 E 键让所有敌人受伤
-			elif event.keycode == KEY_E:
-				print("Main _input: 触发所有 Enemy 受伤，敌人数量=%d" % enemies.size())
-				for enemy in enemies:
-					if is_instance_valid(enemy) and enemy is Enemy:
-						enemy.take_damage(20)
+	if event is InputEventKey and event.pressed:
+		if event.keycode == KEY_P:
+			print("📥 _input 方式检测到 P 键")
+		elif event.keycode == KEY_H:
+			print("📥 _input 方式检测到 H 键")
+		elif event.keycode == KEY_E:
+			print("📥 _input 方式检测到 E 键")
+		elif event.keycode == KEY_ESCAPE:
+			print("按下 ESC，退出游戏")
+			get_tree().quit()
