@@ -27,10 +27,51 @@ signal player_action(action: String)
 func _ready() -> void:
 	print("========== GameUI 初始化 ==========")
 	super()
+	
+	# 尝试手动初始化任何失败的 @onready 变量
+	_initialize_missing_nodes()
+	
 	setup_ui()
 	connect_signals()
 	apply_theme()
 	print("========== GameUI 初始化完成 ==========")
+
+func _initialize_missing_nodes() -> void:
+	"""初始化任何失败的 @onready 节点 - 防护性编程"""
+	if not player_hand_display:
+		player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
+		print("⚠ player_hand_display 从 @onready 重新获取: %s" % ("成功" if player_hand_display else "失败"))
+	
+	if not opponent_hand_display:
+		opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
+		print("⚠ opponent_hand_display 从 @onready 重新获取: %s" % ("成功" if opponent_hand_display else "失败"))
+	
+	if not player_stats:
+		player_stats = get_node_or_null("InfoPanel/PlayerStats")
+		print("⚠ player_stats 从 @onready 重新获取: %s" % ("成功" if player_stats else "失败"))
+	
+	if not game_log:
+		game_log = get_node_or_null("InfoPanel/GameLog")
+		print("⚠ game_log 从 @onready 重新获取: %s" % ("成功" if game_log else "失败"))
+	
+	if not game_info:
+		game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
+		print("⚠ game_info 从 @onready 重新获取: %s" % ("成功" if game_info else "失败"))
+	
+	if not discard_pile:
+		discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
+		print("⚠ discard_pile 从 @onready 重新获取: %s" % ("成功" if discard_pile else "失败"))
+	
+	if not hu_button:
+		hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
+	if not ting_button:
+		ting_button = get_node_or_null("GameLayer/ActionPanel/TingButton")
+	if not peng_button:
+		peng_button = get_node_or_null("GameLayer/ActionPanel/PengButton")
+	if not pass_button:
+		pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
+	if not quit_button:
+		quit_button = get_node_or_null("InfoPanel/QuitButton")
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
