@@ -633,8 +633,8 @@ func test_week7_network() -> void:
 	# 测试4：测试服务器统计
 	print("\n--- 测试4：测试服务器统计 ---")
 	print("✓ 游戏服务器状态:")
-	print("  房间数: %d" % server.get_room_count())
-	print("  已创建房间总数: %d" % server.get_total_rooms_created())
+	print("  房间数: %d" % server.rooms.size())
+	print("  已创建房间总数: %d" % server.total_rooms_created)
 	await get_tree().create_timer(0.2).timeout
 
 	print("\n" + separator)
