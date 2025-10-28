@@ -407,9 +407,7 @@ func test_week5_hu_algorithm() -> void:
 	# 测试1：基本胡牌
 	print("\n--- 测试1：基本胡牌 ---")
 	var hand1 = CardHand.new()
-
-	# 构造一个能胡的手牌
-	# 胡牌：万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9
+	# 基本胡牌：万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9条9 (共14张)
 	hand1.add_card(CardData.new(0, 1))
 	hand1.add_card(CardData.new(0, 1))
 	hand1.add_card(CardData.new(0, 2))
@@ -423,8 +421,9 @@ func test_week5_hu_algorithm() -> void:
 	hand1.add_card(CardData.new(2, 8))
 	hand1.add_card(CardData.new(2, 9))
 	hand1.add_card(CardData.new(2, 9))
+	hand1.add_card(CardData.new(2, 9))
 
-	print("手牌: 万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9")
+	print("手牌: 万1万1 万2万3万4 筒5筒5筒5 条6条7条8 条9条9条9")
 	var result1 = WinChecker.check_win(hand1)
 	if result1.can_win:
 		print("✓ 能胡牌！")
@@ -439,7 +438,7 @@ func test_week5_hu_algorithm() -> void:
 	# 测试2：全刻
 	print("\n--- 测试2：全刻胡牌 ---")
 	var hand2 = CardHand.new()
-	# 全刻：万1万1万1 万2万2万2 筒3筒3筒3 条4条4条4 条5条5
+	# 全刻：万1万1万1 万2万2万2 筒3筒3筒3 条4条4条4 条5条5 (共14张)
 	for i in range(3):
 		hand2.add_card(CardData.new(0, 1))
 	for i in range(3):
@@ -466,22 +465,20 @@ func test_week5_hu_algorithm() -> void:
 	# 测试3：清一色
 	print("\n--- 测试3：清一色胡牌 ---")
 	var hand3 = CardHand.new()
-	# 清一色（只有万牌）：万1万1 万2万3万4 万5万5万5 万6万7万8 万9万9
-	hand3.add_card(CardData.new(0, 1))
-	hand3.add_card(CardData.new(0, 1))
+	# 清一色（只有万牌）：万1万1万1 万2万3万4 万5万6万7 万8万9万9万9 (共14张)
+	for i in range(3):
+		hand3.add_card(CardData.new(0, 1))
 	hand3.add_card(CardData.new(0, 2))
 	hand3.add_card(CardData.new(0, 3))
 	hand3.add_card(CardData.new(0, 4))
 	hand3.add_card(CardData.new(0, 5))
-	hand3.add_card(CardData.new(0, 5))
-	hand3.add_card(CardData.new(0, 5))
 	hand3.add_card(CardData.new(0, 6))
 	hand3.add_card(CardData.new(0, 7))
 	hand3.add_card(CardData.new(0, 8))
-	hand3.add_card(CardData.new(0, 9))
-	hand3.add_card(CardData.new(0, 9))
+	for i in range(3):
+		hand3.add_card(CardData.new(0, 9))
 
-	print("手牌: 万1万1 万2万3万4 万5万5万5 万6万7万8 万9万9")
+	print("手牌: 万1万1万1 万2万3万4 万5万6万7 万8万9万9万9")
 	var result3 = WinChecker.check_win(hand3)
 	if result3.can_win:
 		print("✓ 能胡牌！（清一色）")
