@@ -107,49 +107,51 @@ func _deferred_setup() -> void:
 	print(separator + "\n")
 
 func setup_ui() -> void:
-	"""设置UI初始状态 - 最安全的版本"""
+	"""设置UI初始状态 - 绝对安全版本"""
 	print("[SETUP] 开始设置 UI")
 
-	# 验证所有UI组件已初始化
+	# 首先验证所有UI组件
 	if not _verify_ui_components():
-		print("[SETUP] ⚠ 部分UI组件初始化失败，跳过 setup_ui")
+		print("[SETUP] ⚠ 关键组件缺失，放弃 setup_ui")
 		return
 
-	# 设置初始文本 - 最保守的方法
-	try_set_text(player_stats, "等待游戏开始...")
-	try_set_text(game_log, "")
-	try_set_text(game_info, "游戏信息")
+	# 只有在所有变量都非 nil 的情况下才继续
+	if player_stats == null or player_stats == nil:
+		print("[SETUP] ⚠ player_stats 仍为 nil，放弃")
+		return
+
+	if game_log == null or game_log == nil:
+		print("[SETUP] ⚠ game_log 仍为 nil，放弃")
+		return
+
+	if game_info == null or game_info == nil:
+		print("[SETUP] ⚠ game_info 仍为 nil，放弃")
+		return
+
+	# 现在安全地设置文本
+	print("[SETUP] 设置 player_stats 文本")
+	player_stats.text = "等待游戏开始..."
+
+	print("[SETUP] 设置 game_log 文本")
+	game_log.text = ""
+
+	print("[SETUP] 设置 game_info 文本")
+	game_info.text = "游戏信息"
 
 	print("[SETUP] UI 设置完成")
 
 func try_set_text(node: Control, text: String) -> void:
-	"""安全地设置文本，捕获所有可能的错误"""
+	"""安全地设置文本 - 已废弃，使用 setup_ui 中的直接代码"""
+	# 此函数已被安全的直接代码替代
 	if not node:
 		print("[SETUP] ⚠ 节点为 nil，跳过")
 		return
 
-	if node == null:
-		print("[SETUP] ⚠ 节点明确为 null，跳过")
+	if not node.has_meta("text"):
+		print("[SETUP] ⚠ 节点没有 text 属性")
 		return
 
-	var node_name = node.name if node else "unknown"
-	print("[SETUP] 尝试设置 %s 的文本为: %s" % [node_name, text])
-
-	# 使用 get_property_list 来验证属性
-	var props = node.get_property_list()
-	var has_text = false
-	for prop in props:
-		if prop.name == "text":
-			has_text = true
-			break
-
-	if not has_text:
-		print("[SETUP] ⚠ 节点 %s 没有 text 属性" % node_name)
-		return
-
-	# 最后才尝试赋值
 	node.text = text
-	print("[SETUP] ✓ %s 的文本已设置" % node_name)
 
 func _verify_ui_components() -> bool:
 	"""验证所有UI组件是否正确初始化"""
@@ -223,51 +225,66 @@ func apply_theme() -> void:
 	if pass_button:
 		pass_button.modulate = Color(0x95A5A6FF)
 
+func add_log_message(message: String) -> void:
+	"""添加日志消息 - 绝对安全版本"""
+	print("[LOG] %s" % message)
+	
+	# 最严格的 nil 检查
+	if game_log == null:
+		print("[WARN] game_log 为 null，无法添加日志")
+		return
+	
+	if game_log == nil:
+		print("[WARN] game_log 为 nil，无法添加日志")
+		return
+	
+	# 验证对象仍然有效
+	if not is_instance_valid(game_log):
+		print("[WARN] game_log 对象无效，无法添加日志")
+		return
+
+	# 在赋值之前再次检查
+	if not game_log:
+		print("[WARN] game_log 不存在，无法添加日志")
+		return
+	
+	# 只有现在才安全地赋值
+	var timestamp = Time.get_ticks_msec() / 1000.0
+	var formatted_msg = "[%.1f] %s\n" % [timestamp, message]
+	
+	# 使用 call_deferred 延迟赋值，确保游戏逻辑不会中断
+	call_deferred("_safe_set_log_text", formatted_msg)
+
+func _safe_set_log_text(text: String) -> void:
+	"""安全地设置日志文本 - 延迟版本"""
+	if game_log and is_instance_valid(game_log):
+		game_log.text += text
+		if game_log.get_line_count() > 0:
+			game_log.scroll_to_line(game_log.get_line_count() - 1)
+	else:
+		print("[WARN] 无法写入日志（对象无效）")
+
 func display_hand(hand: CardHand) -> void:
 	"""显示玩家手牌"""
 	current_hand = hand
-	if player_hand_display:
+	
+	if player_hand_display and is_instance_valid(player_hand_display):
 		player_hand_display.set_hand(hand)
+	
 	update_player_stats()
-	if game_log:
+	
+	# 安全地记录日志
+	if game_log and is_instance_valid(game_log):
 		add_log_message("显示手牌: %d张" % hand.get_card_count())
 	else:
-		print("日志系统未初始化，跳过日志记录")
-
-func add_log_message(message: String) -> void:
-	"""添加日志消息 - 安全版本"""
-	print("[TRACE] add_log_message 被调用: %s" % message)
-
-	if not game_log:
-		print("[WARN] game_log 为 nil，无法添加日志: %s" % message)
-		return
-
-	# 分步调试每个操作
-	var timestamp = Time.get_ticks_msec() / 1000
-	var formatted_msg = "[%.1f] %s" % [timestamp, message]
-
-	print("[TRACE] 准备写入日志: %s" % formatted_msg)
-
-	# 验证游戏日志有必要的属性
-	if not game_log.has_property("text"):
-		print("[ERROR] game_log 没有 text 属性")
-		return
-
-	# 添加文本
-	game_log.text += formatted_msg + "\n"
-	print("[TRACE] 日志文本已添加")
-
-	# 滚动到底部
-	if game_log.get_line_count() > 0:
-		game_log.scroll_to_line(game_log.get_line_count() - 1)
-		print("[TRACE] 已滚动到日志底部")
+		print("[INFO] 日志系统未初始化，跳过日志记录")
 
 func update_player_stats() -> void:
 	"""更新玩家统计信息"""
 	print("[TRACE] update_player_stats 被调用")
 
-	if not player_stats:
-		print("[WARN] player_stats 为 nil")
+	if not player_stats or not is_instance_valid(player_stats):
+		print("[WARN] player_stats 为 nil 或无效")
 		return
 
 	if not current_hand:
@@ -277,19 +294,24 @@ func update_player_stats() -> void:
 	var card_count = current_hand.get_card_count()
 	var selected_card = ""
 
-	if player_hand_display and player_hand_display.get_selected_card():
-		selected_card = " | 选中: " + player_hand_display.get_selected_card().get_card_name()
+	if player_hand_display and is_instance_valid(player_hand_display):
+		var selected = player_hand_display.get_selected_card()
+		if selected:
+			selected_card = " | 选中: " + selected.get_card_name()
 
 	var stats_text = "手牌数: %d%s" % [card_count, selected_card]
 	print("[TRACE] 准备设置玩家统计: %s" % stats_text)
 
-	# 验证有text属性
-	if not player_stats.has_property("text"):
-		print("[ERROR] player_stats 没有 text 属性")
-		return
+	# 使用 call_deferred 延迟赋值
+	call_deferred("_safe_set_player_stats", stats_text)
 
-	player_stats.text = stats_text
-	print("[TRACE] 玩家统计已设置")
+func _safe_set_player_stats(text: String) -> void:
+	"""安全地设置玩家统计 - 延迟版本"""
+	if player_stats and is_instance_valid(player_stats):
+		player_stats.text = text
+		print("[TRACE] 玩家统计已设置")
+	else:
+		print("[WARN] 无法设置玩家统计（对象无效）")
 
 func _on_card_pressed(card: CardData) -> void:
 	"""处理卡牌被按下"""
