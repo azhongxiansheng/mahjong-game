@@ -64,8 +64,16 @@ func create_card_display() -> void:
 		var card_style = StyleBoxFlat.new()
 		card_style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
 		card_style.border_color = Color(0.3, 0.2, 0.1, 1.0)  # 深色边框
-		card_style.set_border_width(2, 2, 2, 2)  # 左上右下
-		card_style.set_corner_radius(3, 3, 3, 3)  # 四个角
+		# 设置四条边的宽度
+		card_style.border_width_left = 2
+		card_style.border_width_top = 2
+		card_style.border_width_right = 2
+		card_style.border_width_bottom = 2
+		# 设置四个圆角
+		card_style.corner_radius_top_left = 3
+		card_style.corner_radius_top_right = 3
+		card_style.corner_radius_bottom_right = 3
+		card_style.corner_radius_bottom_left = 3
 		card_container.add_theme_stylebox_override("panel", card_style)
 
 		# 设置卡牌大小和位置
@@ -163,8 +171,14 @@ func select_card(index: int, card_container: Panel) -> void:
 			var old_style = StyleBoxFlat.new()
 			old_style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
 			old_style.border_color = Color(0.3, 0.2, 0.1, 1.0)
-			old_style.set_border_width(2, 2, 2, 2)
-			old_style.set_corner_radius(3, 3, 3, 3)
+			old_style.border_width_left = 2
+			old_style.border_width_top = 2
+			old_style.border_width_right = 2
+			old_style.border_width_bottom = 2
+			old_style.corner_radius_top_left = 3
+			old_style.corner_radius_top_right = 3
+			old_style.corner_radius_bottom_right = 3
+			old_style.corner_radius_bottom_left = 3
 			cards[selected_card_index].add_theme_stylebox_override("panel", old_style)
 
 		# 选中新卡
@@ -172,8 +186,14 @@ func select_card(index: int, card_container: Panel) -> void:
 		var new_style = StyleBoxFlat.new()
 		new_style.bg_color = Color(1.0, 0.95, 0.5, 1.0)  # 高亮黄色
 		new_style.border_color = Color(1.0, 0.8, 0.0, 1.0)  # 金色边框
-		new_style.set_border_width(3, 3, 3, 3)
-		new_style.set_corner_radius(3, 3, 3, 3)
+		new_style.border_width_left = 3
+		new_style.border_width_top = 3
+		new_style.border_width_right = 3
+		new_style.border_width_bottom = 3
+		new_style.corner_radius_top_left = 3
+		new_style.corner_radius_top_right = 3
+		new_style.corner_radius_bottom_right = 3
+		new_style.corner_radius_bottom_left = 3
 		card_container.add_theme_stylebox_override("panel", new_style)
 		print("✓ 选中卡牌: ", index)
 
@@ -202,7 +222,13 @@ func _on_cancel_pressed() -> void:
 		var style = StyleBoxFlat.new()
 		style.bg_color = Color(0.85, 0.8, 0.7, 1.0)  # 象牙色
 		style.border_color = Color(0.3, 0.2, 0.1, 1.0)
-		style.set_border_width(2, 2, 2, 2)
-		style.set_corner_radius(3, 3, 3, 3)
+		style.border_width_left = 2
+		style.border_width_top = 2
+		style.border_width_right = 2
+		style.border_width_bottom = 2
+		style.corner_radius_top_left = 3
+		style.corner_radius_top_right = 3
+		style.corner_radius_bottom_right = 3
+		style.corner_radius_bottom_left = 3
 		cards[selected_card_index].add_theme_stylebox_override("panel", style)
 	selected_card_index = -1

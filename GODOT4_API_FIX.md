@@ -27,7 +27,7 @@ style.set_corner_radius_all(3)              # ❌ 不存在
 
 ## ✅ 正确的方法（Godot 4.x）
 
-### 方法1: 使用属性直接赋值
+### 方法：使用属性直接赋值
 
 ```gdscript
 var style = StyleBoxFlat.new()
@@ -38,12 +38,24 @@ style.bg_color = Color(0.85, 0.8, 0.7, 1.0)
 # 边框颜色（直接设置属性）
 style.border_color = Color(0.3, 0.2, 0.1, 1.0)
 
-# 边框宽度（四个参数：左、上、右、下）
-style.set_border_width(2, 2, 2, 2)
+# 边框宽度（分别设置四条边）
+style.border_width_left = 2
+style.border_width_top = 2
+style.border_width_right = 2
+style.border_width_bottom = 2
 
-# 圆角（四个参数：左上、右上、右下、左下）
-style.set_corner_radius(3, 3, 3, 3)
+# 圆角（分别设置四个角）
+style.corner_radius_top_left = 3
+style.corner_radius_top_right = 3
+style.corner_radius_bottom_right = 3
+style.corner_radius_bottom_left = 3
 ```
+
+### 为什么要这样做？
+
+在Godot 4.x中，`set_border_width()`和`set_corner_radius()`方法的API改变了：
+- ❌ 旧用法：`set_border_width(2, 2, 2, 2)` 接收4个参数
+- ✅ 新用法：直接设置属性 `border_width_left = 2` 等
 
 ### 方法2: 分别设置四条边
 
@@ -55,9 +67,6 @@ style.border_width_left = 2
 style.border_width_top = 2
 style.border_width_right = 2
 style.border_width_bottom = 2
-
-# 或者使用内置方法
-style.set_border_width(2, 2, 2, 2)
 ```
 
 ### 方法3: 分别设置四个圆角
@@ -70,9 +79,6 @@ style.corner_radius_top_left = 3
 style.corner_radius_top_right = 3
 style.corner_radius_bottom_right = 3
 style.corner_radius_bottom_left = 3
-
-# 或者使用内置方法
-style.set_corner_radius(3, 3, 3, 3)
 ```
 
 ---
@@ -145,8 +151,14 @@ func create_card_style() -> StyleBoxFlat:
 var card_style = StyleBoxFlat.new()
 card_style.bg_color = Color(0.85, 0.8, 0.7, 1.0)      # 象牙色
 card_style.border_color = Color(0.3, 0.2, 0.1, 1.0)   # 深棕色
-card_style.set_border_width(2, 2, 2, 2)               # 2像素边框
-card_style.set_corner_radius(3, 3, 3, 3)              # 3像素圆角
+card_style.border_width_left = 2
+card_style.border_width_top = 2
+card_style.border_width_right = 2
+card_style.border_width_bottom = 2
+card_style.corner_radius_top_left = 3
+card_style.corner_radius_top_right = 3
+card_style.corner_radius_bottom_right = 3
+card_style.corner_radius_bottom_left = 3
 ```
 
 ### 示例2: 高亮选中样式
@@ -156,8 +168,14 @@ card_style.set_corner_radius(3, 3, 3, 3)              # 3像素圆角
 var highlight_style = StyleBoxFlat.new()
 highlight_style.bg_color = Color(1.0, 0.95, 0.5, 1.0)     # 高亮黄色
 highlight_style.border_color = Color(1.0, 0.8, 0.0, 1.0)  # 金色
-highlight_style.set_border_width(3, 3, 3, 3)               # 3像素边框
-highlight_style.set_corner_radius(3, 3, 3, 3)              # 3像素圆角
+highlight_style.border_width_left = 3
+highlight_style.border_width_top = 3
+highlight_style.border_width_right = 3
+highlight_style.border_width_bottom = 3
+highlight_style.corner_radius_top_left = 3
+highlight_style.corner_radius_top_right = 3
+highlight_style.corner_radius_bottom_right = 3
+highlight_style.corner_radius_bottom_left = 3
 ```
 
 ### 示例3: 按钮样式
@@ -167,8 +185,14 @@ highlight_style.set_corner_radius(3, 3, 3, 3)              # 3像素圆角
 var button_style = StyleBoxFlat.new()
 button_style.bg_color = Color(0.2, 0.5, 0.8, 1.0)     # 蓝色
 button_style.border_color = Color(0.1, 0.3, 0.5, 1.0) # 深蓝色
-button_style.set_border_width(1, 1, 1, 1)             # 1像素边框
-button_style.set_corner_radius(5, 5, 5, 5)            # 5像素圆角
+button_style.border_width_left = 1
+button_style.border_width_top = 1
+button_style.border_width_right = 1
+button_style.border_width_bottom = 1
+button_style.corner_radius_top_left = 5
+button_style.corner_radius_top_right = 5
+button_style.corner_radius_bottom_right = 5
+button_style.corner_radius_bottom_left = 5
 ```
 
 ---
