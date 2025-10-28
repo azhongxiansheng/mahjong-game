@@ -135,9 +135,12 @@ func test_card_system() -> void:
 
 	# 查找卡牌
 	print("--- 查找卡牌 ---")
-	var found = hand.find_card(CardData.Suit.WAN, 2)
+	print("尝试查找 万花色 2号卡牌...")
+	var found = hand.find_card(int(CardData.Suit.WAN), 2)
 	if found:
-		print("找到卡牌: %s" % found.get_name())
+		print("✓ 找到卡牌: %s" % found.get_card_name())
+	else:
+		print("✗ 未找到卡牌")
 	await get_tree().create_timer(0.5).timeout
 
 	# 获取同花色卡牌
