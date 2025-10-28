@@ -17,7 +17,7 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 		return result
 
 	# 获取要检查的牌
-	var cards_to_check: Array[CardData] = []
+	var cards_to_check: Array[CardData] = [] as Array[CardData]
 	if drawn_card:
 		cards_to_check = hand.cards.duplicate()
 		cards_to_check.append(drawn_card)

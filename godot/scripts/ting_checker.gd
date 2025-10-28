@@ -15,7 +15,7 @@ static func check_ting(hand: CardHand) -> TingResult:
 		return result
 	
 	# 尝试检测每张可能的牌
-	var ting_cards_found: Array[CardData] = []
+	var ting_cards_found: Array[CardData] = [] as Array[CardData]
 	
 	# 检查特定牌（只需检查已有的花色）
 	var suits_to_check = _get_relevant_suits(hand)

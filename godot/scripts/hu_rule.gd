@@ -34,7 +34,7 @@ static func calculate_fan(win_result: WinResult, hand: CardHand) -> int:
 	var total_fan = Fan.FAN_1  # 基本胡1番
 
 	# 获取所有牌（包括眼睛）
-	var all_cards: Array[CardData] = []
+	var all_cards: Array[CardData] = [] as Array[CardData]
 	for card in hand.cards:
 		all_cards.append(card)
 	if win_result.eye_card:

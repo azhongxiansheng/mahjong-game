@@ -75,7 +75,7 @@ func _decide_normal() -> CardData:
 	普通AI - 弃老打新
 	优先出1和9，保留中间牌
 	"""
-	var candidate_cards: Array[CardData] = []
+	var candidate_cards: Array[CardData] = [] as Array[CardData]
 	
 	# 收集老头牌（1和9）
 	for card in hand.cards:
