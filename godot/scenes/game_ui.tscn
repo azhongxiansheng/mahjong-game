@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://caqispqreye63"]
 
 [ext_resource type="Script" uid="uid://brlr7p03ww5ig" path="res://scripts/game_ui.gd" id="1_yubou"]
-[ext_resource type="PackedScene" uid="uid://cq04ru3msolx" path="res://scenes/card_tile.tscn" id="2_hand_display"]
+[ext_resource type="Script" path="res://scripts/hand_display.gd" id="2_hand_display"]
 
 [node name="GameUI" type="Control"]
 layout_mode = 3
@@ -37,6 +37,7 @@ offset_left = 20.0
 offset_top = 20.0
 offset_right = 1180.0
 offset_bottom = 100.0
+script = ExtResource("2_hand_display")
 
 [node name="GameCenter" type="Control" parent="GameLayer/TableArea"]
 layout_mode = 1
@@ -72,6 +73,7 @@ offset_left = 20.0
 offset_top = 250.0
 offset_right = 1180.0
 offset_bottom = 330.0
+script = ExtResource("2_hand_display")
 
 [node name="ActionPanel" type="Control" parent="GameLayer"]
 layout_mode = 0
