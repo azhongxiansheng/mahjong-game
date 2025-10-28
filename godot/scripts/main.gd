@@ -4,10 +4,14 @@ extends Node
 var game_ui: GameUI
 var game_tester: GameTester
 var game_flow: GameFlow
+var object_pool: ObjectPool  # ✓ 添加对象池引用
 
 func _ready() -> void:
 	print("\n========== 游戏启动 ==========\n")
 
+	# ✓ 初始化对象池（需要在其他初始化前）
+	initialize_object_pool()
+	
 	# 初始化游戏UI
 	initialize_game_ui()
 
@@ -16,6 +20,13 @@ func _ready() -> void:
 
 	# 启动测试
 	call_deferred("start_test")
+
+func initialize_object_pool() -> void:
+	"""初始化对象池"""
+	object_pool = ObjectPool.new()
+	# ✓ 将对象池的父节点添加到场景树
+	add_child(object_pool.pool_parent)
+	print("✓ 对象池已初始化")
 
 func initialize_game_ui() -> void:
 	"""初始化游戏UI"""
@@ -39,7 +50,6 @@ func initialize_game_flow() -> void:
 	"""初始化游戏流程"""
 	game_flow = GameFlow.new()
 	add_child(game_flow)
-	game_flow._ready()
 
 	print("✓ 游戏流程已初始化")
 

@@ -1,0 +1,28 @@
+# 统一行尾符为 LF（Unix 风格）
+* text=auto
+
+# GDScript 和 Godot 文件
+*.gd text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.gdshader text eol=lf
+
+# 文档和配置文件
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.xml text eol=lf
+*.toml text eol=lf
+
+# 二进制文件（不转换）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.exe binary
+*.dll binary
+*.so binary

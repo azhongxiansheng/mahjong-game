@@ -19,22 +19,46 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	custom_minimum_size = Vector2(80, 120)
+	size = Vector2(80, 120)  # 强制设置大小
 
 	# 设置默认样式
 	modulate = Color.WHITE
+	visible = true  # 确保可见
+	z_index = 10  # 提高层级
+	
+	print("[CardTile] _ready完成, 位置:", position, " 大小:", size, " 可见:", visible)
+	
+	# 如果已经设置了卡牌数据，更新显示
+	if card_data:
+		update_display()
 
 func set_card(card: CardData) -> void:
 	"""设置卡牌数据并更新显示"""
 	card_data = card
-	update_display()
+	# 只有在节点准备好之后才更新显示
+	if is_node_ready():
+		update_display()
+	else:
+		# 如果还没准备好,等待下一帧再更新
+		await ready
+		update_display()
 
 func update_display() -> void:
 	"""更新卡牌显示内容"""
 	if not card_data:
+		print("[CardTile] update_display: 没有card_data")
 		return
+	
+	# 安全检查:确俟label节点存在
+	if card_label == null or suit_label == null:
+		print("[CardTile] update_display: label为null")
+		return
+	
 	card_label.text = str(card_data.number)
 	suit_label.text = _get_suit_name(card_data.suit)
 	modulate = _get_suit_color(card_data.suit)
+	
+	print("[CardTile] 更新显示: ", card_data.get_card_name(), " 文本:", card_label.text, "/", suit_label.text)
 
 func _get_suit_name(suit: int) -> String:
 	"""根据花色返回花色名称"""

@@ -26,26 +26,26 @@ signal player_action(action: String)
 
 func _ready() -> void:
 	print("\n========== GameUI 初始化 ==========")
-	
+
 	super()
 	_initialize_missing_nodes()
 	call_deferred("_deferred_setup")
-	
+
 	print("========== GameUI 初始化完成 ==========\n")
 
 func _deferred_setup() -> void:
 	"""延迟的 UI 设置"""
 	print("[DEFERRED] 开始延迟 UI 设置")
-	
+
 	setup_ui()
 	connect_signals()
 	apply_theme()
-	
+
 	print("[DEFERRED] UI 设置完成")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点"""
-	
+
 	if not _player_hand_display:
 		_player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
 
