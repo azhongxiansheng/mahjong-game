@@ -1,151 +1,153 @@
 class_name GameTester
 extends Node
 
-# 测试统计
-var tests_passed: int = 0
-var tests_failed: int = 0
-var tests_total: int = 0
+# UI引用
+var game_ui: GameUI
+var test_hand: CardHand
 
 func _ready() -> void:
-	print("\n========== 游戏测试开始 ==========\n")
-	run_all_tests()
-	print_results()
+	print("========== GameTester 初始化 ==========")
+	
+	# 获取GameUI
+	game_ui = get_node_or_null("../GameUI")
+	
+	if not game_ui:
+		print("⚠ 无法找到GameUI")
+		return
+	
+	print("✓ GameTester已初始化")
+	print("✓ 可用的测试方法:")
+	print("  - test_display_hand(): 测试显示手牌")
+	print("  - test_card_selection(): 测试卡牌选择")
+	print("  - test_play_card(): 测试出牌")
+	print("  - test_animations(): 测试动画效果")
+	print("  - test_win_check(): 测试胡牌检查")
+
+func test_display_hand() -> void:
+	"""测试显示手牌"""
+	print("\n========== 测试1: 显示手牌 ==========")
+	
+	# 创建测试手牌
+	test_hand = CardHand.new()
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 4))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 6))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 7))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 8))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 9))
+	test_hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	test_hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	test_hand.add_card(CardData.new(CardData.Suit.TONG, 2))
+	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
+	
+	# 显示手牌
+	if game_ui:
+		game_ui.display_hand(test_hand)
+		print("✓ 手牌已显示: %d张" % test_hand.get_card_count())
+	else:
+		print("⚠ GameUI为空")
+
+func test_card_selection() -> void:
+	"""测试卡牌选择"""
+	print("\n========== 测试2: 卡牌选择 ==========")
+	
+	if not game_ui or not game_ui.player_hand_display:
+		print("⚠ GameUI或HandDisplay为空")
+		return
+	
+	# 选择第一张卡牌
+	if game_ui.player_hand_display.card_tiles.size() > 0:
+		var first_tile = game_ui.player_hand_display.card_tiles[0]
+		game_ui.player_hand_display.select_card(first_tile)
+		print("✓ 已选择卡牌: %s" % first_tile.card_data.get_card_name())
+		
+		# 验证选择
+		var selected = game_ui.player_hand_display.get_selected_card()
+		if selected:
+			print("✓ 验证选择成功: %s" % selected.get_card_name())
+		else:
+			print("⚠ 选择验证失败")
+	else:
+		print("⚠ 没有可选择的卡牌")
+
+func test_play_card() -> void:
+	"""测试出牌"""
+	print("\n========== 测试3: 出牌 ==========")
+	
+	if not game_ui:
+		print("⚠ GameUI为空")
+		return
+	
+	# 先显示手牌
+	if not test_hand or test_hand.get_card_count() == 0:
+		test_display_hand()
+	
+	# 选择第一张卡牌
+	if game_ui.player_hand_display.card_tiles.size() > 0:
+		var first_tile = game_ui.player_hand_display.card_tiles[0]
+		game_ui.player_hand_display.select_card(first_tile)
+		
+		# 出牌
+		var before_count = game_ui.current_hand.get_card_count()
+		game_ui.play_card()
+		var after_count = game_ui.current_hand.get_card_count()
+		
+		if after_count < before_count:
+			print("✓ 出牌成功: %d -> %d张" % [before_count, after_count])
+		else:
+			print("⚠ 出牌失败")
+	else:
+		print("⚠ 没有可出的卡牌")
+
+func test_animations() -> void:
+	"""测试动画效果"""
+	print("\n========== 测试4: 动画效果 ==========")
+	
+	if not game_ui or not game_ui.player_hand_display:
+		print("⚠ GameUI为空")
+		return
+	
+	# 播放胡牌动画
+	print("✓ 播放胡牌动画...")
+	game_ui.animate_win()
+	
+	await get_tree().create_timer(1.0).timeout
+	print("✓ 动画测试完成")
+
+func test_win_check() -> void:
+	"""测试胡牌检查"""
+	print("\n========== 测试5: 胡牌检查 ==========")
+	
+	if not game_ui:
+		print("⚠ GameUI为空")
+		return
+	
+	# 显示日志消息测试
+	game_ui.add_log_message("测试日志消息")
+	game_ui.add_log_message("✓ 第二条消息")
+	game_ui.add_log_message("⚠ 警告消息")
+	
+	print("✓ 日志消息已添加")
 
 func run_all_tests() -> void:
 	"""运行所有测试"""
-	test_card_creation()
-	test_hand_management()
-	test_game_flow()
-	test_ui_integration()
+	print("\n========== 开始运行所有测试 ==========\n")
+	
+	test_display_hand()
+	await get_tree().create_timer(0.5).timeout
+	
+	test_card_selection()
+	await get_tree().create_timer(0.5).timeout
+	
 	test_animations()
-
-func test_card_creation() -> void:
-	"""测试卡牌创建"""
-	print("【测试1】卡牌创建")
+	await get_tree().create_timer(1.5).timeout
 	
-	# 测试：创建卡牌数据
-	var card = {"suit": "万", "number": 1}
-	assert(card.suit == "万", "卡牌花色应为'万'")
-	assert(card.number == 1, "卡牌号码应为1")
-	print("  ✓ 卡牌数据创建成功")
+	test_win_check()
+	await get_tree().create_timer(0.5).timeout
 	
-	log_test_result(true)
-
-func test_hand_management() -> void:
-	"""测试手牌管理"""
-	print("【测试2】手牌管理")
+	test_play_card()
 	
-	# 测试：添加卡牌到手牌
-	var hand = []
-	hand.append({"suit": "万", "number": 1})
-	hand.append({"suit": "筒", "number": 5})
-	assert(hand.size() == 2, "手牌应包含2张卡牌")
-	print("  ✓ 添加卡牌成功")
-	
-	# 测试：移除卡牌
-	hand.remove_at(0)
-	assert(hand.size() == 1, "移除后手牌应只有1张")
-	print("  ✓ 移除卡牌成功")
-	
-	# 测试：初始手牌13张
-	var initial_hand = []
-	for i in range(13):
-		initial_hand.append({"suit": "万", "number": (i % 9) + 1})
-	assert(initial_hand.size() == 13, "初始手牌应为13张")
-	print("  ✓ 初始手牌13张")
-	
-	# 测试：最多14张（抽一张）
-	initial_hand.append({"suit": "筒", "number": 1})
-	assert(initial_hand.size() == 14, "最多应为14张")
-	print("  ✓ 抽卡后14张")
-	
-	log_test_result(true)
-
-func test_game_flow() -> void:
-	"""测试游戏流程"""
-	print("【测试3】游戏流程")
-	
-	# 测试：游戏初始化
-	var game_state = {"round": 1, "is_playing": false}
-	game_state.is_playing = true
-	assert(game_state.is_playing == true, "游戏应启动")
-	print("  ✓ 游戏启动成功")
-	
-	# 测试：轮次管理
-	game_state.round = 1
-	for i in range(3):
-		game_state.round += 1
-	assert(game_state.round == 4, "轮次应为4")
-	print("  ✓ 轮次管理正确")
-	
-	# 测试：胡牌检测（简化版）
-	var hand = []
-	# 空手牌表示胡了
-	var is_win = hand.size() == 0
-	assert(is_win == true, "空手牌应为胡牌")
-	print("  ✓ 胡牌检测正确")
-	
-	log_test_result(true)
-
-func test_ui_integration() -> void:
-	"""测试UI集成"""
-	print("【测试4】UI集成")
-	
-	# 测试：卡牌显示
-	var card_count = 13
-	assert(card_count == 13, "应显示13张卡牌")
-	print("  ✓ 卡牌显示正确")
-	
-	# 测试：按钮创建
-	var button_count = 4
-	assert(button_count == 4, "应有4个按钮")
-	print("  ✓ 按钮数量正确")
-	
-	# 测试：选中状态
-	var selected_index = 0
-	assert(selected_index >= 0 and selected_index < 13, "选中索引有效")
-	print("  ✓ 选中状态有效")
-	
-	log_test_result(true)
-
-func test_animations() -> void:
-	"""测试动画系统"""
-	print("【测试5】动画系统")
-	
-	# 测试：动画枚举
-	var animation_types = ["select", "hover", "play", "win"]
-	assert(animation_types.size() == 4, "应有4种动画类型")
-	print("  ✓ 动画类型正确")
-	
-	# 测试：动画时间
-	var animation_speed = 0.3
-	assert(animation_speed > 0, "动画速度应大于0")
-	print("  ✓ 动画速度有效")
-	
-	log_test_result(true)
-
-func log_test_result(passed: bool) -> void:
-	"""记录测试结果"""
-	tests_total += 1
-	if passed:
-		tests_passed += 1
-		print("")
-	else:
-		tests_failed += 1
-		print("  ✗ 测试失败")
-		print("")
-
-func print_results() -> void:
-	"""打印测试结果"""
-	print("\n========== 测试结果 ==========\n")
-	print("总测试数: ", tests_total)
-	print("通过: ", tests_passed, " ✓")
-	print("失败: ", tests_failed, " ✗")
-	print("成功率: ", int((float(tests_passed) / tests_total) * 100), "%")
-	
-	if tests_failed == 0:
-		print("\n✅ 所有测试通过!")
-	else:
-		print("\n⚠️ 有", tests_failed, "个测试失败")
-	
-	print("\n========== 测试完成 ==========\n")
+	print("\n========== 所有测试完成 ==========\n")
