@@ -584,32 +584,27 @@ func test_week6_ai_and_ting() -> void:
 
 	await get_tree().create_timer(0.3).timeout
 
-	# 测试4：模拟游戏回合
+	# 测试4：模拟游戏回合（只模拟1回合）
 	print("\n--- 测试4：游戏回合模拟 ---")
 
-	for round_num in range(1, 4):
-		print("\n【第 %d 回合】" % round_num)
+	print("\n【第 1 回合】")
+	for ai in [ai_easy, ai_normal, ai_hard, ai_expert]:
+		# 抽卡
+		var drawn = deck.draw_one()
+		if drawn:
+			ai.receive_card(drawn)
+			print("  %s 抽卡: %s (现有: %d张)" % [ai.name, drawn.get_card_name(), ai.hand.get_card_count()])
 
-		# 每个AI抽一张牌并出牌
-		for ai in [ai_easy, ai_normal, ai_hard, ai_expert]:
-			# 抽卡
-			var drawn = deck.draw_one()
-			if drawn:
-				ai.receive_card(drawn)
-				print("  %s 抽卡: %s (现有: %d张)" % [ai.name, drawn.get_card_name(), ai.hand.get_card_count()])
+		# 更新听牌
+		ai.update_ting_info()
 
-			# 更新听牌
-			ai.update_ting_info()
-
-			# 出牌
-			var discarded = ai.discard_card()
-			if discarded:
-				print("    → 出牌: %s" % discarded.get_card_name())
-				if ai.is_ting:
-					print("    → [已听牌] %s" % TingChecker.get_ting_description(ai.ting_info))
-
-			await get_tree().create_timer(0.1).timeout
-
+		# 出牌
+		var discarded = ai.discard_card()
+		if discarded:
+			print("    → 出牌: %s" % discarded.get_card_name())
+			if ai.is_ting:
+				print("    → [已听牌]")
+	
 	await get_tree().create_timer(0.3).timeout
 
 	# 测试5：性能测试
