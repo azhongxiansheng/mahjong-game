@@ -652,11 +652,12 @@ func test_week7_network() -> void:
 	print("✓ 网络客户端已创建")
 	await get_tree().create_timer(0.2).timeout
 
-	# 测试2：创建游戏室
-	print("\n--- 测试2：创建游戏室 ---")
-	var room = GameRoom.new()
-	room.init(1, 4)
-	print("✓ 游戏室已创建 (房间ID: %d, 最大玩家数: %d)" % [room.get_room_id(), room.get_max_players()])
+	# 测试2：创建游戏服务器和房间
+	print("\n--- 测试2：创建游戏服务器和房间 ---")
+	var server = GameServer.new()
+	var room = server.create_room(4)
+	print("✓ 游戏服务器已创建")
+	print("✓ 游戏室已创建 (房间ID: %s, 最大玩家数: %d)" % [room.get_room_id(), room.get_max_players()])
 	await get_tree().create_timer(0.2).timeout
 
 	# 测试3：测试消息系统
@@ -667,11 +668,11 @@ func test_week7_network() -> void:
 	print("✓ 消息已创建: 类型=%s, 数据=%s" % [msg.type, msg.data])
 	await get_tree().create_timer(0.2).timeout
 
-	# 测试4：测试游戏服务器
-	print("\n--- 测试4：测试游戏服务器 ---")
-	var server = GameServer.new()
-	print("✓ 游戏服务器已创建")
-	print("  服务器状态: 房间数=%d" % server.get_room_count())
+	# 测试4：测试服务器统计
+	print("\n--- 测试4：测试服务器统计 ---")
+	print("✓ 游戏服务器状态:")
+	print("  房间数: %d" % server.get_room_count())
+	print("  已创建房间总数: %d" % server.get_total_rooms_created())
 	await get_tree().create_timer(0.2).timeout
 
 	print("\n" + separator)
