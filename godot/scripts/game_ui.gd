@@ -26,67 +26,42 @@ signal player_action(action: String)
 
 func _ready() -> void:
 	print("\n[DIAGNOSTIC] GameUI._ready() 开始")
-	
+
 	print("[DIAGNOSTIC] 调用 super()")
 	super()
 	print("[DIAGNOSTIC] super() 完成")
-	
+
 	print("[DIAGNOSTIC] 调用 _initialize_missing_nodes()")
 	_initialize_missing_nodes()
 	print("[DIAGNOSTIC] _initialize_missing_nodes() 完成")
-	
+
 	print("[DIAGNOSTIC] GameUI._ready() 完成\n")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 诊断版本"""
 	print("[INIT] 开始初始化节点")
 	
-	if not player_hand_display:
-		print("[INIT] 获取 player_hand_display...")
-		player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
-		print("[INIT] ✓ player_hand_display = %s" % ("有效" if player_hand_display else "nil"))
-
-	if not opponent_hand_display:
-		print("[INIT] 获取 opponent_hand_display...")
-		opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
-		print("[INIT] ✓ opponent_hand_display = %s" % ("有效" if opponent_hand_display else "nil"))
-
-	if not player_stats:
-		print("[INIT] 获取 player_stats...")
-		player_stats = get_node_or_null("InfoPanel/PlayerStats")
-		print("[INIT] ✓ player_stats = %s" % ("有效" if player_stats else "nil"))
-
-	if not game_log:
-		print("[INIT] 获取 game_log...")
-		game_log = get_node_or_null("InfoPanel/GameLog")
-		print("[INIT] ✓ game_log = %s" % ("有效" if game_log else "nil"))
-
-	if not game_info:
-		print("[INIT] 获取 game_info...")
-		game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
-		print("[INIT] ✓ game_info = %s" % ("有效" if game_info else "nil"))
-
-	if not discard_pile:
-		print("[INIT] 获取 discard_pile...")
-		discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
-		print("[INIT] ✓ discard_pile = %s" % ("有效" if discard_pile else "nil"))
-
-	if not hu_button:
-		print("[INIT] 获取 hu_button...")
-		hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
-	if not ting_button:
-		print("[INIT] 获取 ting_button...")
-		ting_button = get_node_or_null("GameLayer/ActionPanel/TingButton")
-	if not peng_button:
-		print("[INIT] 获取 peng_button...")
-		peng_button = get_node_or_null("GameLayer/ActionPanel/PengButton")
-	if not pass_button:
-		print("[INIT] 获取 pass_button...")
-		pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
-	if not quit_button:
-		print("[INIT] 获取 quit_button...")
-		quit_button = get_node_or_null("InfoPanel/QuitButton")
+	# 只执行 get_node_or_null，但不赋值，看是否避免错误
+	print("[INIT] 测试 get_node_or_null 调用...")
+	var test1 = get_node_or_null("GameLayer/TableArea/PlayerHand")
+	print("[INIT] test1 = %s" % ("有效" if test1 else "nil"))
 	
+	var test2 = get_node_or_null("GameLayer/TableArea/OpponentHand")
+	print("[INIT] test2 = %s" % ("有效" if test2 else "nil"))
+	
+	var test3 = get_node_or_null("InfoPanel/PlayerStats")
+	print("[INIT] test3 = %s" % ("有效" if test3 else "nil"))
+	
+	var test4 = get_node_or_null("InfoPanel/GameLog")
+	print("[INIT] test4 = %s" % ("有效" if test4 else "nil"))
+	
+	var test5 = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
+	print("[INIT] test5 = %s" % ("有效" if test5 else "nil"))
+	
+	var test6 = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
+	print("[INIT] test6 = %s" % ("有效" if test6 else "nil"))
+	
+	print("[INIT] get_node_or_null 测试完成 - 如果出现错误，说明问题在这里")
 	print("[INIT] 节点初始化完成")
 
 func _deferred_setup() -> void:
