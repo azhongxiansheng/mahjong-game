@@ -127,19 +127,192 @@ func test_animations() -> void:
 	print("✓ 动画测试完成")
 
 func test_win_check() -> void:
-	"""测试胡牌检查"""
-	print("\n========== 测试5: 胡牌检查 ==========")
+	"""测试胡牌检查 - 完整测试套件"""
+	print("\n========== 胡牌检查完整测试 ==========")
+	print("执行 5 个胡牌检查测试用例...\n")
+	
+	# 测试 1.1: 标准胡牌 (平胡)
+	test_case_1_1_standard_win()
+	
+	# 测试 1.2: 全刻胡牌
+	test_case_1_2_all_pungs_win()
+	
+	# 测试 1.3: 清一色胡牌
+	test_case_1_3_clean_win()
+	
+	# 测试 1.4: 牌数错误 (13张)
+	test_case_1_4_wrong_card_count()
+	
+	# 测试 1.5: 眼不够
+	test_case_1_5_no_eye()
+	
+	print("\n========== 胡牌测试完成 ==========")
 
-	if not game_ui:
-		print("⚠ GameUI为空")
-		return
+func test_case_1_1_standard_win() -> void:
+	"""Test Case 1.1: 标准胡牌 - 平胡"""
+	print("📋 Test Case 1.1: 标准胡牌 (平胡)")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 (顺1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万4 万4 (刻1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	# 筒5 筒5 筒5 (刻2)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	# 条6 条6 条6 (刻3)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	# 字1 字1 (眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	
+	var result = WinChecker.check_win(hand)
+	
+	if result.can_win:
+		print("  ✅ 通过: 可以胡牌")
+		print("  📊 结果: %s" % ("胡牌成功" if result.can_win else "无法胡牌"))
+	else:
+		print("  ❌ 失败: 应该能胡牌但无法识别")
+	
+	print("")
 
-	# 显示日志消息测试
-	game_ui.add_log_message("测试日志消息")
-	game_ui.add_log_message("✓ 第二条消息")
-	game_ui.add_log_message("⚠ 警告消息")
+func test_case_1_2_all_pungs_win() -> void:
+	"""Test Case 1.2: 全刻胡牌"""
+	print("📋 Test Case 1.2: 全刻胡牌")
+	
+	var hand = CardHand.new()
+	# 万1 万1 万1 (刻1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	# 万2 万2 万2 (刻2)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	# 万3 万3 万3 (刻3)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万4 万4 (刻4)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	# 万5 万5 (眼)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	
+	var result = WinChecker.check_win(hand)
+	
+	if result.can_win:
+		print("  ✅ 通过: 全刻胡牌")
+	else:
+		print("  ❌ 失败: 应该能胡牌")
+	
+	print("")
 
-	print("✓ 日志消息已添加")
+func test_case_1_3_clean_win() -> void:
+	"""Test Case 1.3: 清一色胡牌"""
+	print("📋 Test Case 1.3: 清一色胡牌")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 (顺1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万5 万6 (顺2)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	# 万7 万8 万9 (顺3)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 7))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 8))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 9))
+	# 万1 万1 万1 (刻)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	# 万2 万2 (眼)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	
+	var result = WinChecker.check_win(hand)
+	
+	if result.can_win:
+		print("  ✅ 通过: 清一色胡牌")
+	else:
+		print("  ❌ 失败: 应该能胡牌")
+	
+	print("")
+
+func test_case_1_4_wrong_card_count() -> void:
+	"""Test Case 1.4: 牌数错误 (13张 - 应该失败)"""
+	print("📋 Test Case 1.4: 牌数错误 (13张)")
+	
+	var hand = CardHand.new()
+	# 只添加13张牌 (错误)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	
+	var result = WinChecker.check_win(hand)
+	
+	if not result.can_win:
+		print("  ✅ 通过: 正确拒绝 (牌数不对)")
+	else:
+		print("  ❌ 失败: 应该拒绝 (牌数不对)")
+	
+	print("")
+
+func test_case_1_5_no_eye() -> void:
+	"""Test Case 1.5: 眼不够"""
+	print("📋 Test Case 1.5: 眼不够")
+	
+	var hand = CardHand.new()
+	# 万1 万2 万3 (顺1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4 万4 万4 (刻1)
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	# 筒5 筒5 筒5 (刻2)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	# 条6 条6 条6 (刻3)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
+	# 字1 字2 字3 (不是眼)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
+	
+	var result = WinChecker.check_win(hand)
+	
+	if not result.can_win:
+		print("  ✅ 通过: 正确拒绝 (没有眼)")
+	else:
+		print("  ❌ 失败: 应该拒绝 (没有眼)")
+	
+	print("")
 
 func test_discard_pile() -> void:
 	"""测试弃牌堆显示"""
