@@ -25,26 +25,9 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	var separator = "============================================================"
-	print("\n" + separator)
-	print("GameUI._ready() 开始 | 时间: %d ms" % [Time.get_ticks_msec()])
-	print(separator)
-
-	print("[TRACE] 调用 super()")
-	super()
-	print("[TRACE] super() 完成")
-
-	print("[TRACE] 调用 _initialize_missing_nodes()")
-	_initialize_missing_nodes()
-	print("[TRACE] _initialize_missing_nodes() 完成")
-
-	# 延迟 UI 设置到下一帧，完全避免初始化时的问题
-	print("[TRACE] 注册 _deferred_setup 到下一帧")
-	call_deferred("_deferred_setup")
-
-	print(separator)
-	print("GameUI._ready() 完成 | 时间: %d ms" % [Time.get_ticks_msec()])
-	print(separator + "\n")
+	print("\n[DIAGNOSTIC] GameUI._ready() 被调用")
+	# 完全禁用所有代码以诊断错误源头
+	print("[DIAGNOSTIC] GameUI._ready() 空执行完成\n")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 防护性编程"""
