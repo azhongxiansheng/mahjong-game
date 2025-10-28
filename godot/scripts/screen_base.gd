@@ -70,7 +70,7 @@ func transition_to(next_screen: ScreenBase) -> void:
 	await get_tree().create_timer(animation_duration).timeout
 	next_screen.show_screen()
 
-func show_message(message: String, duration: float = 2.0) -> void:
+func show_message(message: String, _duration: float = 2.0) -> void:
 	"""显示临时消息"""
 	print("ScreenBase (%s): %s" % [name, message])
 
