@@ -495,9 +495,9 @@ func test_week5_hu_algorithm() -> void:
 
 	# 测试4：牌型识别
 	print("\n--- 测试4：牌型识别 ---")
-	var chow_cards = [CardData.new(0, 1), CardData.new(0, 2), CardData.new(0, 3)]
-	var pung_cards = [CardData.new(1, 5), CardData.new(1, 5), CardData.new(1, 5)]
-	var pair_cards = [CardData.new(2, 7), CardData.new(2, 7)]
+	var chow_cards: Array[CardData] = [CardData.new(0, 1), CardData.new(0, 2), CardData.new(0, 3)]
+	var pung_cards: Array[CardData] = [CardData.new(1, 5), CardData.new(1, 5), CardData.new(1, 5)]
+	var pair_cards: Array[CardData] = [CardData.new(2, 7), CardData.new(2, 7)]
 
 	print("识别顺子 (万1万2万3): %s" % WinPattern.get_pattern_name(WinPattern.identify_pattern(chow_cards)))
 	print("识别刻子 (筒5筒5筒5): %s" % WinPattern.get_pattern_name(WinPattern.identify_pattern(pung_cards)))
