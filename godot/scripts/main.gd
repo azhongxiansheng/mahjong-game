@@ -16,6 +16,9 @@ var key_cooldown = 0.3  # 0.3秒的冷却时间
 # 自动测试标志
 var auto_test_started = false
 
+# 分隔符
+var separator = "========================================"
+
 func _ready() -> void:
 	"""
 	当场景准备好时调用一次
@@ -23,7 +26,6 @@ func _ready() -> void:
 	"""
 	print("欢迎来到麻将游戏！")
 	print("游戏已启动")
-	var separator = "========================================"
 	print(separator)
 	print("测试快捷键:")
 	print("  P - Player 受伤 10 点")
@@ -45,9 +47,9 @@ func _ready() -> void:
 	
 	# 启动自动测试（延迟1秒后开始）
 	await get_tree().create_timer(1.0).timeout
-	print("\n" + "="*40)
+	print("\n" + separator)
 	print("自动测试开始...")
-	print("="*40 + "\n")
+	print(separator + "\n")
 	start_auto_test()
 
 
@@ -84,9 +86,9 @@ func start_auto_test() -> void:
 				enemy.take_damage(20)
 		await get_tree().create_timer(0.3).timeout
 	
-	print("\n" + "="*40)
+	print("\n" + separator)
 	print("自动测试完成！")
-	print("="*40)
+	print(separator)
 	print("\n按 ESC 退出游戏，或继续手动测试:")
 	print("  P - Player 受伤 10 点")
 	print("  H - Player 恢复 20 点")
