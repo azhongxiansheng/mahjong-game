@@ -169,6 +169,95 @@ func test_card_system() -> void:
 	print("\n" + separator)
 	print("第2周测试完成！")
 	print(separator)
+	
+	# 第3周测试
+	print("\n" + separator)
+	print("第3周：函数进阶和类的继承测试")
+	print(separator)
+	await test_week3_inheritance()
+
+
+func test_week3_inheritance() -> void:
+	"""第3周测试：继承和卡牌池"""
+	print("\n【测试6】SpecialCard 和 CardDeck 系统...")
+	
+	# 测试 SpecialCard（继承示例）
+	print("\n--- 创建特殊卡牌 ---")
+	var normal_card = CardData.new(CardData.Suit.WAN, 5)
+	var special_card = SpecialCard.new(CardData.Suit.TONG, 8, "暴击", 5)
+	
+	print("普通卡牌: %s" % normal_card.get_card_name())
+	print("特殊卡牌: %s" % special_card.get_card_name())
+	print("特殊卡牌总数值: %d (基础: %d + 效果: %d)" % [special_card.get_total_value(), special_card.number, special_card.effect_value])
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试 CardDeck（牌池管理）
+	print("\n--- 创建和管理卡牌池 ---")
+	var deck = CardDeck.new()
+	
+	# 添加一些卡牌
+	print("添加卡牌到牌池...")
+	deck.add_card(CardData.new(CardData.Suit.WAN, 1))
+	deck.add_card(CardData.new(CardData.Suit.TONG, 5))
+	deck.add_card(CardData.new(CardData.Suit.TIAO, 9))
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试洗牌
+	print("\n--- 洗牌 ---")
+	deck.shuffle()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试抽卡
+	print("\n--- 抽卡 ---")
+	var drawn = deck.draw_cards(2)
+	print("抽了 %d 张卡牌" % drawn.size())
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试 MahjongDeck（标准麻将牌池）
+	print("\n--- 创建标准麻将牌池（108张）---")
+	var mahjong_deck = MahjongDeck.new()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 抽初始手牌
+	print("\n--- 抽初始手牌 ---")
+	var hand = mahjong_deck.draw_initial_hand(13)
+	print("✓ 抽了 %d 张初始手牌" % hand.size())
+	
+	# 显示手牌
+	print("\n初始手牌:")
+	for i in range(hand.size()):
+		print("  %d. %s" % [i + 1, hand[i].get_card_name()])
+	await get_tree().create_timer(0.5).timeout
+	
+	# 继续抽牌
+	print("\n--- 继续抽牌 ---")
+	for i in range(3):
+		var card = mahjong_deck.draw_one()
+		if card:
+			print("抽到: %s" % card.get_card_name())
+	await get_tree().create_timer(0.5).timeout
+	
+	# 显示牌池状态
+	mahjong_deck.get_deck_status()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试类型检查
+	print("\n--- 测试继承和类型检查 ---")
+	var card_a: CardData = CardData.new(CardData.Suit.WAN, 1)
+	var card_b: CardData = SpecialCard.new(CardData.Suit.TONG, 2, "冻结", 3)
+	
+	print("card_a 是 CardData: %s" % (card_a is CardData))
+	print("card_a 是 SpecialCard: %s" % (card_a is SpecialCard))
+	print("card_b 是 CardData: %s" % (card_b is CardData))
+	print("card_b 是 SpecialCard: %s" % (card_b is SpecialCard))
+	
+	if card_b is SpecialCard:
+		var special = card_b as SpecialCard
+		print("card_b 的特殊效果: %s (+%d)" % [special.effect_name, special.effect_value])
+	
+	print("\n" + separator)
+	print("第3周测试完成！")
+	print(separator)
 
 
 func _process(delta: float) -> void:
