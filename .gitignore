@@ -1,0 +1,44 @@
+# Godot 4.x
+.godot/
+*.translation
+export.cfg
+export_presets.cfg
+*.remap
+
+# IDE
+.vscode/
+.vs/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build artifacts
+bin/
+dist/
+build/
+
+# Go
+vendor/
+*.exe
+*.dll
+*.dylib
+*.so
+
+# OS
+Thumbs.db
+.Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# IDE specific
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Temp
+*.tmp
+temp/

@@ -1,0 +1,31 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="MahjongGame"
+config/version="0.1.0"
+config/description="自主开发的棋牌游戏项目"
+run/main_scene="res://scenes/main.tscn"
+
+[debug]
+
+gdscript/warnings/unused_variable=1
+gdscript/warnings/unused_argument=1
+
+[physics]
+
+physics_engine="GodotPhysics2D"
+common/physics_ticks_per_second=60
+
+[rendering]
+
+textures/canvas_textures/default_texture_filter=0
+renderer/rendering_mode="forward_plus"
