@@ -52,7 +52,7 @@ func connect_signals() -> void:
 		pass_button.pressed.connect(_on_pass_pressed)
 	if quit_button:
 		quit_button.pressed.connect(_on_quit_pressed)
-	
+
 	# 连接手牌显示信号
 	if player_hand_display:
 		player_hand_display.card_pressed.connect(_on_card_pressed)
@@ -62,7 +62,7 @@ func apply_theme() -> void:
 	"""应用主题颜色"""
 	# 设置背景颜色
 	modulate = Color(0x2C3E50FF)
-	
+
 	# 设置按钮颜色
 	if hu_button:
 		hu_button.modulate = Color(0xE74C3CFF)
@@ -113,12 +113,12 @@ func play_card() -> void:
 	if not current_hand or not player_hand_display:
 		add_log_message("⚠ 无法出牌: 游戏未初始化")
 		return
-	
+
 	var card = player_hand_display.get_selected_card()
 	if not card:
 		add_log_message("⚠ 请先选择一张卡牌")
 		return
-	
+
 	# 从手牌中移除
 	if current_hand.remove_card(card):
 		# 从显示中移除
@@ -137,13 +137,59 @@ func add_to_discard_pile(card: CardData) -> void:
 	"""添加卡牌到弃牌堆"""
 	discard_cards.append(card)
 	if discard_pile:
-		# 这里可以添加显示弃牌的逻辑
-		pass
+		# 显示最近的弃牌（限制显示最多16张）
+		update_discard_pile_display()
+
+func update_discard_pile_display() -> void:
+	"""更新弃牌堆显示"""
+	if not discard_pile:
+		return
+
+	# 清空旧的显示
+	for child in discard_pile.get_children():
+		child.queue_free()
+
+	# 显示最近的16张牌（4x4网格）
+	var display_count = min(16, discard_cards.size())
+	var start_index = max(0, discard_cards.size() - 16)
+
+	for i in range(display_count):
+		var card = discard_cards[start_index + i]
+		var label = Label.new()
+		label.text = card.get_card_name()
+		label.add_theme_font_size_override("font_size", 12)
+		label.custom_minimum_size = Vector2(50, 40)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		discard_pile.add_child(label)
+		print("添加到弃牌堆: %s" % card.get_card_name())
 
 func show_opponent_play(card: CardData) -> void:
 	"""显示对手出牌"""
 	add_to_discard_pile(card)
 	add_log_message("对手出牌: %s" % card.get_card_name())
+
+func display_opponent_hand(hand_count: int) -> void:
+	"""显示对手手牌（背面）"""
+	if not opponent_hand_display:
+		return
+
+	# 清空旧的显示
+	for child in opponent_hand_display.get_children():
+		child.queue_free()
+
+	# 显示指定数量的背面卡牌
+	for i in range(hand_count):
+		var label = Label.new()
+		label.text = "🂠"  # 卡牌背面符号
+		label.add_theme_font_size_override("font_size", 14)
+		label.custom_minimum_size = Vector2(60, 80)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.modulate = Color(0.4, 0.4, 0.6, 1.0)  # 灰蓝色
+		opponent_hand_display.add_child(label)
+
+	print("✓ 显示对手手牌: %d张" % hand_count)
 
 func show_win_result(result: WinResult) -> void:
 	"""显示胡牌结果"""
@@ -158,10 +204,10 @@ func _on_hu_pressed() -> void:
 	if not current_hand:
 		add_log_message("⚠ 无法胡牌: 没有手牌")
 		return
-	
+
 	# 这里应该调用WinChecker检查是否能胡
 	add_log_message("🎯 尝试胡牌...")
-	
+
 	# 显示胡牌动画
 	if player_hand_display:
 		animate_win()
@@ -172,7 +218,7 @@ func _on_ting_pressed() -> void:
 	if not current_hand:
 		add_log_message("⚠ 无法听牌: 没有手牌")
 		return
-	
+
 	# 这里应该调用TingChecker检查是否能听
 	add_log_message("👂 尝试听牌...")
 
@@ -218,5 +264,5 @@ func test_display_hand() -> void:
 	test_hand.add_card(CardData.new(CardData.Suit.WAN, 5))
 	test_hand.add_card(CardData.new(CardData.Suit.TONG, 2))
 	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
-	
+
 	display_hand(test_hand)
