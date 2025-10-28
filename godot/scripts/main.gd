@@ -30,9 +30,9 @@ func _ready() -> void:
 
 	# ==================== 调试模式：检测算法问题 ====================
 	# 取消注释下面的行来运行算法调试
-	print("【启用算法调试模式】")
-	DebugWinChecker.run_all_debug()
-	get_tree().quit()
+	# print("【启用算法调试模式】")
+	# DebugWinChecker.run_all_debug()
+	# get_tree().quit()
 	# return  # 防止继续执行其他代码
 	# ================================================================
 

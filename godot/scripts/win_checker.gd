@@ -31,13 +31,13 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 	# 尝试找到眼睛（对子）
 	var pair_map = _count_cards(cards_to_check)
 	var found_win = false  # 新增标记
-	
+
 	for suit_idx in range(4):
 		if found_win:  # 外层break条件
 			break
-			
+
 		var max_num = 9 if suit_idx < 3 else 7  # 字牌只到7
-		
+
 		for num_idx in range(1, max_num + 1):  # 使用动态范围
 			var card_key = "%d_%d" % [suit_idx, num_idx]
 			if card_key in pair_map and pair_map[card_key] >= 2:
