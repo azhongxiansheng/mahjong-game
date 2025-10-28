@@ -25,7 +25,7 @@ func _ready() -> void:
 	modulate = Color.WHITE
 	visible = true  # 确保可见
 	z_index = 10  # 提高层级
-	
+
 	# ✓ 如果标签不存在，动态创建它们
 	if not has_node("Label"):
 		card_label = Label.new()
@@ -39,7 +39,7 @@ func _ready() -> void:
 		print("[CardTile] 动态创建 Label 节点")
 	else:
 		card_label = $Label
-	
+
 	if not has_node("SuitLabel"):
 		suit_label = Label.new()
 		suit_label.name = "SuitLabel"
@@ -52,9 +52,9 @@ func _ready() -> void:
 		print("[CardTile] 动态创建 SuitLabel 节点")
 	else:
 		suit_label = $SuitLabel
-	
+
 	print("[CardTile] _ready完成, 位置:", position, " 大小:", size, " 可见:", visible)
-	
+
 	# 如果已经设置了卡牌数据，更新显示
 	if card_data:
 		update_display()

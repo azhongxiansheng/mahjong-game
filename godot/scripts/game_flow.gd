@@ -39,7 +39,7 @@ func _ready() -> void:
 
 	print("✓ GameFlow已初始化")
 
-func init_game(player_count: int = 4) -> void:
+func init_game(_player_count: int = 4) -> void:
 	"""初始化游戏"""
 	print("\n========== 初始化游戏 ==========")
 

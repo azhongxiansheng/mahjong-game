@@ -94,7 +94,7 @@ static func get_best_ting(ting_result: TingResult) -> Array[CardData]:
 	return ting_result.ting_cards
 
 # 计算听牌收益（简单版）
-static func calculate_ting_value(ting_result: TingResult, hand: CardHand) -> int:
+static func calculate_ting_value(ting_result: TingResult, _hand: CardHand) -> int:
 	"""
 	计算听牌的价值
 	更多听数 = 更高价值
