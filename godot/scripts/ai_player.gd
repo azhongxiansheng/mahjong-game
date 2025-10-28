@@ -15,7 +15,7 @@ var player_id: int                 # 玩家ID (0-3)
 var difficulty: Difficulty         # 难度等级
 var hand: CardHand                 # 手牌
 var discarded_cards: Array[CardData]  # 已弃的牌
-var ting_info: TingChecker.TingResult  # 听牌信息
+var ting_info: TingResult          # 听牌信息
 var is_ting: bool                  # 是否已听牌
 var name: String                   # 玩家名字
 
@@ -25,7 +25,7 @@ func _init(p_id: int, p_difficulty: Difficulty = Difficulty.NORMAL):
 	difficulty = p_difficulty
 	hand = CardHand.new()
 	discarded_cards = []
-	ting_info = TingChecker.TingResult.new()
+	ting_info = TingResult.new()
 	is_ting = false
 	name = "AI玩家%d" % (p_id + 1)
 
@@ -213,5 +213,5 @@ func reset() -> void:
 	"""重置为新游戏"""
 	hand = CardHand.new()
 	discarded_cards = []
-	ting_info = TingChecker.TingResult.new()
+	ting_info = TingResult.new()
 	is_ting = false
