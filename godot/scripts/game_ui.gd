@@ -25,10 +25,11 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	print("\n" + "="*60)
-	print("GameUI._ready() 开始 | 时间: %d ms" % Time.get_ticks_msec())
-	print("="*60)
-	
+	var separator = "============================================================"
+	print("\n" + separator)
+	print("GameUI._ready() 开始 | 时间: %d ms" % [Time.get_ticks_msec()])
+	print(separator)
+
 	print("[TRACE] 调用 super()")
 	super()
 	print("[TRACE] super() 完成")
@@ -36,14 +37,14 @@ func _ready() -> void:
 	print("[TRACE] 调用 _initialize_missing_nodes()")
 	_initialize_missing_nodes()
 	print("[TRACE] _initialize_missing_nodes() 完成")
-	
+
 	# 延迟 UI 设置到下一帧，完全避免初始化时的问题
 	print("[TRACE] 注册 _deferred_setup 到下一帧")
 	call_deferred("_deferred_setup")
-	
-	print("="*60)
-	print("GameUI._ready() 完成 | 时间: %d ms" % Time.get_ticks_msec())
-	print("="*60 + "\n")
+
+	print(separator)
+	print("GameUI._ready() 完成 | 时间: %d ms" % [Time.get_ticks_msec()])
+	print(separator + "\n")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 防护性编程"""
@@ -84,30 +85,31 @@ func _initialize_missing_nodes() -> void:
 
 func _deferred_setup() -> void:
 	"""延迟的 UI 设置"""
-	print("\n" + "="*60)
-	print("[DEFERRED] _deferred_setup 开始 | 时间: %d ms" % Time.get_ticks_msec())
-	print("="*60)
-	
+	var separator = "============================================================"
+	print("\n" + separator)
+	print("[DEFERRED] _deferred_setup 开始 | 时间: %d ms" % [Time.get_ticks_msec()])
+	print(separator)
+
 	print("[DEFERRED] 调用 setup_ui()")
 	setup_ui()
 	print("[DEFERRED] setup_ui() 完成")
-	
+
 	print("[DEFERRED] 调用 connect_signals()")
 	connect_signals()
 	print("[DEFERRED] connect_signals() 完成")
-	
+
 	print("[DEFERRED] 调用 apply_theme()")
 	apply_theme()
 	print("[DEFERRED] apply_theme() 完成")
-	
-	print("="*60)
-	print("[DEFERRED] _deferred_setup 完成 | 时间: %d ms" % Time.get_ticks_msec())
-	print("="*60 + "\n")
+
+	print(separator)
+	print("[DEFERRED] _deferred_setup 完成 | 时间: %d ms" % [Time.get_ticks_msec()])
+	print(separator + "\n")
 
 func setup_ui() -> void:
 	"""设置UI初始状态 - 最安全的版本"""
 	print("[SETUP] 开始设置 UI")
-	
+
 	# 验证所有UI组件已初始化
 	if not _verify_ui_components():
 		print("[SETUP] ⚠ 部分UI组件初始化失败，跳过 setup_ui")
@@ -117,7 +119,7 @@ func setup_ui() -> void:
 	try_set_text(player_stats, "等待游戏开始...")
 	try_set_text(game_log, "")
 	try_set_text(game_info, "游戏信息")
-	
+
 	print("[SETUP] UI 设置完成")
 
 func try_set_text(node: Control, text: String) -> void:
@@ -125,14 +127,14 @@ func try_set_text(node: Control, text: String) -> void:
 	if not node:
 		print("[SETUP] ⚠ 节点为 nil，跳过")
 		return
-	
+
 	if node == null:
 		print("[SETUP] ⚠ 节点明确为 null，跳过")
 		return
-	
+
 	var node_name = node.name if node else "unknown"
 	print("[SETUP] 尝试设置 %s 的文本为: %s" % [node_name, text])
-	
+
 	# 使用 get_property_list 来验证属性
 	var props = node.get_property_list()
 	var has_text = false
@@ -140,11 +142,11 @@ func try_set_text(node: Control, text: String) -> void:
 		if prop.name == "text":
 			has_text = true
 			break
-	
+
 	if not has_text:
 		print("[SETUP] ⚠ 节点 %s 没有 text 属性" % node_name)
 		return
-	
+
 	# 最后才尝试赋值
 	node.text = text
 	print("[SETUP] ✓ %s 的文本已设置" % node_name)
