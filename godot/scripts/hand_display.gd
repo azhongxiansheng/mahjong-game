@@ -51,7 +51,7 @@ func refresh_display() -> void:
 	for i in range(hand.cards.size()):
 		add_card_display(hand.cards[i], i)
 
-func add_card_display(card: CardData, index: int = -1) -> void:
+func add_card_display(card: CardData, _index: int = -1) -> void:
 	"""添加单张卡牌显示"""
 	var tile = card_tile_scene.instantiate()
 
