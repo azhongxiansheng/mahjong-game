@@ -104,7 +104,7 @@ static func _can_form_melds(cards: Array[CardData]) -> bool:
 		return true
 
 	# 按花色和数字排序
-	var sorted_cards = cards.duplicate()
+	var sorted_cards = (cards.duplicate()) as Array[CardData]
 	sorted_cards.sort_custom(func(a: CardData, b: CardData) -> bool:
 		if a.suit != b.suit:
 			return a.suit < b.suit
@@ -144,7 +144,7 @@ static func _count_matching_cards(cards: Array[CardData], suit: int, number: int
 # 私有方法：移除牌
 static func _remove_cards(cards: Array[CardData], suit: int, number: int, count: int) -> Array[CardData]:
 	"""移除指定的牌"""
-	var result = cards.duplicate()
+	var result = (cards.duplicate()) as Array[CardData]
 	var removed = 0
 	for i in range(result.size() - 1, -1, -1):
 		if removed >= count:
