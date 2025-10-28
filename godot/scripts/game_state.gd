@@ -23,7 +23,6 @@ var state_history: Array = []
 func _init() -> void:
 	"""初始化状态管理器"""
 	add_state_to_history(State.INIT)
-	print("游戏状态管理器已初始化")
 
 func set_state(new_state: State) -> void:
 	"""设置新状态"""
