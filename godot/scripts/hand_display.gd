@@ -58,7 +58,7 @@ func create_test_cards() -> void:
 		var x_pos = card_start_x + (i * card_spacing)
 		card_label.position = Vector2(x_pos, card_y)
 		card_label.custom_minimum_size = Vector2(60, 80)
-		card_label.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 		# 添加到场景
@@ -83,7 +83,7 @@ func add_card(suit: int, number: int) -> void:
 	var suit_name = get_suit_name(suit)
 	card_label.text = suit_name + str(number)
 	card_label.custom_minimum_size = Vector2(60, 80)
-	card_label.alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 
 	var x_pos = card_start_x + (cards.size() * card_spacing)
