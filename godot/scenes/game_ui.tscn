@@ -1,0 +1,52 @@
+[gd_scene load_steps=2 format=3 uid="uid://caqispqreye63"]
+
+[ext_resource type="Script" uid="uid://brlr7p03ww5ig" path="res://scripts/game_ui.gd" id="1_yubou"]
+
+[node name="GameUI" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1200.0
+offset_bottom = 800.0
+script = ExtResource("1_yubou")
+
+[node name="Panel" type="Panel" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="CardContainer" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 60.0
+offset_right = 1150.0
+offset_bottom = 210.0
+
+[node name="ButtonPanel" type="HBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 50.0
+offset_top = 750.0
+offset_right = 1150.0
+offset_bottom = 1500.0
+
+[node name="出牌" type="Button" parent="ButtonPanel"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+text = "出牌"
+
+[node name="胡牌" type="Button" parent="ButtonPanel"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+text = "胡牌"
+
+[node name="不要" type="Button" parent="ButtonPanel"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+text = "不要"
+
+[node name="取消" type="Button" parent="ButtonPanel"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+text = "取消"
