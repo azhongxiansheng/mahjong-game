@@ -23,17 +23,17 @@ func show_screen() -> void:
 	"""显示界面（带动画）"""
 	if is_visible_on_screen:
 		return
-	
+
 	is_visible_on_screen = true
 	visible = true
-	
+
 	# 播放淡入动画
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_SINE)
 	tween.set_ease(Tween.EASE_OUT)
 	modulate.a = 0.0
 	tween.tween_property(self, "modulate:a", 1.0, animation_duration)
-	
+
 	on_enter()
 	screen_shown.emit()
 	print("ScreenBase (%s): 界面已显示" % name)
@@ -42,16 +42,16 @@ func hide_screen() -> void:
 	"""隐藏界面（带动画）"""
 	if not is_visible_on_screen:
 		return
-	
+
 	is_visible_on_screen = false
-	
+
 	# 播放淡出动画
 	var tween = create_tween()
 	tween.set_trans(Tween.TRANS_SINE)
 	tween.set_ease(Tween.EASE_IN)
 	tween.tween_property(self, "modulate:a", 0.0, animation_duration)
 	tween.tween_callback(func(): visible = false)
-	
+
 	on_exit()
 	screen_hidden.emit()
 	print("ScreenBase (%s): 界面已隐藏" % name)
