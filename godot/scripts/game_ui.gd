@@ -25,9 +25,17 @@ signal card_played(card: CardData)
 signal player_action(action: String)
 
 func _ready() -> void:
-	print("\n[DIAGNOSTIC] GameUI._ready() 被调用")
-	# 完全禁用所有代码以诊断错误源头
-	print("[DIAGNOSTIC] GameUI._ready() 空执行完成\n")
+	print("\n[DIAGNOSTIC] GameUI._ready() 开始")
+	
+	print("[DIAGNOSTIC] 调用 super()")
+	super()
+	print("[DIAGNOSTIC] super() 完成")
+	
+	print("[DIAGNOSTIC] 调用 _initialize_missing_nodes()")
+	_initialize_missing_nodes()
+	print("[DIAGNOSTIC] _initialize_missing_nodes() 完成")
+	
+	print("[DIAGNOSTIC] GameUI._ready() 完成\n")
 
 func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点 - 防护性编程"""
