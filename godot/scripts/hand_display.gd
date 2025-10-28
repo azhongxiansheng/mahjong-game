@@ -79,12 +79,14 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 
 	# 连接信号 - 使用更安全的方式
 	if card_tile.has_signal("card_pressed"):
-		card_tile.card_pressed.connect(_on_card_pressed.bind(card_tile))
+		card_tile.card_pressed.connect(_on_card_pressed)
+		# print("✓ CardTile card_pressed信号已连接")
 	else:
 		print("⚠ CardTile没有card_pressed信号")
 
 	if card_tile.has_signal("card_selected"):
-		card_tile.card_selected.connect(_on_card_selected.bind(card_tile))
+		card_tile.card_selected.connect(_on_card_selected)
+		# print("✓ CardTile card_selected信号已连接")
 	else:
 		print("⚠ CardTile没有card_selected信号")
 
@@ -149,11 +151,14 @@ func deselect_all() -> void:
 		selected_tile.deselect()
 		selected_tile = null
 
-func _on_card_pressed(tile: CardTile) -> void:
+func _on_card_pressed(_card_data: CardData) -> void:
 	"""卡牌被点击"""
-	select_card(tile)
-	card_pressed.emit(tile.card_data)
+	for tile in card_tiles:
+		if tile.card_data == _card_data:
+			select_card(tile)
+			break
+	card_pressed.emit(_card_data)
 
-func _on_card_selected(tile: CardTile) -> void:
+func _on_card_selected(_card_data: CardData) -> void:
 	"""卡牌被选中信号"""
-	card_selected.emit(tile.card_data)
+	card_selected.emit(_card_data)
