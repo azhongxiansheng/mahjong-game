@@ -662,10 +662,8 @@ func test_week7_network() -> void:
 
 	# 测试3：测试消息系统
 	print("\n--- 测试3：测试消息系统 ---")
-	var msg = NetworkMessage.Message.new()
-	msg.type = NetworkMessage.MessageType.PLAYER_ACTION
-	msg.data = {"action": "play_card", "card_id": 5}
-	print("✓ 消息已创建: 类型=%s, 数据=%s" % [msg.type, msg.data])
+	var msg = NetworkMessage.Message.new(NetworkMessage.MessageType.PLAYER_ACTION, -1, "", {"action": "play_card", "card_id": 5})
+	print("✓ 消息已创建: 类型=%d, 数据=%s" % [msg.type, msg.data])
 	await get_tree().create_timer(0.2).timeout
 
 	# 测试4：测试服务器统计
