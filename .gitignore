@@ -1,45 +1,19 @@
-# Godot 4.x
-.godot/
-*.translation
-export.cfg
-export_presets.cfg
-*.remap
-*.uid
-
-# IDE
-.vscode/
-.vs/
-*.swp
-*.swo
-*~
-.DS_Store
-
-# Build artifacts
-bin/
-dist/
-build/
-
-# Go
-vendor/
 *.exe
 *.dll
-*.dylib
 *.so
-
-# OS
-Thumbs.db
-.Thumbs.db
-
-# Python
+*.dylib
 __pycache__/
 *.py[cod]
 *$py.class
-
-# IDE specific
+.DS_Store
+.env
+.env.local
+node_modules/
+dist/
+build/
+.vscode/
 .idea/
-*.sublime-project
-*.sublime-workspace
-
-# Temp
-*.tmp
-temp/
+*.swp
+*.swo
+*~
+.railway/
