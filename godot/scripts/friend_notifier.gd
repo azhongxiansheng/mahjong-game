@@ -49,7 +49,7 @@ func show_notification(title: String, message: String, icon: String = "👥", du
         "duration": duration,
         "id": "%d" % Time.get_ticks_msec()
     }
-    
+
     notification_queue.append(notification)
     print("[FriendNotifier] Notification queued: %s" % title)
 
@@ -118,30 +118,29 @@ func _create_ui() -> void:
     notification_panel.position = Vector2(20, 20)
     notification_panel.visible = false
     add_child(notification_panel)
-    
+
     # 创建容器
     var vbox = VBoxContainer.new()
     vbox.add_theme_constant_override("separation", 5)
     notification_panel.add_child(vbox)
-    
+
     # 创建顶部容器（图标和标题）
     var hbox_top = HBoxContainer.new()
     hbox_top.add_theme_constant_override("separation", 10)
     vbox.add_child(hbox_top)
-    
+
     # 创建图标标签
     icon_label = Label.new()
     icon_label.text = "👥"
     icon_label.add_theme_font_size_override("font_size", 24)
     hbox_top.add_child(icon_label)
-    
+
     # 创建标题标签
     title_label = Label.new()
     title_label.text = "标题"
     title_label.add_theme_font_size_override("font_size", 16)
-    title_label.add_theme_font_override("font", preload("res://assets/fonts/default_font.tres") if ResourceLoader.exists("res://assets/fonts/default_font.tres") else null)
     hbox_top.add_child(title_label)
-    
+
     # 创建关闭按钮
     close_button = Button.new()
     close_button.text = "×"
@@ -149,7 +148,7 @@ func _create_ui() -> void:
     close_button.add_theme_font_size_override("font_size", 20)
     close_button.pressed.connect(_on_close_pressed)
     hbox_top.add_child(close_button)
-    
+
     # 创建消息标签
     message_label = Label.new()
     message_label.text = "消息"
@@ -168,13 +167,13 @@ func _setup_styles() -> void:
     panel_style.border_color = Color(0.3, 0.6, 1.0, 0.8)
     panel_style.set_corner_radius_all(10)
     notification_panel.add_theme_stylebox_override("panel", panel_style)
-    
+
     # 标题标签样式
     title_label.add_theme_color_override("font_color", Color.WHITE)
-    
+
     # 消息标签样式
     message_label.add_theme_color_override("font_color", Color(0.9, 0.9, 0.9))
-    
+
     # 关闭按钮样式
     close_button.add_theme_color_override("font_color", Color.WHITE)
     close_button.add_theme_color_override("font_hover_color", Color.RED)
@@ -184,18 +183,18 @@ func _show_next_notification() -> void:
     """显示下一个通知"""
     if notification_queue.size() == 0:
         return
-    
+
     current_notification = notification_queue.pop_front()
     is_showing = true
-    
+
     # 更新UI
     icon_label.text = current_notification.get("icon", "👥")
     title_label.text = current_notification.get("title", "通知")
     message_label.text = current_notification.get("message", "")
-    
+
     # 显示动画
     _animate_in()
-    
+
     # 设置自动关闭
     await get_tree().create_timer(current_notification.get("duration", NOTIFICATION_DURATION)).timeout
     _animate_out()
@@ -204,13 +203,13 @@ func _show_next_notification() -> void:
 func _animate_in() -> void:
     """显示动画"""
     notification_panel.visible = true
-    
+
     # 位置动画：从左侧滑入
     var tween = create_tween()
     tween.set_ease(ANIMATION_EASING)
     tween.set_trans(Tween.TransitionType.TRANS_BACK)
     tween.tween_property(notification_panel, "position", Vector2(20, 20), ANIMATION_DURATION)
-    
+
     # 透明度动画：淡入
     var tween2 = create_tween()
     tween2.set_ease(ANIMATION_EASING)
@@ -224,18 +223,18 @@ func _animate_out() -> void:
     tween.set_ease(ANIMATION_EASING)
     tween.set_trans(Tween.TransitionType.TRANS_BACK)
     tween.tween_property(notification_panel, "position", Vector2(-350, 20), ANIMATION_DURATION)
-    
+
     # 透明度动画：淡出
     var tween2 = create_tween()
     tween2.set_ease(ANIMATION_EASING)
     tween2.tween_property(notification_panel, "modulate", Color(1, 1, 1, 0), ANIMATION_DURATION)
-    
+
     # 隐藏面板
     await tween.finished
     notification_panel.visible = false
     notification_panel.position = Vector2(20, 20)
     notification_panel.modulate = Color.WHITE
-    
+
     is_showing = false
     notification_closed.emit(current_notification.get("id", ""))
 
