@@ -149,13 +149,13 @@ static func parse_message(json_string: String) -> Message:
 static func dict_to_message(dict: Dictionary) -> Message:
 	var type_name = dict.get("type", "ERROR")
 	var type_value = MessageType.ERROR
-	
+
 	# 查找类型值
 	for key in MESSAGE_TYPE_NAMES.keys():
 		if MESSAGE_TYPE_NAMES[key] == type_name:
 			type_value = key
 			break
-	
+
 	var msg = Message.new(
 		type_value,
 		dict.get("player_id", ""),
