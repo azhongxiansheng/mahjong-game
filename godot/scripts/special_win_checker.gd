@@ -26,18 +26,6 @@ static func check_thirteen_orphans(hand: CardHand) -> bool:
 	if hand.get_card_count() != 14:
 		return false
 
-	# 定义老牌 (19种: 1,9 of 万/筒/条 + 7种字牌)
-	var orphan_tiles = []
-
-	# 数字牌的1和9
-	for suit in range(3):
-		orphan_tiles.append({"suit": suit, "number": 1})
-		orphan_tiles.append({"suit": suit, "number": 9})
-
-	# 字牌 (所有7种)
-	for number in range(1, 8):
-		orphan_tiles.append({"suit": 3, "number": number})
-
 	# 统计手中的老牌
 	var orphan_count: Dictionary = {}
 	for card in hand.cards:

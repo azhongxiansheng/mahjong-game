@@ -592,30 +592,30 @@ func test_performance_with_cache() -> void:
 	# 测试1: 单次查询（无缓存效果）
 	print("【测试1】单次查询性能")
 	var hand1 = _create_test_hand_13()
-	var start_time = Time.get_ticks_msec()
-	var result1 = WinChecker.check_can_hear(hand1)
-	var elapsed1 = Time.get_ticks_msec() - start_time
+	var elapsed1 = Time.get_ticks_msec()
+	var _result1 = WinChecker.check_can_hear(hand1)
+	elapsed1 = Time.get_ticks_msec() - elapsed1
 	print("  耗时: %dms" % elapsed1)
-	print("  结果: %d张可听牌" % result1.size())
+	print("  结果: %d张可听牌" % _result1.size())
 
 	# 测试2: 相同手牌查询（缓存命中）
 	print("\n【测试2】缓存命中查询")
-	var start_time2 = Time.get_ticks_msec()
-	var result2 = WinChecker.check_can_hear(hand1)
-	var elapsed2 = Time.get_ticks_msec() - start_time2
+	var elapsed2 = Time.get_ticks_msec()
+	var _result2 = WinChecker.check_can_hear(hand1)
+	elapsed2 = Time.get_ticks_msec() - elapsed2
 	print("  耗时: %dms" % elapsed2)
 	print("  性能提升: %.1f倍" % (float(elapsed1) / max(elapsed2, 1)))
 
 	# 测试3: 批量查询性能
 	print("\n【测试3】批量查询（10个不同手牌）")
-	var batch_start = Time.get_ticks_msec()
+	var batch_elapsed = Time.get_ticks_msec()
 	var total_time = 0
 	for i in range(10):
 		var test_hand = _create_random_hand_13()
 		var t_start = Time.get_ticks_msec()
 		WinChecker.check_can_hear(test_hand)
 		total_time += Time.get_ticks_msec() - t_start
-	var batch_elapsed = Time.get_ticks_msec() - batch_start
+	batch_elapsed = Time.get_ticks_msec() - batch_elapsed
 	print("  总耗时: %dms" % batch_elapsed)
 	print("  平均每次: %.1fms" % (float(batch_elapsed) / 10))
 
