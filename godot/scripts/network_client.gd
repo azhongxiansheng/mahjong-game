@@ -73,7 +73,10 @@ func create_room(room_name: String, max_players: int = 4) -> bool:
 		"max_players": max_players
 	}
 
-	network_manager.send_message(NetworkMessage.MessageType.CREATE_ROOM, data)
+	var msg = NetworkMessage.create_connect_message(player_id)
+	msg.type = NetworkMessage.MessageType.CREATE_ROOM
+	msg.data = data
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), data)
 	return true
 
 # 加入房间
@@ -84,7 +87,7 @@ func join_room(room_id_param: String) -> bool:
 
 	room_id = room_id_param
 	var msg = NetworkMessage.create_join_room_message(player_id, room_id)
-	network_manager.send_message(msg.type, msg.data)
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), msg.data)
 	return true
 
 # 离开房间
@@ -93,7 +96,7 @@ func leave_room() -> bool:
 		return false
 
 	var msg = NetworkMessage.create_leave_room_message(player_id, room_id)
-	network_manager.send_message(msg.type, msg.data)
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), msg.data)
 
 	room_id = ""
 	state = ClientState.CONNECTED
@@ -112,7 +115,7 @@ func play_card(card: CardData) -> bool:
 	}
 
 	var msg = NetworkMessage.create_play_card_message(player_id, room_id, card_data)
-	network_manager.send_message(msg.type, msg.data)
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), msg.data)
 	return true
 
 # 宣布胜牌
@@ -121,7 +124,7 @@ func declare_win(win_data: Dictionary) -> bool:
 		return false
 
 	var msg = NetworkMessage.create_win_message(player_id, room_id, win_data)
-	network_manager.send_message(msg.type, msg.data)
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), msg.data)
 	return true
 
 # 发送聊天消息
@@ -130,7 +133,7 @@ func send_chat_message(text: String) -> bool:
 		return false
 
 	var msg = NetworkMessage.create_chat_message(player_id, room_id, text)
-	network_manager.send_message(msg.type, msg.data)
+	network_manager.send_message(NetworkMessage.get_message_type_name(msg.type), msg.data)
 	return true
 
 # 网络连接成功
@@ -150,21 +153,21 @@ func _on_message_received(message: Dictionary) -> void:
 	var data = message.get("data", {})
 
 	match msg_type:
-		NetworkMessage.MessageType.ROOM_STATE:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.ROOM_STATE]:
 			_handle_room_state(data)
-		NetworkMessage.MessageType.PLAYER_JOINED:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.PLAYER_JOINED]:
 			_handle_player_joined(data)
-		NetworkMessage.MessageType.PLAYER_LEFT:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.PLAYER_LEFT]:
 			_handle_player_left(data)
-		NetworkMessage.MessageType.GAME_START:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.GAME_START]:
 			_handle_game_start(data)
-		NetworkMessage.MessageType.PLAY_CARD:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.PLAY_CARD]:
 			_handle_player_action(message.get("player_id", ""), data)
-		NetworkMessage.MessageType.WIN:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.WIN]:
 			_handle_win(data)
-		NetworkMessage.MessageType.GAME_END:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.GAME_END]:
 			_handle_game_end(data)
-		NetworkMessage.MessageType.CHAT:
+		NetworkMessage.MESSAGE_TYPE_NAMES[NetworkMessage.MessageType.CHAT]:
 			_handle_chat(message.get("player_id", ""), data)
 
 # 处理房间状态更新

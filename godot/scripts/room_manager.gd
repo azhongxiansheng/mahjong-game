@@ -20,33 +20,33 @@ class Room:
 	var created_time: int = 0
 	var started_time: int = 0
 	var round_score: Dictionary = {}  # player_id -> score
-	
+
 	func _init(id: String, name: String, host_id_param: String, max_p: int = 4) -> void:
 		room_id = id
 		room_name = name
 		host_id = host_id_param
 		max_players = max_p
 		created_time = Time.get_ticks_msec()
-	
+
 	func add_player(player_id: String, player_info: Dictionary) -> bool:
 		if players.size() >= max_players:
 			return false
 		players[player_id] = player_info
 		return true
-	
+
 	func remove_player(player_id: String) -> void:
 		if player_id in players:
 			players.erase(player_id)
-	
+
 	func get_player_count() -> int:
 		return players.size()
-	
+
 	func is_full() -> bool:
 		return players.size() >= max_players
-	
+
 	func is_ready() -> bool:
 		return players.size() >= 2 and state == RoomState.READY
-	
+
 	func to_dict() -> Dictionary:
 		return {
 			"room_id": room_id,
@@ -74,14 +74,14 @@ signal room_state_changed(room_id: String, new_state: int)
 func create_room(room_name: String, host_id: String, max_players: int = 4) -> String:
 	var room_id = "room_%d" % _room_id_counter
 	_room_id_counter += 1
-	
+
 	var room = Room.new(room_id, room_name, host_id, max_players)
 	_rooms[room_id] = room
 	_player_rooms[host_id] = room_id
-	
+
 	print("[RoomManager] 房间已创建: %s (主持人: %s)" % [room_id, host_id])
 	room_created.emit(room.to_dict())
-	
+
 	return room_id
 
 # 加入房间
@@ -89,50 +89,50 @@ func join_room(room_id: String, player_id: String, player_info: Dictionary) -> b
 	if room_id not in _rooms:
 		print("[RoomManager] 房间不存在: %s" % room_id)
 		return false
-	
+
 	var room = _rooms[room_id]
 	if not room.add_player(player_id, player_info):
 		print("[RoomManager] 无法加入房间: %s (已满)" % room_id)
 		return false
-	
+
 	_player_rooms[player_id] = room_id
 	print("[RoomManager] 玩家加入房间: %s -> %s" % [player_id, room_id])
 	player_joined_room.emit(room_id, player_id)
-	
+
 	return true
 
 # 离开房间
 func leave_room(player_id: String) -> bool:
 	if player_id not in _player_rooms:
 		return false
-	
+
 	var room_id = _player_rooms[player_id]
 	var room = _rooms[room_id]
-	
+
 	room.remove_player(player_id)
 	_player_rooms.erase(player_id)
-	
+
 	print("[RoomManager] 玩家离开房间: %s <- %s" % [room_id, player_id])
 	player_left_room.emit(room_id, player_id)
-	
+
 	# 如果房间为空，销毁房间
 	if room.get_player_count() == 0:
 		_rooms.erase(room_id)
 		room_destroyed.emit(room_id)
-	
+
 	return true
 
 # 设置房间状态
 func set_room_state(room_id: String, new_state: int) -> bool:
 	if room_id not in _rooms:
 		return false
-	
+
 	var room = _rooms[room_id]
 	room.state = new_state
-	
+
 	if new_state == RoomState.PLAYING:
 		room.started_time = Time.get_ticks_msec()
-	
+
 	room_state_changed.emit(room_id, new_state)
 	return true
 
@@ -171,7 +171,7 @@ func get_joinable_rooms() -> Array:
 func update_round_score(room_id: String, player_id: String, score: int) -> bool:
 	if room_id not in _rooms:
 		return false
-	
+
 	var room = _rooms[room_id]
 	room.round_score[player_id] = score
 	return true
@@ -180,7 +180,7 @@ func update_round_score(room_id: String, player_id: String, score: int) -> bool:
 func get_room_scores(room_id: String) -> Dictionary:
 	if room_id not in _rooms:
 		return {}
-	
+
 	return _rooms[room_id].round_score.duplicate()
 
 # 获取房间统计
@@ -188,13 +188,13 @@ func get_statistics() -> Dictionary:
 	var total_rooms = _rooms.size()
 	var waiting_rooms = 0
 	var total_players = 0
-	
+
 	for room_id in _rooms.keys():
 		var room = _rooms[room_id]
 		if room.state == RoomState.WAITING:
 			waiting_rooms += 1
 		total_players += room.get_player_count()
-	
+
 	return {
 		"total_rooms": total_rooms,
 		"waiting_rooms": waiting_rooms,

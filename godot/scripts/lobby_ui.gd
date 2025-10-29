@@ -26,10 +26,10 @@ signal game_started(room_id: String, players: Array)
 func _ready() -> void:
 	if not lobby_manager:
 		lobby_manager = LobbyManager.new()
-	
+
 	# 初始化UI
 	_setup_ui()
-	
+
 	# 连接信号
 	lobby_manager.room_list_updated.connect(_on_room_list_updated)
 	lobby_manager.match_status_changed.connect(_on_match_status_changed)
@@ -44,16 +44,16 @@ func _setup_ui() -> void:
 	# 创建UI组件
 	room_list_container.text = "房间列表\n"
 	add_child(room_list_container)
-	
+
 	player_stats_label.text = "玩家信息"
 	add_child(player_stats_label)
-	
+
 	queue_status_label.text = "配对状态: 未配对"
 	add_child(queue_status_label)
-	
+
 	match_timer_label.text = "等待时间: 0s"
 	add_child(match_timer_label)
-	
+
 	print("[LobbyUI] UI已初始化")
 
 # ==================== 房间操作 ====================
@@ -61,7 +61,7 @@ func _setup_ui() -> void:
 func create_room(room_name: String, max_players: int = 4) -> void:
 	var room_id = lobby_manager.create_room(room_name, current_player_id, max_players)
 	print("[LobbyUI] 房间已创建: %s" % room_id)
-	
+
 	# 更新UI并开始游戏准备
 	_refresh_room_list()
 
@@ -83,7 +83,7 @@ func start_game() -> void:
 	if selected_room_id == "":
 		print("[LobbyUI] 未选择房间")
 		return
-	
+
 	if lobby_manager.start_room_game(selected_room_id):
 		print("[LobbyUI] 游戏已开始")
 		in_game = true
@@ -116,7 +116,7 @@ func cancel_matchmaking() -> void:
 func _refresh_room_list() -> void:
 	var joinable_rooms = lobby_manager.get_joinable_rooms()
 	var text = "【可加入的房间】\n"
-	
+
 	if joinable_rooms.is_empty():
 		text += "没有可加入的房间\n"
 	else:
@@ -126,7 +126,7 @@ func _refresh_room_list() -> void:
 				room_info["player_count"],
 				room_info["max_players"]
 			]
-	
+
 	room_list_container.text = text
 
 func _update_queue_display() -> void:
@@ -143,13 +143,13 @@ func _update_player_stats() -> void:
 	var info = lobby_manager.get_player_info(current_player_id)
 	if info.is_empty():
 		return
-	
+
 	var stats_text = "玩家: %s\n" % info.get("player_name", "Unknown")
 	stats_text += "等级: %s\n" % _get_rank_name(info.get("rank", 0))
 	stats_text += "游戏数: %d\n" % info.get("total_games", 0)
 	stats_text += "胜场: %d\n" % info.get("wins", 0)
 	stats_text += "胜率: %.1f%%\n" % (info.get("skill_level", 0.0) * 100)
-	
+
 	player_stats_label.text = stats_text
 
 # ==================== 信号处理 ====================
@@ -159,7 +159,7 @@ func _on_room_list_updated(rooms: Array) -> void:
 
 func _on_match_status_changed(status: String) -> void:
 	print("[LobbyUI] 配对状态改变: %s" % status)
-	
+
 	if status == "matched":
 		is_in_queue = false
 		match_wait_time = 0.0
@@ -197,20 +197,20 @@ func test_lobby_flow() -> void:
 	print("\n╔════════════════════════════════════════╗")
 	print("║ 🧪 大厅测试流程 ║")
 	print("╚════════════════════════════════════════╝\n")
-	
+
 	# 设置测试玩家
 	current_player_id = "player_001"
-	
+
 	# 测试1: 创建房间
 	print("【测试1】创建房间")
 	create_room("TestRoom1", 4)
 	await get_tree().create_timer(0.5).timeout
-	
+
 	# 测试2: 显示房间列表
 	print("\n【测试2】房间列表")
 	_refresh_room_list()
 	print(room_list_container.text)
-	
+
 	# 测试3: 配对功能
 	print("\n【测试3】配对功能")
 	leave_room()
@@ -218,15 +218,15 @@ func test_lobby_flow() -> void:
 	await get_tree().create_timer(2.0).timeout
 	_update_queue_display()
 	print(queue_status_label.text)
-	
+
 	# 测试4: 取消配对
 	print("\n【测试4】取消配对")
 	cancel_matchmaking()
 	_update_queue_display()
-	
+
 	# 显示统计
 	lobby_manager.print_lobby_status()
-	
+
 	print("\n╚════════════════════════════════════════╝\n")
 
 # 设置玩家ID

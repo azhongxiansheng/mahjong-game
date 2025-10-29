@@ -186,7 +186,7 @@ func _cleanup_timeout_messages(delta: float) -> void:
 		pending_messages.erase(msg_id)
 
 # 获取连接状态
-func is_connected() -> bool:
+func check_connected() -> bool:
 	return state == NetworkState.CONNECTED
 
 # 获取网络状态字符串
