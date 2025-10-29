@@ -337,7 +337,7 @@ func test_case_1_5_no_eye() -> void:
 	print("")
 
 func test_case_2_1_basic_ting() -> void:
-	"""Test Case 2.1: 基础听牌 - 听1种牌"""
+	"""Test Case 2.1: 基础听牌 - 听1种牌 (听对)"""
 	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
 
 	var hand = CardHand.new()
@@ -345,21 +345,24 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
-	# 万4 万4 万4 (刻1)
+	# 万4 万5 万6 (顺2)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
-	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
-	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
-	# 筒5 筒5 筒5 (刻2)
-	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
-	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
-	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
-	# 条6 条6 (对 - 仅2张)
-	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
-	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
-	# 字1 字2 (顺4 - 只有2张，缺字3)
-	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
-	# 不添加字3，保持13张手牌
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	# 筒1 筒1 筒1 (刻1)
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	# 条2 条2 条2 (刻2)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	# 字3 字3 字4 (缺一张字3就能成对，现在是顺子)
+	# 实际上: 字3 字3 字4 是不完整的
+	# 改为: 字3 字4 字5 (缺字3或字5来完成)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 4))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 5))
 
 	# 调试信息
 	print("  手牌总数: %d 张" % hand.get_card_count())
