@@ -12,103 +12,158 @@ offset_right = 0.0
 offset_bottom = 0.0
 script = ExtResource("1_yubou")
 
-[node name="Panel" type="Panel" parent="."]
+[node name="Background" type="Panel" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-theme_override_colors/panel = Color(0.15, 0.15, 0.15, 1.0)
-theme_override_colors/panel_fg = Color(0.15, 0.15, 0.15, 1.0)
+theme_override_colors/panel = Color(0.1, 0.4, 0.1, 1.0)
+theme_override_colors/panel_fg = Color(0.1, 0.4, 0.1, 1.0)
 
-[node name="GameLayer" type="VBoxContainer" parent="."]
+[node name="MainContainer" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-modulate = Color(1, 1, 1, 1)
-visible = true
 
-[node name="TopInfo" type="Label" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 1
+[node name="TopInfo" type="Label" parent="MainContainer"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 10.0
+offset_right = 1260.0
+offset_bottom = 50.0
 text = "游戏信息"
 horizontal_alignment = 1
+vertical_alignment = 0
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1.0)
+
+[node name="GameBoard" type="Control" parent="MainContainer"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 70.0
+offset_right = 1240.0
+offset_bottom = 550.0
+
+[node name="OpponentTop" type="Control" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 300.0
+offset_top = 0.0
+offset_right = 700.0
+offset_bottom = 60.0
+script = ExtResource("2_hand_display")
+
+[node name="OpponentLeft" type="Control" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 120.0
+offset_right = 80.0
+offset_bottom = 280.0
+script = ExtResource("2_hand_display")
+
+[node name="OpponentRight" type="Control" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 1120.0
+offset_top = 120.0
+offset_right = 1200.0
+offset_bottom = 280.0
+script = ExtResource("2_hand_display")
+
+[node name="DiscardPile" type="GridContainer" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 120.0
+offset_right = 950.0
+offset_bottom = 380.0
+columns = 5
+
+[node name="GameInfo" type="Label" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 400.0
+offset_top = 180.0
+offset_right = 800.0
+offset_bottom = 320.0
+text = "游戏中..."
+horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_font_sizes/font_size = 28
-theme_override_colors/font_color = Color(0.8, 0.8, 1.0, 1.0)
+theme_override_font_sizes/font_size = 20
+theme_override_colors/font_color = Color(0.9, 0.9, 0.5, 1.0)
 
-[node name="GameCenter" type="Control" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 3
-
-[node name="DiscardPile" type="GridContainer" parent="GameLayer/GameCenter"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-columns = 4
-
-[node name="OpponentHand" type="Control" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 2
-custom_minimum_size = Vector2(0, 120)
+[node name="PlayerHand" type="Control" parent="MainContainer/GameBoard"]
+layout_mode = 0
+offset_left = 100.0
+offset_top = 350.0
+offset_right = 1100.0
+offset_bottom = 480.0
 script = ExtResource("2_hand_display")
 
-[node name="PlayerHand" type="Control" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 2
-custom_minimum_size = Vector2(0, 150)
-script = ExtResource("2_hand_display")
+[node name="BottomPanel" type="Panel" parent="MainContainer"]
+layout_mode = 0
+offset_left = 0.0
+offset_top = 560.0
+offset_right = 1280.0
+offset_bottom = 720.0
+theme_override_colors/panel = Color(0.08, 0.08, 0.08, 1.0)
+theme_override_colors/panel_fg = Color(0.08, 0.08, 0.08, 1.0)
 
-[node name="ActionPanel" type="HBoxContainer" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 2
-custom_minimum_size = Vector2(0, 80)
+[node name="ActionPanel" type="HBoxContainer" parent="MainContainer/BottomPanel"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 15.0
+offset_right = 1240.0
+offset_bottom = 75.0
 
-[node name="HuButton" type="Button" parent="GameLayer/ActionPanel"]
-custom_minimum_size = Vector2(150, 60)
+[node name="HuButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
+custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "胡"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color.WHITE
 
-[node name="TingButton" type="Button" parent="GameLayer/ActionPanel"]
-custom_minimum_size = Vector2(150, 60)
+[node name="TingButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
+custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "听"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color.WHITE
 
-[node name="PengButton" type="Button" parent="GameLayer/ActionPanel"]
-custom_minimum_size = Vector2(150, 60)
+[node name="PengButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
+custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "碰"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color.WHITE
 
-[node name="PassButton" type="Button" parent="GameLayer/ActionPanel"]
-custom_minimum_size = Vector2(150, 60)
+[node name="PassButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
+custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "跳过"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color.WHITE
 
-[node name="QuitButton" type="Button" parent="GameLayer/ActionPanel"]
-custom_minimum_size = Vector2(150, 60)
+[node name="QuitButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
+custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "退出"
-theme_override_font_sizes/font_size = 20
+theme_override_font_sizes/font_size = 18
+theme_override_colors/font_color = Color.WHITE
 
-[node name="InfoPanel" type="HBoxContainer" parent="GameLayer"]
-layout_mode = 2
-size_flags_vertical = 2
-custom_minimum_size = Vector2(0, 100)
+[node name="InfoPanel" type="HBoxContainer" parent="MainContainer/BottomPanel"]
+layout_mode = 0
+offset_left = 40.0
+offset_top = 85.0
+offset_right = 1240.0
+offset_bottom = 150.0
 
-[node name="PlayerStats" type="Label" parent="GameLayer/InfoPanel"]
+[node name="PlayerStats" type="Label" parent="MainContainer/BottomPanel/InfoPanel"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "等待游戏开始..."
 theme_override_colors/font_color = Color(0.8, 0.8, 1.0, 1.0)
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 14
 
-[node name="GameLog" type="RichTextLabel" parent="GameLayer/InfoPanel"]
+[node name="GameLog" type="RichTextLabel" parent="MainContainer/BottomPanel/InfoPanel"]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_colors/default_color = Color(0.7, 0.9, 0.7, 1.0)
-theme_override_font_sizes/normal_font_size = 16
+theme_override_font_sizes/normal_font_size = 12

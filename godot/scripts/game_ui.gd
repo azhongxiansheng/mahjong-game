@@ -57,33 +57,33 @@ func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点"""
 
 	if not _player_hand_display:
-		_player_hand_display = get_node_or_null("GameLayer/PlayerHand")
+		_player_hand_display = get_node_or_null("MainContainer/GameBoard/PlayerHand")
 
 	if not _opponent_hand_display:
-		_opponent_hand_display = get_node_or_null("GameLayer/OpponentHand")
+		_opponent_hand_display = get_node_or_null("MainContainer/GameBoard/OpponentTop")
 
 	if not _player_stats:
-		_player_stats = get_node_or_null("GameLayer/InfoPanel/PlayerStats")
+		_player_stats = get_node_or_null("MainContainer/BottomPanel/InfoPanel/PlayerStats")
 
 	if not _game_log:
-		_game_log = get_node_or_null("GameLayer/InfoPanel/GameLog")
+		_game_log = get_node_or_null("MainContainer/BottomPanel/InfoPanel/GameLog")
 
 	if not _game_info:
-		_game_info = get_node_or_null("GameLayer/TopInfo")
+		_game_info = get_node_or_null("MainContainer/GameBoard/GameInfo")
 
 	if not _discard_pile:
-		_discard_pile = get_node_or_null("GameLayer/GameCenter/DiscardPile")
+		_discard_pile = get_node_or_null("MainContainer/GameBoard/DiscardPile")
 
 	if not _hu_button:
-		_hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
+		_hu_button = get_node_or_null("MainContainer/BottomPanel/ActionPanel/HuButton")
 	if not _ting_button:
-		_ting_button = get_node_or_null("GameLayer/ActionPanel/TingButton")
+		_ting_button = get_node_or_null("MainContainer/BottomPanel/ActionPanel/TingButton")
 	if not _peng_button:
-		_peng_button = get_node_or_null("GameLayer/ActionPanel/PengButton")
+		_peng_button = get_node_or_null("MainContainer/BottomPanel/ActionPanel/PengButton")
 	if not _pass_button:
-		_pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
+		_pass_button = get_node_or_null("MainContainer/BottomPanel/ActionPanel/PassButton")
 	if not _quit_button:
-		_quit_button = get_node_or_null("GameLayer/ActionPanel/QuitButton")
+		_quit_button = get_node_or_null("MainContainer/BottomPanel/ActionPanel/QuitButton")
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
