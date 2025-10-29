@@ -294,7 +294,7 @@ func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
             rewards.gold = 800
             rewards.gem = 100
             rewards.title = "功成名就"
-        2400..(2**31 - 1):
+        _:
             rewards.gold = 1000
             rewards.gem = 200
             rewards.title = "声名远扬"

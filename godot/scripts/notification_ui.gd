@@ -124,7 +124,7 @@ func _create_ui() -> void:
 	# 创建主面板
 	main_panel = PanelContainer.new()
 	main_panel.custom_minimum_size = Vector2(400, 600)
-	main_panel.position = Vector2(get_viewport_rect().size.x - 420, 20)
+	main_panel.position = Vector2(get_viewport().get_visible_rect().size.x - 420, 20)
 	main_panel.visible = false
 	add_child(main_panel)
 
@@ -288,7 +288,7 @@ func _animate_in() -> void:
 	var tween = create_tween()
 	tween.set_ease(Tween.EaseType.EASE_OUT)
 	tween.set_trans(Tween.TransitionType.TRANS_BACK)
-	tween.tween_property(main_panel, "position", Vector2(get_viewport_rect().size.x - 420, 20), SLIDE_IN_DURATION)
+	tween.tween_property(main_panel, "position", Vector2(get_viewport().get_visible_rect().size.x - 420, 20), SLIDE_IN_DURATION)
 
 
 func _animate_out() -> void:
@@ -296,7 +296,7 @@ func _animate_out() -> void:
 	var tween = create_tween()
 	tween.set_ease(Tween.EaseType.EASE_IN)
 	tween.set_trans(Tween.TransitionType.TRANS_BACK)
-	tween.tween_property(main_panel, "position", Vector2(get_viewport_rect().size.x + 10, 20), SLIDE_OUT_DURATION)
+	tween.tween_property(main_panel, "position", Vector2(get_viewport().get_visible_rect().size.x + 10, 20), SLIDE_OUT_DURATION)
 	await tween.finished
 	main_panel.visible = false
 
