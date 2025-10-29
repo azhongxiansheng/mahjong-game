@@ -13,7 +13,6 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 	var task = {
 		"hand": hand,
 		"callback": callback,
-		"thread": null,
 		"result": null,
 		"completed": false,
 		"start_time": Time.get_ticks_msec()
@@ -26,10 +25,7 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 
 # 在后台执行检查 (通过 call_deferred)
 func _execute_check_deferred(task: Dictionary) -> void:
-	var hand = task["hand"]
-	var result = WinChecker.check_can_hear(hand)
-
-	task["result"] = result
+	task["result"] = WinChecker.check_can_hear(task["hand"])
 	task["completed"] = true
 
 	call_deferred("_invoke_callback", task)

@@ -204,7 +204,7 @@ static func _has_card(cards: Array[CardData], suit: int, number: int) -> bool:
 static func _extract_melds(cards: Array[CardData]) -> Array:
 	"""提取面子信息"""
 	var melds: Array = []
-	var sorted_cards = cards.duplicate()
+	var sorted_cards = (cards.duplicate()) as Array[CardData]
 
 	while not sorted_cards.is_empty():
 		var first = sorted_cards[0]

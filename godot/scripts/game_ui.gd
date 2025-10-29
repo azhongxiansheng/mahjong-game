@@ -426,7 +426,7 @@ func display_listening_tiles(player: AIPlayer = null) -> void:
 	显示可听的牌
 	如果 player 为 null，则显示当前玩家的听牌
 	"""
-	var ting_cards: Array
+	var ting_cards: Array = []
 
 	if player == null:
 		# 使用当前玩家的手牌
