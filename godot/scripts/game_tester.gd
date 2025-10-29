@@ -716,27 +716,27 @@ func test_performance_detailed() -> void:
 
 	# 首次查询 (无缓存)
 	var t1 = Time.get_ticks_msec()
-	var r1 = WinChecker.check_can_hear(hand1)
+	var _r1 = WinChecker.check_can_hear(hand1)
 	var e1 = Time.get_ticks_msec() - t1
 	monitor.record_check(false, e1)
 	print("  首次: %dms (无缓存)" % e1)
 
 	# 第二次查询 (缓存命中)
 	var t2 = Time.get_ticks_msec()
-	var r2 = WinChecker.check_can_hear(hand1)
+	var _r2 = WinChecker.check_can_hear(hand1)
 	var e2 = Time.get_ticks_msec() - t2
 	monitor.record_check(true, e2)
 	print("  缓存: %dms (加速%.1f倍)" % [e2, float(e1) / max(e2, 1)])
 
 	# 测试2: 异步测试
 	print("\n【测试2】异步检查测试")
-	var async_count = 0
+	var async_results = []
 	for i in range(3):
 		var hand = _create_random_hand_13()
 		async_checker.check_ting_async(hand, func(ting_cards):
-			async_count += 1
+			async_results.append(ting_cards.size())
 			monitor.record_async_check()
-			print("  异步任务%d: %d张听牌" % [async_count, ting_cards.size()])
+			print("  异步任务%d: %d张听牌" % [async_results.size(), ting_cards.size()])
 		)
 
 	print("  ⏳ 等待异步任务...")
