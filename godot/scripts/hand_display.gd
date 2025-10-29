@@ -69,10 +69,10 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 
 	# ✅ 改进: 动态计算卡牌间距，让所有13张卡牌都能显示在屏幕内
 	var card_count = hand.cards.size() if hand else 1
-	var available_width = size.x - 40  # 留出左右各20像素边距
+	var available_width = size.x - 40
 	var card_width = 80
-	var spacing = max(10, (available_width - card_width) / float(card_count))  # 动态计算间距
-
+	var spacing = max(10, (available_width - card_width) / float(card_count))
+	
 	var x_pos = 20 + (card_tiles.size() * spacing)
 	var y_pos = 35
 	card_tile.position = Vector2(x_pos, y_pos)
@@ -81,6 +81,19 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 
 	# 现在设置卡牌数据（在add_child之后）
 	card_tile.set_card(card)
+
+	# ✅ 新增: 卡牌出现动画
+	card_tile.modulate.a = 0.0  # 从透明开始
+	var tween = card_tile.create_tween()
+	tween.set_ease(Tween.EASE_OUT)
+	tween.set_trans(Tween.TRANS_ELASTIC)
+	tween.tween_property(card_tile, "modulate:a", 1.0, 0.4)
+	# 同时加入缩放效果
+	card_tile.scale = Vector2(0.8, 0.8)
+	var tween2 = card_tile.create_tween()
+	tween2.set_ease(Tween.EASE_OUT)
+	tween2.set_trans(Tween.TRANS_ELASTIC)
+	tween2.tween_property(card_tile, "scale", Vector2(1.0, 1.0), 0.4)
 
 	# 连接信号 - 使用更安全的方式
 	if card_tile.has_signal("card_pressed"):
