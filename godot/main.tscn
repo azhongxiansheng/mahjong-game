@@ -11,5 +11,7 @@ script = ExtResource("1_ig7tw")
 [node name="UILayer" type="CanvasLayer" parent="."]
 
 [node name="GameUI" parent="UILayer" instance=ExtResource("2_game_ui")]
+offset_right = 40.0
+offset_bottom = 40.0
 grow_horizontal = 2
 grow_vertical = 2

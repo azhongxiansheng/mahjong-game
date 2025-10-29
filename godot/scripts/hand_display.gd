@@ -72,7 +72,7 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 	var available_width = size.x - 40  # 留出左右各20像素边距
 	var card_width = 80
 	var spacing = max(10, (available_width - card_width) / float(card_count))  # 动态计算间距
-	
+
 	var x_pos = 20 + (card_tiles.size() * spacing)
 	var y_pos = 35
 	card_tile.position = Vector2(x_pos, y_pos)
