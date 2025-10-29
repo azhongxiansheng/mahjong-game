@@ -340,7 +340,7 @@ func test_case_2_1_basic_ting() -> void:
 	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
 
 	var hand = CardHand.new()
-	
+
 	# 万1万2万3 (seq)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
@@ -353,8 +353,7 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
-	# 条2条2条2 (triplet)
-	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	# 条2条2 (only 2 cards instead of 3)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	# 字3字4 (only 2 cards - needs 字5 to complete)
