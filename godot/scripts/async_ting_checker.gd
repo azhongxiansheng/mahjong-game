@@ -7,7 +7,6 @@
 #       print("听牌结果: ", result)
 #   )
 
-extends Node
 class_name AsyncTingChecker
 
 # 正在进行的检查任务列表
@@ -27,7 +26,7 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 	if hand == null:
 		callback.call([])
 		return
-	
+
 	# 创建任务
 	var task = {
 		"hand": hand,
@@ -37,9 +36,9 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 		"completed": false,
 		"start_time": Time.get_ticks_msec()
 	}
-	
+
 	_pending_tasks.append(task)
-	
+
 	# 在后台线程执行
 	var thread = Thread.new(_execute_check)
 	if thread:
@@ -57,7 +56,7 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 func _execute_check(task: Dictionary) -> void:
 	var hand = task["hand"]
 	var result = WinChecker.check_can_hear(hand)
-	
+
 	# 存储结果并标记为完成
 	task["result"] = result
 	task["completed"] = true
@@ -71,17 +70,17 @@ func _on_thread_start(task: Dictionary) -> void:
 func _execute_check_sync(task: Dictionary) -> void:
 	var hand = task["hand"]
 	var result = WinChecker.check_can_hear(hand)
-	
+
 	task["result"] = result
 	task["completed"] = true
-	
+
 	# 立即调用回调
 	call_deferred("_invoke_callback", task)
 
 # 等待任务完成
 func _wait_for_task(task: Dictionary) -> void:
 	var start_time = Time.get_ticks_msec()
-	
+
 	# 轮询检查任务是否完成
 	while not task["completed"]:
 		# 检查超时
@@ -90,10 +89,10 @@ func _wait_for_task(task: Dictionary) -> void:
 			task["result"] = []
 			task["completed"] = true
 			break
-		
+
 		# 短暂睡眠以避免忙轮询
 		OS.delay_msec(1)
-	
+
 	# 回到主线程调用回调
 	call_deferred("_invoke_callback", task)
 
@@ -102,10 +101,10 @@ func _invoke_callback(task: Dictionary) -> void:
 	if task["callback"].is_valid():
 		var result = task["result"] if task["result"] != null else []
 		task["callback"].call(result)
-	
+
 	# 清理完成的任务
 	_pending_tasks.erase(task)
-	
+
 	# 清理线程
 	if task["thread"] != null:
 		var thread: Thread = task["thread"]
@@ -131,7 +130,7 @@ func cancel_all_tasks() -> void:
 func print_status() -> void:
 	print("\n=== 异步检查器状态 ===")
 	print("待处理任务数: %d" % _pending_tasks.size())
-	
+
 	for i in range(_pending_tasks.size()):
 		var task = _pending_tasks[i]
 		var elapsed = Time.get_ticks_msec() - task["start_time"]

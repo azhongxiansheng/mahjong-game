@@ -6,7 +6,6 @@
 #   var ting_cards = cache.get_ting_cards(hand)
 #   cache.put_ting_cards(hand, result)
 
-extends Node
 class_name TingCache
 
 # 缓存字典 (手牌签名 -> 听牌列表)
