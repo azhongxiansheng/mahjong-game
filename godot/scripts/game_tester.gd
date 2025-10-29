@@ -610,8 +610,9 @@ func test_performance_with_cache() -> void:
 	print("\n【测试3】批量查询（10个不同手牌）")
 	var batch_elapsed = Time.get_ticks_msec()
 	var total_time = 0
+	var test_hand: CardHand
 	for i in range(10):
-		var test_hand = _create_random_hand_13()
+		test_hand = _create_random_hand_13()
 		var t_start = Time.get_ticks_msec()
 		WinChecker.check_can_hear(test_hand)
 		total_time += Time.get_ticks_msec() - t_start
