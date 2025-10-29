@@ -430,7 +430,8 @@ func display_listening_tiles(player: AIPlayer = null) -> void:
 	
 	if player == null:
 		# 使用当前玩家的手牌
-		ting_cards = WinChecker.check_can_hear(current_hand)
+		if current_hand != null:
+			ting_cards = WinChecker.check_can_hear(current_hand)
 	else:
 		# 使用提供的 AI 玩家的听牌
 		ting_cards = player.can_hear_tiles()
@@ -457,7 +458,7 @@ func display_listening_tiles(player: AIPlayer = null) -> void:
 # 显示胜牌信息
 func display_win_info(hand: CardHand) -> void:
 	"""显示胜牌类型和得分"""
-	if hand.get_card_count() != 14:
+	if hand == null or hand.get_card_count() != 14:
 		return
 	
 	# 检查是否能胡
@@ -478,6 +479,9 @@ func display_win_info(hand: CardHand) -> void:
 # 显示 AI 玩家状态
 func display_ai_status(ai_player: AIPlayer) -> void:
 	"""显示 AI 玩家的当前状态"""
+	if ai_player == null:
+		return
+	
 	var status = "🤖 AI(%s): %d张牌" % [ai_player.get_difficulty_name(), ai_player.get_card_count()]
 	
 	# 如果能听牌，显示听牌数量
@@ -497,6 +501,9 @@ func display_round_scores(scores: Dictionary) -> void:
 	显示当前轮次的得分
 	scores: {"player": 0, "ai1": 0, "ai2": 0, "ai3": 0}
 	"""
+	if scores.is_empty():
+		return
+	
 	var score_text = "📊 得分: "
 	
 	for player_name in scores.keys():
