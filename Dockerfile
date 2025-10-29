@@ -1,8 +1,7 @@
-FROM golang:1.20-alpine
-RUN apk add --no-cache ca-certificates
+FROM golang:1.20
 WORKDIR /app
 COPY . .
 RUN go mod download || true
-RUN CGO_ENABLED=0 go build -o /app/server .
+RUN go build -o server .
 EXPOSE 8080
-ENTRYPOINT ["/app/server"]
+CMD ["/app/server"]
