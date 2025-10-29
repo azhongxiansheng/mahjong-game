@@ -217,6 +217,7 @@ func _safe_set_log_text(_text: String) -> void:
 	print("[SAFE_LOG] _safe_set_log_text 被调用但不执行赋值")
 	# 禁用日志赋值以避免 nil assignment 错误
 	# 如果需要日志，使用 print() 替代
+	# 参数 _text 已接收但根据设计不使用
 	if _game_log and is_instance_valid(_game_log):
 		print("[SAFE_LOG] _game_log 有效但不设置文本")
 	else:
@@ -247,6 +248,7 @@ func _safe_set_player_stats(_text: String) -> void:
 	"""安全地设置玩家统计 - 已禁用"""
 	print("[SAFE_STATS] _safe_set_player_stats 被调用但不执行赋值")
 	# 禁用此函数中的所有文本设置
+	# 参数 _text 已接收但根据设计不使用
 
 func _on_card_pressed(_card: CardData) -> void:
 	"""处理卡牌被按下"""
@@ -255,6 +257,7 @@ func _on_card_pressed(_card: CardData) -> void:
 
 func _on_card_selected(_card: CardData) -> void:
 	"""处理卡牌被选中"""
+	# 参数 _card 已接收但目前不需要使用
 	update_player_stats()
 
 func play_card() -> void:
