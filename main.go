@@ -1,12 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
 	"time"
-	"encoding/json"
 )
 
 // UserData 用户数据结构
@@ -26,8 +26,6 @@ type Response struct {
 }
 
 func main() {
-	rand.Seed(time.Now().UnixNano())
-
 	fmt.Println("🎮 麻将游戏后端服务器")
 	fmt.Println("================================")
 	fmt.Println("版本: 0.1.0")
