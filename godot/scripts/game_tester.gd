@@ -617,6 +617,7 @@ func test_performance_with_cache() -> void:
 		total_time += Time.get_ticks_msec() - t_start
 	batch_elapsed = Time.get_ticks_msec() - batch_elapsed
 	print("  总耗时: %dms" % batch_elapsed)
+	print("  单次查询总耗时: %dms" % total_time)
 	print("  平均每次: %.1fms" % (float(batch_elapsed) / 10))
 
 	# 测试4: 重复查询（测试缓存效果）

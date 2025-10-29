@@ -1,6 +1,6 @@
 [gd_scene load_steps=3 format=3 uid="uid://caqispqreye63"]
 
-[ext_resource type="Script" uid="uid://brlr7p03ww5ig" path="res://scripts/game_ui.gd" id="1_yubou"]
+[ext_resource type="Script" path="res://scripts/game_ui.gd" id="1_yubou"]
 [ext_resource type="Script" path="res://scripts/hand_display.gd" id="2_hand_display"]
 
 [node name="GameUI" type="Control"]
