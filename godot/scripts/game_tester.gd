@@ -353,11 +353,13 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 5))
-	# 条6 条6 (对 - 仅2张，不是刻，这样才能听牌)
+	# 条6 条6 (对 - 仅2张)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
-	# 字1 (还缺1张眼)
+	# 字1 字2 字3 (顺4)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
 
 	var ting_cards = WinChecker.check_can_hear(hand)
 
