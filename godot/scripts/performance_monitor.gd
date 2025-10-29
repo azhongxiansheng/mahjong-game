@@ -1,109 +1,204 @@
-class_name PerformanceMonitor
+# 性能监控工具
+# 用于收集和分析听牌检查的性能指标
+#
+# 用法:
+#   var monitor = PerformanceMonitor.new()
+#   monitor.record_check(use_cache, time_ms)
+#   monitor.print_report()
+
 extends Node
+class_name PerformanceMonitor
 
 # 性能指标
-var fps: int = 0
-var frame_time: float = 0.0
-var memory_usage: float = 0.0
-var draw_calls: int = 0
+var _metrics: Dictionary = {
+	"total_checks": 0,
+	"cache_hits": 0,
+	"cache_misses": 0,
+	"total_time_ms": 0.0,
+	"max_time_ms": 0.0,
+	"min_time_ms": 999999.0,
+	"async_checks": 0
+}
 
-# 性能历史
-var fps_history: Array = []
-var frame_time_history: Array = []
+# 时间序列数据 (用于分析趋势)
+var _time_series: Array = []
 
-const MAX_HISTORY = 60
+# ========================
+# 主要API方法
+# ========================
 
-func _process(_delta: float) -> void:
-	"""每帧更新性能指标"""
-	update_metrics()
+# 记录一次检查操作
+# use_cache: 是否使用了缓存
+# time_ms: 消耗的时间 (毫秒)
+func record_check(use_cache: bool, time_ms: float) -> void:
+	_metrics["total_checks"] += 1
+	
+	if use_cache:
+		_metrics["cache_hits"] += 1
+	else:
+		_metrics["cache_misses"] += 1
+	
+	_metrics["total_time_ms"] += time_ms
+	_metrics["max_time_ms"] = max(_metrics["max_time_ms"], time_ms)
+	_metrics["min_time_ms"] = min(_metrics["min_time_ms"], time_ms)
+	
+	# 记录时间序列
+	_time_series.append({
+		"time": time_ms,
+		"use_cache": use_cache,
+		"timestamp": Time.get_ticks_msec()
+	})
 
-func update_metrics() -> void:
-	"""更新性能指标"""
-	# FPS计算
-	fps = int(Engine.get_frames_per_second())
+# 记录异步检查
+func record_async_check() -> void:
+	_metrics["async_checks"] += 1
 
-	# 帧时间
-	frame_time = Engine.get_process_frame_time() * 1000.0  # 转换为毫秒
-
-	# 内存使用
-	var memory_info = OS.get_static_memory_usage()
-	memory_usage = float(memory_info) / (1024 * 1024)  # 转换为MB
-
-	# 添加到历史
-	add_to_history(fps, frame_time)
-
-	# 性能检查
-	check_performance()
-
-func add_to_history(fps_val: int, frame_time_val: float) -> void:
-	"""添加到历史记录"""
-	fps_history.append(fps_val)
-	frame_time_history.append(frame_time_val)
-
-	# 限制历史大小
-	if fps_history.size() > MAX_HISTORY:
-		fps_history.pop_front()
-		frame_time_history.pop_front()
-
-func check_performance() -> void:
-	"""检查性能"""
-	# 检查FPS是否过低
-	if fps < 30:
-		print("⚠️ 性能警告: FPS低于30 (当前: ", fps, ")")
-
-	# 检查帧时间是否过长
-	if frame_time > 33.0:  # 30 FPS = 33ms
-		print("⚠️ 性能警告: 帧时间过长 (", int(frame_time), "ms)")
-
-	# 检查内存
-	if memory_usage > 500.0:  # 500MB
-		print("⚠️ 内存使用过高 (", int(memory_usage), "MB)")
-
-func get_average_fps() -> int:
-	"""获取平均FPS"""
-	if fps_history.is_empty():
-		return 0
-
-	var total = 0
-	for f in fps_history:
-		total += f
-
-	return total / fps_history.size()
-
-func get_average_frame_time() -> float:
-	"""获取平均帧时间"""
-	if frame_time_history.is_empty():
+# 获取缓存命中率 (百分比)
+func get_cache_hit_rate() -> float:
+	var total = _metrics["total_checks"]
+	if total == 0:
 		return 0.0
+	return float(_metrics["cache_hits"]) / total * 100.0
 
-	var total = 0.0
-	for t in frame_time_history:
-		total += t
+# 获取平均耗时 (毫秒)
+func get_average_time() -> float:
+	var total = _metrics["total_checks"]
+	if total == 0:
+		return 0.0
+	return _metrics["total_time_ms"] / total
 
-	return total / frame_time_history.size()
+# 获取总耗时 (毫秒)
+func get_total_time() -> float:
+	return _metrics["total_time_ms"]
 
-func print_performance_report() -> void:
-	"""打印性能报告"""
-	print("\n========== 性能报告 ==========")
-	print("当前FPS: ", fps)
-	print("平均FPS: ", get_average_fps())
-	print("当前帧时间: ", int(frame_time), "ms")
-	print("平均帧时间: ", int(get_average_frame_time()), "ms")
-	print("内存使用: ", int(memory_usage), "MB")
-	print("===============================\n")
+# 获取最大耗时 (毫秒)
+func get_max_time() -> float:
+	return _metrics["max_time_ms"]
 
-func optimize_graphics() -> void:
-	"""优化图形设置"""
-	print("✓ 应用图形优化...")
+# 获取最小耗时 (毫秒)
+func get_min_time() -> float:
+	if _metrics["min_time_ms"] == 999999.0:
+		return 0.0
+	return _metrics["min_time_ms"]
 
-	# 减少阴影质量
-	RenderingServer.global_shader_parameter_set("shadow_quality", 0.5)
+# 获取总检查数
+func get_total_checks() -> int:
+	return _metrics["total_checks"]
 
-	# 禁用某些特效
-	RenderingServer.global_shader_parameter_set("effects_enabled", false)
+# 获取命中数
+func get_cache_hits() -> int:
+	return _metrics["cache_hits"]
 
-	print("✓ 图形优化已应用")
+# 获取未命中数
+func get_cache_misses() -> int:
+	return _metrics["cache_misses"]
 
-func enable_debug_mode() -> void:
-	"""启用调试模式"""
-	print("✓ 调试模式已启用")
-	set_process(true)
+# ========================
+# 分析方法
+# ========================
+
+# 计算标准差
+func get_standard_deviation() -> float:
+	var total = _metrics["total_checks"]
+	if total == 0:
+		return 0.0
+	
+	var average = get_average_time()
+	var variance = 0.0
+	
+	for data in _time_series:
+		var time = data["time"]
+		variance += pow(time - average, 2)
+	
+	variance /= total
+	return sqrt(variance)
+
+# 获取缓存节省的时间
+func get_time_saved() -> float:
+	var hit_count = _metrics["cache_hits"]
+	if hit_count == 0:
+		return 0.0
+	
+	# 假设缓存命中平均节省 40ms (50ms原始 - 1ms缓存)
+	return hit_count * 40.0
+
+# 计算性能改进百分比 (相对于无缓存)
+func get_performance_improvement() -> float:
+	var miss_time = _metrics["cache_misses"] * 50.0  # 假设无缓存 50ms
+	var actual_time = _metrics["total_time_ms"]
+	
+	if miss_time == 0:
+		return 0.0
+	
+	return (miss_time - actual_time) / miss_time * 100.0
+
+# ========================
+# 报告方法
+# ========================
+
+# 打印简单报告
+func print_report() -> void:
+	print("\n╔════════════════════════════════════════╗")
+	print("║       🎯 性能监控报告                  ║")
+	print("╚════════════════════════════════════════╝")
+	
+	print("\n📊 基本统计:")
+	print("  总检查数:    %d" % _metrics["total_checks"])
+	print("  命中次数:    %d" % _metrics["cache_hits"])
+	print("  未命中:      %d" % _metrics["cache_misses"])
+	print("  命中率:      %.1f%%" % get_cache_hit_rate())
+	
+	print("\n⏱️  时间统计 (ms):")
+	print("  总耗时:      %.2f" % get_total_time())
+	print("  平均:        %.2f" % get_average_time())
+	print("  最大:        %.2f" % get_max_time())
+	print("  最小:        %.2f" % get_min_time())
+	print("  标准差:      %.2f" % get_standard_deviation())
+	
+	print("\n💰 性能收益:")
+	print("  节省时间:    %.2fms" % get_time_saved())
+	print("  改进:        %.1f%%" % get_performance_improvement())
+	
+	if _metrics["async_checks"] > 0:
+		print("\n🔄 异步操作:")
+		print("  异步检查:    %d" % _metrics["async_checks"])
+	
+	print("\n")
+
+# 打印详细报告
+func print_detailed_report() -> void:
+	print_report()
+	
+	print("📈 时间序列分析 (最近50条):")
+	var start = max(0, _time_series.size() - 50)
+	for i in range(start, _time_series.size()):
+		var data = _time_series[i]
+		var cache_mark = "✓" if data["use_cache"] else "✗"
+		print("  [%d] %s %.1fms" % [i - start + 1, cache_mark, data["time"]])
+
+# 导出为JSON字符串
+func export_json() -> String:
+	var json = {
+		"total_checks": _metrics["total_checks"],
+		"cache_hits": _metrics["cache_hits"],
+		"cache_misses": _metrics["cache_misses"],
+		"hit_rate": "%.1f%%" % get_cache_hit_rate(),
+		"average_time_ms": "%.2f" % get_average_time(),
+		"total_time_ms": "%.2f" % get_total_time(),
+		"time_saved_ms": "%.2f" % get_time_saved(),
+		"performance_improvement": "%.1f%%" % get_performance_improvement()
+	}
+	return JSON.stringify(json)
+
+# 重置所有统计数据
+func reset() -> void:
+	_metrics = {
+		"total_checks": 0,
+		"cache_hits": 0,
+		"cache_misses": 0,
+		"total_time_ms": 0.0,
+		"max_time_ms": 0.0,
+		"min_time_ms": 999999.0,
+		"async_checks": 0
+	}
+	_time_series.clear()

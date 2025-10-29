@@ -83,7 +83,7 @@ static func check_can_hear(hand: CardHand) -> Array:
 	返回：能胡的牌列表
 	"""
 	var winnable_cards: Array[CardData] = [] as Array[CardData]
-	
+
 	# Phase 5: 先检查缓存
 	if _ting_cache != null:
 		var cached = _ting_cache.get_ting_cards(hand)
@@ -91,7 +91,7 @@ static func check_can_hear(hand: CardHand) -> Array:
 			# 如果缓存命中或已有查询记录
 			if cached.size() > 0:
 				return cached
-	
+
 	# 验证手牌数量
 	if hand.get_card_count() != 13:
 		return winnable_cards

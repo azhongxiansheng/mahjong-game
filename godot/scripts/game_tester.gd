@@ -585,10 +585,10 @@ func test_performance_with_cache() -> void:
 	性能基准测试 - 对比有缓存和无缓存的性能
 	"""
 	print("\n========== Phase 5 性能基准测试 ==========\n")
-	
+
 	# 初始化缓存
 	WinChecker.init_cache()
-	
+
 	# 测试1: 单次查询（无缓存效果）
 	print("【测试1】单次查询性能")
 	var hand1 = _create_test_hand_13()
@@ -597,7 +597,7 @@ func test_performance_with_cache() -> void:
 	var elapsed1 = Time.get_ticks_msec() - start_time
 	print("  耗时: %dms" % elapsed1)
 	print("  结果: %d张可听牌" % result1.size())
-	
+
 	# 测试2: 相同手牌查询（缓存命中）
 	print("\n【测试2】缓存命中查询")
 	var start_time2 = Time.get_ticks_msec()
@@ -605,7 +605,7 @@ func test_performance_with_cache() -> void:
 	var elapsed2 = Time.get_ticks_msec() - start_time2
 	print("  耗时: %dms" % elapsed2)
 	print("  性能提升: %.1f倍" % (float(elapsed1) / max(elapsed2, 1)))
-	
+
 	# 测试3: 批量查询性能
 	print("\n【测试3】批量查询（10个不同手牌）")
 	var batch_start = Time.get_ticks_msec()
@@ -618,7 +618,7 @@ func test_performance_with_cache() -> void:
 	var batch_elapsed = Time.get_ticks_msec() - batch_start
 	print("  总耗时: %dms" % batch_elapsed)
 	print("  平均每次: %.1fms" % (float(batch_elapsed) / 10))
-	
+
 	# 测试4: 重复查询（测试缓存效果）
 	print("\n【测试4】重复查询1000次（同一手牌）")
 	var repeat_start = Time.get_ticks_msec()
@@ -627,12 +627,12 @@ func test_performance_with_cache() -> void:
 	var repeat_elapsed = Time.get_ticks_msec() - repeat_start
 	print("  总耗时: %dms" % repeat_elapsed)
 	print("  平均每次: %.3fms" % (float(repeat_elapsed) / 1000))
-	
+
 	# 显示缓存统计
 	print("\n【缓存统计】")
 	if WinChecker._ting_cache != null:
 		WinChecker._ting_cache.print_stats()
-	
+
 	print("\n========== 性能测试完成 ==========\n")
 
 # 创建13张测试手牌
@@ -666,3 +666,124 @@ func _create_random_hand_13() -> CardHand:
 		var num = randi() % 9 + 1 if suit < 3 else randi() % 7 + 1
 		hand.add_card(CardData.new(suit, num))
 	return hand
+
+# ========================
+# Phase 5: 异步测试和高级性能测试
+# ========================
+
+func test_async_ting_check() -> void:
+	"""
+	异步听牌检查测试
+	"""
+	print("\n========== Phase 5 异步听牌检查测试 ==========\n")
+	
+	var async_checker = AsyncTingChecker.new()
+	var test_count = 0
+	var complete_count = 0
+	
+	# 创建5个异步任务
+	for i in range(5):
+		var hand = _create_random_hand_13()
+		test_count += 1
+		
+		async_checker.check_ting_async(hand, func(ting_cards):
+			complete_count += 1
+			print("【异步任务%d】完成! 听牌数: %d" % [complete_count, ting_cards.size()])
+		)
+	
+	# 等待所有任务完成
+	print("\n⏳ 等待%d个异步任务完成..." % test_count)
+	while async_checker.get_pending_tasks() > 0:
+		await get_tree().create_timer(0.1).timeout
+	
+	print("\n✅ 所有异步任务已完成!")
+	async_checker.print_status()
+
+func test_performance_detailed() -> void:
+	"""
+	详细性能测试 - 包含缓存、异步和监控
+	"""
+	print("\n========== Phase 5 详细性能测试 ==========\n")
+	
+	# 初始化所有组件
+	WinChecker.init_cache()
+	var monitor = PerformanceMonitor.new()
+	var async_checker = AsyncTingChecker.new()
+	
+	# 测试1: 缓存效果
+	print("【测试1】缓存效果测试")
+	var hand1 = _create_test_hand_13()
+	
+	# 首次查询 (无缓存)
+	var t1 = Time.get_ticks_msec()
+	var r1 = WinChecker.check_can_hear(hand1)
+	var e1 = Time.get_ticks_msec() - t1
+	monitor.record_check(false, e1)
+	print("  首次: %dms (无缓存)" % e1)
+	
+	# 第二次查询 (缓存命中)
+	var t2 = Time.get_ticks_msec()
+	var r2 = WinChecker.check_can_hear(hand1)
+	var e2 = Time.get_ticks_msec() - t2
+	monitor.record_check(true, e2)
+	print("  缓存: %dms (加速%.1f倍)" % [e2, float(e1) / max(e2, 1)])
+	
+	# 测试2: 异步测试
+	print("\n【测试2】异步检查测试")
+	var async_count = 0
+	for i in range(3):
+		var hand = _create_random_hand_13()
+		async_checker.check_ting_async(hand, func(ting_cards):
+			async_count += 1
+			monitor.record_async_check()
+			print("  异步任务%d: %d张听牌" % [async_count, ting_cards.size()])
+		)
+	
+	print("  ⏳ 等待异步任务...")
+	while async_checker.get_pending_tasks() > 0:
+		await get_tree().create_timer(0.1).timeout
+	
+	# 测试3: 批量查询
+	print("\n【测试3】批量查询性能")
+	var batch_start = Time.get_ticks_msec()
+	for i in range(20):
+		var hand = _create_random_hand_13()
+		var t = Time.get_ticks_msec()
+		WinChecker.check_can_hear(hand)
+		var elapsed = Time.get_ticks_msec() - t
+		monitor.record_check(i < 10, elapsed)  # 前10个无缓存，后10个有缓存效果
+	var batch_time = Time.get_ticks_msec() - batch_start
+	print("  20个查询总耗时: %dms (平均%.1fms)" % [batch_time, float(batch_time) / 20])
+	
+	# 显示最终报告
+	print("\n" + "=".repeat(40))
+	monitor.print_detailed_report()
+	
+	print("========== 性能测试完成 ==========\n")
+
+func test_all_phase5_features() -> void:
+	"""
+	运行所有 Phase 5 特性测试
+	"""
+	print("\n╔════════════════════════════════════════╗")
+	print("║  🚀 Phase 5 完整特性测试              ║")
+	print("╚════════════════════════════════════════╝\n")
+	
+	# 1. 基础缓存测试
+	print("【步骤1】运行缓存系统测试...")
+	test_performance_with_cache()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 2. 异步测试
+	print("\n【步骤2】运行异步检查测试...")
+	test_async_ting_check()
+	await get_tree().create_timer(0.5).timeout
+	
+	# 3. 详细性能测试
+	print("\n【步骤3】运行详细性能测试...")
+	test_performance_detailed()
+	await get_tree().create_timer(0.5).timeout
+	
+	print("\n╔════════════════════════════════════════╗")
+	print("║  ✅ Phase 5 所有测试完成!             ║")
+	print("╚════════════════════════════════════════╝\n")

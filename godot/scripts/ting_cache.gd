@@ -1,6 +1,6 @@
 # 听牌缓存系统
 # 用于缓存听牌检测结果，提升性能
-# 
+#
 # 用法:
 #   var cache = TingCache.new()
 #   var ting_cards = cache.get_ting_cards(hand)
@@ -28,13 +28,13 @@ const MAX_CACHE_SIZE = 1000
 func get_ting_cards(hand: CardHand) -> Array:
 	if hand == null or hand.get_card_count() != 13:
 		return []
-	
+
 	var signature = _generate_signature(hand)
-	
+
 	if signature in _cache:
 		_total_hits += 1
 		return _cache[signature]
-	
+
 	_total_misses += 1
 	return []  # 返回空数组表示缓存未命中
 
@@ -42,11 +42,11 @@ func get_ting_cards(hand: CardHand) -> Array:
 func put_ting_cards(hand: CardHand, ting_cards: Array) -> void:
 	if hand == null or hand.get_card_count() != 13:
 		return
-	
+
 	# 如果缓存已满，清除旧数据
 	if _cache.size() >= MAX_CACHE_SIZE:
 		_clear_half_cache()
-	
+
 	var signature = _generate_signature(hand)
 	_cache[signature] = ting_cards.duplicate()
 
@@ -87,7 +87,7 @@ func get_total_misses() -> int:
 func print_stats() -> void:
 	var total = _total_hits + _total_misses
 	var hit_rate = get_cache_hit_rate()
-	
+
 	print("\n=== 听牌缓存统计 ===")
 	print("缓存大小: %d / %d" % [_cache.size(), MAX_CACHE_SIZE])
 	print("总查询数: %d" % total)
@@ -105,37 +105,37 @@ func _generate_signature(hand: CardHand) -> String:
 	var cards = hand.cards
 	if cards.size() == 0:
 		return ""
-	
+
 	# 先排序卡牌 (先按花色，再按数字)
 	var sorted_cards = []
 	for card in cards:
 		sorted_cards.append(card)
-	
+
 	# 自定义排序
 	sorted_cards.sort_custom(func(a, b):
 		if a.suit != b.suit:
 			return a.suit < b.suit
 		return a.number < b.number
 	)
-	
+
 	# 生成签名字符串
 	var signature_parts = []
 	for card in sorted_cards:
 		signature_parts.append("%d-%d" % [card.suit, card.number])
-	
+
 	return ",".join(signature_parts)
 
 # 清除一半的旧缓存 (当缓存满时)
 func _clear_half_cache() -> void:
 	var keys_to_remove = []
 	var remove_count = MAX_CACHE_SIZE / 2
-	
+
 	for key in _cache.keys():
 		if keys_to_remove.size() >= remove_count:
 			break
 		keys_to_remove.append(key)
-	
+
 	for key in keys_to_remove:
 		_cache.erase(key)
-	
+
 	print("[缓存] 清除%d个旧条目以释放空间" % remove_count)
