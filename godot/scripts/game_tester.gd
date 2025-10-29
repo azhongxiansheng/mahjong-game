@@ -575,3 +575,94 @@ func run_all_tests() -> void:
 	test_play_card()
 
 	print("\n========== 所有测试完成 ==========\n")
+
+# ========================
+# Phase 5: 性能测试 (缓存系统)
+# ========================
+
+func test_performance_with_cache() -> void:
+	"""
+	性能基准测试 - 对比有缓存和无缓存的性能
+	"""
+	print("\n========== Phase 5 性能基准测试 ==========\n")
+	
+	# 初始化缓存
+	WinChecker.init_cache()
+	
+	# 测试1: 单次查询（无缓存效果）
+	print("【测试1】单次查询性能")
+	var hand1 = _create_test_hand_13()
+	var start_time = Time.get_ticks_msec()
+	var result1 = WinChecker.check_can_hear(hand1)
+	var elapsed1 = Time.get_ticks_msec() - start_time
+	print("  耗时: %dms" % elapsed1)
+	print("  结果: %d张可听牌" % result1.size())
+	
+	# 测试2: 相同手牌查询（缓存命中）
+	print("\n【测试2】缓存命中查询")
+	var start_time2 = Time.get_ticks_msec()
+	var result2 = WinChecker.check_can_hear(hand1)
+	var elapsed2 = Time.get_ticks_msec() - start_time2
+	print("  耗时: %dms" % elapsed2)
+	print("  性能提升: %.1f倍" % (float(elapsed1) / max(elapsed2, 1)))
+	
+	# 测试3: 批量查询性能
+	print("\n【测试3】批量查询（10个不同手牌）")
+	var batch_start = Time.get_ticks_msec()
+	var total_time = 0
+	for i in range(10):
+		var test_hand = _create_random_hand_13()
+		var t_start = Time.get_ticks_msec()
+		WinChecker.check_can_hear(test_hand)
+		total_time += Time.get_ticks_msec() - t_start
+	var batch_elapsed = Time.get_ticks_msec() - batch_start
+	print("  总耗时: %dms" % batch_elapsed)
+	print("  平均每次: %.1fms" % (float(batch_elapsed) / 10))
+	
+	# 测试4: 重复查询（测试缓存效果）
+	print("\n【测试4】重复查询1000次（同一手牌）")
+	var repeat_start = Time.get_ticks_msec()
+	for i in range(1000):
+		WinChecker.check_can_hear(hand1)
+	var repeat_elapsed = Time.get_ticks_msec() - repeat_start
+	print("  总耗时: %dms" % repeat_elapsed)
+	print("  平均每次: %.3fms" % (float(repeat_elapsed) / 1000))
+	
+	# 显示缓存统计
+	print("\n【缓存统计】")
+	if WinChecker._ting_cache != null:
+		WinChecker._ting_cache.print_stats()
+	
+	print("\n========== 性能测试完成 ==========\n")
+
+# 创建13张测试手牌
+func _create_test_hand_13() -> CardHand:
+	var hand = CardHand.new()
+	# 万1万2万3
+	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	# 万4万5万6
+	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
+	# 筒1筒1筒1
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
+	# 条1条1
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	# 条2条3
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 3))
+	return hand
+
+# 创建随机13张手牌
+func _create_random_hand_13() -> CardHand:
+	var hand = CardHand.new()
+	for i in range(13):
+		var suit = randi() % 4
+		var num = randi() % 9 + 1 if suit < 3 else randi() % 7 + 1
+		hand.add_card(CardData.new(suit, num))
+	return hand

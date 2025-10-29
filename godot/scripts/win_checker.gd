@@ -3,6 +3,14 @@ class_name WinChecker
 # 胡牌判断器类
 # 使用递归回溯法判断是否能胡牌
 
+# Phase 5: 性能优化 - 静态缓存
+static var _ting_cache: TingCache = null
+
+# 初始化缓存（应在游戏启动时调用）
+static func init_cache() -> void:
+	if _ting_cache == null:
+		_ting_cache = TingCache.new()
+
 # 检查是否能胡牌
 static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 	"""
@@ -68,15 +76,22 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 
 	return result
 
-# 检查是否能听牌（缺一张牌就能胡）
+# 检查能听什么牌
 static func check_can_hear(hand: CardHand) -> Array:
 	"""
-	检查哪些牌能听牌（缺一张牌就能胡）
-	输入：13张手牌
-	返回：能听的牌列表
+	检查13张手牌能听什么牌（摸什么牌可以胡）
+	返回：能胡的牌列表
 	"""
-	var winnable_cards: Array = []
-
+	var winnable_cards: Array[CardData] = [] as Array[CardData]
+	
+	# Phase 5: 先检查缓存
+	if _ting_cache != null:
+		var cached = _ting_cache.get_ting_cards(hand)
+		if cached.size() > 0 or _ting_cache.get_total_queries() > 0:
+			# 如果缓存命中或已有查询记录
+			if cached.size() > 0:
+				return cached
+	
 	# 验证手牌数量
 	if hand.get_card_count() != 13:
 		return winnable_cards
@@ -101,6 +116,10 @@ static func check_can_hear(hand: CardHand) -> Array:
 				winnable_cards.append(test_card)
 				# DEBUG: 显示找到的听牌
 				#print("        [DEBUG] Found winnable card: %s (total: %d)" % [test_card.get_card_name(), winnable_cards.size()])
+
+	# Phase 5: 存储到缓存
+	if _ting_cache != null:
+		_ting_cache.put_ting_cards(hand, winnable_cards)
 
 	return winnable_cards
 
