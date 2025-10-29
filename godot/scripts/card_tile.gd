@@ -43,8 +43,8 @@ func _ready() -> void:
 		card_label.offset_left = -40
 		card_label.offset_top = -70
 		card_label.size = Vector2(80, 50)
-		card_label.theme_override_font_sizes/font_size = 32
-		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		card_label.add_theme_font_size_override("font_size", 32)
+		card_label.set_text_alignment(HORIZONTAL_ALIGNMENT_CENTER)
 		print("[CardTile] 动态创建 Label 节点")
 	else:
 		card_label = $Label
@@ -58,8 +58,8 @@ func _ready() -> void:
 		suit_label.offset_left = -40
 		suit_label.offset_top = 0
 		suit_label.size = Vector2(80, 50)
-		suit_label.theme_override_font_sizes/font_size = 18
-		suit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		suit_label.add_theme_font_size_override("font_size", 18)
+		suit_label.set_text_alignment(HORIZONTAL_ALIGNMENT_CENTER)
 		print("[CardTile] 动态创建 SuitLabel 节点")
 	else:
 		suit_label = $SuitLabel
@@ -91,15 +91,15 @@ func update_display() -> void:
 
 	card_label.text = str(card_data.number)
 	suit_label.text = _get_suit_name(card_data.suit)
-	
+
 	# ✅ 新增: 设置文字颜色和背景颜色
 	var bg_color = _get_suit_color(card_data.suit)
 	self_modulate = Color.WHITE
-	
+
 	# 根据背景颜色设置文字颜色
 	var text_color = Color.WHITE if bg_color.get_luminance() < 0.5 else Color.BLACK
-	card_label.theme_override_colors/font_color = text_color
-	suit_label.theme_override_colors/font_color = text_color
+	card_label.add_theme_color_override("font_color", text_color)
+	suit_label.add_theme_color_override("font_color", text_color)
 
 	print("[CardTile] 更新显示: ", card_data.get_card_name(), " 文本:", card_label.text, "/", suit_label.text)
 
@@ -165,17 +165,17 @@ func _draw() -> void:
 	"""绘制麻将牌外观"""
 	# ✅ 新增: 绘制3D效果的麻将牌
 	var rect = Rect2(0, 0, TILE_WIDTH, TILE_HEIGHT)
-	
+
 	# 阴影
 	draw_rect(Rect2(2, 2, TILE_WIDTH - 2, TILE_HEIGHT - 2), SHADOW_COLOR)
-	
+
 	# 主体背景 - 根据选中状态改变颜色
 	var bg_color = _get_suit_color(card_data.suit) if card_data else Color.WHITE
 	draw_rect(rect, bg_color)
-	
+
 	# 外边框
 	draw_rect(rect, BORDER_COLOR, false, BORDER_WIDTH)
-	
+
 	# 内边框（装饰）
 	var inner_rect = Rect2(BORDER_WIDTH, BORDER_WIDTH, TILE_WIDTH - 2 * BORDER_WIDTH, TILE_HEIGHT - 2 * BORDER_WIDTH)
 	draw_rect(inner_rect, Color.TRANSPARENT, false, 1)

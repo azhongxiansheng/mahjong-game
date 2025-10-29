@@ -72,7 +72,7 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 	var available_width = size.x - 40
 	var card_width = 80
 	var spacing = max(10, (available_width - card_width) / float(card_count))
-	
+
 	var x_pos = 20 + (card_tiles.size() * spacing)
 	var y_pos = 35
 	card_tile.position = Vector2(x_pos, y_pos)
