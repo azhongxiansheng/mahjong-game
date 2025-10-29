@@ -173,18 +173,18 @@ func connect_signals() -> void:
 
 func apply_theme() -> void:
 	"""应用主题颜色"""
-	# 设置背景颜色
-	modulate = Color(0x2C3E50FF)
-
-	# 设置按钮颜色
+	# 不覆盖整个 modulate，改用 self_modulate 仅影响自己
+	self_modulate = Color.WHITE
+	
+	# 设置按钮颜色 - 使用 self_modulate 而不是 modulate
 	if _hu_button:
-		_hu_button.modulate = Color(0xE74C3CFF)
+		_hu_button.self_modulate = Color(0xE74C3CFF)  # 红色
 	if _ting_button:
-		_ting_button.modulate = Color(0x27AE60FF)
+		_ting_button.self_modulate = Color(0x27AE60FF)  # 绿色
 	if _peng_button:
-		_peng_button.modulate = Color(0x3498DBFF)
+		_peng_button.self_modulate = Color(0x3498DBFF)  # 蓝色
 	if _pass_button:
-		_pass_button.modulate = Color(0x95A5A6FF)
+		_pass_button.self_modulate = Color(0x95A5A6FF)  # 灰色
 
 func add_log_message(message: String) -> void:
 	"""添加日志消息 - 绝对安全版本"""
