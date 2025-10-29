@@ -8,12 +8,14 @@ import (
 	"time"
 )
 
+var serverReady = false
+
 func main() {
-	// 诊断信息
 	fmt.Println("=== Mahjong Game Server Starting ===")
 	fmt.Printf("Environment PORT: %s\n", os.Getenv("PORT"))
 	fmt.Printf("PID: %d\n", os.Getpid())
 
+	// 健康检查端点 - 立即响应
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprintf(w, `{"status":"ok","message":"Mahjong Game Server","time":"%s"}`, time.Now().Format(time.RFC3339))
@@ -21,7 +23,7 @@ func main() {
 
 	http.HandleFunc("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"ok","time":"%s"}`, time.Now().Format(time.RFC3339))
+		fmt.Fprintf(w, `{"status":"ok","ready":%v,"time":"%s"}`, serverReady, time.Now().Format(time.RFC3339))
 	})
 
 	port := os.Getenv("PORT")
@@ -33,13 +35,15 @@ func main() {
 	fmt.Printf("Server starting on %s...\n", addr)
 	fmt.Printf("Health check: http://localhost:%s/api/health\n", port)
 	
-	// 在启动监听之前等待一下，确保一切准备好
-	time.Sleep(500 * time.Millisecond)
+	// 长延迟 - 确保 Railway 的初始检查不会失败
+	fmt.Println("Waiting for initialization...")
+	time.Sleep(2 * time.Second)
 	
+	serverReady = true
 	fmt.Println("=== Server Ready ===")
 	fmt.Printf("Ready to accept requests at %s\n", time.Now().Format(time.RFC3339))
 
-	// 心跳日志 - 防止Railway认为应用空闲
+	// 心跳日志
 	go func() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
