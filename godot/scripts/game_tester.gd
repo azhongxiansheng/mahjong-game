@@ -337,52 +337,38 @@ func test_case_1_5_no_eye() -> void:
 	print("")
 
 func test_case_2_1_basic_ting() -> void:
-	"""Test Case 2.1: 基础听牌 - 听1种牌"""
 	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
 
 	var hand = CardHand.new()
-	# 万1 万2 万3 (顺1)
+	
+	# 万1万2万3 (seq)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 3))
-	# 万4 万5 万6 (顺2)
+	# 万4万5万6 (seq)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
-	# 筒1 筒1 筒1 (刻)
+	# 筒1筒1筒1 (triplet)
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
-	# 条2 条2 条2 (刻)
+	# 条2条2条2 (triplet)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
-	# 字3 字4 (不完整的顺子，缺字5)
+	# 字3字4 (only 2 cards - needs 字5 to complete)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 4))
 
-	# 调试信息
 	print("  手牌总数: %d 张" % hand.get_card_count())
-	var card_names = []
-	for card in hand.cards:
-		card_names.append(card.get_card_name())
-	print("  手牌列表: %s" % [card_names])
-
 	var ting_cards = WinChecker.check_can_hear(hand)
 
 	print("  🔍 听牌检查结果:")
 	print("    听数: %d 种" % ting_cards.size())
-	if ting_cards.size() > 0:
-		print("    可听牌:")
-		for card in ting_cards:
-			print("      - %s" % card.get_card_name())
 
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
-		print("  📊 听数: %d 种" % ting_cards.size())
-		if ting_cards.size() > 0:
-			var first_card = ting_cards[0]
-			print("  🎯 可听牌: %s" % first_card.get_card_name())
 	else:
 		print("  ❌ 失败: 应该能听牌")
 
