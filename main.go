@@ -34,6 +34,15 @@ func main() {
 	fmt.Printf("Health check: http://localhost:%s/api/health\n", port)
 	fmt.Println("=== Server Ready ===")
 
+	// 心跳日志 - 防止Railway认为应用空闲
+	go func() {
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		for range ticker.C {
+			fmt.Printf("[HEARTBEAT] Server is alive at %s\n", time.Now().Format(time.RFC3339))
+		}
+	}()
+
 	if err := http.ListenAndServe(addr, nil); err != nil {
 		fmt.Printf("Server error: %v\n", err)
 		log.Fatal(err)
