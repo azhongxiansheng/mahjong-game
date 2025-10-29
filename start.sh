@@ -1,3 +1,4 @@
 #!/bin/bash
-cd backend
-go run main.go
+set -e
+echo "🎮 Starting Mahjong Game Server..."
+exec go run main.go
