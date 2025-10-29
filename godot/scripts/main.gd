@@ -41,6 +41,15 @@ func initialize_game_ui() -> void:
 
 	if game_ui:
 		print("✓ GameUI已初始化")
+		# ✓ 新增: 调试UI显示
+		var ui_layer = get_node_or_null("UILayer")
+		if ui_layer:
+			print("  ✓ UILayer 找到: visible=%s" % ui_layer.visible)
+		print("  ✓ GameUI 属性:")
+		print("    - visible: %s" % game_ui.visible)
+		print("    - modulate: %s" % game_ui.modulate)
+		print("    - size: %s" % game_ui.size)
+		print("    - position: %s" % game_ui.position)
 		# 延迟显示测试手牌，确保GameUI已完全初始化
 		game_ui.call_deferred("test_display_hand")
 	else:

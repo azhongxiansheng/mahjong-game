@@ -17,12 +17,16 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+self_modulate = Color(1, 1, 1, 1)
+modulate = Color(1, 1, 1, 1)
 
 [node name="GameLayer" type="Control" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+modulate = Color(1, 1, 1, 1)
+visible = true
 
 [node name="TableArea" type="Control" parent="GameLayer"]
 layout_mode = 1

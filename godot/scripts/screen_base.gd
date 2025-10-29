@@ -15,8 +15,8 @@ var animation_duration: float = 0.3
 
 func _ready() -> void:
 	"""初始化UI界面"""
-	visible = false
-	is_visible_on_screen = false
+	visible = true
+	is_visible_on_screen = true
 	print("ScreenBase (%s): 已初始化" % name)
 
 func show_screen() -> void:
