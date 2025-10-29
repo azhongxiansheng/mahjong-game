@@ -25,9 +25,7 @@ type Response struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-func main() {
-	rand.Seed(time.Now().UnixNano())
-
+func Main() {
 	fmt.Println("🎮 麻将游戏后端服务器")
 	fmt.Println("================================")
 	fmt.Println("版本: 0.1.0")
