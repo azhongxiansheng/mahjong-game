@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -26,6 +26,12 @@ type Response struct {
 }
 
 func main() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("PANIC: %v", r)
+		}
+	}()
+
 	fmt.Println("🎮 麻将游戏后端服务器")
 	fmt.Println("================================")
 	fmt.Println("版本: 0.1.0")
@@ -80,8 +86,8 @@ func handleWeChatLogin(w http.ResponseWriter, r *http.Request) {
 	time.Sleep(500 * time.Millisecond)
 
 	userData := UserData{
-		UserID:    fmt.Sprintf("wx_%d", rand.Int63()),
-		Nickname:  fmt.Sprintf("微信用户%d", rand.Intn(10000)),
+		UserID:    "wx_" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		Nickname:  "微信用户_" + strconv.FormatInt(time.Now().UnixNano()%10000, 10),
 		AvatarURL: "https://via.placeholder.com/150",
 		LoginType: "wechat",
 		Token:     generateToken(),
@@ -107,8 +113,8 @@ func handleGuestLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userData := UserData{
-		UserID:    fmt.Sprintf("guest_%d", rand.Int63()),
-		Nickname:  fmt.Sprintf("游客%d", rand.Intn(10000)),
+		UserID:    "guest_" + strconv.FormatInt(time.Now().UnixNano(), 10),
+		Nickname:  "游客_" + strconv.FormatInt(time.Now().UnixNano()%10000, 10),
 		AvatarURL: "",
 		LoginType: "guest",
 		Token:     generateToken(),
@@ -137,7 +143,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // generateToken 生成简单的token
 func generateToken() string {
-	return fmt.Sprintf("token_%d_%d", time.Now().Unix(), rand.Int63())
+	return "token_" + strconv.FormatInt(time.Now().Unix(), 10)
 }
 
 // respondJSON 返回JSON响应
