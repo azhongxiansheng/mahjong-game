@@ -361,7 +361,21 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
 
+	# 调试信息
+	print("  手牌总数: %d 张" % hand.get_card_count())
+	print("  手牌列表: %s" % [card.get_card_name() for card in hand.cards])
+
 	var ting_cards = WinChecker.check_can_hear(hand)
+	
+	print("  🔍 听牌检查结果:")
+	print("    听数: %d 种" % ting_cards.size())
+	if ting_cards.size() > 0:
+		print("    可听牌:")
+		for card in ting_cards:
+			print("      - %s" % card.get_card_name())
+			# 验证这张牌是否真的能胡
+			var test_result = WinChecker.check_win(hand, card)
+			print("        验证: can_win=%s" % test_result.can_win)
 
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
