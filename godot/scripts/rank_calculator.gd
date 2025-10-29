@@ -222,24 +222,19 @@ func get_weekly_reset_time() -> int:
 
 ## 获取玩家等级描述
 func get_tier_description(rating: int) -> String:
-    """根据等级分获取等级描述"""
-    match rating:
-        0..799:
-            return "🥉 青铜"
-        800..1199:
-            return "⚪ 白银"
-        1200..1599:
-            return "🟡 黄金"
-        1600..1999:
-            return "🟢 铂金"
-        2000..2399:
-            return "💎 钻石"
-        2400..2999:
-            return "👑 大师"
-        3000..(2**31 - 1):
-            return "🌟 传奇"
-        _:
-            return "❓ 未评级"
+	"""根据等级分获取等级描述"""
+	if rating < 600:
+		return "🌱 新手"
+	elif rating < 800:
+		return "🥉 青铜"
+	elif rating < 1000:
+		return "🥈 白银"
+	elif rating < 1400:
+		return "🥇 黄金"
+	elif rating < 1800:
+		return "💎 铂金"
+	else:
+		return "👑 钻石"
 
 ## 内部方法：计算分段等级
 func _calculate_tier(points: int) -> String:

@@ -15,8 +15,6 @@ var _peng_button: Button = null
 var _pass_button: Button = null
 var _quit_button: Button = null
 
-var leaderboard_button: Button
-
 # 游戏状态
 var game_controller: GameController
 var current_hand: CardHand
@@ -44,7 +42,7 @@ func _ready() -> void:
 	call_deferred("_deferred_setup")
 
 	# Setup leaderboard button
-	_setup_leaderboard_button()
+	# _setup_leaderboard_button() # This line is removed as per the edit hint
 
 	print("========== GameUI 初始化完成 ==========\n")
 
@@ -566,31 +564,3 @@ func _unhighlight_all_cards() -> void:
 	"""取消所有卡牌的高亮"""
 	# TODO: 根据实际 UI 组件结构实现取消高亮逻辑
 	pass
-
-func _setup_leaderboard_button() -> void:
-	"""Create and setup the leaderboard button in the UI"""
-	leaderboard_button = Button.new()
-	leaderboard_button.text = "🏆 排行榜"
-	leaderboard_button.custom_minimum_size = Vector2(120, 40)
-	
-	# Add to the UI panel (assuming there's a button container)
-	if has_node("HBoxContainer/ButtonContainer"):
-		get_node("HBoxContainer/ButtonContainer").add_child(leaderboard_button)
-	elif has_node("Panel/VBoxContainer/HBoxContainer"):
-		get_node("Panel/VBoxContainer/HBoxContainer").add_child(leaderboard_button)
-	else:
-		# If no appropriate container, add to root
-		add_child(leaderboard_button)
-	
-	leaderboard_button.pressed.connect(_on_leaderboard_button_pressed)
-	print("[GameUI] Leaderboard button created")
-
-func _on_leaderboard_button_pressed() -> void:
-	"""Handle leaderboard button press"""
-	var main = get_tree().root.get_child(0)
-	if main.has_method("get_leaderboard_ui"):
-		var leaderboard_ui = main.get_leaderboard_ui()
-		leaderboard_ui.toggle_leaderboard()
-		print("[GameUI] Leaderboard toggled")
-	else:
-		print("[GameUI] ERROR: Main scene does not have leaderboard UI")
