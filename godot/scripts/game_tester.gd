@@ -365,6 +365,9 @@ func test_case_2_1_basic_ting() -> void:
 
 	print("  🔍 听牌检查结果:")
 	print("    听数: %d 种" % ting_cards.size())
+	if ting_cards.size() > 0:
+		for card in ting_cards:
+			print("      - %s" % card.get_card_name())
 
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
