@@ -551,6 +551,9 @@ func run_all_tests() -> void:
 	test_win_check()
 	await get_tree().create_timer(0.5).timeout
 
+	test_ting_check()
+	await get_tree().create_timer(0.5).timeout
+
 	test_play_card()
 
 	print("\n========== 所有测试完成 ==========\n")
