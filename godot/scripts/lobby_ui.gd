@@ -1,235 +1,239 @@
+# 大厅UI - 显示房间列表和配对界面
 class_name LobbyUI
-extends ScreenBase
+extends Control
 
-# 游戏大厅UI
-# 房间列表和房间管理界面
+var lobby_manager: LobbyManager
+var selected_room_id: String = ""
+var current_player_id: String = ""
+
+# UI组件（示例）
+@onready var room_list_container = Label.new()
+@onready var player_stats_label = Label.new()
+@onready var queue_status_label = Label.new()
+@onready var match_timer_label = Label.new()
+
+# 状态
+var match_wait_time: float = 0.0
+var is_in_queue: bool = false
+var in_game: bool = false
 
 # 信号
-signal room_selected(room_id: String)
-signal create_room_pressed
-signal logout_pressed
-
-# UI组件
-var title_label: Label
-var user_info_label: Label
-var room_list_container: VBoxContainer
-var scroll_container: ScrollContainer
-var create_room_button: Button
-var logout_button: Button
-var stats_button: Button
-var status_label: Label
-
-# 数据
-var current_user_id: String = ""
-var current_username: String = ""
-var game_server: GameServer
-var rooms: Array = []
+signal create_room_requested(room_name: String)
+signal join_room_requested(room_id: String)
+signal start_matchmaking_requested(mode: int)
+signal game_started(room_id: String, players: Array)
 
 func _ready() -> void:
-	"""初始化大厅界面"""
-	super()
+	if not lobby_manager:
+		lobby_manager = LobbyManager.new()
+	
+	# 初始化UI
+	_setup_ui()
+	
+	# 连接信号
+	lobby_manager.room_list_updated.connect(_on_room_list_updated)
+	lobby_manager.match_status_changed.connect(_on_match_status_changed)
+	lobby_manager.player_info_updated.connect(_on_player_info_updated)
 
-	# 创建标题
-	title_label = Label.new()
-	title_label.text = "🀄 游戏大厅"
-	title_label.add_theme_font_size_override("font_size", 48)
-	title_label.anchor_left = 0.5
-	title_label.anchor_top = 0.03
-	title_label.offset_left = -100
-	add_child(title_label)
+func _process(delta: float) -> void:
+	if is_in_queue:
+		match_wait_time += delta
+		_update_queue_display()
 
-	# 创建用户信息标签
-	user_info_label = Label.new()
-	user_info_label.text = "欢迎玩家"
-	user_info_label.add_theme_font_size_override("font_size", 14)
-	user_info_label.anchor_left = 0.02
-	user_info_label.anchor_top = 0.05
-	add_child(user_info_label)
+func _setup_ui() -> void:
+	# 创建UI组件
+	room_list_container.text = "房间列表\n"
+	add_child(room_list_container)
+	
+	player_stats_label.text = "玩家信息"
+	add_child(player_stats_label)
+	
+	queue_status_label.text = "配对状态: 未配对"
+	add_child(queue_status_label)
+	
+	match_timer_label.text = "等待时间: 0s"
+	add_child(match_timer_label)
+	
+	print("[LobbyUI] UI已初始化")
 
-	# 创建房间列表容器
-	scroll_container = ScrollContainer.new()
-	scroll_container.anchor_left = 0.1
-	scroll_container.anchor_top = 0.12
-	scroll_container.anchor_right = 0.9
-	scroll_container.anchor_bottom = 0.75
-	add_child(scroll_container)
+# ==================== 房间操作 ====================
 
-	room_list_container = VBoxContainer.new()
-	room_list_container.anchor_left = 0.0
-	room_list_container.anchor_right = 1.0
-	room_list_container.custom_minimum_size = Vector2(400, 100)
-	scroll_container.add_child(room_list_container)
+func create_room(room_name: String, max_players: int = 4) -> void:
+	var room_id = lobby_manager.create_room(room_name, current_player_id, max_players)
+	print("[LobbyUI] 房间已创建: %s" % room_id)
+	
+	# 更新UI并开始游戏准备
+	_refresh_room_list()
 
-	# 创建状态标签
-	status_label = Label.new()
-	status_label.text = "正在加载房间列表..."
-	status_label.anchor_left = 0.5
-	status_label.anchor_top = 0.35
-	status_label.offset_left = -100
-	add_child(status_label)
-
-	# 创建创建房间按钮
-	create_room_button = Button.new()
-	create_room_button.text = "+ 创建房间"
-	create_room_button.custom_minimum_size = Vector2(150, 50)
-	create_room_button.anchor_left = 0.1
-	create_room_button.anchor_top = 0.8
-	create_room_button.pressed.connect(_on_create_room_pressed)
-	add_child(create_room_button)
-
-	# 创建查看统计按钮
-	stats_button = Button.new()
-	stats_button.text = "📊 统计"
-	stats_button.custom_minimum_size = Vector2(120, 50)
-	stats_button.anchor_left = 0.4
-	stats_button.anchor_top = 0.8
-	add_child(stats_button)
-
-	# 创建退出登录按钮
-	logout_button = Button.new()
-	logout_button.text = "退出登录"
-	logout_button.custom_minimum_size = Vector2(120, 50)
-	logout_button.anchor_left = 0.75
-	logout_button.anchor_top = 0.8
-	logout_button.pressed.connect(_on_logout_pressed)
-	add_child(logout_button)
-
-	# 初始化游戏服务器
-	game_server = GameServer.new()
-
-	print("LobbyUI: 已初始化")
-
-func on_enter() -> void:
-	"""进入大厅时的回调"""
-	print("LobbyUI: 进入游戏大厅")
-	refresh_room_list()
-
-func on_exit() -> void:
-	"""离开大厅时的回调"""
-	print("LobbyUI: 离开游戏大厅")
-
-func set_user_info(user_id: String, username: String) -> void:
-	"""设置用户信息"""
-	current_user_id = user_id
-	current_username = username
-	user_info_label.text = "玩家: %s" % username
-	print("LobbyUI: 用户已登录 - %s" % username)
-
-func refresh_room_list() -> void:
-	"""刷新房间列表"""
-	print("LobbyUI: 刷新房间列表")
-
-	# 清空现有房间卡片
-	for child in room_list_container.get_children():
-		child.queue_free()
-
-	rooms.clear()
-
-	# 模拟生成一些房间
-	_generate_sample_rooms()
-
-	if rooms.is_empty():
-		status_label.text = "暂无可用房间，请创建一个"
-		status_label.visible = true
+func join_room(room_id: String) -> void:
+	if lobby_manager.join_room(room_id, current_player_id):
+		selected_room_id = room_id
+		print("[LobbyUI] 已加入房间: %s" % room_id)
+		_refresh_room_list()
 	else:
-		status_label.visible = false
+		print("[LobbyUI] 无法加入房间")
 
-		# 显示所有房间
-		for room in rooms:
-			var card = _create_room_card(room)
-			room_list_container.add_child(card)
+func leave_room() -> void:
+	if lobby_manager.leave_room(current_player_id):
+		selected_room_id = ""
+		print("[LobbyUI] 已离开房间")
+		_refresh_room_list()
 
-func _generate_sample_rooms() -> void:
-	"""生成示例房间（模拟）"""
-	# 房间1
-	var room1 = {
-		"id": "room_001",
-		"name": "新手房间",
-		"players": 2,
-		"max_players": 4,
-		"level": "简单",
-		"creator": "admin"
-	}
-	rooms.append(room1)
+func start_game() -> void:
+	if selected_room_id == "":
+		print("[LobbyUI] 未选择房间")
+		return
+	
+	if lobby_manager.start_room_game(selected_room_id):
+		print("[LobbyUI] 游戏已开始")
+		in_game = true
+		var room = lobby_manager.room_manager.get_room(selected_room_id)
+		if room:
+			game_started.emit(selected_room_id, room.players.keys())
+	else:
+		print("[LobbyUI] 无法启动游戏")
 
-	# 房间2
-	var room2 = {
-		"id": "room_002",
-		"name": "高手房间",
-		"players": 3,
-		"max_players": 4,
-		"level": "困难",
-		"creator": "master"
-	}
-	rooms.append(room2)
+# ==================== 配对操作 ====================
 
-	# 房间3
-	var room3 = {
-		"id": "room_003",
-		"name": "竞技房间",
-		"players": 1,
-		"max_players": 4,
-		"level": "专家",
-		"creator": "expert"
-	}
-	rooms.append(room3)
+func start_matchmaking(mode: int = PlayerMatcher.MatchMode.CASUAL) -> void:
+	if lobby_manager.start_matchmaking(current_player_id, "Player_%s" % current_player_id, mode):
+		is_in_queue = true
+		match_wait_time = 0.0
+		print("[LobbyUI] 已加入配对队列")
+		_update_queue_display()
+	else:
+		print("[LobbyUI] 无法加入配对队列")
 
-func _create_room_card(room: Dictionary) -> PanelContainer:
-	"""创建房间卡片"""
-	var card = PanelContainer.new()
-	card.custom_minimum_size = Vector2(800, 80)
+func cancel_matchmaking() -> void:
+	if lobby_manager.cancel_matchmaking(current_player_id):
+		is_in_queue = false
+		match_wait_time = 0.0
+		print("[LobbyUI] 已取消配对")
+		_update_queue_display()
 
-	var hbox = HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 20)
-	card.add_child(hbox)
+# ==================== UI更新 ====================
 
-	# 房间名称
-	var name_label = Label.new()
-	name_label.text = "[%s] %s" % [room.level, room.name]
-	name_label.custom_minimum_size = Vector2(200, 0)
-	hbox.add_child(name_label)
+func _refresh_room_list() -> void:
+	var joinable_rooms = lobby_manager.get_joinable_rooms()
+	var text = "【可加入的房间】\n"
+	
+	if joinable_rooms.is_empty():
+		text += "没有可加入的房间\n"
+	else:
+		for room_info in joinable_rooms:
+			text += "房间: %s (%d/%d)\n" % [
+				room_info["room_name"],
+				room_info["player_count"],
+				room_info["max_players"]
+			]
+	
+	room_list_container.text = text
 
-	# 玩家数量
-	var players_label = Label.new()
-	players_label.text = "玩家: %d/%d" % [room.players, room.max_players]
-	players_label.custom_minimum_size = Vector2(100, 0)
-	hbox.add_child(players_label)
+func _update_queue_display() -> void:
+	if is_in_queue:
+		var position = lobby_manager.get_queue_position(current_player_id)
+		var status_text = "配对中... (第%d个)" % position
+		queue_status_label.text = status_text
+		match_timer_label.text = "等待时间: %.0fs" % match_wait_time
+	else:
+		queue_status_label.text = "配对状态: 未配对"
+		match_timer_label.text = "等待时间: 0s"
 
-	# 房主
-	var creator_label = Label.new()
-	creator_label.text = "房主: %s" % room.creator
-	creator_label.custom_minimum_size = Vector2(100, 0)
-	hbox.add_child(creator_label)
+func _update_player_stats() -> void:
+	var info = lobby_manager.get_player_info(current_player_id)
+	if info.is_empty():
+		return
+	
+	var stats_text = "玩家: %s\n" % info.get("player_name", "Unknown")
+	stats_text += "等级: %s\n" % _get_rank_name(info.get("rank", 0))
+	stats_text += "游戏数: %d\n" % info.get("total_games", 0)
+	stats_text += "胜场: %d\n" % info.get("wins", 0)
+	stats_text += "胜率: %.1f%%\n" % (info.get("skill_level", 0.0) * 100)
+	
+	player_stats_label.text = stats_text
 
-	# 加入按钮
-	var join_button = Button.new()
-	join_button.text = "加入"
-	join_button.custom_minimum_size = Vector2(80, 40)
+# ==================== 信号处理 ====================
 
-	# 保存房间ID到按钮
-	var room_id = room.id
-	join_button.pressed.connect(func(): _on_room_selected(room_id))
-	hbox.add_child(join_button)
+func _on_room_list_updated(rooms: Array) -> void:
+	_refresh_room_list()
 
-	return card
+func _on_match_status_changed(status: String) -> void:
+	print("[LobbyUI] 配对状态改变: %s" % status)
+	
+	if status == "matched":
+		is_in_queue = false
+		match_wait_time = 0.0
+		print("[LobbyUI] 配对成功！")
+	elif status == "queued":
+		is_in_queue = true
+		match_wait_time = 0.0
 
-func _on_room_selected(room_id: String) -> void:
-	"""房间被选中"""
-	print("LobbyUI: 选择房间 - %s" % room_id)
-	room_selected.emit(room_id)
+func _on_player_info_updated(player_id: String) -> void:
+	if player_id == current_player_id:
+		_update_player_stats()
 
-func _on_create_room_pressed() -> void:
-	"""创建房间按钮被按下"""
-	print("LobbyUI: 创建房间")
-	create_room_pressed.emit()
+# ==================== 工具函数 ====================
 
-func _on_logout_pressed() -> void:
-	"""退出登录按钮被按下"""
-	print("LobbyUI: 退出登录")
-	logout_pressed.emit()
+func _get_rank_name(rank: int) -> String:
+	match rank:
+		PlayerMatcher.PlayerRank.BRONZE:
+			return "青铜"
+		PlayerMatcher.PlayerRank.SILVER:
+			return "白银"
+		PlayerMatcher.PlayerRank.GOLD:
+			return "黄金"
+		PlayerMatcher.PlayerRank.PLATINUM:
+			return "铂金"
+		PlayerMatcher.PlayerRank.DIAMOND:
+			return "钻石"
+		PlayerMatcher.PlayerRank.MASTER:
+			return "大师"
+		_:
+			return "未知"
 
-func show_room_count() -> void:
-	"""显示房间数量"""
-	var count = rooms.size()
-	status_label.text = "当前%d个房间" % count
-	print("LobbyUI: 房间数量 - %d" % count)
+# ==================== 测试函数 ====================
+
+func test_lobby_flow() -> void:
+	print("\n╔════════════════════════════════════════╗")
+	print("║ 🧪 大厅测试流程 ║")
+	print("╚════════════════════════════════════════╝\n")
+	
+	# 设置测试玩家
+	current_player_id = "player_001"
+	
+	# 测试1: 创建房间
+	print("【测试1】创建房间")
+	create_room("TestRoom1", 4)
+	await get_tree().create_timer(0.5).timeout
+	
+	# 测试2: 显示房间列表
+	print("\n【测试2】房间列表")
+	_refresh_room_list()
+	print(room_list_container.text)
+	
+	# 测试3: 配对功能
+	print("\n【测试3】配对功能")
+	leave_room()
+	start_matchmaking()
+	await get_tree().create_timer(2.0).timeout
+	_update_queue_display()
+	print(queue_status_label.text)
+	
+	# 测试4: 取消配对
+	print("\n【测试4】取消配对")
+	cancel_matchmaking()
+	_update_queue_display()
+	
+	# 显示统计
+	lobby_manager.print_lobby_status()
+	
+	print("\n╚════════════════════════════════════════╝\n")
+
+# 设置玩家ID
+func set_player_id(player_id: String) -> void:
+	current_player_id = player_id
+	lobby_manager.update_player_info(player_id, {
+		"player_id": player_id,
+		"player_name": "Player_%s" % player_id
+	})
+	_update_player_stats()

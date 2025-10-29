@@ -7,25 +7,25 @@ enum MessageType {
 	CONNECT = "CONNECT",
 	CONNECT_ACK = "CONNECT_ACK",
 	DISCONNECT = "DISCONNECT",
-	
+
 	# 房间相关
 	CREATE_ROOM = "CREATE_ROOM",
 	JOIN_ROOM = "JOIN_ROOM",
 	LEAVE_ROOM = "LEAVE_ROOM",
 	ROOM_STATE = "ROOM_STATE",
-	
+
 	# 玩家相关
 	PLAYER_JOINED = "PLAYER_JOINED",
 	PLAYER_LEFT = "PLAYER_LEFT",
 	PLAYER_STATE = "PLAYER_STATE",
-	
+
 	# 游戏相关
 	GAME_START = "GAME_START",
 	PLAY_CARD = "PLAY_CARD",
 	DRAW_CARD = "DRAW_CARD",
 	WIN = "WIN",
 	GAME_END = "GAME_END",
-	
+
 	# 其他
 	CHAT = "CHAT",
 	PING = "PING",
@@ -53,7 +53,7 @@ class Message:
 	var timestamp: int
 	var id: int
 	var data: Dictionary
-	
+
 	func _init(msg_type: String, player_id: String = "", room_id: String = "", data: Dictionary = {}) -> void:
 		self.type = msg_type
 		self.player_id = player_id
@@ -61,7 +61,7 @@ class Message:
 		self.timestamp = Time.get_ticks_msec()
 		self.id = randi()
 		self.data = data
-	
+
 	# 转换为字典
 	func to_dict() -> Dictionary:
 		return {
@@ -72,11 +72,11 @@ class Message:
 			"id": id,
 			"data": data
 		}
-	
+
 	# 转换为 JSON 字符串
 	func to_json() -> String:
 		return JSON.stringify(to_dict())
-	
+
 	# 验证消息有效性
 	func is_valid() -> bool:
 		if type.is_empty():
@@ -120,15 +120,15 @@ static func create_error_message(error_code: int, error_message: String) -> Mess
 static func parse_message(json_string: String) -> Message:
 	var json = JSON.new()
 	var error = json.parse(json_string)
-	
+
 	if error != OK:
 		print("[NetworkMessage] JSON 解析失败")
 		return null
-	
+
 	var dict = json.get_data()
 	if dict is Dictionary:
 		return dict_to_message(dict)
-	
+
 	return null
 
 static func dict_to_message(dict: Dictionary) -> Message:
@@ -136,11 +136,11 @@ static func dict_to_message(dict: Dictionary) -> Message:
 	var player_id = dict.get("player_id", "")
 	var room_id = dict.get("room_id", "")
 	var data = dict.get("data", {})
-	
+
 	var message = Message.new(msg_type, player_id, room_id, data)
 	message.timestamp = dict.get("timestamp", Time.get_ticks_msec())
 	message.id = dict.get("id", randi())
-	
+
 	return message
 
 # 获取消息类型名称
@@ -204,7 +204,7 @@ static func validate_message(message: Message) -> Dictionary:
 			"valid": false,
 			"error": "消息类型无效"
 		}
-	
+
 	# 根据消息类型进行特定的验证
 	match message.type:
 		MessageType.CONNECT:
@@ -220,7 +220,7 @@ static func validate_message(message: Message) -> Dictionary:
 				return {"valid": false, "error": "玩家ID不能为空"}
 			if not "suit" in message.data or not "number" in message.data:
 				return {"valid": false, "error": "卡牌信息不完整"}
-	
+
 	return {"valid": true}
 
 # 打印消息信息

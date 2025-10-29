@@ -31,13 +31,13 @@ signal error_occurred(error_code: int, error_message: String)
 func _ready() -> void:
 	network_manager = NetworkManager.new()
 	add_child(network_manager)
-	
+
 	# 连接网络管理器的信号
 	network_manager.connected.connect(_on_network_connected)
 	network_manager.disconnected.connect(_on_network_disconnected)
 	network_manager.message_received.connect(_on_message_received)
 	network_manager.error_occurred.connect(_on_network_error)
-	
+
 	print("[NetworkClient] 初始化完成")
 
 # 连接到服务器
@@ -45,7 +45,7 @@ func connect_to_server() -> bool:
 	if state != ClientState.IDLE:
 		print("[NetworkClient] 已连接或正在连接")
 		return false
-	
+
 	state = ClientState.CONNECTING
 	return network_manager.connect_to_server()
 
@@ -53,11 +53,11 @@ func connect_to_server() -> bool:
 func disconnect_from_server() -> void:
 	if state == ClientState.IDLE:
 		return
-	
+
 	# 发送断开消息
 	if room_id != "":
 		leave_room()
-	
+
 	network_manager.disconnect_from_server()
 	state = ClientState.IDLE
 	client_disconnected.emit()
@@ -67,12 +67,12 @@ func create_room(room_name: String, max_players: int = 4) -> bool:
 	if state != ClientState.CONNECTED:
 		print("[NetworkClient] 未连接")
 		return false
-	
+
 	var data = {
 		"room_name": room_name,
 		"max_players": max_players
 	}
-	
+
 	network_manager.send_message(NetworkMessage.MessageType.CREATE_ROOM, data)
 	return true
 
@@ -81,7 +81,7 @@ func join_room(room_id_param: String) -> bool:
 	if state != ClientState.CONNECTED:
 		print("[NetworkClient] 未连接")
 		return false
-	
+
 	room_id = room_id_param
 	var msg = NetworkMessage.create_join_room_message(player_id, room_id)
 	network_manager.send_message(msg.type, msg.data)
@@ -91,10 +91,10 @@ func join_room(room_id_param: String) -> bool:
 func leave_room() -> bool:
 	if state != ClientState.IN_ROOM and state != ClientState.IN_GAME:
 		return false
-	
+
 	var msg = NetworkMessage.create_leave_room_message(player_id, room_id)
 	network_manager.send_message(msg.type, msg.data)
-	
+
 	room_id = ""
 	state = ClientState.CONNECTED
 	room_left.emit()
@@ -105,12 +105,12 @@ func play_card(card: CardData) -> bool:
 	if state != ClientState.IN_GAME:
 		print("[NetworkClient] 游戏未进行中")
 		return false
-	
+
 	var card_data = {
 		"suit": card.suit,
 		"number": card.number
 	}
-	
+
 	var msg = NetworkMessage.create_play_card_message(player_id, room_id, card_data)
 	network_manager.send_message(msg.type, msg.data)
 	return true
@@ -119,7 +119,7 @@ func play_card(card: CardData) -> bool:
 func declare_win(win_data: Dictionary) -> bool:
 	if state != ClientState.IN_GAME:
 		return false
-	
+
 	var msg = NetworkMessage.create_win_message(player_id, room_id, win_data)
 	network_manager.send_message(msg.type, msg.data)
 	return true
@@ -128,7 +128,7 @@ func declare_win(win_data: Dictionary) -> bool:
 func send_chat_message(text: String) -> bool:
 	if state < ClientState.CONNECTED:
 		return false
-	
+
 	var msg = NetworkMessage.create_chat_message(player_id, room_id, text)
 	network_manager.send_message(msg.type, msg.data)
 	return true
@@ -148,7 +148,7 @@ func _on_network_disconnected() -> void:
 func _on_message_received(message: Dictionary) -> void:
 	var msg_type = message.get("type", "")
 	var data = message.get("data", {})
-	
+
 	match msg_type:
 		NetworkMessage.MessageType.ROOM_STATE:
 			_handle_room_state(data)
@@ -171,7 +171,7 @@ func _on_message_received(message: Dictionary) -> void:
 func _handle_room_state(data: Dictionary) -> void:
 	current_room = data
 	other_players = data.get("players", {})
-	
+
 	if state == ClientState.CONNECTED:
 		state = ClientState.IN_ROOM
 		room_joined.emit(current_room)
