@@ -1,0 +1,4 @@
+# Force fresh builds
+app
+*.o
+*.a

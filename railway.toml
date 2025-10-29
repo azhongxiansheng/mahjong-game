@@ -1,0 +1,5 @@
+[build]
+builder = "buildpacks"
+
+[deploy]
+startCommand = "go build -o app main.go && ./app"
