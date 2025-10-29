@@ -44,7 +44,7 @@ func _ready() -> void:
 		card_label.offset_top = -70
 		card_label.size = Vector2(80, 50)
 		card_label.add_theme_font_size_override("font_size", 32)
-		card_label.set_text_alignment(HORIZONTAL_ALIGNMENT_CENTER)
+		card_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		print("[CardTile] 动态创建 Label 节点")
 	else:
 		card_label = $Label
@@ -59,7 +59,7 @@ func _ready() -> void:
 		suit_label.offset_top = 0
 		suit_label.size = Vector2(80, 50)
 		suit_label.add_theme_font_size_override("font_size", 18)
-		suit_label.set_text_alignment(HORIZONTAL_ALIGNMENT_CENTER)
+		suit_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		print("[CardTile] 动态创建 SuitLabel 节点")
 	else:
 		suit_label = $SuitLabel
