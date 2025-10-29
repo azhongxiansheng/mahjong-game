@@ -1,0 +1,32 @@
+✅ 最终工作方案 - Module Imports
+
+【架构】
+
+根级 main.go:
+  import "mahjong-game/backend"
+  func main() { backend.Main() }
+
+根级 go.mod:
+  require mahjong-game/backend v0.1.0
+  replace mahjong-game/backend => ./backend
+
+backend/main.go:
+  func Main() { /* server code */ }
+
+Procfile:
+  web: go run main.go
+
+【为什么这次会工作】
+
+✅ Railway 检测到根级 go.mod（能识别 Go 项目）
+✅ Railway buildpacks 编译根级 main.go
+✅ 根级 main.go 导入并调用 backend.Main()
+✅ 没有冲突，架构清晰
+
+【现在】
+
+点击 Restart
+
+等待 10-15 秒
+
+应该看到 Service running ✅
