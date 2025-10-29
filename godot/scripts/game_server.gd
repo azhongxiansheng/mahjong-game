@@ -3,8 +3,8 @@ class_name GameServer
 # 游戏服务器类（模拟版）
 # 用于管理房间、玩家和游戏流程
 
-var rooms: Dictionary = {}  # room_id -> GameRoom
-var player_to_room: Dictionary = {}  # player_id -> room_id
+var rooms: Dictionary = {} # room_id -> GameRoom
+var player_to_room: Dictionary = {} # player_id -> room_id
 var next_room_id: int = 1
 
 # 统计数据
@@ -19,13 +19,13 @@ func create_room(max_players: int = 4) -> GameRoom:
 	"""创建新房间"""
 	var room_id = "room_%04d" % next_room_id
 	next_room_id += 1
-	
+
 	var room = GameRoom.new(room_id, max_players)
 	rooms[room_id] = room
 	total_rooms_created += 1
-	
+
 	print("✓ GameServer: 创建房间 %s" % room_id)
-	
+
 	return room
 
 func player_join_room(player_id: String, room_id: String) -> bool:
@@ -33,35 +33,35 @@ func player_join_room(player_id: String, room_id: String) -> bool:
 	if room_id not in rooms:
 		print("GameServer: 房间不存在 %s" % room_id)
 		return false
-	
+
 	if player_id in player_to_room:
 		print("GameServer: 玩家已在其他房间中")
 		return false
-	
+
 	var room = rooms[room_id]
 	if room.add_player(player_id):
 		player_to_room[player_id] = room_id
 		total_players_connected += 1
 		return true
-	
+
 	return false
 
 func player_leave_room(player_id: String) -> bool:
 	"""玩家离开房间"""
 	if player_id not in player_to_room:
 		return false
-	
+
 	var room_id = player_to_room[player_id]
 	var room = rooms.get(room_id)
-	
+
 	if room:
 		room.remove_player(player_id)
-		
+
 		# 如果房间空了，删除房间
 		if room.is_empty():
 			rooms.erase(room_id)
 			print("GameServer: 房间已删除 %s" % room_id)
-	
+
 	player_to_room.erase(player_id)
 	return true
 
@@ -106,7 +106,7 @@ func start_game_in_room(room_id: String) -> bool:
 	var room = get_room(room_id)
 	if not room:
 		return false
-	
+
 	return room.start_game()
 
 func end_game_in_room(room_id: String) -> bool:
@@ -114,7 +114,7 @@ func end_game_in_room(room_id: String) -> bool:
 	var room = get_room(room_id)
 	if not room:
 		return false
-	
+
 	return room.end_game()
 
 func process_player_action(player_id: String, action: String, action_data: Dictionary) -> bool:
@@ -123,9 +123,9 @@ func process_player_action(player_id: String, action: String, action_data: Dicti
 	if not room:
 		print("GameServer: 玩家不在任何房间中 %s" % player_id)
 		return false
-	
+
 	print("GameServer: 处理玩家 %s 的操作 %s" % [player_id, action])
-	
+
 	# 这里可以添加具体的操作处理逻辑
 	match action:
 		"discard_card":
@@ -137,7 +137,7 @@ func process_player_action(player_id: String, action: String, action_data: Dicti
 		"hu":
 			# 处理胡牌
 			pass
-	
+
 	return true
 
 func get_server_stats() -> Dictionary:
@@ -145,7 +145,7 @@ func get_server_stats() -> Dictionary:
 	var active_players = 0
 	for player_id in player_to_room:
 		active_players += 1
-	
+
 	return {
 		"total_rooms_created": total_rooms_created,
 		"active_rooms": rooms.size(),
