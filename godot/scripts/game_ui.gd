@@ -402,22 +402,22 @@ func animate_win() -> void:
 
 func test_display_hand() -> void:
 	"""测试用: 显示测试手牌"""
-	var test_hand = CardHand.new()
-	test_hand.add_card(CardData.new(CardData.Suit.WAN, 1))
-	test_hand.add_card(CardData.new(CardData.Suit.WAN, 2))
-	test_hand.add_card(CardData.new(CardData.Suit.WAN, 3))
-	test_hand.add_card(CardData.new(CardData.Suit.TONG, 4))
-	test_hand.add_card(CardData.new(CardData.Suit.TONG, 5))
-	test_hand.add_card(CardData.new(CardData.Suit.TONG, 6))
-	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 7))
-	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 8))
-	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 9))
-	test_hand.add_card(CardData.new(CardData.Suit.ZI, 1))
-	test_hand.add_card(CardData.new(CardData.Suit.WAN, 5))
-	test_hand.add_card(CardData.new(CardData.Suit.TONG, 2))
-	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
+	var _test_hand = CardHand.new()
+	_test_hand.add_card(CardData.new(CardData.Suit.WAN, 1))
+	_test_hand.add_card(CardData.new(CardData.Suit.WAN, 2))
+	_test_hand.add_card(CardData.new(CardData.Suit.WAN, 3))
+	_test_hand.add_card(CardData.new(CardData.Suit.TONG, 4))
+	_test_hand.add_card(CardData.new(CardData.Suit.TONG, 5))
+	_test_hand.add_card(CardData.new(CardData.Suit.TONG, 6))
+	_test_hand.add_card(CardData.new(CardData.Suit.TIAO, 7))
+	_test_hand.add_card(CardData.new(CardData.Suit.TIAO, 8))
+	_test_hand.add_card(CardData.new(CardData.Suit.TIAO, 9))
+	_test_hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	_test_hand.add_card(CardData.new(CardData.Suit.WAN, 5))
+	_test_hand.add_card(CardData.new(CardData.Suit.TONG, 2))
+	_test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
 
-	display_hand(test_hand)
+	display_hand(_test_hand)
 
 # ========================
 # Phase 6: UI 集成 - 听牌和胜牌显示
