@@ -86,7 +86,7 @@ func _generate_signature(hand: CardHand) -> String:
 
 func _clear_half_cache() -> void:
 	var keys_to_remove = []
-	var remove_count = MAX_CACHE_SIZE // 2
+	var remove_count = int(MAX_CACHE_SIZE / 2.0)
 	
 	for key in _cache.keys():
 		if keys_to_remove.size() >= remove_count:
