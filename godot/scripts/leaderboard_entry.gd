@@ -48,28 +48,28 @@ func update_stats(stats: Dictionary) -> void:
     """
     if stats.has("wins"):
         wins += stats.get("wins", 0)
-    
+
     if stats.has("losses"):
         losses += stats.get("losses", 0)
-    
+
     if stats.has("score"):
         score += stats.get("score", 0)
-    
+
     # 更新总对局数
     games = wins + losses
-    
+
     # 重新计算胜率
     if games > 0:
         win_rate = float(wins) / float(games)
-    
+
     # 更新等级分
     if stats.has("rating_change"):
         rating += stats.get("rating_change", 0)
-    
+
     # 更新头像 (如果提供)
     if stats.has("avatar"):
         avatar = stats.get("avatar", "")
-    
+
     # 更新时间戳
     last_update = Time.get_ticks_msec()
 

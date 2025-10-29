@@ -1,0 +1,103 @@
+[gd_scene load_steps=2 format=3 uid="uid://b3v0ygabt3f5u"]
+
+[ext_resource type="Script" path="res://scripts/leaderboard_ui.gd"]
+
+[node name="LeaderboardUI" type="CanvasLayer"]
+layer = 10
+script = ExtResource("res://scripts/leaderboard_ui.gd")
+
+[node name="Panel" type="Panel" parent="."]
+anchors_left = 0.1
+anchors_top = 0.1
+anchors_right = 0.9
+anchors_bottom = 0.9
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 0.0
+offset_bottom = 0.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_leaderboard_panel")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel"]
+layout_mode = 1
+anchors_left = 0.0
+anchors_top = 0.0
+anchors_right = 1.0
+anchors_bottom = 1.0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = -10.0
+separation = 10
+
+[node name="TitleLabel" type="Label" parent="Panel/VBoxContainer"]
+layout_mode = 2
+text = "🏆 全球排行榜"
+theme_override_font_sizes/font_size = 28
+alignment = CENTER
+
+[node name="TabContainer" type="TabContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 0
+custom_minimum_size = Vector2(0, 40)
+
+[node name="GlobalTab" type="Control" parent="Panel/VBoxContainer/TabContainer"]
+layout_mode = 2
+mouse_filter = 1
+
+[node name="SeasonalTab" type="Control" parent="Panel/VBoxContainer/TabContainer"]
+layout_mode = 2
+mouse_filter = 1
+
+[node name="MonthlyTab" type="Control" parent="Panel/VBoxContainer/TabContainer"]
+layout_mode = 2
+mouse_filter = 1
+
+[node name="WeeklyTab" type="Control" parent="Panel/VBoxContainer/TabContainer"]
+layout_mode = 2
+mouse_filter = 1
+
+[node name="DailyTab" type="Control" parent="Panel/VBoxContainer/TabContainer"]
+layout_mode = 2
+mouse_filter = 1
+
+[node name="ScrollContainer" type="ScrollContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="Panel/VBoxContainer/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+separation = 5
+
+[node name="HBoxContainer" type="HBoxContainer" parent="Panel/VBoxContainer"]
+layout_mode = 2
+size_flags_vertical = 0
+custom_minimum_size = Vector2(0, 50)
+separation = 10
+
+[node name="RefreshButton" type="Button" parent="Panel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+text = "🔄 刷新"
+theme_override_font_sizes/font_size = 14
+
+[node name="CloseButton" type="Button" parent="Panel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 10
+text = "✕ 关闭"
+theme_override_font_sizes/font_size = 14
+
+[node name="StatsLabel" type="Label" parent="Panel/VBoxContainer/HBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 2
+text = "📊 玩家: 0 | 平均分: 0"
+alignment = CENTER
+text_overrun_behavior = 2
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_leaderboard_panel"]
+bg_color = Color(0.1, 0.1, 0.1, 0.9)
+border_color = Color(0.5, 0.5, 0.5, 0.5)
+border_blend = true
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10

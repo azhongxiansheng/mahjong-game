@@ -22,24 +22,24 @@ func calculate_rating_change(
 ) -> int:
     """
     计算玩家的等级分变化 (基于 ELO 算法)
-    
+
     参数:
         player_rating: 玩家当前等级分
         opponent_rating: 对手等级分
         player_won: 玩家是否获胜
-    
+
     返回:
         等级分变化量 (可正可负)
     """
     # 计算玩家获胜的概率
     var expected_score = 1.0 / (1.0 + pow(10.0, float(opponent_rating - player_rating) / 400.0))
-    
+
     # 实际比赛结果 (1 = 赢, 0 = 输)
     var actual_score = 1.0 if player_won else 0.0
-    
+
     # 计算等级分变化
     var rating_change = int(K_FACTOR * (actual_score - expected_score))
-    
+
     return rating_change
 
 ## 计算多人比赛的等级分变化
@@ -50,51 +50,51 @@ func calculate_multiplayer_rating_change(
 ) -> int:
     """
     计算多人比赛的等级分变化
-    
+
     参数:
         player_rating: 玩家当前等级分
         other_ratings: 其他玩家的等级分数组
         rank: 玩家的比赛排名 (1 = 第一, 数字越小越好)
-    
+
     返回:
         等级分变化量
     """
     if other_ratings.is_empty():
         return 0
-    
+
     var avg_opponent_rating = 0
     for rating in other_ratings:
         avg_opponent_rating += rating
     avg_opponent_rating /= other_ratings.size()
-    
+
     # 根据排名计算结果
     var actual_score = 1.0 / float(rank)  # 第一名 = 1.0, 第二名 = 0.5 等
-    
+
     # 计算期望分数
     var expected_score = 1.0 / (1.0 + pow(10.0, float(avg_opponent_rating - player_rating) / 400.0))
-    
+
     # 计算变化
     var rating_change = int(K_FACTOR * (actual_score - expected_score))
-    
+
     return rating_change
 
 ## 根据排名和得分计算奖励
 func calculate_rewards(rank: int, score: int, is_victory: bool = false) -> Dictionary:
     """
     根据排名和得分计算奖励
-    
+
     参数:
         rank: 玩家排名 (1-based)
         score: 玩家得分
         is_victory: 是否获胜
-    
+
     返回:
         包含金币、经验等奖励的字典
     """
     var gold = 0
     var exp = 0
     var points = 0
-    
+
     # 根据排名分配基础奖励
     match rank:
         1:  # 第一名
@@ -122,22 +122,22 @@ func calculate_rewards(rank: int, score: int, is_victory: bool = false) -> Dicti
                 gold = 10
                 exp = 5
                 points = 5
-    
+
     # 根据得分添加额外奖励
     var score_bonus_gold = score / 10
     var score_bonus_exp = score / 5
     var score_bonus_points = score / 20
-    
+
     gold += score_bonus_gold
     exp += score_bonus_exp
     points += score_bonus_points
-    
+
     # 如果是获胜，增加 50% 奖励
     if is_victory:
         gold = int(gold * 1.5)
         exp = int(exp * 1.5)
         points = int(points * 1.5)
-    
+
     return {
         "gold": gold,
         "exp": exp,
@@ -155,17 +155,17 @@ func calculate_rank_points(
 ) -> Dictionary:
     """
     计算排位分变化
-    
+
     参数:
         current_points: 当前分段分
         rank: 排名
         victory: 是否胜利
-    
+
     返回:
         包含新分数和分段的字典
     """
     var points_change = 0
-    
+
     if victory:
         if rank == 1:
             points_change = 50
@@ -180,12 +180,12 @@ func calculate_rank_points(
             points_change = -5
         else:
             points_change = 0
-    
+
     var new_points = current_points + points_change
-    
+
     # 计算分段 (Tier)
     var tier = _calculate_tier(new_points)
-    
+
     return {
         "old_points": current_points,
         "new_points": new_points,
@@ -208,16 +208,16 @@ func get_weekly_reset_time() -> int:
     var now = Time.get_ticks_msec()
     var now_seconds = now / 1000
     var now_days = now_seconds / 86400
-    
+
     # 计算本周一 (第 3 天是周一)
     var day_of_week = (now_days + 3) % 7
     var days_until_monday = (7 - day_of_week) % 7
     if days_until_monday == 0:
         days_until_monday = 7
-    
+
     var next_monday_seconds = now_seconds + (days_until_monday * 86400)
     var next_monday_start = (next_monday_seconds / 86400) * 86400
-    
+
     return int((next_monday_start - now_seconds) * 1000)
 
 ## 获取玩家等级描述
@@ -262,11 +262,11 @@ func _calculate_tier(points: int) -> String:
 func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
     """
     获取赛季奖励
-    
+
     参数:
         rating: 最终等级分
         final_rank: 最终排名
-    
+
     返回:
         赛季奖励字典
     """
@@ -276,7 +276,7 @@ func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
         "title": "",
         "avatar_frame": ""
     }
-    
+
     # 根据等级分分配奖励
     match rating:
         0..799:
@@ -303,7 +303,7 @@ func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
             rewards.gold = 1000
             rewards.gem = 200
             rewards.title = "声名远扬"
-    
+
     # 根据排名追加奖励
     if final_rank <= 10:
         rewards.gold += 1000
@@ -313,42 +313,42 @@ func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
         rewards.gold += 500
         rewards.gem += 50
         rewards.avatar_frame = "银框"
-    
+
     return rewards
 
 ## 生成排名统计报告
 func generate_ranking_report(entries: Array) -> String:
     """
     生成排名统计报告
-    
+
     参数:
         entries: LeaderboardEntry 数组
-    
+
     返回:
         统计报告文本
     """
     if entries.is_empty():
         return "📊 暂无排名数据"
-    
+
     var report = "📊 排名统计报告\n"
     report += "═" * 50 + "\n"
-    
+
     var total_players = entries.size()
     var avg_rating = 0
     var max_rating = 0
     var min_rating = 3000
-    
+
     for entry in entries:
         avg_rating += entry.rating
         max_rating = max(max_rating, entry.rating)
         min_rating = min(min_rating, entry.rating)
-    
+
     avg_rating /= total_players
-    
+
     report += "总玩家数: %d\n" % total_players
     report += "平均等级分: %d\n" % avg_rating
     report += "最高等级分: %d (%s)\n" % [max_rating, get_tier_description(max_rating)]
     report += "最低等级分: %d (%s)\n" % [min_rating, get_tier_description(min_rating)]
     report += "═" * 50
-    
+
     return report

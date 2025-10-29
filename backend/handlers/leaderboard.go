@@ -70,7 +70,7 @@ func GetLeaderboard(c *gin.Context) {
 
 	// 查询排行榜数据
 	query := `
-		SELECT 
+		SELECT
 			player_id, player_name, avatar,
 			score, wins, losses, games, win_rate,
 			rating, last_update
@@ -214,7 +214,7 @@ func UpdatePlayerStats(c *gin.Context) {
 	if err == sql.ErrNoRows {
 		// 插入新玩家
 		insertQuery := `
-			INSERT INTO leaderboard 
+			INSERT INTO leaderboard
 			(player_id, player_name, avatar, score, wins, losses, games, win_rate, rating, leaderboard_type, last_update)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		`
@@ -288,7 +288,7 @@ func GetLeaderboardStats(c *gin.Context) {
 	leaderboardType := c.DefaultQuery("type", "4")
 
 	query := `
-		SELECT 
+		SELECT
 			COUNT(*) as total_players,
 			AVG(rating) as avg_rating,
 			MAX(rating) as max_rating,
@@ -343,7 +343,7 @@ func ExportLeaderboard(c *gin.Context) {
 
 	// 获取排行榜数据
 	query := `
-		SELECT 
+		SELECT
 			player_id, player_name, avatar,
 			score, wins, losses, games, win_rate,
 			rating, last_update

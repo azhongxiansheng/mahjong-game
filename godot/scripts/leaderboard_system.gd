@@ -46,7 +46,7 @@ func add_entry(entry: LeaderboardEntry) -> void:
     if entry == null:
         print("❌ 条目为空，无法添加")
         return
-    
+
     entries[entry.player_id] = entry
     print("✅ 玩家已添加: %s (ID: %s)" % [entry.player_name, entry.player_id])
 
@@ -61,18 +61,18 @@ func get_top(limit: int = 100) -> Array:
     """
     if entries.is_empty():
         return []
-    
+
     var sorted_entries = entries.values()
-    
+
     # 按等级分降序排序
     sorted_entries.sort_custom(func(a: LeaderboardEntry, b: LeaderboardEntry):
         return a.rating > b.rating
     )
-    
+
     # 更新每个玩家的排名
     for i in range(sorted_entries.size()):
         sorted_entries[i].rank = i + 1
-    
+
     # 返回前 N 名
     return sorted_entries.slice(0, min(limit, sorted_entries.size()))
 
@@ -87,12 +87,12 @@ func get_player_rank(player_id: String) -> int:
     """
     if player_id not in entries:
         return -1
-    
+
     var top_players = get_top(entries.size())
     for i in range(top_players.size()):
         if top_players[i].player_id == player_id:
             return i + 1
-    
+
     return -1
 
 ## 获取玩家条目
@@ -123,14 +123,14 @@ func update_player_stats(player_id: String, stats: Dictionary) -> void:
             stats.get("name", "Player")
         )
         entries[player_id] = entry
-    
+
     var entry = entries[player_id]
     entry.update_stats(stats)
-    
+
     # 发送排名更新信号
     var rank = get_player_rank(player_id)
     player_ranked.emit(player_id, rank)
-    
+
     # 检查前 10 名是否变更
     _check_top_10_changed()
 
@@ -157,17 +157,17 @@ func get_statistics() -> Dictionary:
             "max_rating": 0,
             "min_rating": 0
         }
-    
+
     var all_entries = entries.values()
     var ratings = []
     var total_rating = 0
-    
+
     for entry in all_entries:
         ratings.append(entry.rating)
         total_rating += entry.rating
-    
+
     ratings.sort()
-    
+
     return {
         "total_players": all_entries.size(),
         "avg_rating": total_rating / all_entries.size(),
@@ -195,10 +195,10 @@ func export_to_json(limit: int = 100) -> String:
     """
     var leaderboard = get_top(limit)
     var data = []
-    
+
     for entry in leaderboard:
         data.append(entry.get_stats())
-    
+
     return JSON.stringify(data)
 
 ## 从 JSON 导入排行榜数据
@@ -212,18 +212,18 @@ func import_from_json(json_data: String) -> bool:
     """
     var json = JSON.new()
     var error = json.parse(json_data)
-    
+
     if error != OK:
         print("❌ JSON 解析失败")
         return false
-    
+
     var data = json.data
     if data == null or not data is Array:
         print("❌ 数据格式无效")
         return false
-    
+
     reset_leaderboard()
-    
+
     for player_data in data:
         if player_data is Dictionary:
             var entry = LeaderboardEntry.new(
@@ -237,7 +237,7 @@ func import_from_json(json_data: String) -> bool:
             entry.win_rate = player_data.get("win_rate", 0.0)
             entry.rating = player_data.get("rating", 1000)
             add_entry(entry)
-    
+
     print("✅ 排行榜数据已导入: %d 名玩家" % entries.size())
     leaderboard_updated.emit()
     return true
@@ -260,10 +260,10 @@ func get_summary(limit: int = 10) -> String:
     var leaderboard = get_top(limit)
     var summary = "🏆 %s\n" % TYPE_NAMES[leaderboard_type]
     summary += "═" * 50 + "\n"
-    
+
     for entry in leaderboard:
         summary += entry.get_display_text() + "\n"
-    
+
     summary += "═" * 50
     return summary
 
