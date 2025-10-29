@@ -32,7 +32,12 @@ func main() {
 	addr := "0.0.0.0:" + port
 	fmt.Printf("Server starting on %s...\n", addr)
 	fmt.Printf("Health check: http://localhost:%s/api/health\n", port)
+	
+	// 在启动监听之前等待一下，确保一切准备好
+	time.Sleep(500 * time.Millisecond)
+	
 	fmt.Println("=== Server Ready ===")
+	fmt.Printf("Ready to accept requests at %s\n", time.Now().Format(time.RFC3339))
 
 	// 心跳日志 - 防止Railway认为应用空闲
 	go func() {
