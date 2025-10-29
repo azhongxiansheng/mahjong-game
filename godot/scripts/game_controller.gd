@@ -27,23 +27,22 @@ func init_game() -> void:
 	if game_state == null:
 		game_state = GameState.new()
 
-	game_state.set_state(GameState.State.INIT)
+	game_state.update_phase(GameState.GamePhase.WAITING)
 
 	# 创建牌池
 	deck = MahjongDeck.new()
 	deck.shuffle()
-	game_state.set_state(GameState.State.READY)
 
 	print("✓ 游戏初始化完成")
 
 func start_game() -> void:
 	"""开始游戏"""
-	if game_state.get_state() != GameState.State.READY:
+	if game_state.get_phase() != GameState.GamePhase.WAITING:
 		print("错误：游戏不在准备状态")
 		return
 
 	print("\n【游戏开始】")
-	game_state.set_state(GameState.State.DEALING)
+	game_state.update_phase(GameState.GamePhase.DRAWING)
 
 	# 发初始手牌（13张）
 	player_hand = CardHand.new()
@@ -54,17 +53,17 @@ func start_game() -> void:
 	game_stats["rounds"] += 1
 	game_stats["total_cards_drawn"] += 13
 
-	game_state.set_state(GameState.State.PLAYING)
+	game_state.update_phase(GameState.GamePhase.PLAYING)
 	print("✓ 游戏已开始，发放初始手牌")
 	print_player_hand()
 
 func draw_card() -> CardData:
 	"""玩家抽一张卡"""
-	if not (game_state.get_state() == GameState.State.PLAYING or game_state.get_state() == GameState.State.WAITING_ACTION):
-		print("错误：无法抽卡（当前状态：%s）" % game_state.get_state_name())
+	if not (game_state.get_phase() == GameState.GamePhase.PLAYING or game_state.get_phase() == GameState.GamePhase.DISCARDING):
+		print("错误：无法抽卡（当前阶段：%d）" % game_state.get_phase())
 		return null
 
-	game_state.set_state(GameState.State.DRAW)
+	game_state.update_phase(GameState.GamePhase.DRAWING)
 	var card = deck.draw_one()
 	if card:
 		player_hand.add_card(card)
@@ -73,18 +72,20 @@ func draw_card() -> CardData:
 	else:
 		print("牌池已空！")
 
-	game_state.set_state(GameState.State.WAITING_ACTION)
+	game_state.update_phase(GameState.GamePhase.PLAYING)
 	return card
 
 func discard_card(card: CardData) -> bool:
 	"""玩家出一张卡"""
-	if not game_state.can_discard():
-		print("错误：无法出牌")
+	var current_phase = game_state.get_phase()
+	if current_phase != GameState.GamePhase.PLAYING:
+		print("错误：无法出牌（当前阶段不对）")
 		return false
 
-	game_state.set_state(GameState.State.DISCARD)
+	game_state.update_phase(GameState.GamePhase.DISCARDING)
 	if player_hand.remove_card(card):
 		game_stats["total_cards_discarded"] += 1
+		game_state.add_to_discard_pile({"suit": card.suit, "number": card.number})
 		print("✓ 出牌: %s" % card.get_card_name())
 		return true
 	else:
@@ -95,7 +96,7 @@ func check_win() -> bool:
 	"""检查是否胜利"""
 	if player_hand.get_card_count() == 0:
 		print("\n🎉 胜利！")
-		game_state.set_state(GameState.State.WIN)
+		game_state.update_phase(GameState.GamePhase.WIN)
 		game_stats["wins"] += 1
 		return true
 	return false
@@ -103,7 +104,7 @@ func check_win() -> bool:
 func end_game() -> void:
 	"""结束游戏"""
 	print("\n【游戏结束】")
-	game_state.set_state(GameState.State.END)
+	game_state.update_phase(GameState.GamePhase.FINISHED)
 	print_game_stats()
 
 func print_player_hand() -> void:

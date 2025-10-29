@@ -55,7 +55,7 @@ func local_declare_win(player_id: String, win_data: Dictionary) -> void:
 # ==================== 远程操作处理 ====================
 
 func handle_remote_operation(op_data: Dictionary) -> void:
-	var op_type = op_data.get("type", OperationType.DRAW_CARD)
+	var op_type = op_data.get("type", OperationQueue.OperationType.DRAW_CARD)
 	var player_id = op_data.get("player_id", "")
 	var data = op_data.get("data", {})
 	
