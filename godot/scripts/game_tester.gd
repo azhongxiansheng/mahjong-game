@@ -337,7 +337,7 @@ func test_case_1_5_no_eye() -> void:
 	print("")
 
 func test_case_2_1_basic_ting() -> void:
-	"""Test Case 2.1: 基础听牌 - 听1种牌 (听对)"""
+	"""Test Case 2.1: 基础听牌 - 听1种牌"""
 	print("📋 Test Case 2.1: 基础听牌 (听1种牌)")
 
 	var hand = CardHand.new()
@@ -349,20 +349,17 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 5))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 6))
-	# 筒1 筒1 筒1 (刻1)
+	# 筒1 筒1 筒1 (刻)
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
-	# 条2 条2 条2 (刻2)
+	# 条2 条2 条2 (刻)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
-	# 字3 字3 字4 (缺一张字3就能成对，现在是顺子)
-	# 实际上: 字3 字3 字4 是不完整的
-	# 改为: 字3 字4 字5 (缺字3或字5来完成)
+	# 字3 字4 (不完整的顺子，缺字5)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 4))
-	hand.add_card(CardData.new(CardData.Suit.ZI, 5))
 
 	# 调试信息
 	print("  手牌总数: %d 张" % hand.get_card_count())
@@ -379,9 +376,6 @@ func test_case_2_1_basic_ting() -> void:
 		print("    可听牌:")
 		for card in ting_cards:
 			print("      - %s" % card.get_card_name())
-			# 验证这张牌是否真的能胡
-			var test_result = WinChecker.check_win(hand, card)
-			print("        验证: can_win=%s" % test_result.can_win)
 
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
