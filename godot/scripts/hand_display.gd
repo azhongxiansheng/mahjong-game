@@ -67,8 +67,13 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 	# 先添加到场景树，让_ready()执行
 	add_child(card_tile)
 
-	# 设置位置
-	var x_pos = 20 + (card_tiles.size() * 85)
+	# ✅ 改进: 动态计算卡牌间距，让所有13张卡牌都能显示在屏幕内
+	var card_count = hand.cards.size() if hand else 1
+	var available_width = size.x - 40  # 留出左右各20像素边距
+	var card_width = 80
+	var spacing = max(10, (available_width - card_width) / float(card_count))  # 动态计算间距
+	
+	var x_pos = 20 + (card_tiles.size() * spacing)
 	var y_pos = 35
 	card_tile.position = Vector2(x_pos, y_pos)
 	print("[DEBUG] 卡牌位置: ", card_tile.position, " 全局位置: ", card_tile.global_position)
@@ -80,18 +85,16 @@ func add_card_display(card: CardData, _index: int = -1) -> void:
 	# 连接信号 - 使用更安全的方式
 	if card_tile.has_signal("card_pressed"):
 		card_tile.card_pressed.connect(_on_card_pressed)
-		# print("✓ CardTile card_pressed信号已连接")
 	else:
 		print("⚠ CardTile没有card_pressed信号")
 
 	if card_tile.has_signal("card_selected"):
 		card_tile.card_selected.connect(_on_card_selected)
-		# print("✓ CardTile card_selected信号已连接")
 	else:
 		print("⚠ CardTile没有card_selected信号")
 
 	card_tiles.append(card_tile)
-	print("添加卡牌显示: %s (位置: %d)" % [card.get_card_name(), x_pos])
+	print("添加卡牌显示: %s (位置: %.1f, 间距: %.1f)" % [card.get_card_name(), x_pos, spacing])
 
 func remove_card_display(card: CardData) -> bool:
 	"""移除指定卡牌的显示"""

@@ -57,22 +57,22 @@ func _initialize_missing_nodes() -> void:
 	"""初始化任何失败的 @onready 节点"""
 
 	if not _player_hand_display:
-		_player_hand_display = get_node_or_null("GameLayer/TableArea/PlayerHand")
+		_player_hand_display = get_node_or_null("GameLayer/PlayerHand")
 
 	if not _opponent_hand_display:
-		_opponent_hand_display = get_node_or_null("GameLayer/TableArea/OpponentHand")
+		_opponent_hand_display = get_node_or_null("GameLayer/OpponentHand")
 
 	if not _player_stats:
-		_player_stats = get_node_or_null("InfoPanel/PlayerStats")
+		_player_stats = get_node_or_null("GameLayer/InfoPanel/PlayerStats")
 
 	if not _game_log:
-		_game_log = get_node_or_null("InfoPanel/GameLog")
+		_game_log = get_node_or_null("GameLayer/InfoPanel/GameLog")
 
 	if not _game_info:
-		_game_info = get_node_or_null("GameLayer/TableArea/GameCenter/GameInfo")
+		_game_info = get_node_or_null("GameLayer/TopInfo")
 
 	if not _discard_pile:
-		_discard_pile = get_node_or_null("GameLayer/TableArea/GameCenter/DiscardPile")
+		_discard_pile = get_node_or_null("GameLayer/GameCenter/DiscardPile")
 
 	if not _hu_button:
 		_hu_button = get_node_or_null("GameLayer/ActionPanel/HuButton")
@@ -83,7 +83,7 @@ func _initialize_missing_nodes() -> void:
 	if not _pass_button:
 		_pass_button = get_node_or_null("GameLayer/ActionPanel/PassButton")
 	if not _quit_button:
-		_quit_button = get_node_or_null("InfoPanel/QuitButton")
+		_quit_button = get_node_or_null("GameLayer/ActionPanel/QuitButton")
 
 func setup_ui() -> void:
 	"""设置UI初始状态"""
@@ -175,7 +175,7 @@ func apply_theme() -> void:
 	"""应用主题颜色"""
 	# 不覆盖整个 modulate，改用 self_modulate 仅影响自己
 	self_modulate = Color.WHITE
-	
+
 	# 设置按钮颜色 - 使用 self_modulate 而不是 modulate
 	if _hu_button:
 		_hu_button.self_modulate = Color(0xE74C3CFF)  # 红色
