@@ -1,8 +1,9 @@
 {
   "build": {
-    "builder": "buildpacks"
+    "builder": "dockerfile",
+    "dockerfile": "./Dockerfile"
   },
   "deploy": {
-    "startCommand": "go build -o app . && ./app"
+    "startCommand": ""
   }
 }
