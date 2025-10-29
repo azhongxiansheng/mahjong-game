@@ -679,7 +679,7 @@ func test_async_ting_check() -> void:
 
 	var async_checker = AsyncTingChecker.new()
 	var test_count = 0
-	var complete_count = 0
+	var completion_results = []
 
 	# 创建5个异步任务
 	for i in range(5):
@@ -687,8 +687,8 @@ func test_async_ting_check() -> void:
 		test_count += 1
 
 		async_checker.check_ting_async(hand, func(ting_cards):
-			complete_count += 1
-			print("【异步任务%d】完成! 听牌数: %d" % [complete_count, ting_cards.size()])
+			completion_results.append(ting_cards.size())
+			print("【异步任务%d】完成! 听牌数: %d" % [completion_results.size(), ting_cards.size()])
 		)
 
 	# 等待所有任务完成
