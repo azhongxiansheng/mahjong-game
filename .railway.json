@@ -3,6 +3,6 @@
     "builder": "buildpacks"
   },
   "deploy": {
-    "startCommand": "go run main.go"
+    "startCommand": "go build -o app . && ./app"
   }
 }
