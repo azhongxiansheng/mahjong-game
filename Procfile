@@ -1,1 +1,1 @@
-web: bash start.sh
+web: go run main.go
