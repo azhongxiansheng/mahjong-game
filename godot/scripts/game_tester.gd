@@ -368,6 +368,13 @@ func test_case_2_1_basic_ting() -> void:
 	if ting_cards.size() > 0:
 		for card in ting_cards:
 			print("      - %s" % card.get_card_name())
+			# Verify each card
+			var verify_hand = CardHand.new()
+			for c in hand.cards:
+				verify_hand.add_card(c)
+			verify_hand.add_card(card)
+			var verify_result = WinChecker.check_win(verify_hand)
+			print("        验证: 14张手牌可胡 = %s" % verify_result.can_win)
 
 	if ting_cards.size() > 0:
 		print("  ✅ 通过: 可以听牌")
