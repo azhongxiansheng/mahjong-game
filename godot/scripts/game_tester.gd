@@ -363,10 +363,13 @@ func test_case_2_1_basic_ting() -> void:
 
 	# 调试信息
 	print("  手牌总数: %d 张" % hand.get_card_count())
-	print("  手牌列表: %s" % [card.get_card_name() for card in hand.cards])
+	var card_names = []
+	for card in hand.cards:
+		card_names.append(card.get_card_name())
+	print("  手牌列表: %s" % [card_names])
 
 	var ting_cards = WinChecker.check_can_hear(hand)
-	
+
 	print("  🔍 听牌检查结果:")
 	print("    听数: %d 种" % ting_cards.size())
 	if ting_cards.size() > 0:
