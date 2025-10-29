@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://cq04ru3msolx"]
 
-[ext_resource type="Script" path="res://scripts/card_tile.gd" id="1_card_tile"]
+[ext_resource type="Script" uid="uid://bri3vyo83ouug" path="res://scripts/card_tile.gd" id="1_card_tile"]
 
 [node name="CardTile" type="Control"]
 layout_mode = 3
@@ -25,21 +25,9 @@ color = Color(0.95, 0.95, 0.9, 1)
 
 [node name="Label" type="Label" parent="."]
 layout_mode = 0
-offset_right = 80.0
-offset_bottom = 60.0
-text = "1"
-horizontal_alignment = 1
-vertical_alignment = 1
-add_theme_font_size_override("font_size", 32)
-add_theme_color_override("font_color", Color(0.1, 0.1, 0.1, 1))
-
-[node name="SuitLabel" type="Label" parent="."]
-layout_mode = 0
 offset_top = 60.0
 offset_right = 80.0
 offset_bottom = 120.0
 text = "万"
 horizontal_alignment = 1
 vertical_alignment = 1
-add_theme_font_size_override("font_size", 20)
-add_theme_color_override("font_color", Color(0.1, 0.1, 0.1, 1))

@@ -118,35 +118,35 @@ custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "胡"
 theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color.WHITE
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 
 [node name="TingButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "听"
 theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color.WHITE
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 
 [node name="PengButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "碰"
 theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color.WHITE
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 
 [node name="PassButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "跳过"
 theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color.WHITE
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 
 [node name="QuitButton" type="Button" parent="MainContainer/BottomPanel/ActionPanel"]
 custom_minimum_size = Vector2(120, 50)
 layout_mode = 2
 text = "退出"
 theme_override_font_sizes/font_size = 18
-theme_override_colors/font_color = Color.WHITE
+theme_override_colors/font_color = Color(1, 1, 1, 1)
 
 [node name="InfoPanel" type="HBoxContainer" parent="MainContainer/BottomPanel"]
 layout_mode = 0
