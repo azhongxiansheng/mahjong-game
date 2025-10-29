@@ -9,7 +9,7 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 	if hand == null:
 		callback.call([])
 		return
-	
+
 	var task = {
 		"hand": hand,
 		"callback": callback,
@@ -18,9 +18,9 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 		"completed": false,
 		"start_time": Time.get_ticks_msec()
 	}
-	
+
 	_pending_tasks.append(task)
-	
+
 	# 使用 call_deferred 在后台执行
 	call_deferred("_execute_check_deferred", task)
 
@@ -28,10 +28,10 @@ func check_ting_async(hand: CardHand, callback: Callable) -> void:
 func _execute_check_deferred(task: Dictionary) -> void:
 	var hand = task["hand"]
 	var result = WinChecker.check_can_hear(hand)
-	
+
 	task["result"] = result
 	task["completed"] = true
-	
+
 	call_deferred("_invoke_callback", task)
 
 # 在主线程调用回调
@@ -39,7 +39,7 @@ func _invoke_callback(task: Dictionary) -> void:
 	if task["callback"].is_valid():
 		var result = task["result"] if task["result"] != null else []
 		task["callback"].call(result)
-	
+
 	_pending_tasks.erase(task)
 
 # 获取待处理任务数
@@ -54,7 +54,7 @@ func cancel_all_tasks() -> void:
 func print_status() -> void:
 	print("\n=== 异步检查器状态 ===")
 	print("待处理任务数: %d" % _pending_tasks.size())
-	
+
 	for i in range(_pending_tasks.size()):
 		var task = _pending_tasks[i]
 		var elapsed = Time.get_ticks_msec() - task["start_time"]
