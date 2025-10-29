@@ -1,6 +1,0 @@
-[build]
-builder = "buildpacks"
-
-[deploy]
-startCommand = "go build -o app . && ./app"
-restartPolicyType = "always"
