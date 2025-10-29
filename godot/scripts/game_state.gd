@@ -23,10 +23,10 @@ class Snapshot:
 	var drawn_card: Dictionary = {}         # 摸到的牌
 	var scores: Dictionary = {}             # 各玩家得分
 	var game_data: Dictionary = {}          # 额外游戏数据
-	
+
 	func _init() -> void:
 		timestamp = Time.get_ticks_msec()
-	
+
 	func to_dict() -> Dictionary:
 		return {
 			"version": version,
@@ -40,7 +40,7 @@ class Snapshot:
 			"scores": scores.duplicate(true),
 			"game_data": game_data.duplicate(true)
 		}
-	
+
 	func to_json() -> String:
 		return JSON.stringify(to_dict())
 
@@ -137,7 +137,7 @@ func _increment_version() -> void:
 	_version_counter += 1
 	_current_state.version = _version_counter
 	_current_state.timestamp = Time.get_ticks_msec()
-	
+
 	# 保存到历史
 	_save_to_history()
 
@@ -153,9 +153,9 @@ func _save_to_history() -> void:
 	snapshot_copy.drawn_card = _current_state.drawn_card.duplicate()
 	snapshot_copy.scores = _current_state.scores.duplicate()
 	snapshot_copy.game_data = _current_state.game_data.duplicate(true)
-	
+
 	_state_history.append(snapshot_copy)
-	
+
 	# 限制历史大小
 	if _state_history.size() > _max_history:
 		_state_history.pop_front()
@@ -183,11 +183,11 @@ func clear_history() -> void:
 func apply_remote_state(remote_state: Dictionary) -> bool:
 	var remote_version = remote_state.get("version", -1)
 	var current_version = _current_state.version
-	
+
 	if remote_version <= current_version:
 		print("[GameState] 远程版本过旧: %d <= %d" % [remote_version, current_version])
 		return false
-	
+
 	# 应用远程状态
 	_current_state.version = remote_version
 	_current_state.timestamp = remote_state.get("timestamp", 0)
@@ -199,10 +199,10 @@ func apply_remote_state(remote_state: Dictionary) -> bool:
 	_current_state.drawn_card = remote_state.get("drawn_card", {}).duplicate()
 	_current_state.scores = remote_state.get("scores", {}).duplicate()
 	_current_state.game_data = remote_state.get("game_data", {}).duplicate(true)
-	
+
 	_save_to_history()
 	state_synced.emit(remote_version)
-	
+
 	print("[GameState] 状态已同步: 版本 %d" % remote_version)
 	return true
 
@@ -210,15 +210,15 @@ func get_diff_since(version: int) -> Dictionary:
 	var old_state = get_state_at_version(version)
 	if not old_state:
 		return _current_state.to_dict()
-	
+
 	var diff = {}
 	var current_dict = _current_state.to_dict()
 	var old_dict = old_state.to_dict()
-	
+
 	for key in current_dict.keys():
 		if current_dict[key] != old_dict.get(key):
 			diff[key] = current_dict[key]
-	
+
 	return diff
 
 # ==================== 重置 ====================
