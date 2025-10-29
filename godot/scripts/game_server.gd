@@ -168,7 +168,7 @@ func _simulate_message_delivery(message: NetworkMessage.Message, room_id: String
 	"""模拟消息传递"""
 	var room = rooms.get(room_id)
 	if room:
-		print("📢 GameServer: 广播消息 %s 到房间 %s" % [NetworkMessage.get_type_name(message.type), room_id])
+		print("📢 GameServer: 广播消息 %s 到房间 %s" % [NetworkMessage.get_message_type_name(message.type), room_id])
 
 func get_room_info_list() -> Array:
 	"""获取所有房间的信息列表"""

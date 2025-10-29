@@ -1,6 +1,45 @@
-[gd_scene load_steps=2 format=3 uid="uid://loading_screen"]
+[gd_scene load_steps=6 format=3 uid="uid://loading_screen"]
 
 [ext_resource type="Script" path="res://scripts/loading_screen.gd" id="1_loading"]
+[ext_resource type="Texture2D" path="res://assets/wechat_icon.svg" id="2_wechat_icon"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat"]
+content_margin_left = 24.0
+content_margin_top = 14.0
+content_margin_right = 24.0
+content_margin_bottom = 14.0
+bg_color = Color(0.0274, 0.7569, 0.3765, 1)
+border_width_bottom = 3
+border_color = Color(0.02, 0.65, 0.32, 1)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 8
+shadow_offset = Vector2(0, 4)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_guest"]
+content_margin_left = 20.0
+content_margin_top = 10.0
+content_margin_right = 20.0
+content_margin_bottom = 10.0
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 0
+border_width_top = 0
+border_width_right = 0
+border_width_bottom = 0
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_agreement"]
+content_margin_left = 8.0
+content_margin_top = 8.0
+content_margin_right = 8.0
+content_margin_bottom = 8.0
+bg_color = Color(0, 0, 0, 0.3)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
 
 [node name="LoadingScreen" type="CanvasLayer"]
 script = ExtResource("1_loading")
@@ -16,3 +55,140 @@ offset_right = 0.0
 offset_bottom = 0.0
 expand_mode = 1
 stretch_mode = 1
+
+[node name="LoginContainer" type="CenterContainer" parent="."]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="VBoxContainer" type="VBoxContainer" parent="LoginContainer"]
+layout_mode = 2
+theme_override_constants/separation = 0
+size_flags_vertical = 4
+
+[node name="GameTitle" type="Label" parent="LoginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 52
+text = "麻将游戏"
+horizontal_alignment = 1
+
+[node name="Spacer1" type="Control" parent="LoginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+
+[node name="WeChatLoginButton" type="Button" parent="LoginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(400, 64)
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_pressed_color = Color(1, 1, 1, 0.9)
+theme_override_colors/font_hover_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+theme_override_styles/normal = SubResource("StyleBoxFlat_wechat")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wechat")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_wechat")
+text = "      微信登录"
+
+[node name="WeChatIcon" type="TextureRect" parent="LoginContainer/VBoxContainer/WeChatLoginButton"]
+# TODO: 请将微信官方图标保存为 res://assets/wechat_icon.png
+# 下载地址: https://open.weixin.qq.com/ (微信开放平台)
+# 推荐尺寸: 40x40px, 白色图标 PNG 格式
+texture = ExtResource("2_wechat_icon")
+anchor_left = 0.0
+anchor_top = 0.5
+anchor_right = 0.0
+anchor_bottom = 0.5
+offset_left = 30.0
+offset_top = -20.0
+offset_right = 70.0
+offset_bottom = 20.0
+stretch_mode = 5
+mouse_filter = 2
+
+[node name="Spacer2" type="Control" parent="LoginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 30)
+layout_mode = 2
+
+[node name="SwitchLoginLabel" type="Label" parent="LoginContainer/VBoxContainer"]
+layout_mode = 2
+mouse_filter = 0
+theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
+theme_override_colors/font_outline_color = Color(0.2, 0.4, 0.8, 1)
+theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 18
+text = "切换登录方式"
+horizontal_alignment = 1
+
+[node name="Spacer3" type="Control" parent="LoginContainer/VBoxContainer"]
+custom_minimum_size = Vector2(0, 80)
+layout_mode = 2
+
+[node name="AgreementContainer" type="HBoxContainer" parent="LoginContainer/VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="CheckIcon" type="Label" parent="LoginContainer/VBoxContainer/AgreementContainer"]
+layout_mode = 2
+mouse_filter = 0
+theme_override_colors/font_color = Color(0.0274, 0.7569, 0.3765, 1)
+theme_override_font_sizes/font_size = 24
+text = "✔"
+
+[node name="AgreementLabel" type="RichTextLabel" parent="LoginContainer/VBoxContainer/AgreementContainer"]
+custom_minimum_size = Vector2(300, 30)
+layout_mode = 2
+mouse_filter = 0
+theme_override_colors/default_color = Color(1, 1, 1, 0.9)
+theme_override_font_sizes/normal_font_size = 14
+bbcode_enabled = true
+text = "同意《[url=agreement]用户使用协议[/url]》"
+fit_content = true
+scroll_active = false
+
+[node name="StatusLabel" type="Label" parent="LoginContainer/VBoxContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.9)
+theme_override_font_sizes/font_size = 16
+text = ""
+horizontal_alignment = 1
+
+[node name="VersionLabel" type="Label" parent="."]
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -40.0
+offset_right = -10.0
+offset_bottom = -10.0
+theme_override_colors/font_color = Color(1, 1, 1, 0.7)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 16
+text = "ver: 0.1.0"
+horizontal_alignment = 2
+vertical_alignment = 2
+
+[node name="RepairButton" type="Button" parent="."]
+anchor_left = 0.0
+anchor_top = 0.0
+anchor_right = 0.0
+anchor_bottom = 0.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 140.0
+offset_bottom = 90.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_agreement")
+theme_override_styles/hover = SubResource("StyleBoxFlat_agreement")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_agreement")
+text = "🔧\n一键修复"

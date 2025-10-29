@@ -86,7 +86,7 @@ func start_game() -> bool:
 		return false
 	
 	room_state = RoomState.PLAYING
-	game_state.set_state(GameState.State.PLAYING)
+	game_state.update_phase(GameState.GamePhase.PLAYING)
 	current_turn = 0
 	
 	print("✓ GameRoom: 游戏已开始")
@@ -100,7 +100,7 @@ func end_game() -> bool:
 		return false
 	
 	room_state = RoomState.FINISHED
-	game_state.set_state(GameState.State.END)
+	game_state.update_phase(GameState.GamePhase.FINISHED)
 	
 	print("✓ GameRoom: 游戏已结束")
 	_update_activity()
