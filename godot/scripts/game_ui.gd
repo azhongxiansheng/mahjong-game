@@ -552,6 +552,7 @@ func _update_game_info(text: String) -> void:
 # 高亮听牌的卡牌
 func _highlight_listening_cards(ting_cards: Array) -> void:
 	"""高亮界面上的可听牌"""
+	# 参数 ting_cards 已接收但根据设计目前不使用
 	# TODO: 根据实际 UI 组件结构实现高亮逻辑
 	# 这需要与具体的手牌显示组件集成
 	pass
