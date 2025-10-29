@@ -76,7 +76,7 @@ func update_stats(stats: Dictionary) -> void:
         total_games = stats["total_games"]
     if stats.has("wins"):
         wins = stats["wins"]
-    
+
     # 重新计算胜率
     if total_games > 0:
         win_rate = float(wins) / float(total_games)
@@ -136,7 +136,7 @@ func get_progress() -> float:
     var current_rating = float(rating)
     var tier_min = 0.0
     var tier_max = 600.0
-    
+
     # 确定当前等级范围
     match get_tier():
         "青铜":
@@ -154,10 +154,10 @@ func get_progress() -> float:
         "钻石":
             tier_min = 1800.0
             tier_max = 3000.0
-    
+
     if tier_max <= tier_min:
         return 1.0
-    
+
     return (current_rating - tier_min) / (tier_max - tier_min)
 
 
@@ -214,7 +214,7 @@ func get_summary() -> String:
     var tier_text = "%s %s" % [get_tier_emoji(), get_tier()]
     var status_text = get_status_text()
     var rate_text = "%.1f%%" % (win_rate * 100)
-    
+
     return "%s | 等级:%s | 状态:%s | 胜率:%s (%d/%d)" % [
         get_display_text(),
         tier_text,

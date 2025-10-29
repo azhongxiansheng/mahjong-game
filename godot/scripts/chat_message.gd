@@ -26,7 +26,7 @@ func _init(p_sender_id: String, p_sender_name: String, p_receiver_id: String, p_
     receiver_id = p_receiver_id
     receiver_name = p_receiver_name
     content = p_content
-    
+
     # 生成消息ID
     message_id = "%s_%s_%d" % [sender_id, receiver_id, Time.get_ticks_msec()]
     created_at = int(Time.get_ticks_msec() / 1000)
@@ -69,7 +69,7 @@ func get_time_ago() -> String:
     """获取相对时间文本"""
     var now = int(Time.get_ticks_msec() / 1000)
     var diff = now - created_at
-    
+
     if diff < 60:
         return "刚刚"
     elif diff < 3600:
@@ -87,7 +87,7 @@ func get_display_text() -> String:
     var status = "✓" if is_sent() else "⏳"
     if is_read:
         status = "✓✓"
-    
+
     return "[%s] %s: %s" % [status, sender_name, content]
 
 
@@ -97,7 +97,7 @@ func get_formatted_text(include_timestamp: bool = true) -> String:
     if include_timestamp:
         var time_dict = Time.get_datetime_dict_from_unix_time(created_at)
         timestamp = "[%02d:%02d:%02d] " % [time_dict["hour"], time_dict["minute"], time_dict["second"]]
-    
+
     var status = ""
     if is_read:
         status = " [已读]"
@@ -105,7 +105,7 @@ func get_formatted_text(include_timestamp: bool = true) -> String:
         status = " [已发送]"
     else:
         status = " [发送中]"
-    
+
     return "%s%s: %s%s" % [timestamp, sender_name, content, status]
 
 

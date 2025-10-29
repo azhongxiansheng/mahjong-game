@@ -33,7 +33,7 @@ signal unlocked()
 # ============ 构造函数 ============
 func _init(p_id: String, p_name: String) -> void:
 	"""初始化成就
-	
+
 	参数:
 		p_id: 成就ID
 		p_name: 成就名称
@@ -48,45 +48,45 @@ func _init(p_id: String, p_name: String) -> void:
 
 func update_progress(amount: int) -> bool:
 	"""更新成就进度
-	
+
 	参数:
 		amount: 增加的进度数值
-	
+
 	返回:
 		bool: 是否已解锁
 	"""
 	if is_unlocked:
 		return false
-	
+
 	progress = min(progress + amount, max_progress)
 	progress_changed.emit(progress)
-	
+
 	if progress >= max_progress:
 		unlock()
 		return true
-	
+
 	return false
 
 
 func set_progress(new_progress: int) -> bool:
 	"""直接设置成就进度
-	
+
 	参数:
 		new_progress: 新的进度值
-	
+
 	返回:
 		bool: 是否已解锁
 	"""
 	if is_unlocked:
 		return false
-	
+
 	progress = min(new_progress, max_progress)
 	progress_changed.emit(progress)
-	
+
 	if progress >= max_progress:
 		unlock()
 		return true
-	
+
 	return false
 
 
@@ -105,10 +105,10 @@ func get_display_text() -> String:
 	"""获取显示文本"""
 	var status = "✓" if is_unlocked else "○"
 	var progress_text = ""
-	
+
 	if max_progress > 1:
 		progress_text = " [%d/%d]" % [progress, max_progress]
-	
+
 	return "[%s] %s%s - %s" % [status, name, progress_text, description]
 
 

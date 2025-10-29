@@ -32,7 +32,7 @@ func _ready() -> void:
 
 func set_achievement_system(system: AchievementSystem) -> void:
 	"""设置关联的成就系统
-	
+
 	参数:
 		system: AchievementSystem 实例
 	"""
@@ -51,7 +51,7 @@ func on_game_started() -> void:
 
 func on_game_completed(result: Dictionary) -> void:
 	"""游戏完成事件
-	
+
 	参数:
 		result: 包含游戏结果的字典
 		{
@@ -64,15 +64,15 @@ func on_game_completed(result: Dictionary) -> void:
 	"""
 	if result == null:
 		return
-	
+
 	var is_victory = result.get("is_victory", false)
 	var score = result.get("score", 0)
 	var play_time = result.get("play_time", 0)
 	var rank = result.get("rank", 0)
-	
+
 	total_games += 1
 	total_play_time += play_time
-	
+
 	if is_victory:
 		total_wins += 1
 		current_win_streak += 1
@@ -82,11 +82,11 @@ func on_game_completed(result: Dictionary) -> void:
 		total_losses += 1
 		current_win_streak = 0
 		_check_loss_achievements()
-	
+
 	if score > highest_score:
 		highest_score = score
 		_check_score_achievements()
-	
+
 	print("[AchievementTracker] 游戏完成: 胜利=%s, 分数=%d, 连胜=%d" % [is_victory, score, current_win_streak])
 
 
@@ -102,11 +102,11 @@ func _check_win_achievements() -> void:
 	"""检查胜利相关的成就"""
 	if achievement_system == null:
 		return
-	
+
 	# 首次胜利
 	if total_wins == 1:
 		achievement_system.unlock_achievement("first_win")
-	
+
 	# 胜利数里程碑
 	if total_wins == 10:
 		achievement_system.unlock_achievement("10_wins")
@@ -118,7 +118,7 @@ func _check_win_achievements() -> void:
 		achievement_system.unlock_achievement("500_wins")
 	if total_wins == 1000:
 		achievement_system.unlock_achievement("1000_wins")
-	
+
 	# 连胜成就
 	if current_win_streak == 3:
 		achievement_system.unlock_achievement("win_streak_3")
@@ -134,7 +134,7 @@ func _check_loss_achievements() -> void:
 	"""检查失败相关的成就"""
 	if achievement_system == null:
 		return
-	
+
 	# 这里可以添加失败相关的成就
 	# 例如: 经历过失败、不怕失败等
 
@@ -143,7 +143,7 @@ func _check_score_achievements() -> void:
 	"""检查分数相关的成就"""
 	if achievement_system == null:
 		return
-	
+
 	# 分数里程碑
 	if highest_score >= 1000:
 		achievement_system.unlock_achievement("score_1000")
@@ -161,7 +161,7 @@ func _check_score_achievements() -> void:
 
 func unlock_achievement(achievement_id: String) -> void:
 	"""手动解锁成就
-	
+
 	参数:
 		achievement_id: 成就ID
 	"""
@@ -171,7 +171,7 @@ func unlock_achievement(achievement_id: String) -> void:
 
 func update_achievement(achievement_id: String, amount: int) -> void:
 	"""手动更新成就进度
-	
+
 	参数:
 		achievement_id: 成就ID
 		amount: 增加的进度数值
@@ -187,7 +187,7 @@ func get_stats() -> Dictionary:
 	var win_rate = 0.0
 	if total_games > 0:
 		win_rate = float(total_wins) / float(total_games)
-	
+
 	return {
 		"total_wins": total_wins,
 		"total_losses": total_losses,
@@ -211,7 +211,7 @@ func get_summary() -> String:
 	summary += "当前连胜: %d\n" % stats["current_streak"]
 	summary += "最高连胜: %d\n" % stats["max_streak"]
 	summary += "总游戏时间: %d 分钟\n" % (stats["total_play_time"] / 60)
-	
+
 	return summary
 
 
@@ -225,7 +225,7 @@ func _on_achievement_unlocked(achievement: Achievement) -> void:
 		"timestamp": Time.get_ticks_msec() / 1000.0,
 		"reward_points": achievement.reward_points
 	})
-	
+
 	print("[AchievementTracker] 成就已解锁: %s" % achievement.name)
 
 

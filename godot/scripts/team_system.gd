@@ -281,7 +281,7 @@ func print_summary() -> void:
 	"""打印摘要"""
 	print("\n=== 战队系统摘要 ===")
 	print("总战队数: %d" % teams.size())
-	
+
 	var stats = get_statistics()
 	print("总成员数: %d" % stats["total_members"])
 	print("平均队伍大小: %d" % stats["avg_team_size"])
@@ -326,7 +326,7 @@ func from_json(json_string: String) -> bool:
 
 	# 加载战队
 	for team_data in data["teams"]:
-		var team = Team.new(team_data["team_id"], team_data["team_name"], 
+		var team = Team.new(team_data["team_id"], team_data["team_name"],
 		                     team_data["leader_id"], team_data["leader_name"])
 		team.from_dict(team_data)
 		teams[team.team_id] = team

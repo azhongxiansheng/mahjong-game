@@ -30,14 +30,14 @@ func _ready() -> void:
     if friend_system == null:
         friend_system = FriendSystem.new()
         add_child(friend_system)
-    
+
     # 连接信号
     friend_system.friend_added.connect(_on_friend_added)
     friend_system.friend_removed.connect(_on_friend_removed)
     friend_system.friend_status_changed.connect(_on_friend_status_changed)
     friend_system.friend_request_received.connect(_on_friend_request_received)
     friend_system.player_blocked.connect(_on_player_blocked)
-    
+
     print("[FriendManager] Initialized successfully")
 
 
@@ -57,15 +57,15 @@ func send_friend_request(target_player_id: String, target_player_name: String) -
     if not _validate_player_id(target_player_id):
         push_error("[FriendManager] Invalid player ID")
         return false
-    
+
     if friend_system.has_friend(target_player_id):
         _show_notification("好友已存在", "你们已经是好友了")
         return false
-    
+
     if friend_system.is_blocked(target_player_id):
         _show_notification("无法添加", "该玩家已被屏蔽")
         return false
-    
+
     # TODO: 向后端发送请求
     print("[FriendManager] Friend request sent to %s" % target_player_name)
     friend_request_sent.emit(target_player_id)
@@ -76,25 +76,25 @@ func send_friend_request(target_player_id: String, target_player_name: String) -
 func accept_friend_request(from_player_id: String) -> bool:
     """接受好友请求"""
     var result = friend_system.accept_friend_request(from_player_id)
-    
+
     if result:
         # TODO: 通知后端
         friend_request_response.emit(from_player_id, true)
         _show_notification("好友请求已接受", "你们成为了好友")
         print("[FriendManager] Friend request accepted from %s" % from_player_id)
-    
+
     return result
 
 
 func reject_friend_request(from_player_id: String) -> bool:
     """拒绝好友请求"""
     var result = friend_system.reject_friend_request(from_player_id)
-    
+
     if result:
         # TODO: 通知后端
         friend_request_response.emit(from_player_id, false)
         print("[FriendManager] Friend request rejected from %s" % from_player_id)
-    
+
     return result
 
 
@@ -103,14 +103,14 @@ func remove_friend(friend_id: String) -> bool:
     var friend = friend_system.get_friend(friend_id)
     if friend == null:
         return false
-    
+
     var result = friend_system.remove_friend(friend_id)
-    
+
     if result:
         # TODO: 通知后端
         _show_notification("好友已删除", "已移除好友 %s" % friend.friend_name)
         print("[FriendManager] Friend removed: %s" % friend.friend_name)
-    
+
     return result
 
 
@@ -138,17 +138,17 @@ func search_friends(query: String, limit: int = SEARCH_LIMIT) -> Array:
         search_results.clear()
         search_completed.emit([])
         return []
-    
+
     var results = []
     var query_lower = query.to_lower()
-    
+
     for friend in friend_system.get_all_friends():
         if friend.friend_name.to_lower().contains(query_lower) or \
            friend.friend_id.to_lower().contains(query_lower):
             results.append(friend)
             if results.size() >= limit:
                 break
-    
+
     search_results = results
     search_completed.emit(results)
     print("[FriendManager] Found %d friends matching '%s'" % [results.size(), query])
@@ -175,24 +175,24 @@ func get_top_friends(limit: int = 10) -> Array:
 func block_player(player_id: String, player_name: String) -> bool:
     """屏蔽玩家"""
     var result = friend_system.block_player(player_id, player_name)
-    
+
     if result:
         # TODO: 通知后端
         _show_notification("已屏蔽", "屏蔽玩家 %s" % player_name)
         print("[FriendManager] Player blocked: %s" % player_name)
-    
+
     return result
 
 
 func unblock_player(player_id: String) -> bool:
     """解除屏蔽"""
     var result = friend_system.unblock_player(player_id)
-    
+
     if result:
         # TODO: 通知后端
         _show_notification("已解除屏蔽", "解除屏蔽")
         print("[FriendManager] Player unblocked: %s" % player_id)
-    
+
     return result
 
 
@@ -241,12 +241,12 @@ func get_summary_text() -> String:
 func save_friends_to_file(path: String) -> bool:
     """保存好友到文件"""
     var json_str = friend_system.to_json()
-    
+
     var file = FileAccess.open(path, FileAccess.WRITE)
     if file == null:
         push_error("[FriendManager] Failed to open file: %s" % path)
         return false
-    
+
     file.store_string(json_str)
     print("[FriendManager] Friends saved to %s" % path)
     return true
@@ -257,18 +257,18 @@ func load_friends_from_file(path: String) -> bool:
     if not FileAccess.file_exists(path):
         push_warning("[FriendManager] File not found: %s" % path)
         return false
-    
+
     var file = FileAccess.open(path, FileAccess.READ)
     if file == null:
         push_error("[FriendManager] Failed to open file: %s" % path)
         return false
-    
+
     var json_str = file.get_as_text()
     var result = friend_system.from_json(json_str)
-    
+
     if result:
         print("[FriendManager] Friends loaded from %s" % path)
-    
+
     return result
 
 

@@ -37,7 +37,7 @@ func _init(p_id: String, p_name: String, p_leader_id: String, p_leader_name: Str
 	leader_id = p_leader_id
 	leader_name = p_leader_name
 	created_at = int(Time.get_ticks_msec() / 1000)
-	
+
 	# 添加队长
 	add_member(leader_id, leader_name)
 
@@ -48,10 +48,10 @@ func add_member(player_id: String, player_name: String) -> bool:
 	"""添加成员"""
 	if members.has(player_id):
 		return false
-	
+
 	if member_count >= max_members:
 		return false
-	
+
 	members[player_id] = {
 		"player_id": player_id,
 		"player_name": player_name,
@@ -65,15 +65,15 @@ func remove_member(player_id: String) -> bool:
 	"""移除成员"""
 	if not members.has(player_id):
 		return false
-	
+
 	members.erase(player_id)
 	member_count = members.size()
-	
+
 	# 如果队长离开，解散
 	if player_id == leader_id:
 		status = SquadStatus.DISBANDED
 		disbanded_at = int(Time.get_ticks_msec() / 1000)
-	
+
 	return true
 
 
@@ -138,7 +138,7 @@ func to_dict() -> Dictionary:
 	var members_data = []
 	for member in members.values():
 		members_data.append(member)
-	
+
 	return {
 		"squad_id": squad_id,
 		"squad_name": squad_name,
@@ -176,11 +176,11 @@ func from_dict(data: Dictionary) -> void:
 		games_played = data["games_played"]
 	if data.has("wins"):
 		wins = data["wins"]
-	
+
 	# 加载成员
 	members.clear()
 	if data.has("members"):
 		for member_data in data["members"]:
 			members[member_data["player_id"]] = member_data
-	
+
 	member_count = members.size()

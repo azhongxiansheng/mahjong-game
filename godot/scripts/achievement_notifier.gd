@@ -34,7 +34,7 @@ func _ready() -> void:
 
 func show_achievement(achievement: Achievement) -> void:
 	"""显示成就解锁通知
-	
+
 	参数:
 		achievement: 已解锁的成就对象
 	"""
@@ -42,35 +42,35 @@ func show_achievement(achievement: Achievement) -> void:
 	if is_showing:
 		queue.append(achievement)
 		return
-	
+
 	# 显示通知
 	_display_notification(achievement)
 
 
 func _display_notification(achievement: Achievement) -> void:
 	"""显示单个通知
-	
+
 	参数:
 		achievement: 成就对象
 	"""
 	is_showing = true
-	
+
 	# 更新UI内容
 	title_label.text = "🏆 " + achievement.name
 	description_label.text = achievement.description
 	reward_label.text = "✓ +%d 成就点数" % achievement.reward_points
-	
+
 	# 设置图标背景颜色（根据稀有度）
 	_set_rarity_color(achievement.rarity)
-	
+
 	# 显示和动画
 	visible = true
 	_play_show_animation()
-	
+
 	# 自动隐藏
 	await get_tree().create_timer(notification_duration).timeout
 	_play_hide_animation()
-	
+
 	# 检查队列
 	if queue.size() > 0:
 		var next_achievement = queue.pop_front()
@@ -81,12 +81,12 @@ func _display_notification(achievement: Achievement) -> void:
 
 func _set_rarity_color(rarity: String) -> void:
 	"""根据稀有度设置颜色
-	
+
 	参数:
 		rarity: 稀有度字符串
 	"""
 	var color = Color.WHITE
-	
+
 	match rarity:
 		"common":
 			color = Color(0.8, 0.8, 0.8, 0.9)  # 灰色
@@ -98,7 +98,7 @@ func _set_rarity_color(rarity: String) -> void:
 			color = Color(1.0, 0.0, 1.0, 0.9)  # 紫色
 		"legendary":
 			color = Color(1.0, 0.8, 0.0, 0.9)  # 金色
-	
+
 	# 设置背景颜色
 	if notification_panel and notification_panel.has_node("BackPanel"):
 		notification_panel.get_node("BackPanel").self_modulate = color
@@ -110,15 +110,15 @@ func _play_show_animation() -> void:
 	"""播放显示动画"""
 	if current_tween:
 		current_tween.kill()
-	
+
 	current_tween = create_tween()
 	current_tween.set_trans(Tween.TRANS_BACK)
 	current_tween.set_ease(Tween.EASE_OUT)
-	
+
 	# 从右边滑入
 	notification_panel.position.x = 500
 	current_tween.tween_property(notification_panel, "position:x", 0, animation_speed)
-	
+
 	# 淡入
 	notification_panel.modulate.a = 0.0
 	var tween2 = create_tween()
@@ -129,18 +129,18 @@ func _play_hide_animation() -> void:
 	"""播放隐藏动画"""
 	if current_tween:
 		current_tween.kill()
-	
+
 	current_tween = create_tween()
 	current_tween.set_trans(Tween.TRANS_BACK)
 	current_tween.set_ease(Tween.EASE_IN)
-	
+
 	# 向右滑出
 	current_tween.tween_property(notification_panel, "position:x", 500, animation_speed)
-	
+
 	# 淡出
 	var tween2 = create_tween()
 	tween2.tween_property(notification_panel, "modulate:a", 0.0, animation_speed)
-	
+
 	await tween2.finished
 	visible = false
 
@@ -151,7 +151,7 @@ func hide_notification() -> void:
 	"""立即隐藏通知"""
 	if current_tween:
 		current_tween.kill()
-	
+
 	visible = false
 	is_showing = false
 	queue.clear()
@@ -170,7 +170,7 @@ func test_notification() -> void:
 	test_achievement.description = "这是一个测试通知"
 	test_achievement.rarity = "epic"
 	test_achievement.reward_points = 500
-	
+
 	show_achievement(test_achievement)
 
 

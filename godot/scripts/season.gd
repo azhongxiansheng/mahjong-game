@@ -40,7 +40,7 @@ func _init(p_number: int, p_name: String) -> void:
 	season_name = p_name
 	season_id = p_number
 	created_at = int(Time.get_ticks_msec() / 1000)
-	
+
 	# 初始化排名奖励
 	_init_rank_rewards()
 
@@ -50,17 +50,17 @@ func _init(p_number: int, p_name: String) -> void:
 func _init_rank_rewards() -> void:
 	"""初始化排名奖励"""
 	rank_rewards.clear()
-	
+
 	# 金字塔式奖励
 	rank_rewards[1] = 1000    # 第一名 1000 钻石
 	rank_rewards[2] = 500     # 第二名 500 钻石
 	rank_rewards[3] = 300     # 第三名 300 钻石
 	rank_rewards[4] = 200
 	rank_rewards[5] = 100
-	
+
 	for i in range(6, 11):
 		rank_rewards[i] = 50
-	
+
 	for i in range(11, 51):
 		rank_rewards[i] = 10
 
@@ -94,7 +94,7 @@ func add_player_ranking(player_id: String, player_name: String, points: int = 0)
 	"""添加玩家排名"""
 	if rankings.has(player_id):
 		return false
-	
+
 	rankings[player_id] = {
 		"player_id": player_id,
 		"player_name": player_name,
@@ -110,7 +110,7 @@ func update_player_points(player_id: String, points: int) -> bool:
 	"""更新玩家积分"""
 	if not rankings.has(player_id):
 		return false
-	
+
 	rankings[player_id]["points"] = points
 	_recalculate_rankings()
 	return true
@@ -119,15 +119,15 @@ func update_player_points(player_id: String, points: int) -> bool:
 func add_game(winner_id: String, loser_id: String) -> void:
 	"""记录一场比赛"""
 	total_games += 1
-	
+
 	# 更新获胜者积分
 	if rankings.has(winner_id):
 		rankings[winner_id]["points"] += 10
-	
+
 	# 更新失败者积分
 	if rankings.has(loser_id):
 		rankings[loser_id]["points"] = max(0, rankings[loser_id]["points"] - 5)
-	
+
 	_recalculate_rankings()
 
 
@@ -135,7 +135,7 @@ func _recalculate_rankings() -> void:
 	"""重新计算排名"""
 	var ranked_players = rankings.values()
 	ranked_players.sort_custom(func(a, b): return a["points"] > b["points"])
-	
+
 	for i in range(ranked_players.size()):
 		ranked_players[i]["rank"] = i + 1
 
@@ -152,16 +152,16 @@ func get_reward_for_rank(rank: int) -> int:
 func distribute_rewards() -> Dictionary:
 	"""发放奖励"""
 	var rewards_given = {}
-	
+
 	for player_id in rankings.keys():
 		var player_info = rankings[player_id]
 		var rank = player_info["rank"]
 		var reward = get_reward_for_rank(rank)
-		
+
 		if reward > 0 and not player_info["reward_given"]:
 			player_info["reward_given"] = true
 			rewards_given[player_id] = reward
-	
+
 	is_rewards_distributed = true
 	print("[Season] Rewards distributed for season %d" % season_number)
 	return rewards_given
@@ -194,7 +194,7 @@ func get_season_duration() -> int:
 	"""获取赛季时长 (秒)"""
 	if status == SeasonStatus.UPCOMING:
 		return 0
-	
+
 	var current = int(Time.get_ticks_msec() / 1000)
 	if status == SeasonStatus.ACTIVE:
 		return current - start_date
@@ -231,7 +231,7 @@ func get_summary() -> String:
 	"""获取摘要"""
 	var duration = get_season_duration()
 	var duration_text = "%d 天 %d 小时" % [duration / 86400, (duration % 86400) / 3600]
-	
+
 	return """
 	赛季: %d - %s
 	状态: %s
@@ -256,7 +256,7 @@ func to_dict() -> Dictionary:
 	var rankings_data = []
 	for ranking in rankings.values():
 		rankings_data.append(ranking)
-	
+
 	return {
 		"season_id": season_id,
 		"season_number": season_number,
@@ -298,13 +298,13 @@ func from_dict(data: Dictionary) -> void:
 		total_games = data["total_games"]
 	if data.has("is_rewards_distributed"):
 		is_rewards_distributed = data["is_rewards_distributed"]
-	
+
 	# 加载排名
 	rankings.clear()
 	if data.has("rankings"):
 		for ranking_data in data["rankings"]:
 			rankings[ranking_data["player_id"]] = ranking_data
-	
+
 	# 加载奖励
 	if data.has("rank_rewards"):
 		rank_rewards = data["rank_rewards"].duplicate()

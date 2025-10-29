@@ -112,7 +112,7 @@ func GetFriends(c *gin.Context) {
 		}
 		f.Wins = wins
 		f.Losses = losses
-		
+
 		// 计算胜率
 		total := wins + losses
 		if total > 0 {
@@ -144,7 +144,7 @@ func GetOnlineFriends(c *gin.Context) {
 		       p.wins, p.losses, f.created_at, p.last_seen
 		FROM friends f
 		JOIN players p ON f.friend_id = p.player_id
-		WHERE f.player_id = ? AND f.relationship = 'friend' 
+		WHERE f.player_id = ? AND f.relationship = 'friend'
 		      AND (p.status = 'online' OR p.status = 'playing')
 		ORDER BY p.status DESC, p.last_seen DESC
 		LIMIT 100
@@ -199,7 +199,7 @@ func SendFriendRequest(c *gin.Context) {
 	// 检查是否已是好友
 	var exists bool
 	err := DB.QueryRow(`
-		SELECT COUNT(*) > 0 FROM friends 
+		SELECT COUNT(*) > 0 FROM friends
 		WHERE player_id = ? AND friend_id = ? AND relationship = 'friend'
 	`, playerID, req.TargetPlayerID).Scan(&exists)
 
@@ -316,7 +316,7 @@ func RemoveFriend(c *gin.Context) {
 
 	// 删除双向好友关系
 	_, err := DB.Exec(`
-		DELETE FROM friends 
+		DELETE FROM friends
 		WHERE (player_id = ? AND friend_id = ?) OR (player_id = ? AND friend_id = ?)
 	`, playerID, req.FriendID, req.FriendID, playerID)
 
@@ -390,7 +390,7 @@ func UnblockPlayer(c *gin.Context) {
 	}
 
 	_, err := DB.Exec(`
-		DELETE FROM friends 
+		DELETE FROM friends
 		WHERE player_id = ? AND friend_id = ? AND relationship = 'blocked'
 	`, playerID, req.PlayerID)
 
@@ -419,7 +419,7 @@ func GetFriendStatistics(c *gin.Context) {
 
 	// 获取好友总数
 	DB.QueryRow(`
-		SELECT COUNT(*) FROM friends 
+		SELECT COUNT(*) FROM friends
 		WHERE player_id = ? AND relationship = 'friend'
 	`, playerID).Scan(&stats.TotalFriends)
 
@@ -427,7 +427,7 @@ func GetFriendStatistics(c *gin.Context) {
 	DB.QueryRow(`
 		SELECT COUNT(*) FROM friends f
 		JOIN players p ON f.friend_id = p.player_id
-		WHERE f.player_id = ? AND f.relationship = 'friend' 
+		WHERE f.player_id = ? AND f.relationship = 'friend'
 		      AND (p.status = 'online' OR p.status = 'playing')
 	`, playerID).Scan(&stats.OnlineFriends)
 
@@ -443,13 +443,13 @@ func GetFriendStatistics(c *gin.Context) {
 
 	// 获取黑名单数
 	DB.QueryRow(`
-		SELECT COUNT(*) FROM friends 
+		SELECT COUNT(*) FROM friends
 		WHERE player_id = ? AND relationship = 'blocked'
 	`, playerID).Scan(&stats.BlockedPlayers)
 
 	// 获取待确认请求
 	DB.QueryRow(`
-		SELECT COUNT(*) FROM friend_requests 
+		SELECT COUNT(*) FROM friend_requests
 		WHERE to_player_id = ? AND status = 'pending'
 	`, playerID).Scan(&stats.PendingRequests)
 

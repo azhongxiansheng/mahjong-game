@@ -46,7 +46,7 @@ func _setup_ui() -> void:
 	"""设置 UI 组件"""
 	if close_button:
 		close_button.pressed.connect(_on_close_pressed)
-	
+
 	panel.modulate = Color.WHITE
 	panel.modulate.a = 0.95
 
@@ -55,20 +55,20 @@ func _setup_tabs() -> void:
 	"""设置标签页"""
 	if not tab_container:
 		return
-	
+
 	# 清空默认标签
 	for i in range(tab_container.get_tab_count()):
 		tab_container.remove_child(tab_container.get_child(0))
-	
+
 	# 添加标签页
 	var categories = ["all", "progress", "oneshot", "hidden", "seasonal"]
 	var labels = ["全部", "进度类", "一次性", "隐藏", "季节"]
-	
+
 	for i in range(categories.size()):
 		var tab = Control.new()
 		tab_container.add_child(tab)
 		tab_container.set_tab_title(i, labels[i])
-	
+
 	tab_container.tab_changed.connect(_on_tab_changed)
 
 
@@ -83,7 +83,7 @@ func _connect_signals() -> void:
 
 func set_achievement_system(system: AchievementSystem) -> void:
 	"""设置成就系统引用
-	
+
 	参数:
 		system: AchievementSystem 实例
 	"""
@@ -96,7 +96,7 @@ func set_achievement_system(system: AchievementSystem) -> void:
 
 func set_notifier(notifier_instance: AchievementNotifier) -> void:
 	"""设置通知系统引用
-	
+
 	参数:
 		notifier_instance: AchievementNotifier 实例
 	"""
@@ -110,7 +110,7 @@ func refresh_achievements() -> void:
 	"""刷新成就列表"""
 	if not achievement_system:
 		return
-	
+
 	_clear_list()
 	_update_achievement_list()
 	_update_stats()
@@ -120,23 +120,23 @@ func _update_achievement_list() -> void:
 	"""更新成就列表显示"""
 	if not achievement_system:
 		return
-	
+
 	# 根据当前分类获取成就
 	var achievements: Array
 	if current_category == "all":
 		achievements = achievement_system.get_all_achievements()
 	else:
 		achievements = achievement_system.get_achievements_by_category(current_category)
-	
+
 	# 按解锁状态和名称排序
 	achievements.sort_custom(func(a, b):
 		if a.is_unlocked != b.is_unlocked:
 			return a.is_unlocked  # 已解锁的在前
 		return a.name < b.name
 	)
-	
+
 	current_entries = achievements
-	
+
 	# 创建条目
 	for achievement in achievements:
 		_create_entry_item(achievement)
@@ -144,45 +144,45 @@ func _update_achievement_list() -> void:
 
 func _create_entry_item(achievement: Achievement) -> PanelContainer:
 	"""创建单个成就条目
-	
+
 	参数:
 		achievement: Achievement 对象
-	
+
 	返回:
 		PanelContainer 节点
 	"""
 	var panel_container = PanelContainer.new()
 	panel_container.custom_minimum_size = Vector2(0, entry_height)
-	
+
 	var color = ENTRY_BACKGROUND_COLOR
 	if achievement.is_unlocked:
 		color = UNLOCKED_COLOR
-	
+
 	var style_box = StyleBoxFlat.new()
 	style_box.bg_color = color
 	style_box.corner_radius_top_left = 5
 	style_box.corner_radius_top_right = 5
 	style_box.corner_radius_bottom_right = 5
 	style_box.corner_radius_bottom_left = 5
-	
+
 	var style_box_stylebox = StyleBoxFlat.new()
 	style_box_stylebox.set("panel", style_box)
-	
+
 	var h_box = HBoxContainer.new()
 	h_box.add_theme_constant_override("separation", 10)
-	
+
 	# 稀有度图标
 	var rarity_label = Label.new()
 	rarity_label.text = achievement.get_tier_emoji()
 	rarity_label.custom_minimum_size = Vector2(30, 0)
 	h_box.add_child(rarity_label)
-	
+
 	# 成就名称
 	var name_label = Label.new()
 	name_label.text = achievement.name
 	name_label.custom_minimum_size = Vector2(150, 0)
 	h_box.add_child(name_label)
-	
+
 	# 进度条
 	if achievement.max_progress > 1:
 		var progress_bar = ProgressBar.new()
@@ -190,7 +190,7 @@ func _create_entry_item(achievement: Achievement) -> PanelContainer:
 		progress_bar.custom_minimum_size = Vector2(150, 20)
 		progress_bar.show_percentage = false
 		h_box.add_child(progress_bar)
-	
+
 	# 进度文本
 	var progress_text = Label.new()
 	if achievement.max_progress > 1:
@@ -199,17 +199,17 @@ func _create_entry_item(achievement: Achievement) -> PanelContainer:
 		progress_text.text = "✓" if achievement.is_unlocked else "⏳"
 	progress_text.custom_minimum_size = Vector2(50, 0)
 	h_box.add_child(progress_text)
-	
+
 	# 奖励信息
 	var reward_label = Label.new()
 	reward_label.text = "+%d" % achievement.reward_points
 	reward_label.custom_minimum_size = Vector2(60, 0)
 	reward_label.add_theme_font_size_override("font_size", 14)
 	h_box.add_child(reward_label)
-	
+
 	panel_container.add_child(h_box)
 	achievement_list.add_child(panel_container)
-	
+
 	return panel_container
 
 
@@ -217,7 +217,7 @@ func _update_stats() -> void:
 	"""更新统计信息"""
 	if not achievement_system:
 		return
-	
+
 	var stats = achievement_system.get_statistics()
 	var text = "📊 成就: %d/%d | 完成度: %.0f%% | 总点数: %d" % [
 		stats["unlocked_count"],
@@ -225,7 +225,7 @@ func _update_stats() -> void:
 		stats["completion_percent"] * 100,
 		stats["total_points"]
 	]
-	
+
 	stats_label.text = text
 
 
@@ -252,7 +252,7 @@ func _on_achievement_unlocked(achievement: Achievement) -> void:
 	"""成就解锁事件"""
 	if notifier:
 		notifier.show_achievement(achievement)
-	
+
 	# 刷新列表（如果 UI 可见）
 	if is_visible_ui:
 		refresh_achievements()
@@ -300,7 +300,7 @@ func get_summary() -> String:
 	"""获取摘要信息"""
 	if not achievement_system:
 		return "无"
-	
+
 	var stats = achievement_system.get_statistics()
 	return "成就: %d/%d | 完成度: %.0f%%" % [
 		stats["unlocked_count"],

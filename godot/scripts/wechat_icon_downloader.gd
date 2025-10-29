@@ -175,11 +175,11 @@ func _generate_svg_icon(size: int) -> String:
   <!-- 气泡设计 -->
   <g fill="white" opacity="0.95">
     <!-- 左气泡 -->
-    <circle cx="%d" cy="%d" r="%d"/>
+	<circle cx="%d" cy="%d" r="%d"/>
     <!-- 右气泡 -->
-    <circle cx="%d" cy="%d" r="%d"/>
+	<circle cx="%d" cy="%d" r="%d"/>
     <!-- 底部小气泡 -->
-    <circle cx="%d" cy="%d" r="%d"/>
+	<circle cx="%d" cy="%d" r="%d"/>
   </g>
 </svg>""" % [
 		size, size, size, size,

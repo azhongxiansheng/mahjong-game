@@ -77,7 +77,7 @@ func display_toast(notification: Notification) -> void:
 
 	# 自动隐藏
 	await get_tree().create_timer(AUTO_HIDE_DELAY).timeout
-	
+
 	if is_instance_valid(toast):
 		_animate_toast_out(toast)
 		await get_tree().create_timer(SLIDE_OUT_DURATION).timeout
