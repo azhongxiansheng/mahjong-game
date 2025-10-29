@@ -1,0 +1,11 @@
+.git
+.gitignore
+*.md
+*.txt
+*.bat
+*.ps1
+*.sh
+docs/
+godot/
+assets/
+*.patch
