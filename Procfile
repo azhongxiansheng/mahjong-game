@@ -1,1 +1,1 @@
-web: bash start.sh
+web: cd backend && exec go run main.go

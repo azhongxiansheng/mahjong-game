@@ -3,6 +3,6 @@
     "builder": "buildpacks"
   },
   "deploy": {
-    "startCommand": "bash start.sh"
+    "startCommand": "cd backend && exec go run main.go"
   }
 }
