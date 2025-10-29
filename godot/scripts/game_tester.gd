@@ -361,6 +361,27 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
 
 	print("  手牌总数: %d 张" % hand.get_card_count())
+	
+	# Manual verification: test specific cards
+	print("  🔧 手动验证:")
+	
+	# Test 条2
+	var test_hand_2 = CardHand.new()
+	for c in hand.cards:
+		test_hand_2.add_card(c)
+	test_hand_2.add_card(CardData.new(CardData.Suit.TIAO, 2))
+	var result_2 = WinChecker.check_win(test_hand_2)
+	print("    条2 + 13张手牌 = %d张, 可胡 = %s" % [test_hand_2.get_card_count(), result_2.can_win])
+	
+	# Test 条5
+	var test_hand_5 = CardHand.new()
+	for c in hand.cards:
+		test_hand_5.add_card(c)
+	test_hand_5.add_card(CardData.new(CardData.Suit.TIAO, 5))
+	var result_5 = WinChecker.check_win(test_hand_5)
+	print("    条5 + 13张手牌 = %d张, 可胡 = %s" % [test_hand_5.get_card_count(), result_5.can_win])
+	
+	# Now run check_can_hear
 	var ting_cards = WinChecker.check_can_hear(hand)
 
 	print("  🔍 听牌检查结果:")
@@ -368,18 +389,11 @@ func test_case_2_1_basic_ting() -> void:
 	if ting_cards.size() > 0:
 		for card in ting_cards:
 			print("      - %s" % card.get_card_name())
-			# Verify each card
-			var verify_hand = CardHand.new()
-			for c in hand.cards:
-				verify_hand.add_card(c)
-			verify_hand.add_card(card)
-			var verify_result = WinChecker.check_win(verify_hand)
-			print("        验证: 14张手牌可胡 = %s" % verify_result.can_win)
 
-	if ting_cards.size() > 0:
-		print("  ✅ 通过: 可以听牌")
+	if ting_cards.size() == 1:
+		print("  ✅ 通过: 正确识别1种听牌")
 	else:
-		print("  ❌ 失败: 应该能听牌")
+		print("  ❌ 失败: 应该只有1种听牌，但识别了 %d 种" % ting_cards.size())
 
 	print("")
 

@@ -99,6 +99,8 @@ static func check_can_hear(hand: CardHand) -> Array:
 			var result = check_win(test_hand)
 			if result.can_win:
 				winnable_cards.append(test_card)
+				# DEBUG: 显示找到的听牌
+				#print("        [DEBUG] Found winnable card: %s (total: %d)" % [test_card.get_card_name(), winnable_cards.size()])
 
 	return winnable_cards
 
