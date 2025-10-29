@@ -412,9 +412,8 @@ func test_case_2_3_cannot_ting() -> void:
 	print("📋 Test Case 2.3: 无法听牌 (距离太远)")
 
 	var hand = CardHand.new()
-	# 万1 万2 (缺1张完成顺)
+	# 万1 (孤立的单牌)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 1))
-	hand.add_card(CardData.new(CardData.Suit.WAN, 2))
 	# 万4 万4 万4 (刻)
 	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
 	hand.add_card(CardData.new(CardData.Suit.WAN, 4))
@@ -430,6 +429,9 @@ func test_case_2_3_cannot_ting() -> void:
 	# 字1 字1 (眼)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
+	# 字2 字3 (孤立的两张)
+	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
+	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
 
 	var ting_cards = WinChecker.check_can_hear(hand)
 
