@@ -13,7 +13,15 @@ func main() {
 		fmt.Fprintf(w, `{"status":"ok","time":"%s"}`, time.Now().Format(time.RFC3339))
 	})
 
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	// Railway 会自动设置 PORT 环境变量
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	fmt.Printf("Server starting on port %s...\n", port)
+	if err := http.ListenAndServe(":"+port, nil); err != nil {
+		fmt.Printf("Server error: %v\n", err)
 		os.Exit(1)
 	}
 }
