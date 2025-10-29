@@ -17,7 +17,7 @@ class Snapshot:
 	var timestamp: int = 0                  # 时间戳
 	var phase: int = GamePhase.WAITING      # 当前阶段
 	var current_player_id: String = ""      # 当前玩家ID
-	var round: int = 1                      # 当前轮数
+	var game_round: int = 1                 # 当前轮数
 	var players: Dictionary = {}            # 玩家状态: player_id -> player_state
 	var discard_pile: Array = []            # 弃牌堆
 	var drawn_card: Dictionary = {}         # 摸到的牌
@@ -33,7 +33,7 @@ class Snapshot:
 			"timestamp": timestamp,
 			"phase": phase,
 			"current_player_id": current_player_id,
-			"round": round,
+			"round": game_round,
 			"players": players.duplicate(true),
 			"discard_pile": discard_pile.duplicate(true),
 			"drawn_card": drawn_card.duplicate(true),
@@ -97,7 +97,7 @@ func set_game_data(key: String, value) -> void:
 	_increment_version()
 
 func increment_round() -> void:
-	_current_state.round += 1
+	_current_state.game_round += 1
 	_increment_version()
 
 # ==================== 状态查询 ====================
@@ -118,7 +118,7 @@ func get_player_count() -> int:
 	return _current_state.players.size()
 
 func get_round() -> int:
-	return _current_state.round
+	return _current_state.game_round
 
 func get_version() -> int:
 	return _current_state.version
@@ -147,7 +147,7 @@ func _save_to_history() -> void:
 	snapshot_copy.timestamp = _current_state.timestamp
 	snapshot_copy.phase = _current_state.phase
 	snapshot_copy.current_player_id = _current_state.current_player_id
-	snapshot_copy.round = _current_state.round
+	snapshot_copy.game_round = _current_state.game_round
 	snapshot_copy.players = _current_state.players.duplicate(true)
 	snapshot_copy.discard_pile = _current_state.discard_pile.duplicate()
 	snapshot_copy.drawn_card = _current_state.drawn_card.duplicate()
@@ -193,7 +193,7 @@ func apply_remote_state(remote_state: Dictionary) -> bool:
 	_current_state.timestamp = remote_state.get("timestamp", 0)
 	_current_state.phase = remote_state.get("phase", GamePhase.WAITING)
 	_current_state.current_player_id = remote_state.get("current_player_id", "")
-	_current_state.round = remote_state.get("round", 1)
+	_current_state.game_round = remote_state.get("round", 1)
 	_current_state.players = remote_state.get("players", {}).duplicate(true)
 	_current_state.discard_pile = remote_state.get("discard_pile", []).duplicate()
 	_current_state.drawn_card = remote_state.get("drawn_card", {}).duplicate()
@@ -237,7 +237,7 @@ func print_state() -> void:
 	print("版本: %d" % _current_state.version)
 	print("阶段: %d" % _current_state.phase)
 	print("当前玩家: %s" % _current_state.current_player_id)
-	print("轮数: %d" % _current_state.round)
+	print("轮数: %d" % _current_state.game_round)
 	print("玩家数: %d" % _current_state.players.size())
 	print("弃牌堆: %d张" % _current_state.discard_pile.size())
 	print("历史记录: %d条" % _state_history.size())
