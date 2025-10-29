@@ -415,3 +415,139 @@ func test_display_hand() -> void:
 	test_hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
 
 	display_hand(test_hand)
+
+# ========================
+# Phase 6: UI 集成 - 听牌和胜牌显示
+# ========================
+
+# 显示听牌信息
+func display_listening_tiles(player: AIPlayer = null) -> void:
+	"""
+	显示可听的牌
+	如果 player 为 null，则显示当前玩家的听牌
+	"""
+	var ting_cards: Array
+	
+	if player == null:
+		# 使用当前玩家的手牌
+		ting_cards = WinChecker.check_can_hear(current_hand)
+	else:
+		# 使用提供的 AI 玩家的听牌
+		ting_cards = player.can_hear_tiles()
+	
+	# 清除旧的听牌显示
+	_clear_listening_display()
+	
+	if ting_cards.size() == 0:
+		_show_listening_message("暂无听牌", Color.GRAY)
+		return
+	
+	# 显示可听牌
+	var ting_names = []
+	for card in ting_cards:
+		ting_names.append(card.get_card_name())
+	
+	var message = "🎯 听: " + ", ".join(ting_names)
+	_show_listening_message(message, Color.GREEN)
+	
+	# 高亮可听的牌
+	if _player_hand_display != null:
+		_highlight_listening_cards(ting_cards)
+
+# 显示胜牌信息
+func display_win_info(hand: CardHand) -> void:
+	"""显示胜牌类型和得分"""
+	if hand.get_card_count() != 14:
+		return
+	
+	# 检查是否能胡
+	var win_result = WinChecker.check_win(hand)
+	if not win_result.can_win:
+		_show_win_message("❌ 不能胡牌", Color.RED)
+		return
+	
+	# 检测胜牌类型
+	var win_type = SpecialWinChecker.detect_win_type(hand)
+	var win_score = SpecialWinChecker.get_win_score(win_type)
+	
+	var message = "✨ 胜牌: %s (%d分)" % [win_type, win_score]
+	var color = Color.YELLOW if win_score >= 50 else Color.CYAN
+	
+	_show_win_message(message, color)
+
+# 显示 AI 玩家状态
+func display_ai_status(ai_player: AIPlayer) -> void:
+	"""显示 AI 玩家的当前状态"""
+	var status = "🤖 AI(%s): %d张牌" % [ai_player.get_difficulty_name(), ai_player.get_card_count()]
+	
+	# 如果能听牌，显示听牌数量
+	var ting_count = ai_player.can_hear_tiles().size()
+	if ting_count > 0:
+		status += " [听%d种]" % ting_count
+	
+	# 如果能胡，显示胜牌提示
+	if ai_player.can_win():
+		status += " [可胡!]"
+	
+	_update_game_info(status)
+
+# 显示比赛得分
+func display_round_scores(scores: Dictionary) -> void:
+	"""
+	显示当前轮次的得分
+	scores: {"player": 0, "ai1": 0, "ai2": 0, "ai3": 0}
+	"""
+	var score_text = "📊 得分: "
+	
+	for player_name in scores.keys():
+		score_text += "%s=%d " % [player_name, scores[player_name]]
+	
+	if _game_info != null:
+		_game_info.text = score_text
+
+# 显示成就
+func show_achievement(title: String, description: String) -> void:
+	"""显示成就通知"""
+	var message = "🏆 %s: %s" % [title, description]
+	
+	if _game_log != null:
+		_game_log.append_text("\n[color=gold]" + message + "[/color]")
+
+# 清除听牌显示
+func _clear_listening_display() -> void:
+	"""清除之前的听牌显示"""
+	if _player_hand_display != null:
+		_unhighlight_all_cards()
+
+# 显示听牌消息
+func _show_listening_message(message: String, color: Color) -> void:
+	"""在界面上显示听牌消息"""
+	if _game_log != null:
+		var colored_msg = "[color=#%s]%s[/color]" % [color.to_html(), message]
+		_game_log.append_text("\n" + colored_msg)
+
+# 显示胜牌消息
+func _show_win_message(message: String, color: Color) -> void:
+	"""在界面上显示胜牌消息"""
+	if _game_log != null:
+		var colored_msg = "[color=#%s]%s[/color]" % [color.to_html(), message]
+		_game_log.append_text("\n" + colored_msg)
+
+# 更新游戏信息标签
+func _update_game_info(text: String) -> void:
+	"""更新游戏信息显示"""
+	if _game_info != null:
+		_game_info.text = text
+
+# 高亮听牌的卡牌
+func _highlight_listening_cards(ting_cards: Array) -> void:
+	"""高亮界面上的可听牌"""
+	# TODO: 根据实际 UI 组件结构实现高亮逻辑
+	# 这需要与具体的手牌显示组件集成
+	pass
+
+# 取消所有高亮
+func _unhighlight_all_cards() -> void:
+	"""取消所有卡牌的高亮"""
+	# TODO: 根据实际 UI 组件结构实现取消高亮逻辑
+	pass
