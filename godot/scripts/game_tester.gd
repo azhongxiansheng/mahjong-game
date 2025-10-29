@@ -361,10 +361,10 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 3))
 
 	print("  手牌总数: %d 张" % hand.get_card_count())
-	
+
 	# Manual verification: test specific cards
 	print("  🔧 手动验证:")
-	
+
 	# Test 条4
 	var test_hand_4 = CardHand.new()
 	for c in hand.cards:
@@ -372,7 +372,7 @@ func test_case_2_1_basic_ting() -> void:
 	test_hand_4.add_card(CardData.new(CardData.Suit.TIAO, 4))
 	var result_4 = WinChecker.check_win(test_hand_4)
 	print("    条4 + 13张手牌 = %d张, 可胡 = %s" % [test_hand_4.get_card_count(), result_4.can_win])
-	
+
 	# Now run check_can_hear
 	var ting_cards = WinChecker.check_can_hear(hand)
 
