@@ -1,217 +1,161 @@
+# AI 玩家 - 具有不同难度的智能决策系统
 class_name AIPlayer
 
-# AI玩家类
-# 管理AI的手牌、决策和出牌逻辑
+var hand: CardHand
+var difficulty: int = 1  # 1=简单, 2=中等, 3=困难
+var memory: Dictionary = {}  # 记录对手出过的牌
 
-## AI难度等级
-enum Difficulty {
-	EASY,      # 简单 - 随机出牌
-	NORMAL,    # 普通 - 弃老打新
-	HARD,      # 困难 - 听牌优先
-	EXPERT,    # 专家 - 全面分析
-}
+const EASY = 1
+const MEDIUM = 2
+const HARD = 3
 
-var player_id: int                 # 玩家ID (0-3)
-var difficulty: Difficulty         # 难度等级
-var hand: CardHand                 # 手牌
-var discarded_cards: Array[CardData]  # 已弃的牌
-var ting_info: TingResult          # 听牌信息
-var is_ting: bool                  # 是否已听牌
-var name: String                   # 玩家名字
-
-func _init(p_id: int, p_difficulty: Difficulty = Difficulty.NORMAL):
-	"""初始化AI玩家"""
-	player_id = p_id
-	difficulty = p_difficulty
+# 初始化
+func _init(diff: int = MEDIUM):
 	hand = CardHand.new()
-	discarded_cards = []
-	ting_info = TingResult.new()
-	is_ting = false
-	name = "AI玩家%d" % (p_id + 1)
+	difficulty = clamp(diff, EASY, HARD)
 
-func receive_card(card: CardData) -> void:
-	"""接收抽到的牌"""
-	if card:
-		hand.add_card(card)
+# 获取难度名称
+func get_difficulty_name() -> String:
+	match difficulty:
+		EASY:
+			return "简单"
+		MEDIUM:
+			return "中等"
+		HARD:
+			return "困难"
+		_:
+			return "未知"
 
-func discard_card() -> CardData:
-	"""
-	AI出牌决策
-	根据难度等级选择出牌策略
-	"""
-	if hand.get_card_count() == 0:
-		print("AI玩家 %d: 错误 - 没有可出的牌" % player_id)
+# 选择出牌 - 主函数
+func choose_discard_card() -> CardData:
+	if hand.cards.size() == 0:
 		return null
 	
-	var card_to_discard: CardData = null
-	
 	match difficulty:
-		Difficulty.EASY:
-			card_to_discard = _decide_easy()
-		Difficulty.NORMAL:
-			card_to_discard = _decide_normal()
-		Difficulty.HARD:
-			card_to_discard = _decide_hard()
-		Difficulty.EXPERT:
-			card_to_discard = _decide_expert()
-	
-	if card_to_discard:
-		hand.remove_card(card_to_discard)
-		discarded_cards.append(card_to_discard)
-	
-	return card_to_discard
+		EASY:
+			return _choose_easy()
+		MEDIUM:
+			return _choose_medium()
+		HARD:
+			return _choose_hard()
+		_:
+			return hand.cards[0]
 
-# 简单策略 - 随机出牌
-func _decide_easy() -> CardData:
-	"""简单AI - 随机选择一张牌出"""
-	if hand.get_card_count() > 0:
-		var index = randi() % hand.get_card_count()
-		return hand.cards[index]
-	return null
+# 简单难度: 随机出牌
+func _choose_easy() -> CardData:
+	var idx = randi() % hand.cards.size()
+	return hand.cards[idx]
 
-# 普通策略 - 弃老打新
-func _decide_normal() -> CardData:
-	"""
-	普通AI - 弃老打新
-	优先出1和9，保留中间牌
-	"""
-	var candidate_cards: Array[CardData] = [] as Array[CardData]
-	
-	# 收集老头牌（1和9）
-	for card in hand.cards:
-		if card.suit < 3 and (card.number == 1 or card.number == 9):
-			candidate_cards.append(card)
-	
-	if not candidate_cards.is_empty():
-		return candidate_cards[randi() % candidate_cards.size()]
-	
-	# 如果没有老头牌，随机选择
-	var index = randi() % hand.get_card_count()
-	return hand.cards[index]
-
-# 困难策略 - 听牌优先
-func _decide_hard() -> CardData:
-	"""
-	困难AI - 更智能的决策
-	1. 检测听牌
-	2. 如果已听，谨慎出牌
-	3. 否则积极争取听牌
-	"""
-	# 检测听牌
-	update_ting_info()
-	
-	if is_ting:
-		# 已听牌 - 出最安全的牌（避免帮助对手）
-		return _get_safest_card()
-	else:
-		# 未听牌 - 找能让我们接近听牌的出牌
-		return _get_card_toward_ting()
-
-# 专家策略 - 全面分析
-func _decide_expert() -> CardData:
-	"""
-	专家AI - 最复杂的决策
-	综合考虑：听牌、安全、收益等
-	"""
-	update_ting_info()
-	
-	# 评估所有可能的出牌
-	var scores: Dictionary = {}
-	
-	for card in hand.cards:
-		var score = 0
-		
-		# 基础分：不出我们听的牌
-		if is_ting and card in ting_info.ting_cards:
-			score -= 1000  # 严格禁止
-		else:
-			score += 10
-		
-		# 出牌后的听牌收益
-		var temp_hand = CardHand.new()
-		for c in hand.cards:
-			if c != card:
-				temp_hand.add_card(c)
-		
-		var future_ting = TingChecker.check_ting(temp_hand)
-		if future_ting.can_ting:
-			score += future_ting.ting_count * 50
-		
-		scores[card.get_card_name()] = score
-	
-	# 选择最高分的牌
+# 中等难度: 基于听牌数出牌
+func _choose_medium() -> CardData:
 	var best_card = null
-	var best_score = -999999
+	var min_ting = 999
+	
+	# 尝试每张牌，选择出牌后听牌最少的
+	for card in hand.cards:
+		hand.remove_card(card)
+		
+		var ting_count = WinChecker.check_can_hear(hand).size()
+		if ting_count < min_ting:
+			min_ting = ting_count
+			best_card = card
+		
+		hand.add_card(card)
+	
+	return best_card if best_card != null else hand.cards[0]
+
+# 困难难度: 基于风险评分出牌
+func _choose_hard() -> CardData:
+	var best_card = null
+	var best_score = -999
 	
 	for card in hand.cards:
-		var card_name = card.get_card_name()
-		if card_name in scores and scores[card_name] > best_score:
-			best_score = scores[card_name]
+		var score = _calculate_risk_score(card)
+		
+		if score > best_score:
+			best_score = score
 			best_card = card
 	
-	return best_card if best_card else hand.cards[0]
+	return best_card if best_card != null else hand.cards[0]
 
-# 更新听牌信息
-func update_ting_info() -> void:
-	"""更新当前的听牌信息"""
-	ting_info = TingChecker.check_ting(hand)
-	is_ting = ting_info.can_ting
+# 计算出牌的风险评分
+func _calculate_risk_score(card: CardData) -> float:
+	var score = 0.0
+	
+	# 因素1: 出牌后的听牌数 (越少越好)
+	hand.remove_card(card)
+	var my_ting_count = WinChecker.check_can_hear(hand).size()
+	score -= my_ting_count * 10.0  # 负分，因为听牌多不利
+	hand.add_card(card)
+	
+	# 因素2: 牌的稀有度 (常见牌更安全)
+	var card_count = _count_card_type(card)
+	score += card_count * 5.0  # 相同牌多说明不稀有
+	
+	# 因素3: 对手出过的牌安全性 (出过的牌更安全)
+	var card_key = "%d_%d" % [card.suit, card.number]
+	if card_key in memory:
+		score += memory[card_key] * 3.0  # 对手出过这种牌则更安全
+	
+	# 因素4: 边牌倾向 (1、9号牌通常更安全)
+	if card.number == 1 or card.number == 9:
+		score += 5.0
+	
+	return score
 
-# 获取最安全的牌
-func _get_safest_card() -> CardData:
-	"""获取最安全的出牌（已听牌时使用）"""
-	# 出最早弃过的牌类型，认为这类牌对手不要
-	if not discarded_cards.is_empty():
-		var last_discarded = discarded_cards[-1]
-		for card in hand.cards:
-			if card.suit == last_discarded.suit and card.number == last_discarded.number:
-				continue  # 不重复
-			# 出相同花色但不同数字的牌
-			if card.suit == last_discarded.suit:
-				return card
-	
-	# 备选：出最小的牌
-	hand.sort_cards()
-	return hand.cards[0]
+# 计数牌的数量
+func _count_card_type(card: CardData) -> int:
+	var count = 0
+	for c in hand.cards:
+		if c.suit == card.suit and c.number == card.number:
+			count += 1
+	return count
 
-# 获取朝向听牌的出牌
-func _get_card_toward_ting() -> CardData:
-	"""
-	寻找能帮助我们接近听牌的出牌
-	"""
-	var best_card = null
-	var best_ting_value = -1
-	
-	# 评估每张出牌后的听牌价值
-	for card in hand.cards:
-		var temp_hand = CardHand.new()
-		for c in hand.cards:
-			if c != card:
-				temp_hand.add_card(c)
-		
-		var future_ting = TingChecker.check_ting(temp_hand)
-		var ting_value = TingChecker.calculate_ting_value(future_ting, temp_hand)
-		
-		if ting_value > best_ting_value:
-			best_ting_value = ting_value
-			best_card = card
-	
-	return best_card if best_card else hand.cards[0]
+# 记录对手出过的牌
+func record_opponent_discard(card: CardData):
+	var card_key = "%d_%d" % [card.suit, card.number]
+	memory[card_key] = memory.get(card_key, 0) + 1
 
-# 获取玩家状态描述
-func get_status_string() -> String:
-	"""获取玩家状态字符串"""
-	var status = "%s - 手牌:%d张" % [name, hand.get_card_count()]
-	
-	if is_ting:
-		status += " [听牌: %s]" % TingChecker.get_ting_description(ting_info)
-	
-	return status
+# 清空记忆
+func clear_memory():
+	memory.clear()
 
-# 重置玩家（新游戏）
-func reset() -> void:
-	"""重置为新游戏"""
-	hand = CardHand.new()
-	discarded_cards = []
-	ting_info = TingResult.new()
-	is_ting = false
+# 检查是否可以胡
+func can_win() -> bool:
+	if hand.get_card_count() != 14:
+		return false
+	
+	var result = WinChecker.check_win(hand)
+	return result.can_win
+
+# 检查是否可以听牌
+func can_hear_tiles() -> Array:
+	if hand.get_card_count() != 13:
+		return []
+	
+	return WinChecker.check_can_hear(hand)
+
+# 添加卡牌
+func add_card(card: CardData):
+	hand.add_card(card)
+
+# 移除卡牌
+func remove_card(card: CardData):
+	hand.remove_card(card)
+
+# 获取手牌数
+func get_card_count() -> int:
+	return hand.get_card_count()
+
+# 清空手牌
+func clear_hand():
+	hand.clear()
+
+# 打印 AI 状态
+func print_status():
+	print("\n=== AI 玩家状态 ===")
+	print("难度: %s" % get_difficulty_name())
+	print("手牌数: %d" % get_card_count())
+	print("对手记忆: %d种牌" % memory.size())
+	if can_hear_tiles().size() > 0:
+		print("可听牌: %d种" % can_hear_tiles().size())
