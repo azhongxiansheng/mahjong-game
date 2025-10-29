@@ -72,10 +72,15 @@ static func check_win(hand: CardHand, drawn_card: CardData = null) -> WinResult:
 static func check_can_hear(hand: CardHand) -> Array:
 	"""
 	检查哪些牌能听牌（缺一张牌就能胡）
+	输入：13张手牌
 	返回：能听的牌列表
 	"""
 	var winnable_cards: Array = []
-
+	
+	# 验证手牌数量
+	if hand.get_card_count() != 13:
+		return winnable_cards
+	
 	# 尝试所有可能的牌
 	for suit in range(4):
 		var max_num = 9 if suit < 3 else 7  # 字牌只有7种
@@ -86,9 +91,12 @@ static func check_can_hear(hand: CardHand) -> Array:
 			var test_hand = CardHand.new()
 			for card in hand.cards:
 				test_hand.add_card(card)
+			
+			# 添加测试牌（变成14张手牌）
+			test_hand.add_card(test_card)
 
 			# 测试能否胡这张牌
-			var result = check_win(test_hand, test_card)
+			var result = check_win(test_hand)
 			if result.can_win:
 				winnable_cards.append(test_card)
 

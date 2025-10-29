@@ -356,10 +356,10 @@ func test_case_2_1_basic_ting() -> void:
 	# 条6 条6 (对 - 仅2张)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 6))
-	# 字1 字2 字3 (顺4)
+	# 字1 字2 (顺4 - 只有2张，缺字3)
 	hand.add_card(CardData.new(CardData.Suit.ZI, 1))
 	hand.add_card(CardData.new(CardData.Suit.ZI, 2))
-	hand.add_card(CardData.new(CardData.Suit.ZI, 3))
+	# 不添加字3，保持13张手牌
 
 	# 调试信息
 	print("  手牌总数: %d 张" % hand.get_card_count())
