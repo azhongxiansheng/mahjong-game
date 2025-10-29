@@ -43,11 +43,11 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if websocket and websocket.get_ready_state() == WebSocketPeer.STATE_OPEN:
 		websocket.poll()
-		
+
 		# 处理接收的消息
 		while websocket.get_available_packet_count() > 0:
 			_handle_received_message()
-	
+
 	# 清理超时消息
 	_cleanup_timeout_messages(delta)
 
@@ -56,19 +56,19 @@ func connect_to_server() -> bool:
 	if state != NetworkState.DISCONNECTED:
 		print("[NetworkManager] 已经在连接或已连接")
 		return false
-	
+
 	print("[NetworkManager] 正在连接到 %s" % SERVER_URL)
 	state = NetworkState.CONNECTING
-	
+
 	websocket = WebSocketPeer.new()
 	var error = websocket.connect_to_url(SERVER_URL)
-	
+
 	if error != OK:
 		print("[NetworkManager] 连接失败: %d" % error)
 		state = NetworkState.ERROR
 		error_occurred.emit(error, "Failed to connect")
 		return false
-	
+
 	return true
 
 # 断开连接
@@ -89,24 +89,24 @@ func send_message(message_type: String, data: Dictionary = {}) -> int:
 		"id": message_id_counter,
 		"data": data
 	}
-	
+
 	message_id_counter += 1
-	
+
 	if state == NetworkState.CONNECTED and websocket:
 		var json_str = JSON.stringify(message)
 		var error = websocket.send_text(json_str)
-		
+
 		if error != OK:
 			print("[NetworkManager] 发送消息失败: %d" % error)
 			return -1
-		
+
 		# 跟踪待处理消息
 		pending_messages[message["id"]] = {
 			"type": message_type,
 			"timestamp": Time.get_ticks_msec(),
 			"timeout": MESSAGE_TIMEOUT
 		}
-		
+
 		return message["id"]
 	else:
 		print("[NetworkManager] 未连接，消息入队")
@@ -117,20 +117,20 @@ func send_message(message_type: String, data: Dictionary = {}) -> int:
 func _handle_received_message() -> void:
 	if not websocket:
 		return
-	
+
 	var packet = websocket.get_message()
 	if packet == null:
 		return
-	
+
 	var json = JSON.new()
 	var parse_error = json.parse(packet)
-	
+
 	if parse_error != OK:
 		print("[NetworkManager] JSON 解析失败")
 		return
-	
+
 	var message = json.get_data()
-	
+
 	# 根据消息类型处理
 	match message.get("type", ""):
 		"CONNECT_ACK":
@@ -151,7 +151,7 @@ func _on_connect_ack(message: Dictionary) -> void:
 	player_id = message.get("player_id", "")
 	reconnect_attempts = 0
 	connected.emit()
-	
+
 	# 发送待处理消息
 	_send_queued_messages()
 
@@ -180,7 +180,7 @@ func _cleanup_timeout_messages(delta: float) -> void:
 		pending_messages[msg_id]["timeout"] -= delta
 		if pending_messages[msg_id]["timeout"] < 0:
 			to_remove.append(msg_id)
-	
+
 	for msg_id in to_remove:
 		print("[NetworkManager] 消息 %d 超时" % msg_id)
 		pending_messages.erase(msg_id)
