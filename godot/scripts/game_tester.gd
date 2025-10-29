@@ -353,10 +353,11 @@ func test_case_2_1_basic_ting() -> void:
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
 	hand.add_card(CardData.new(CardData.Suit.TONG, 1))
-	# 条2条2 (pair - needs one more to complete)
+	# 条1条1 (pair)
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	hand.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	# 条2条3条4 (only 3 cards of 4-group - needs 条5)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
-	hand.add_card(CardData.new(CardData.Suit.TIAO, 2))
-	# 条3条4 (incomplete sequence - needs 条5)
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 3))
 	hand.add_card(CardData.new(CardData.Suit.TIAO, 4))
 
@@ -365,14 +366,6 @@ func test_case_2_1_basic_ting() -> void:
 	# Manual verification: test specific cards
 	print("  🔧 手动验证:")
 	
-	# Test 条2
-	var test_hand_2 = CardHand.new()
-	for c in hand.cards:
-		test_hand_2.add_card(c)
-	test_hand_2.add_card(CardData.new(CardData.Suit.TIAO, 2))
-	var result_2 = WinChecker.check_win(test_hand_2)
-	print("    条2 + 13张手牌 = %d张, 可胡 = %s" % [test_hand_2.get_card_count(), result_2.can_win])
-	
 	# Test 条5
 	var test_hand_5 = CardHand.new()
 	for c in hand.cards:
@@ -380,6 +373,14 @@ func test_case_2_1_basic_ting() -> void:
 	test_hand_5.add_card(CardData.new(CardData.Suit.TIAO, 5))
 	var result_5 = WinChecker.check_win(test_hand_5)
 	print("    条5 + 13张手牌 = %d张, 可胡 = %s" % [test_hand_5.get_card_count(), result_5.can_win])
+	
+	# Test 条1 (should NOT win - already have pair)
+	var test_hand_1 = CardHand.new()
+	for c in hand.cards:
+		test_hand_1.add_card(c)
+	test_hand_1.add_card(CardData.new(CardData.Suit.TIAO, 1))
+	var result_1 = WinChecker.check_win(test_hand_1)
+	print("    条1 + 13张手牌 = %d张, 可胡 = %s (should be false)" % [test_hand_1.get_card_count(), result_1.can_win])
 	
 	# Now run check_can_hear
 	var ting_cards = WinChecker.check_can_hear(hand)
