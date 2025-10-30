@@ -111,7 +111,7 @@ func _draw_card_back(rect: Rect2) -> void:
 
 	for x in range(0, int(rect.size.x), square_size * 2):
 		for y in range(0, int(rect.size.y), square_size * 2):
-			if (int(x / square_size) + int(y / square_size)) % 2 == 0:
+			if (int(float(x) / float(square_size)) + int(float(y) / float(square_size))) % 2 == 0:
 				draw_rect(Rect2(x, y, square_size, square_size), pattern_color)
 
 	# 绘制中间文字 "麻将"
