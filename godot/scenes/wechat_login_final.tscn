@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=6 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" uid="uid://bnxj8t1yabf5t" path="res://assets/loading_screen.png.png" id="2_bg"]
@@ -24,17 +24,6 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_guest"]
-bg_color = Color(0.3, 0.3, 0.3, 0.8)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.7, 0.7, 0.7, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
 
 [node name="WeChatLogin" type="Control"]
 layout_mode = 3
