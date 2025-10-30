@@ -1,10 +1,8 @@
 extends Control
 
-@onready var title_label: Label = $TitleLabel
-@onready var particles_container: Node2D = $ParticlesContainer
-
+@onready var logo_texture: TextureRect = $LogoTexture
 var particles: Array = []
-var particle_count: int = 30
+var particle_count: int = 50
 var time_passed: float = 0.0
 
 class Particle:
@@ -24,20 +22,9 @@ class Particle:
 		color = c
 
 func _ready():
-	# 添加轻微的脉冲发光效果
-	var tween = create_tween()
-	tween.set_loops()
-	tween.tween_method(_update_glow, 0.0, 1.0, 2.0)
-	tween.tween_method(_update_glow, 1.0, 0.0, 2.0)
-	
 	# 初始化粒子
 	for i in range(particle_count):
 		_spawn_particle()
-
-func _update_glow(value: float):
-	var glow_strength = 0.3 + value * 0.2
-	var outline_color = Color(0.3, 0.15, 0, 1.0 - glow_strength * 0.3)
-	title_label.add_theme_color_override("font_outline_color", outline_color)
 
 func _process(delta: float):
 	time_passed += delta
@@ -64,7 +51,7 @@ func _draw():
 		draw_circle(particle.position, particle.size, draw_color)
 		# 添加外发光
 		var glow_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.3)
-		draw_circle(particle.position, particle.size * 2.0, glow_color)
+		draw_circle(particle.position, particle.size * 2.5, glow_color)
 
 func _spawn_particle():
 	var container_size = size
@@ -72,11 +59,11 @@ func _spawn_particle():
 	
 	# 在文字周围随机生成
 	var angle = randf() * TAU
-	var distance = randf_range(150.0, 250.0)
+	var distance = randf_range(180.0, 280.0)
 	var pos = center + Vector2(cos(angle), sin(angle)) * distance
 	
 	# 向中心移动的速度
-	var vel = (center - pos).normalized() * randf_range(20.0, 50.0)
+	var vel = (center - pos).normalized() * randf_range(15.0, 40.0)
 	
 	# 金色粒子
 	var colors = [
@@ -89,8 +76,8 @@ func _spawn_particle():
 	var particle = Particle.new(
 		pos,
 		vel,
-		randf_range(2.0, 4.0),
-		randf_range(2.0, 4.0),
+		randf_range(3.0, 5.0),
+		randf_range(2.5, 5.0),
 		particle_color
 	)
 	particles.append(particle)
@@ -100,9 +87,9 @@ func _respawn_particle(particle: Particle):
 	var center = container_size / 2.0
 	
 	var angle = randf() * TAU
-	var distance = randf_range(150.0, 250.0)
+	var distance = randf_range(180.0, 280.0)
 	particle.position = center + Vector2(cos(angle), sin(angle)) * distance
-	particle.velocity = (center - particle.position).normalized() * randf_range(20.0, 50.0)
+	particle.velocity = (center - particle.position).normalized() * randf_range(15.0, 40.0)
 	particle.lifetime = 0.0
-	particle.max_lifetime = randf_range(2.0, 4.0)
-	particle.size = randf_range(2.0, 4.0)
+	particle.max_lifetime = randf_range(3.0, 5.0)
+	particle.size = randf_range(2.5, 5.0)
