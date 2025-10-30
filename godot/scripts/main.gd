@@ -44,4 +44,4 @@ func _input(event: InputEvent) -> void:
 
 	if event.keycode == KEY_ESCAPE:
 		print("返回登录界面")
-		get_tree().change_scene_to_file("res://scenes/wechat_login.tscn")
+		get_tree().change_scene_to_file("res://scenes/wechat_login_final.tscn")
