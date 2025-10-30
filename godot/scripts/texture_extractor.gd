@@ -1,6 +1,6 @@
 ## 智能纹理提取器
 ## 从FairyGUI贵州麻将素材中提取并优化麻将牌纹理
-class_name TextureExtractor
+## 🔧 作为 AutoLoad 单例使用,移除 class_name 避免冲突
 extends Node
 
 ## 配置

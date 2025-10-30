@@ -16,8 +16,8 @@ var card_height: float = 150.0
 ## 🆕 纹理滤波 - 最近邻确保像素完美
 var texture_filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
 
-## 🆕 纹理提取器
-var texture_extractor: TextureExtractor
+## 🆕 纹理提取器 - 使用 AutoLoad 单例,不需要类型声明
+var texture_extractor
 var extractor_tile_texture: Texture2D
 
 ## 颜色配置
