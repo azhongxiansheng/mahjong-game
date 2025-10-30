@@ -9,6 +9,43 @@
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(1, 0.7, 0.2, 1, 1, 0.9, 0.4, 1, 1, 0.7, 0.2, 1)
 
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fire"]
+emission_shape = 3
+emission_box_extents = Vector3(200, 10, 1)
+particle_flag_disable_z = true
+direction = Vector3(0, -1, 0)
+spread = 15.0
+gravity = Vector3(0, -30, 0)
+initial_velocity_min = 20.0
+initial_velocity_max = 40.0
+angular_velocity_min = -90.0
+angular_velocity_max = 90.0
+orbit_velocity_min = 0.0
+orbit_velocity_max = 0.1
+scale_min = 2.0
+scale_max = 5.0
+color = Color(1, 0.5, 0, 1)
+color_ramp = SubResource("Gradient_fire")
+
+[sub_resource type="Gradient" id="Gradient_fire"]
+offsets = PackedFloat32Array(0, 0.5, 1)
+colors = PackedColorArray(1, 0.3, 0, 0.8, 1, 0.7, 0.2, 0.6, 1, 1, 0.5, 0)
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_glow"]
+emission_shape = 3
+emission_box_extents = Vector3(220, 80, 1)
+particle_flag_disable_z = true
+direction = Vector3(0, 0, 0)
+spread = 180.0
+initial_velocity_min = 10.0
+initial_velocity_max = 30.0
+angular_velocity_min = -45.0
+angular_velocity_max = 45.0
+scale_min = 1.5
+scale_max = 3.5
+color = Color(1, 0.9, 0.3, 0.6)
+color_ramp = SubResource("Gradient_gold")
+
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_normal"]
 bg_color = Color(0.227, 0.741, 0.251, 1)
 corner_radius_top_left = 6
@@ -82,7 +119,36 @@ custom_minimum_size = Vector2(0, 50)
 [node name="AnimatedTitleContainer" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
-script = ExtResource("4_animated_title")
+
+[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+text = "飞凡娱乐"
+horizontal_alignment = 1
+vertical_alignment = 1
+theme_override_font_sizes/font_size = 80
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_colors/font_shadow_color = Color(1, 0.5, 0, 0.5)
+theme_override_colors/font_outline_color = Color(0.3, 0.15, 0, 1)
+theme_override_constants/shadow_offset_x = 3
+theme_override_constants/shadow_offset_y = 3
+theme_override_constants/outline_size = 8
+
+[node name="FireParticles" type="GPUParticles2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
+position = Vector2(250, 100)
+amount = 60
+process_material = SubResource("ParticleProcessMaterial_fire")
+lifetime = 2.0
+preprocess = 1.0
+
+[node name="GlowParticles" type="GPUParticles2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
+position = Vector2(250, 75)
+amount = 40
+process_material = SubResource("ParticleProcessMaterial_glow")
+lifetime = 3.0
+preprocess = 1.0
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
