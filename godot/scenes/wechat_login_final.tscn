@@ -1,10 +1,9 @@
-[gd_scene load_steps=8 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=7 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 [ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Texture2D" path="res://assets/feifan_logo.png" id="4_logo"]
-[ext_resource type="Script" path="res://scripts/animated_title.gd" id="5_animated_title"]
+[ext_resource type="Script" path="res://scripts/animated_title.gd" id="4_animated_title"]
 
 [sub_resource type="Gradient" id="Gradient_gold"]
 offsets = PackedFloat32Array(0, 0.5, 1)
@@ -83,18 +82,7 @@ custom_minimum_size = Vector2(0, 50)
 [node name="AnimatedTitleContainer" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
-script = ExtResource("5_animated_title")
-
-[node name="ParticlesContainer" type="Node2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
-
-[node name="LogoTexture" type="TextureRect" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-texture = ExtResource("4_logo")
-expand_mode = 1
-stretch_mode = 5
+script = ExtResource("4_animated_title")
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]

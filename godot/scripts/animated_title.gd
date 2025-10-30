@@ -1,10 +1,11 @@
 extends Control
 
-@onready var logo_texture: TextureRect = $LogoTexture
 var particles: Array = []
 var particle_count: int = 80
 var time_passed: float = 0.0
 var fire_particles: Array = []  # 火焰粒子
+var text: String = "飞凡娱乐"
+var font_size: int = 84
 
 class Particle:
 	var position: Vector2
@@ -59,7 +60,9 @@ func _process(delta: float):
 
 func _draw():
 	var container_size = size
+	var center = container_size / 2.0
 	
+	# 先绘制粒子（在文字下方）
 	for particle in particles:
 		var alpha = 1.0 - (particle.lifetime / particle.max_lifetime)
 		var draw_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.9)
@@ -83,6 +86,30 @@ func _draw():
 			draw_circle(particle.position, particle.size, draw_color)
 			var glow_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.3)
 			draw_circle(particle.position, particle.size * 2.5, glow_color)
+	
+	# 绘制文字（带多层描边和发光）
+	var text_pos = center - Vector2(len(text) * font_size * 0.3, font_size * 0.3)
+	
+	# 外发光层（橙色）
+	for offset_x in range(-12, 13, 4):
+		for offset_y in range(-12, 13, 4):
+			if offset_x != 0 or offset_y != 0:
+				var glow_pos = text_pos + Vector2(offset_x, offset_y)
+				var distance = sqrt(offset_x * offset_x + offset_y * offset_y)
+				var glow_alpha = 0.3 * (1.0 - distance / 15.0)
+				draw_string(ThemeDB.fallback_font, glow_pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.5, 0.0, glow_alpha))
+	
+	# 深色描边（立体感）
+	for offset in [Vector2(-3, -3), Vector2(-3, 3), Vector2(3, -3), Vector2(3, 3)]:
+		draw_string(ThemeDB.fallback_font, text_pos + offset, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.2, 0.1, 0.0, 1.0))
+	
+	# 金属质感层
+	var time_glow = sin(time_passed * 2.0) * 0.2 + 0.8
+	draw_string(ThemeDB.fallback_font, text_pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 0.85 * time_glow, 0.2, 1.0))
+	
+	# 高光层（动态移动）
+	var highlight_offset = sin(time_passed * 1.5) * 2.0
+	draw_string(ThemeDB.fallback_font, text_pos + Vector2(-2 + highlight_offset, -3), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1.0, 1.0, 0.8, 0.5))
 
 func _spawn_particle():
 	var container_size = size
