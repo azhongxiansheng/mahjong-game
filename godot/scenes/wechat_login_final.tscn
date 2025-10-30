@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 [ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Texture2D" path="res://assets/feifan_logo.png" id="4_feifan_logo"]
+[ext_resource type="VideoStream" path="res://assets/feifan_logo_animated.mp4" id="4_video"]
 
 [sub_resource type="Gradient" id="Gradient_gold"]
 offsets = PackedFloat32Array(0, 0.5, 1)
@@ -79,12 +79,13 @@ alignment = 1
 layout_mode = 2
 custom_minimum_size = Vector2(0, 50)
 
-[node name="LogoImage" type="TextureRect" parent="CenterContainer/VBoxContainer"]
+[node name="LogoVideo" type="VideoStreamPlayer" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
-texture = ExtResource("4_feifan_logo")
-expand_mode = 1
-stretch_mode = 5
+stream = ExtResource("4_video")
+autoplay = true
+loop = true
+expand = true
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
