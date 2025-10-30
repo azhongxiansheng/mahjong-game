@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cnjc3m5721g87"
-path="res://.godot/imported/wechat_icon_40x40.svg-cff0a5e0b8169fa64be27c7b94b812e5.ctex"
+uid="uid://dyrya0lpwdpbl"
+path="res://.godot/imported/mahjong_atlas0_2.png-2def7b7b5b9bef00019de97a0cf260ee.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/wechat_icon_40x40.svg"
-dest_files=["res://.godot/imported/wechat_icon_40x40.svg-cff0a5e0b8169fa64be27c7b94b812e5.ctex"]
+source_file="res://assets/mahjong_tiles/mahjong_atlas0_2.png"
+dest_files=["res://.godot/imported/mahjong_atlas0_2.png-2def7b7b5b9bef00019de97a0cf260ee.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false
