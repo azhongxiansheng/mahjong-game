@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://b1qlcscy5maon"]
+
+[ext_resource type="Script" uid="uid://ct6hvf8udn4uh" path="res://scripts/test_texture_extractor.gd" id="1"]
+
+[node name="TestTexture" type="Node"]
+script = ExtResource("1")

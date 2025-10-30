@@ -1,26 +1,6 @@
-[gd_scene load_steps=5 format=3 uid="uid://c12345abcdef"]
+[gd_scene load_steps=2 format=3 uid="uid://c12345abcdef"]
 
 [ext_resource type="Script" uid="uid://dmejpe1m0sin5" path="res://scripts/main.gd" id="1_main_script"]
-[ext_resource type="PackedScene" uid="uid://bhp1205dot016" path="res://scenes/player.tscn" id="2_player_scene"]
-[ext_resource type="PackedScene" uid="uid://lresojblyp2w" path="res://scenes/enemy.tscn" id="3_enemy_scene"]
-[ext_resource type="PackedScene" uid="uid://caqispqreye63" path="res://scenes/game_ui.tscn" id="4_game_ui_scene"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main_script")
-
-[node name="GameLayer" type="CanvasLayer" parent="."]
-layer = 0
-
-[node name="Player" parent="GameLayer" instance=ExtResource("2_player_scene")]
-
-[node name="Enemy1" parent="GameLayer" instance=ExtResource("3_enemy_scene")]
-position = Vector2(400, 150)
-
-[node name="Enemy2" parent="GameLayer" instance=ExtResource("3_enemy_scene")]
-position = Vector2(600, 200)
-
-[node name="UILayer" type="CanvasLayer" parent="."]
-
-[node name="GameUI" parent="UILayer" instance=ExtResource("4_game_ui_scene")]
-grow_horizontal = 2
-grow_vertical = 2

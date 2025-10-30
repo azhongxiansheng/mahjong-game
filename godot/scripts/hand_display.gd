@@ -18,16 +18,6 @@ func _ready() -> void:
 	print("[DEBUG] HandDisplay 位置: ", position, " 全局位置: ", global_position)
 	print("[DEBUG] HandDisplay 大小: ", size)
 
-	# 设置背景
-	var panel = Panel.new()
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.2, 0.2, 0.2, 1.0)
-	panel.add_theme_stylebox_override("panel", style)
-	panel.anchor_right = 1.0
-	panel.anchor_bottom = 1.0
-	add_child(panel)
-	move_child(panel, 0)
-
 func set_hand(h: CardHand) -> void:
 	"""设置并显示手牌"""
 	hand = h
@@ -53,6 +43,10 @@ func refresh_display() -> void:
 
 func add_card_display(card: CardData, _index: int = -1) -> void:
 	"""添加单张卡牌显示"""
+	if not card:
+		print("⚠ card为null，无法添加卡牌")
+		return
+	
 	var tile = card_tile_scene.instantiate()
 
 	# 验证是否是CardTile类型

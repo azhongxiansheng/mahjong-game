@@ -15,3 +15,9 @@ offset_right = 40.0
 offset_bottom = 40.0
 grow_horizontal = 2
 grow_vertical = 2
+
+[node name="GameUI2" parent="UILayer" instance=ExtResource("2_game_ui")]
+offset_right = 40.0
+offset_bottom = 40.0
+grow_horizontal = 2
+grow_vertical = 2

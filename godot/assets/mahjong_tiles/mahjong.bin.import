@@ -1,0 +1,13 @@
+[remap]
+
+importer="binary"
+type="PackedByteArray"
+uid="uid://generated_mahjong_bin"
+path="res://.godot/imported/mahjong.bin-abc123def456.bin.tres"
+
+[deps]
+
+source_file="res://assets/mahjong_tiles/mahjong.bin"
+dest_files=["res://.godot/imported/mahjong.bin-abc123def456.bin.tres"]
+
+[params]

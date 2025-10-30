@@ -9,8 +9,13 @@ var is_selected: bool = false
 var is_highlighted: bool = false
 
 ## UI配置
-var card_width: float = 80.0
-var card_height: float = 120.0
+## 优化：增大卡牌尺寸从 80x120 到 100x150，让纹理显示更清晰
+var card_width: float = 100.0
+var card_height: float = 150.0
+
+## 🆕 纹理提取器
+var texture_extractor: TextureExtractor
+var extractor_tile_texture: Texture2D
 
 ## 颜色配置
 var color_wan: Color = Color(0.2, 0.5, 0.2) # 万牌 - 绿色
@@ -36,37 +41,55 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(card_width, card_height)
 	mouse_filter = MOUSE_FILTER_STOP
 
+	# 🆕 修复：使用绝对路径查找 TextureExtractor
+	# 尝试多种查找方式确保能找到
+	texture_extractor = get_node_or_null("/root/Main/TextureExtractor")
+	if not texture_extractor:
+		texture_extractor = get_node_or_null("/root/TextureExtractor")
+	if not texture_extractor:
+		texture_extractor = get_tree().root.find_child("TextureExtractor", true, false)
+
+	if texture_extractor:
+		print("✅ CardUI 找到 TextureExtractor")
+	else:
+		print("⚠️ CardUI 未找到 TextureExtractor")
+
 	# 连接鼠标事件
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	gui_input.connect(_on_gui_input)
-	
-	# 尝试加载纹理
-	_try_load_texture()
 
 ## 尝试加载纹理
 func _try_load_texture() -> void:
 	if not card_data:
 		return
-	
-	var tile_name = _get_tile_name()
-	if tile_name.is_empty():
-		return
-	
-	var path = texture_path + tile_name + ".png"
-	if ResourceLoader.exists(path):
-		tile_texture = load(path)
-		use_texture = true
-		print("✅ 纹理已加载: %s" % tile_name)
+
+	# 🆕 重点：直接从 TextureExtractor 加载纹理
+	# 不再依赖本地文件
+	if texture_extractor:
+		var tile_name = _get_tile_name_for_extractor()
+		if not tile_name.is_empty():
+			extractor_tile_texture = texture_extractor.get_tile_texture(tile_name)
+			if extractor_tile_texture:
+				use_texture = true
+				# 仅在成功加载时输出日志
+				print("✅ TextureExtractor 加载成功: %s" % tile_name)
+				return
+			else:
+				print("❌ TextureExtractor 返回 null: %s (TextureExtractor.extracted_tiles 大小: %d)" % [tile_name, texture_extractor.extracted_tiles.size()])
+		else:
+			print("⚠️ _get_tile_name_for_extractor() 返回空字符串，卡牌: %s %d" % [card_data.suit, card_data.number])
 	else:
-		print("📦 使用代码绘制: %s (未找到纹理: %s)" % [tile_name, path])
-		use_texture = false
+		print("⚠️ texture_extractor 为 null")
+
+	# 如果 TextureExtractor 没有纹理，才使用代码绘制
+	use_texture = false
 
 ## 获取卡牌名称
 func _get_tile_name() -> String:
 	if not card_data:
 		return ""
-	
+
 	match card_data.suit:
 		CardData.Suit.WAN:
 			return str(card_data.number) + "w"
@@ -88,7 +111,8 @@ func _get_tile_name() -> String:
 ## 设置卡牌数据
 func set_card(card: CardData) -> void:
 	card_data = card
-	_try_load_texture()
+	# 直接标记为需要尝试加载纹理
+	extractor_tile_texture = null
 	queue_redraw()
 
 ## 设置是否显示正面
@@ -113,15 +137,48 @@ func _draw() -> void:
 
 	var rect = Rect2(Vector2.ZERO, custom_minimum_size)
 
-	# 绘制背景
-	var bg_color = color_bg
-	if is_selected:
-		bg_color = bg_color.darkened(0.2)
-	elif is_highlighted:
-		bg_color = bg_color.brightened(0.15)
-	draw_rect(rect, bg_color)
-
 	if show_face:
+		# 🆕 每次绘制时都尝试加载纹理（如果还没加载）
+		if not extractor_tile_texture and texture_extractor:
+			_try_load_texture()
+
+		if extractor_tile_texture:
+			# 🎨 优化纹理渲染 - 考虑宽高比
+			var texture_size = extractor_tile_texture.get_size()
+			var card_size = custom_minimum_size
+
+			# 纹理是正方形（85x85），卡牌是竖形（80x120）
+			# 策略：保持纹理完整，在卡牌内居中显示
+
+			# 方案：纹理完全填充卡牌宽度，高度按比例缩放
+			var scale_to_width = card_size.x / texture_size.x
+			var scaled_height = texture_size.y * scale_to_width
+
+			# 如果缩放后高度超过卡牌高度，改为按高度缩放
+			if scaled_height > card_size.y:
+				var scale_to_height = card_size.y / texture_size.y
+				var scaled_width = texture_size.x * scale_to_height
+				var offset_x = (card_size.x - scaled_width) / 2.0
+
+				var scaled_rect = Rect2(Vector2(offset_x, 0), Vector2(scaled_width, card_size.y))
+				draw_texture_rect(extractor_tile_texture, scaled_rect, false)
+			else:
+				# 按宽度缩放，垂直居中
+				var offset_y = (card_size.y - scaled_height) / 2.0
+				var scaled_rect = Rect2(Vector2(0, offset_y), Vector2(card_size.x, scaled_height))
+				draw_texture_rect(extractor_tile_texture, scaled_rect, false)
+
+			_draw_card_border(rect)
+			return
+
+		# 如果没有纹理，绘制背景 + 代码绘制
+		var bg_color = color_bg
+		if is_selected:
+			bg_color = bg_color.darkened(0.2)
+		elif is_highlighted:
+			bg_color = bg_color.brightened(0.15)
+		draw_rect(rect, bg_color)
+
 		if use_texture and tile_texture:
 			# 使用纹理
 			draw_set_transform(Vector2.ZERO, 0, Vector2(1, 1))
@@ -131,6 +188,12 @@ func _draw() -> void:
 			_draw_card_face(rect)
 	else:
 		# 绘制卡牌背面
+		var bg_color = color_bg
+		if is_selected:
+			bg_color = bg_color.darkened(0.2)
+		elif is_highlighted:
+			bg_color = bg_color.brightened(0.15)
+		draw_rect(rect, bg_color)
 		_draw_card_back(rect)
 
 	# 绘制边框
@@ -140,7 +203,7 @@ func _draw() -> void:
 func _draw_card_face(rect: Rect2) -> void:
 	var suit_color = _get_suit_color()
 	var center = rect.get_center()
-	
+
 	# 根据花色绘制不同符号
 	match card_data.suit:
 		CardData.Suit.WAN:
@@ -159,7 +222,7 @@ func _draw_card_face(rect: Rect2) -> void:
 ## 绘制筒牌图案（圆形组合）
 func _draw_tong_pattern(center: Vector2, number: int) -> void:
 	var positions = []
-	
+
 	match number:
 		1:
 			positions = [Vector2(0, 0)]
@@ -179,7 +242,7 @@ func _draw_tong_pattern(center: Vector2, number: int) -> void:
 			positions = [Vector2(-12, -10), Vector2(0, -10), Vector2(12, -10), Vector2(-12, 0), Vector2(12, 0), Vector2(-12, 10), Vector2(0, 10), Vector2(12, 10)]
 		9:
 			positions = [Vector2(-12, -10), Vector2(0, -10), Vector2(12, -10), Vector2(-12, 0), Vector2(0, 0), Vector2(12, 0), Vector2(-12, 10), Vector2(0, 10), Vector2(12, 10)]
-	
+
 	# 绘制圆形
 	for pos in positions:
 		draw_circle(center + pos, 6.0, Color(0.2, 0.6, 0.2))
@@ -191,7 +254,7 @@ func _draw_tiao_pattern(center: Vector2, number: int) -> void:
 	var line_width = 3.0
 	var spacing = 7.0
 	var color = Color(0.2, 0.6, 0.2)
-	
+
 	match number:
 		1:
 			draw_line(center + Vector2(0, -line_height / 2), center + Vector2(0, line_height / 2), color, line_width)
@@ -210,7 +273,7 @@ func _draw_tiao_pattern(center: Vector2, number: int) -> void:
 func _draw_card_back(rect: Rect2) -> void:
 	# 绘制背景
 	draw_rect(rect, Color(0.3, 0.5, 0.3))
-	
+
 	# 绘制中间文字 "麻将"
 	var center = rect.get_center()
 	_draw_large_text("麻", center - Vector2(10, 8), Color.WHITE, 18)
@@ -276,3 +339,50 @@ func _on_gui_input(event: InputEvent) -> void:
 		card_clicked.emit(self)
 		is_selected = not is_selected
 		queue_redraw()
+
+# 🆕 获取 TextureExtractor 使用的麻将牌名称
+func _get_tile_name_for_extractor() -> String:
+	if not card_data:
+		return ""
+
+	match card_data.suit:
+		CardData.Suit.WAN:
+			var name = "w%d" % card_data.number
+			print("   [Tile名称] 万牌: %s" % name)
+			return name
+		CardData.Suit.TONG:
+			var name = "t%d" % card_data.number
+			print("   [Tile名称] 筒牌: %s" % name)
+			return name
+		CardData.Suit.TIAO:
+			var name = "s%d" % card_data.number
+			print("   [Tile名称] 条牌: %s" % name)
+			return name
+		CardData.Suit.ZI:
+			match card_data.number:
+				1:
+					print("   [Tile名称] 字牌 E: %d" % card_data.number)
+					return "E"
+				2:
+					print("   [Tile名称] 字牌 S: %d" % card_data.number)
+					return "S"
+				3:
+					print("   [Tile名称] 字牌 W: %d" % card_data.number)
+					return "W"
+				4:
+					print("   [Tile名称] 字牌 N: %d" % card_data.number)
+					return "N"
+				5:
+					print("   [Tile名称] 字牌 Z: %d" % card_data.number)
+					return "Z"
+				6:
+					print("   [Tile名称] 字牌 F: %d" % card_data.number)
+					return "F"
+				7:
+					print("   [Tile名称] 字牌 B: %d" % card_data.number)
+					return "B"
+				_:
+					print("   [Tile名称] 字牌未知: %d" % card_data.number)
+					return ""
+	print("   [Tile名称] 未知花色: %s %d" % [card_data.suit, card_data.number])
+	return ""

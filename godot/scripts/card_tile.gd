@@ -163,14 +163,18 @@ func animate_win() -> void:
 
 func _draw() -> void:
 	"""绘制麻将牌外观"""
-	# ✅ 新增: 绘制3D效果的麻将牌
+	# ✅ 安全检查: 如果card_data为空则使用默认颜色
 	var rect = Rect2(0, 0, TILE_WIDTH, TILE_HEIGHT)
 
 	# 阴影
 	draw_rect(Rect2(2, 2, TILE_WIDTH - 2, TILE_HEIGHT - 2), SHADOW_COLOR)
 
 	# 主体背景 - 根据选中状态改变颜色
-	var bg_color = _get_suit_color(card_data.suit) if card_data else Color.WHITE
+	var bg_color: Color
+	if card_data and card_data.suit >= 0:
+		bg_color = _get_suit_color(card_data.suit)
+	else:
+		bg_color = Color.WHITE
 	draw_rect(rect, bg_color)
 
 	# 外边框
@@ -182,7 +186,7 @@ func _draw() -> void:
 
 func _on_gui_input(event: InputEvent) -> void:
 	"""处理鼠标点击事件"""
-	if event is InputEventMouseButton and event.pressed:
+	if event is InputEventMouseButton and event.pressed and card_data:
 		card_pressed.emit(card_data)
 
 func _on_mouse_entered() -> void:

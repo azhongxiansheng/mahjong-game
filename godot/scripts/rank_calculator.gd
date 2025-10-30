@@ -109,7 +109,7 @@ func calculate_rewards(rank: int, score: int, is_victory: bool = false) -> Dicti
             gold = 60
             exp = 30
             points = 30
-        _
+        _:
             if rank <= 10:
                 gold = 40
                 exp = 20
@@ -240,15 +240,15 @@ func get_tier_description(rating: int) -> String:
 func _calculate_tier(points: int) -> String:
     """根据分段分计算等级"""
     match points:
-        0..599
+        0..599:
             return "铜"
-        600..1199
+        600..1199:
             return "银"
-        1200..1799
+        1200..1799:
             return "金"
-        1800..2399
+        1800..2399:
             return "铂"
-        2400..(2 ** 31 - 1)
+        2400..(2 ** 31 - 1):
             return "钻"
         _
             return "未定级"
