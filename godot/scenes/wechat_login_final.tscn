@@ -1,28 +1,38 @@
-[gd_scene load_steps=6 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=7 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
+[ext_resource type="Texture2D" path="res://assets/wechat_icon.svg" id="3_wechat_icon"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_normal"]
-bg_color = Color(0.15, 0.7, 0.15, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+bg_color = Color(0.227, 0.741, 0.251, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.3)
+shadow_size = 4
+shadow_offset = Vector2(0, 2)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_hover"]
-bg_color = Color(0.2, 0.8, 0.2, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+bg_color = Color(0.267, 0.831, 0.291, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_pressed"]
-bg_color = Color(0.1, 0.6, 0.1, 1)
-corner_radius_top_left = 8
-corner_radius_top_right = 8
-corner_radius_bottom_right = 8
-corner_radius_bottom_left = 8
+bg_color = Color(0.187, 0.651, 0.211, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.2)
+shadow_size = 2
+shadow_offset = Vector2(0, 1)
 
 
 [node name="WeChatLogin" type="Control"]
@@ -66,33 +76,51 @@ custom_minimum_size = Vector2(0, 80)
 
 [node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-text = "四川麻将"
+text = "飞凡娱乐"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 56
-theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
-theme_override_colors/font_outline_color = Color(0.4, 0.2, 0, 1)
-theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 72
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.8, 0.3, 0, 1)
+theme_override_constants/outline_size = 6
+theme_override_constants/shadow_offset_x = 4
+theme_override_constants/shadow_offset_y = 4
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.5)
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-text = "经典国粹 · 指尖对弈"
+text = "麻将竞技 · 智慧对决"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 20
-theme_override_colors/font_color = Color(1, 1, 0.9, 0.9)
+theme_override_font_sizes/font_size = 22
+theme_override_colors/font_color = Color(1, 0.95, 0.6, 1)
+theme_override_colors/font_outline_color = Color(0.3, 0.15, 0, 0.8)
+theme_override_constants/outline_size = 2
 
 [node name="Spacer1" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 120)
+custom_minimum_size = Vector2(0, 80)
 
 [node name="WeChatButton" type="Button" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(350, 60)
-theme_override_font_sizes/font_size = 24
+custom_minimum_size = Vector2(320, 56)
+theme_override_font_sizes/font_size = 20
 theme_override_colors/font_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_wechat_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_wechat_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_wechat_pressed")
-text = "🎮 微信一键登录"
+text = "   微信一键登录"
+
+[node name="WeChatIcon" type="TextureRect" parent="CenterContainer/VBoxContainer/WeChatButton"]
+layout_mode = 1
+anchors_preset = 4
+anchor_top = 0.5
+anchor_bottom = 0.5
+offset_left = 16.0
+offset_top = -16.0
+offset_right = 48.0
+offset_bottom = 16.0
+texture = ExtResource("3_wechat_icon")
+expand_mode = 1
+stretch_mode = 5
 
 
 
