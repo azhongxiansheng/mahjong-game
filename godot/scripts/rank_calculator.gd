@@ -1,4 +1,4 @@
-class_name RankCalculator
+﻿class_name RankCalculator
 extends Node
 
 ## 排名计算器 - 基于 ELO 等级分系统
@@ -109,7 +109,7 @@ func calculate_rewards(rank: int, score: int, is_victory: bool = false) -> Dicti
             gold = 60
             exp = 30
             points = 30
-        _:
+        _
             if rank <= 10:
                 gold = 40
                 exp = 20
@@ -240,17 +240,17 @@ func get_tier_description(rating: int) -> String:
 func _calculate_tier(points: int) -> String:
     """根据分段分计算等级"""
     match points:
-        0..599:
+        0..599
             return "铜"
-        600..1199:
+        600..1199
             return "银"
-        1200..1799:
+        1200..1799
             return "金"
-        1800..2399:
+        1800..2399
             return "铂"
-        2400..(2 ** 31 - 1):
+        2400..(2 ** 31 - 1)
             return "钻"
-        _:
+        _
             return "未定级"
 
 ## 获取赛季奖励
@@ -294,7 +294,7 @@ func get_season_rewards(rating: int, final_rank: int) -> Dictionary:
             rewards.gold = 800
             rewards.gem = 100
             rewards.title = "功成名就"
-        _:
+        _
             rewards.gold = 1000
             rewards.gem = 200
             rewards.title = "声名远扬"
