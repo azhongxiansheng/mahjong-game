@@ -14,13 +14,6 @@ shader_parameter/wave_speed = 1.5
 shader_parameter/wave_amplitude = 0.15
 shader_parameter/brightness_threshold = 0.25
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_title"]
-shader = ExtResource("4_shader")
-shader_parameter/glow_strength = 3.0
-shader_parameter/glow_color = Color(1, 0.6, 0, 1)
-shader_parameter/wave_speed = 2.5
-shader_parameter/wave_amplitude = 0.2
-
 [sub_resource type="Gradient" id="Gradient_fire"]
 offsets = PackedFloat32Array(0, 0.5, 1)
 colors = PackedColorArray(1, 0.3, 0, 0.8, 1, 0.7, 0.2, 0.6, 1, 1, 0.5, 0)
