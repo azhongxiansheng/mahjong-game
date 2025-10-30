@@ -1,3 +1,5 @@
-res://scripts/rank_calculator.gd
+res://scripts/achievement_system.gd
+res://scripts/hand_display_manager.gd
 res://scenes/main.tscn
-res://scripts/card_data.gd
+res://scripts/game_controller.gd
+res://scripts/main.gd

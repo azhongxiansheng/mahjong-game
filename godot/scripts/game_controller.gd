@@ -5,7 +5,6 @@ extends Node
 
 ## 游戏相关引用
 var game_state: GameState
-var win_checker: WinChecker
 var ai_player: AIPlayer
 
 ## UI系统引用
@@ -27,11 +26,9 @@ var ai_difficulty: int = 1 # 0=简单, 1=中等, 2=困难
 ## 信号
 signal game_initialized
 signal turn_started(player: String)
-signal turn_ended(player: String)
 signal card_drawn(player: String, card: CardData)
 signal card_played(player: String, card: CardData)
 signal win_detected(winner: String, win_info: Dictionary)
-signal round_complete(winner: String)
 
 func _ready() -> void:
 	print("🎮 GameController 初始化中...")
@@ -39,9 +36,6 @@ func _ready() -> void:
 	# 初始化游戏状态
 	game_state = GameState.new()
 	game_state._ready()
-
-	# 初始化Win检查器
-	win_checker = WinChecker.new()
 
 	# 初始化AI玩家
 	ai_player = AIPlayer.new()
@@ -319,7 +313,7 @@ func _check_player_win() -> bool:
 		return false
 
 	# 检查是否满足胡牌条件
-	var win_result = win_checker.check_win(game_state.player_hand)
+	var win_result = WinChecker.check_win(game_state.player_hand)
 
 	if win_result and win_result.is_win:
 		# 玩家胡牌！
@@ -354,7 +348,7 @@ func _check_ai_win() -> bool:
 		return false
 
 	# 检查是否满足胡牌条件
-	var win_result = win_checker.check_win(game_state.ai_hand)
+	var win_result = WinChecker.check_win(game_state.ai_hand)
 
 	if win_result and win_result.is_win:
 		# AI胡牌！

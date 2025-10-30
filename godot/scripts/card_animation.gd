@@ -144,7 +144,7 @@ func animate_error_shake(control: Control) -> void:
 	animation_completed.emit("error")
 
 ## 粒子效果 - 胡牌时的金光特效
-func animate_win_particles(pos: Vector2) -> void:
+func animate_win_particles(_pos: Vector2) -> void:
 	# 创建粒子效果（可选）
 	# 这里简化处理，实际可以使用GPUParticles2D
 	pass

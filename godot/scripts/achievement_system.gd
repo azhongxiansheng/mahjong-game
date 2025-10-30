@@ -6,7 +6,7 @@ class_name AchievementSystem
 extends Node
 
 # ============ 数据存储 ============
-var achievements: Dictionary = {}              # id -> Achievement
+var achievements: Dictionary = {} # id -> Achievement
 var achievements_by_category: Dictionary = {} # category -> [Achievement]
 var player_achievements_data: Dictionary = {} # 用于持久化的数据
 

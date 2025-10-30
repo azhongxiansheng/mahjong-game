@@ -1,7 +1,7 @@
 class_name CardData
 
 # 卡牌花色枚举
-enum Suit { WAN = 0, TONG = 1, TIAO = 2, ZI = 3 }  # 万、筒、条、字
+enum Suit {WAN = 0, TONG = 1, TIAO = 2, ZI = 3} # 万、筒、条、字
 
 # 卡牌属性
 var suit: Suit

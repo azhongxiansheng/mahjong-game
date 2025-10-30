@@ -151,8 +151,7 @@ func _print_player_hand() -> void:
 
 	# 显示听牌提示
 	if cards.size() == 13:
-		var win_checker = WinChecker.new()
-		var ting_cards = win_checker.check_can_hear(game_state.player_hand)
+		var ting_cards = WinChecker.check_can_hear(game_state.player_hand)
 		if ting_cards.size() > 0:
 			print("\n💡 听牌提示:")
 			for ting_card in ting_cards:
