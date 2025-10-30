@@ -5,6 +5,13 @@ var hand_display: Control
 func _ready():
 	print("=== 麻将游戏主场景启动 ===")
 
+	# 🔬 测试:导出纹理
+	var test_script = load("res://test_texture_export.gd")
+	if test_script:
+		var test_node = Node.new()
+		test_node.set_script(test_script)
+		add_child(test_node)
+
 	# 设置背景
 	var bg = ColorRect.new()
 	bg.color = Color(0.1, 0.3, 0.2, 1.0)
