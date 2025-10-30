@@ -48,8 +48,8 @@ func register_achievement(achievement: Achievement) -> void:
 	achievements_by_category[achievement.category].append(achievement)
 
 	# 连接信号
-	achievement.unlocked.connect(_on_achievement_unlocked.bindv([achievement]))
-	achievement.progress_changed.connect(_on_achievement_progress_changed.bindv([achievement.id]))
+	achievement.unlocked.connect(_on_achievement_unlocked.bind(achievement))
+	achievement.progress_changed.connect(_on_achievement_progress_changed.bind(achievement.id))
 
 	print("[AchievementSystem] 成就已注册: %s (%s)" % [achievement.name, achievement.id])
 
