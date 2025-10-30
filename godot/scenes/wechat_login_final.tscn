@@ -8,11 +8,11 @@
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_logo"]
 shader = ExtResource("5_shader")
-shader_parameter/glow_strength = 2.5
+shader_parameter/glow_strength = 2.8
 shader_parameter/glow_color = Color(1, 0.5, 0, 1)
 shader_parameter/wave_speed = 1.5
 shader_parameter/wave_amplitude = 0.15
-shader_parameter/brightness_threshold = 0.25
+shader_parameter/brightness_threshold = 0.45
 
 [sub_resource type="Gradient" id="Gradient_fire"]
 offsets = PackedFloat32Array(0, 0.5, 1)
