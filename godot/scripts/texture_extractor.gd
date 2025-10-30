@@ -52,7 +52,7 @@ func _extract_from_source() -> void:
 	print("\n🎨 从 atlas 提取麻将牌纹理...")
 
 	var extracted_count = 0
-	var atlas_path = SOURCE_ATLASES[0] # 只使用第一个atlas
+	var atlas_path = SOURCE_ATLASES[0]
 
 	if not ResourceLoader.exists(atlas_path):
 		print("⚠️  Atlas not found: %s" % atlas_path)
@@ -60,27 +60,17 @@ func _extract_from_source() -> void:
 
 	print("📦 Loading atlas: %s" % atlas_path)
 
-	var atlas = load(atlas_path) as Texture2D
-	if not atlas:
+	var atlas_texture = load(atlas_path) as Texture2D
+	if not atlas_texture:
 		print("❌ Failed to load atlas")
 		return
 
-	var image = atlas.get_image()
-	if not image:
-		print("❌ Failed to get image from atlas")
-		return
-
-	var img_width = image.get_width()
-	var img_height = image.get_height()
+	var img_width = atlas_texture.get_width()
+	var img_height = atlas_texture.get_height()
 	print("   Atlas size: %dx%d" % [img_width, img_height])
 
-	# 🔑 根据反编译的坐标手动提取
-	# 排列方式:
-	# 第0行 (y=0):   万牌 w1-w9 (9个)
-	# 第1行 (y=120): 筒牌 t1-t9 (9个)
-	# 第2行 (y=240): 条牌 s1-s9 (9个)
-	# 第3行 (y=360): 字牌 E,S,W,N,Z,F,B (7个)
-
+	# 🔑 关键修复:使用 AtlasTexture 而不是 get_region!
+	# AtlasTexture 是 Godot官方推荐的图集提取方式
 	var tile_coords = []
 	
 	# 万牌 (y=0)
@@ -109,36 +99,17 @@ func _extract_from_source() -> void:
 		var w = coord[3]
 		var h = coord[4]
 
-		if x + w > img_width or y + h > img_height:
-			print("⚠️  超出atlas范围: %s" % tile_name)
-			continue
+		# 🔑 使用 AtlasTexture 而不是 ImageTexture.create_from_image!
+		var atlas_tex = AtlasTexture.new()
+		atlas_tex.atlas = atlas_texture
+		atlas_tex.region = Rect2(x, y, w, h)
+		
+		# 🔑 设置过滤模式为最近邻滤波
+		atlas_tex.filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
 
-		var tile_rect = Rect2i(x, y, w, h)
-		var tile_image = image.get_region(tile_rect)
-
-		if not tile_image or tile_image.get_width() <= 0:
-			print("⚠️  无法提取: %s" % tile_name)
-			continue
-
-		if _is_empty_image(tile_image):
-			print("⚠️  空图像: %s" % tile_name)
-			continue
-
-		# 创建纹理
-		var tile_texture = ImageTexture.create_from_image(tile_image)
-
-		if not tile_texture:
-			print("❌ 无法创建ImageTexture: %s" % tile_name)
-			continue
-
-		var tex_size = tile_texture.get_size()
-		if tex_size.x <= 0 or tex_size.y <= 0:
-			print("⚠️  ImageTexture尺寸无效: %s" % tile_name)
-			continue
-
-		extracted_tiles[tile_name] = tile_texture
+		extracted_tiles[tile_name] = atlas_tex
 		extracted_count += 1
-		print("✅ [%s] %dx%d" % [tile_name, tex_size.x, tex_size.y])
+		print("✅ [%s] %dx%d" % [tile_name, w, h])
 
 	print("✅ 成功提取 %d 个麻将牌纹理" % extracted_count)
 
