@@ -2,8 +2,9 @@ extends Control
 
 @onready var logo_texture: TextureRect = $LogoTexture
 var particles: Array = []
-var particle_count: int = 50
+var particle_count: int = 80
 var time_passed: float = 0.0
+var fire_particles: Array = []  # 火焰粒子
 
 class Particle:
 	var position: Vector2
@@ -12,31 +13,47 @@ class Particle:
 	var max_lifetime: float
 	var size: float
 	var color: Color
+	var is_fire: bool = false  # 是否为火焰粒子
 	
-	func _init(pos: Vector2, vel: Vector2, life: float, s: float, c: Color):
+	func _init(pos: Vector2, vel: Vector2, life: float, s: float, c: Color, fire: bool = false):
 		position = pos
 		velocity = vel
 		lifetime = 0.0
 		max_lifetime = life
 		size = s
 		color = c
+		is_fire = fire
 
 func _ready():
-	# 初始化粒子
-	for i in range(particle_count):
+	# 初始化环绕粒子
+	for i in range(40):
 		_spawn_particle()
+	
+	# 初始化火焰粒子
+	for i in range(40):
+		_spawn_fire_particle()
 
 func _process(delta: float):
 	time_passed += delta
 	
 	# 更新和绘制粒子
 	for particle in particles:
-		particle.position += particle.velocity * delta
+		if particle.is_fire:
+			# 火焰粒子向上飘动
+			particle.position.y -= 30.0 * delta
+			particle.position.x += sin(particle.lifetime * 3.0) * 20.0 * delta
+		else:
+			# 环绕粒子
+			particle.position += particle.velocity * delta
+		
 		particle.lifetime += delta
 		
 		# 粒子老化后重生
 		if particle.lifetime >= particle.max_lifetime:
-			_respawn_particle(particle)
+			if particle.is_fire:
+				_respawn_fire_particle(particle)
+			else:
+				_respawn_particle(particle)
 	
 	queue_redraw()
 
@@ -45,13 +62,27 @@ func _draw():
 	
 	for particle in particles:
 		var alpha = 1.0 - (particle.lifetime / particle.max_lifetime)
-		var draw_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.8)
+		var draw_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.9)
 		
-		# 绘制发光粒子
-		draw_circle(particle.position, particle.size, draw_color)
-		# 添加外发光
-		var glow_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.3)
-		draw_circle(particle.position, particle.size * 2.5, glow_color)
+		if particle.is_fire:
+			# 火焰粒子：渐变从橙红到黄色
+			var fire_progress = particle.lifetime / particle.max_lifetime
+			if fire_progress < 0.5:
+				# 橙红色
+				draw_color = Color(1.0, 0.4, 0.1, alpha * 0.8)
+			else:
+				# 渐变到黄色
+				draw_color = Color(1.0, 0.8, 0.2, alpha * 0.6)
+			
+			# 绘制火焰粒子（更大更亮）
+			draw_circle(particle.position, particle.size * 1.5, draw_color)
+			var glow_color = Color(1.0, 0.6, 0.0, alpha * 0.4)
+			draw_circle(particle.position, particle.size * 3.5, glow_color)
+		else:
+			# 环绕粒子
+			draw_circle(particle.position, particle.size, draw_color)
+			var glow_color = Color(particle.color.r, particle.color.g, particle.color.b, alpha * 0.3)
+			draw_circle(particle.position, particle.size * 2.5, glow_color)
 
 func _spawn_particle():
 	var container_size = size
@@ -78,9 +109,49 @@ func _spawn_particle():
 		vel,
 		randf_range(3.0, 5.0),
 		randf_range(2.5, 5.0),
-		particle_color
+		particle_color,
+		false
 	)
 	particles.append(particle)
+
+# 生成火焰粒子（在文字周围向上飘）
+func _spawn_fire_particle():
+	var container_size = size
+	var center = container_size / 2.0
+	
+	# 在文字底部和周围生成
+	var offset_x = randf_range(-200.0, 200.0)
+	var offset_y = randf_range(-30.0, 50.0)
+	var pos = center + Vector2(offset_x, offset_y)
+	
+	# 火焰颜色
+	var fire_colors = [
+		Color(1.0, 0.3, 0.0),  # 橙红色
+		Color(1.0, 0.5, 0.0),  # 橙色
+		Color(1.0, 0.7, 0.1),  # 橙黄色
+	]
+	var fire_color = fire_colors[randi() % fire_colors.size()]
+	
+	var particle = Particle.new(
+		pos,
+		Vector2.ZERO,  # 火焰粒子不需要初始速度
+		randf_range(1.5, 2.5),
+		randf_range(3.0, 6.0),
+		fire_color,
+		true
+	)
+	particles.append(particle)
+
+func _respawn_fire_particle(particle: Particle):
+	var container_size = size
+	var center = container_size / 2.0
+	
+	var offset_x = randf_range(-200.0, 200.0)
+	var offset_y = randf_range(-30.0, 50.0)
+	particle.position = center + Vector2(offset_x, offset_y)
+	particle.lifetime = 0.0
+	particle.max_lifetime = randf_range(1.5, 2.5)
+	particle.size = randf_range(3.0, 6.0)
 
 func _respawn_particle(particle: Particle):
 	var container_size = size
