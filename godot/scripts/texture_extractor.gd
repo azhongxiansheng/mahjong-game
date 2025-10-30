@@ -3,11 +3,13 @@
 ## 🔧 作为 AutoLoad 单例使用,移除 class_name 避免冲突
 extends Node
 
-## 配置
+## 配置 - 根据反编译的Python脚本修正
 const ATLAS_DIR = "user://mahjong_atlases"
 const OUTPUT_DIR = "user://mahjong_tiles"
-const TILE_SIZE = 85
-const PADDING = 1
+## 🔑 关键修正:麻将牌真实尺寸是 80x120,不是 85x85!
+const TILE_WIDTH = 80
+const TILE_HEIGHT = 120
+const PADDING = 0 # 没有间距
 
 ## 🆕 纹理滤波模式 - 最近邻滤波确保像素完美
 const TEXTURE_FILTER_MODE = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -27,7 +29,7 @@ func _ready() -> void:
 	print("\n   准备提取 34 种麻将牌 (w1-w9, t1-t9, s1-s9, E, S, W, N, Z, F, B)")
 	_init_tile_names()
 
-	# 🔧 使用已验证的网格提取方案
+	# 🔧 使用已验证的精确坐标提取
 	_extract_from_source()
 
 	print("✅ TextureExtractor initialized")
@@ -46,122 +48,99 @@ func _init_tile_names() -> void:
 
 	tile_names.append_array(["E", "S", "W", "N", "Z", "F", "B"])
 
-## 🆕 智能检测 atlas 的实际网格尺寸
-func _detect_tile_size(image: Image) -> int:
-	var width = image.get_width()
-	var height = image.get_height()
-
-	# 根据标准麻将排列推测
-	# 通常是 9列 (9个数字) x 4行 (数字+字牌)
-	var likely_cols = 9
-	var likely_tile_width = int(width / float(likely_cols))
-
-	print("   自动检测: atlas尺寸 %dx%d, 预测列数 %d, 预测瓦片宽度 %d" % [width, height, likely_cols, likely_tile_width])
-
-	# 确保尺寸合理
-	if likely_tile_width < 50 or likely_tile_width > 150:
-		print("   ⚠️  预测尺寸不合理，使用默认值 %d" % TILE_SIZE)
-		return TILE_SIZE
-
-	return likely_tile_width
-
 func _extract_from_source() -> void:
 	print("\n🎨 从 atlas 提取麻将牌纹理...")
 
 	var extracted_count = 0
+	var atlas_path = SOURCE_ATLASES[0] # 只使用第一个atlas
 
-	for atlas_idx in SOURCE_ATLASES:
-		var atlas_path = SOURCE_ATLASES[atlas_idx]
+	if not ResourceLoader.exists(atlas_path):
+		print("⚠️  Atlas not found: %s" % atlas_path)
+		return
 
-		if not ResourceLoader.exists(atlas_path):
-			print("⚠️  Atlas not found: %s" % atlas_path)
+	print("📦 Loading atlas: %s" % atlas_path)
+
+	var atlas = load(atlas_path) as Texture2D
+	if not atlas:
+		print("❌ Failed to load atlas")
+		return
+
+	var image = atlas.get_image()
+	if not image:
+		print("❌ Failed to get image from atlas")
+		return
+
+	var img_width = image.get_width()
+	var img_height = image.get_height()
+	print("   Atlas size: %dx%d" % [img_width, img_height])
+
+	# 🔑 根据反编译的坐标手动提取
+	# 排列方式:
+	# 第0行 (y=0):   万牌 w1-w9 (9个)
+	# 第1行 (y=120): 筒牌 t1-t9 (9个)
+	# 第2行 (y=240): 条牌 s1-s9 (9个)
+	# 第3行 (y=360): 字牌 E,S,W,N,Z,F,B (7个)
+
+	var tile_coords = []
+	
+	# 万牌 (y=0)
+	for i in range(9):
+		tile_coords.append(["w%d" % (i+1), i * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT])
+	
+	# 筒牌 (y=120)
+	for i in range(9):
+		tile_coords.append(["t%d" % (i+1), i * TILE_WIDTH, 120, TILE_WIDTH, TILE_HEIGHT])
+	
+	# 条牌 (y=240)
+	for i in range(9):
+		tile_coords.append(["s%d" % (i+1), i * TILE_WIDTH, 240, TILE_WIDTH, TILE_HEIGHT])
+	
+	# 字牌 (y=360)
+	var zi_tiles = ["E", "S", "W", "N", "Z", "F", "B"]
+	for i in range(zi_tiles.size()):
+		tile_coords.append([zi_tiles[i], i * TILE_WIDTH, 360, TILE_WIDTH, TILE_HEIGHT])
+
+	print("   准备提取 %d 个麻将牌 (80x120 像素)" % tile_coords.size())
+
+	for coord in tile_coords:
+		var tile_name = coord[0]
+		var x = coord[1]
+		var y = coord[2]
+		var w = coord[3]
+		var h = coord[4]
+
+		if x + w > img_width or y + h > img_height:
+			print("⚠️  超出atlas范围: %s" % tile_name)
 			continue
 
-		print("📦 Loading atlas %d: %s" % [atlas_idx, atlas_path])
+		var tile_rect = Rect2i(x, y, w, h)
+		var tile_image = image.get_region(tile_rect)
 
-		var atlas = load(atlas_path) as Texture2D
-		if not atlas:
-			print("❌ Failed to load atlas: %s" % atlas_path)
+		if not tile_image or tile_image.get_width() <= 0:
+			print("⚠️  无法提取: %s" % tile_name)
 			continue
 
-		var image = atlas.get_image()
-		if not image:
-			print("❌ Failed to get image from atlas")
+		if _is_empty_image(tile_image):
+			print("⚠️  空图像: %s" % tile_name)
 			continue
 
-		var img_width = image.get_width()
-		var img_height = image.get_height()
-		print("   Atlas size: %dx%d" % [img_width, img_height])
+		# 创建纹理
+		var tile_texture = ImageTexture.create_from_image(tile_image)
 
-		# 🆕 智能检测瓦片尺寸
-		var tile_size = _detect_tile_size(image)
+		if not tile_texture:
+			print("❌ 无法创建ImageTexture: %s" % tile_name)
+			continue
 
-		var max_cols = int(img_width / float(tile_size + PADDING))
-		var max_rows = int(img_height / float(tile_size + PADDING))
-		print("   Grid: %dx%d (tile size: %d, padding: %d)" % [max_rows, max_cols, tile_size, PADDING])
+		var tex_size = tile_texture.get_size()
+		if tex_size.x <= 0 or tex_size.y <= 0:
+			print("⚠️  ImageTexture尺寸无效: %s" % tile_name)
+			continue
 
-		var tile_index = 0
-
-		for row in range(max_rows):
-			for col in range(max_cols):
-				if tile_index >= tile_names.size():
-					break
-
-				var x = col * (tile_size + PADDING)
-				var y = row * (tile_size + PADDING)
-
-				if x + tile_size > img_width or y + tile_size > img_height:
-					continue
-
-				var tile_rect = Rect2i(x, y, tile_size, tile_size)
-				var tile_image = image.get_region(tile_rect)
-
-				if not tile_image:
-					print("⚠️  无法获取 tile_image at [%d,%d]" % [row, col])
-					continue
-
-				# 🔑 关键验证：Image 有效性
-				if tile_image.get_width() <= 0 or tile_image.get_height() <= 0:
-					print("⚠️  tile_image 尺寸无效: %dx%d at [%d,%d]" % [tile_image.get_width(), tile_image.get_height(), row, col])
-					continue
-
-				if _is_empty_image(tile_image):
-					continue
-
-				# 🔑 关键：立即创建 ImageTexture
-				var tile_texture = ImageTexture.create_from_image(tile_image)
-
-				if not tile_texture:
-					print("❌ 无法创建 ImageTexture at [%d,%d]" % [row, col])
-					continue
-
-				# 🔑 关键验证：ImageTexture 有效性
-				var tex_size = tile_texture.get_size()
-				if tex_size.x <= 0 or tex_size.y <= 0:
-					print("⚠️  ImageTexture 尺寸无效: %s at [%d,%d]" % [tex_size, row, col])
-					continue
-
-				var tile_name = tile_names[tile_index]
-				extracted_tiles[tile_name] = tile_texture
-				extracted_count += 1
-				print("   ✓ [%d,%d]: %s (texture size: %dx%d)" % [row, col, tile_name, tex_size.x, tex_size.y])
-				tile_index += 1
-
-		if tile_index >= tile_names.size():
-			break
+		extracted_tiles[tile_name] = tile_texture
+		extracted_count += 1
+		print("✅ [%s] %dx%d" % [tile_name, tex_size.x, tex_size.y])
 
 	print("✅ 成功提取 %d 个麻将牌纹理" % extracted_count)
-	print("   extracted_tiles 字典大小: %d" % extracted_tiles.size())
-
-	# 验证所有关键牌都被提取了
-	var critical_tiles = ["w1", "t5", "s9", "E", "Z"]
-	for tile_name in critical_tiles:
-		if tile_name in extracted_tiles:
-			var tex = extracted_tiles[tile_name]
-			var size = tex.get_size()
-			print("   ✅ %s: 已提取，尺寸 %dx%d" % [tile_name, size.x, size.y])
-		else:
-			print("   ❌ %s: 未找到！" % tile_name)
 
 func _is_empty_image(img: Image) -> bool:
 	if not img:
