@@ -24,9 +24,20 @@ class Particle:
 		color = c
 
 func _ready():
+	# 添加轻微的脉冲发光效果
+	var tween = create_tween()
+	tween.set_loops()
+	tween.tween_method(_update_glow, 0.0, 1.0, 2.0)
+	tween.tween_method(_update_glow, 1.0, 0.0, 2.0)
+	
 	# 初始化粒子
 	for i in range(particle_count):
 		_spawn_particle()
+
+func _update_glow(value: float):
+	var glow_strength = 0.3 + value * 0.2
+	var outline_color = Color(0.3, 0.15, 0, 1.0 - glow_strength * 0.3)
+	title_label.add_theme_color_override("font_outline_color", outline_color)
 
 func _process(delta: float):
 	time_passed += delta

@@ -91,13 +91,17 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+rotation = -0.0872665
 text = "飞凡娱乐"
 horizontal_alignment = 1
 vertical_alignment = 1
-theme_override_font_sizes/font_size = 72
-theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
-theme_override_colors/font_outline_color = Color(0.6, 0.3, 0, 1)
-theme_override_constants/outline_size = 6
+theme_override_font_sizes/font_size = 84
+theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
+theme_override_colors/font_shadow_color = Color(0.8, 0.4, 0, 0.6)
+theme_override_colors/font_outline_color = Color(0.3, 0.15, 0, 1)
+theme_override_constants/shadow_offset_x = 4
+theme_override_constants/shadow_offset_y = 4
+theme_override_constants/outline_size = 10
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
