@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 [ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Texture2D" path="res://assets/feifan_logo.png" id="4_logo"]
+[ext_resource type="Texture2D" path="res://assets/feifan_logo_transparent.png" id="4_logo"]
 [ext_resource type="Shader" path="res://shaders/title_effect.gdshader" id="5_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_logo"]
@@ -12,7 +12,7 @@ shader_parameter/glow_strength = 3.0
 shader_parameter/glow_color = Color(1, 0.5, 0, 1)
 shader_parameter/wave_speed = 1.5
 shader_parameter/wave_amplitude = 0.15
-shader_parameter/brightness_threshold = 0.55
+shader_parameter/brightness_threshold = 0.0
 
 [sub_resource type="Gradient" id="Gradient_fire"]
 offsets = PackedFloat32Array(0, 0.5, 1)
