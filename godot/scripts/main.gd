@@ -56,7 +56,6 @@ func _initialize_game() -> void:
 	game_controller.card_drawn.connect(_on_card_drawn)
 	game_controller.card_played.connect(_on_card_played)
 	game_controller.win_detected.connect(_on_win_detected)
-	game_controller.round_complete.connect(_on_round_complete)
 
 	# 开始游戏
 	game_controller.initialize_game()

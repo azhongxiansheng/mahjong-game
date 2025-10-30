@@ -32,7 +32,7 @@ func animate_draw_card(card_ui: CardUI, from_pos: Vector2, to_pos: Vector2) -> v
 	animation_completed.emit("draw")
 
 ## 出牌动画
-func animate_play_card(card_ui: CardUI, from_pos: Vector2, to_pos: Vector2) -> void:
+func animate_play_card(card_ui: CardUI, _from_pos: Vector2, to_pos: Vector2) -> void:
 	animation_started.emit("play")
 
 	var tween = create_tween()

@@ -43,8 +43,8 @@ func set_card(card: CardData) -> void:
 	queue_redraw()
 
 ## 设置是否显示正面
-func set_show_face(show: bool) -> void:
-	show_face = show
+func set_show_face(show_face_flag: bool) -> void:
+	show_face = show_face_flag
 	queue_redraw()
 
 ## 选中卡牌
@@ -111,12 +111,11 @@ func _draw_card_back(rect: Rect2) -> void:
 
 	for x in range(0, int(rect.size.x), square_size * 2):
 		for y in range(0, int(rect.size.y), square_size * 2):
-			if (x / square_size + y / square_size) % 2 == 0:
+			if (float(x) / float(square_size) + float(y) / float(square_size)) % 2.0 == 0:
 				draw_rect(Rect2(x, y, square_size, square_size), pattern_color)
 
 	# 绘制中间文字 "麻将"
 	var center = rect.get_center()
-	var font_size = 12
 	draw_card_text("麻", center - Vector2(12, 8), Color.WHITE)
 	draw_card_text("将", center + Vector2(8, -8), Color.WHITE)
 
@@ -195,7 +194,7 @@ func draw_card_text(text: String, pos: Vector2, color: Color) -> void:
 		draw_card_text_simple(text, pos, color, font_size)
 
 ## 简单的文字绘制
-func draw_card_text_simple(text: String, pos: Vector2, color: Color, font_size: int = 12) -> void:
+func draw_card_text_simple(_text: String, _pos: Vector2, _color: Color, _font_size: int = 12) -> void:
 	# 这是一个简化实现，使用基础绘制
 	# 在实际项目中应该使用主题字体
 	pass
