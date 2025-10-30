@@ -1,9 +1,17 @@
-[gd_scene load_steps=11 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=12 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 [ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Shader" path="res://shaders/title_effect.gdshader" id="4_shader"]
+[ext_resource type="Texture2D" path="res://assets/feifan_logo.png" id="4_logo"]
+[ext_resource type="Shader" path="res://shaders/title_effect.gdshader" id="5_shader"]
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_logo"]
+shader = ExtResource("5_shader")
+shader_parameter/glow_strength = 2.5
+shader_parameter/glow_color = Color(1, 0.5, 0, 1)
+shader_parameter/wave_speed = 1.5
+shader_parameter/wave_amplitude = 0.15
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_title"]
 shader = ExtResource("4_shader")
@@ -127,22 +135,15 @@ custom_minimum_size = Vector2(0, 50)
 layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
 
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
-material = SubResource("ShaderMaterial_title")
+[node name="LogoImage" type="TextureRect" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
+material = SubResource("ShaderMaterial_logo")
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-text = "飞凡娱乐"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 84
-theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
-theme_override_colors/font_shadow_color = Color(0.8, 0.3, 0, 0.6)
-theme_override_colors/font_outline_color = Color(0.2, 0.1, 0, 1)
-theme_override_constants/shadow_offset_x = 4
-theme_override_constants/shadow_offset_y = 4
-theme_override_constants/outline_size = 10
+texture = ExtResource("4_logo")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="FireParticles" type="GPUParticles2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
 position = Vector2(250, 100)
