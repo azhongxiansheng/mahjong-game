@@ -110,7 +110,8 @@ func _create_card_uis(grouped_cards: Array) -> void:
 			current_pos.x += card_ui.card_width + card_spacing
 
 		current_pos.x = 10
-		current_pos.y += card_ui_nodes.back().card_height + suit_spacing
+		if card_ui_nodes.size() > 0:
+			current_pos.y += card_ui_nodes.back().card_height + suit_spacing
 
 ## 卡牌被点击
 func _on_card_clicked(card_ui: CardUI) -> void:
