@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1761785128
+::res://::1761785669
 main.tscn::PackedScene::2037226133772317241::1761703838::0::1::::<><><>0<>0<><>::uid://dmejpe1m0sin5::::res://scripts/main.gd<>uid://caqispqreye63::::res://scenes/game_ui.tscn
 ::res://assets/::1761784684
 loading_screen.png.png::CompressedTexture2D::7845156597599338328::1761645464::1761704716::1::::<><><>0<>0<>444bf1affbd942c6ac1aceb27bf367a9<>res://.godot/imported/loading_screen.png.png-3235bc7df22be53ff9452b7bb4979f4c.ctex::
@@ -23,13 +23,13 @@ achievement_tracker.gd::GDScript::7763457721253368824::1761710560::0::1::::Achie
 achievement_ui.gd::GDScript::3779574934252184000::1761710560::0::1::::AchievementUI<>CanvasLayer<><>0<>0<><>::
 ai_player.gd::GDScript::4320367625822613738::1761783655::0::1::::AIPlayer<>RefCounted<><>0<>0<><>::
 async_ting_checker.gd::GDScript::2918476143874941426::1761701009::0::1::::AsyncTingChecker<>RefCounted<><>0<>0<><>::
-card_animation.gd::GDScript::486260684772284572::1761785121::0::1::::CardAnimation<>Node<><>0<>0<><>::
+card_animation.gd::GDScript::486260684772284572::1761785336::0::1::::CardAnimation<>Node<><>0<>0<><>::
 card_animator.gd::GDScript::2389848074512722329::1761688036::0::1::::CardAnimator<>Node<><>0<>0<><>::
 card_data.gd::GDScript::5713573993493068992::1761784666::0::1::::CardData<>RefCounted<><>0<>0<><>::
 card_deck.gd::GDScript::7795628268991315213::1761674565::0::1::::CardDeck<>RefCounted<><>0<>0<><>::
 card_hand.gd::GDScript::3102473411875630767::1761676701::0::1::::CardHand<>RefCounted<><>0<>0<><>::
 card_tile.gd::GDScript::3597884908766619342::1761704282::0::1::::CardTile<>Control<><>0<>0<><>::
-card_ui.gd::GDScript::2976036248937817173::1761784402::0::1::::CardUI<>Control<><>0<>0<><>::
+card_ui.gd::GDScript::2976036248937817173::1761785336::0::1::::CardUI<>Control<><>0<>0<><>::
 chat_message.gd::GDScript::4048095934076231654::1761734646::0::1::::ChatMessage<>RefCounted<><>0<>0<><>::
 chat_system.gd::GDScript::1424038575223971127::1761734646::0::1::::ChatSystem<>Node<><>0<>0<><>::
 chat_ui.gd::GDScript::6980346049041985462::1761735453::0::1::::ChatUI<>CanvasLayer<><>0<>0<><>::
@@ -69,7 +69,7 @@ lobby_ui.gd::GDScript::1956943723179281226::1761701009::0::1::::LobbyUI<>Control
 logger.gd::GDScript::1763387303649847488::1761680581::0::1::::GameLogger<>RefCounted<><>0<>0<><>::
 login_ui.gd::GDScript::6926604842691182723::1761680587::0::1::::LoginUI<>ScreenBase<><>0<>0<><>::
 mahjong_deck.gd::GDScript::1057783228048399813::1761675016::0::1::::MahjongDeck<>CardDeck<><>0<>0<><>::
-main.gd::GDScript::8010359176433068568::1761785121::0::1::::<>Node2D<><>0<>0<><>::
+main.gd::GDScript::8010359176433068568::1761785336::0::1::::<>Node2D<><>0<>0<><>::
 main_menu_ui.gd::GDScript::2397484432408313283::1761679989::0::1::::MainMenuUI<>ScreenBase<><>0<>0<><>::
 message_protocol.gd::GDScript::3586038615415879068::1761688776::0::1::::MessageProtocol<>Node<><>0<>0<><>::
 multiplayer_game_flow.gd::GDScript::5194192230529428824::1761688984::0::1::::MultiplayerGameFlow<>Node<><>0<>0<><>::
