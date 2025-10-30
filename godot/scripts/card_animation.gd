@@ -153,5 +153,5 @@ func animate_win_particles(pos: Vector2) -> void:
 func stop_all_animations() -> void:
 	if is_node_ready():
 		# 停止所有正在运行的补间
-		for tween in get_tweens():
+		for tween in get_tree().get_root().get_tweens():
 			tween.kill()
