@@ -32,3 +32,4 @@ physics_engine="GodotPhysics2D"
 
 textures/canvas_textures/default_texture_filter=0
 renderer/rendering_mode="forward_plus"
+
