@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://hqdgxnno3xka"
-path="res://.godot/imported/feifan_logo_clean.png-d9f6c341d6f0e61bca64fa792bdb8400.ctex"
+uid="uid://dnk5s6d274ung"
+path="res://.godot/imported/feifan_logo_transparent.png-728eabfcc6f9d9bcb43af668270ed987.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/feifan_logo_clean.png"
-dest_files=["res://.godot/imported/feifan_logo_clean.png-d9f6c341d6f0e61bca64fa792bdb8400.ctex"]
+source_file="res://assets/feifan_logo_transparent.png"
+dest_files=["res://.godot/imported/feifan_logo_transparent.png-728eabfcc6f9d9bcb43af668270ed987.ctex"]
 
 [params]
 
