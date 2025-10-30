@@ -1,5 +1,5 @@
 63f7b34db8d8cdea90c76aacccf841ec
-::res://::1761837554
+::res://::1761837851
 main.tscn::PackedScene::2037226133772317241::1761824438::0::1::::<><><>0<>0<><>::uid://dmejpe1m0sin5::::res://scripts/main.gd<>uid://caqispqreye63::::res://scenes/game_ui.tscn
 ::res://assets/::1761837556
 feifan_logo.png::CompressedTexture2D::6028198874085844605::1761828124::1761837556::1::::<><><>0<>0<>b707c374fe0fb7323cd5e30d3d8c70af<>res://.godot/imported/feifan_logo.png-e2318f0f98a1cef0417ce94a37a83de7.ctex::
@@ -8,11 +8,11 @@ feifan_logo_transparent.png::CompressedTexture2D::8094216084116554264::176183377
 mahjong_table_bg.png::CompressedTexture2D::5069383607038659143::1761645464::1761837556::1::::<><><>0<>0<>f161928c45f49f2fdde3ca20f0b6b2f8<>res://.godot/imported/mahjong_table_bg.png-d4423bd4c87434a56c12efbd88e147c5.ctex::
 wechat_icon.png::CompressedTexture2D::5316045352115095813::1761827815::1761837555::1::::<><><>0<>0<>e6c645369350d468469f1335a43bdb5e<>res://.godot/imported/wechat_icon.png-5c83428a30753608164e74d17c1ad26c.ctex::
 WECHAT_ICON_README.md::TextFile::-1::1761707563::0::1::::<><><>0<>0<><>::
-::res://assets/mahjong_tiles/::1761837556
+::res://assets/mahjong_tiles/::1761837655
 mahjong_atlas0.png::CompressedTexture2D::3787524388071341025::1761361485::1761837655::1::::<><><>0<>0<>844153f24637d140ccbbba0f7ec3ad46<>res://.godot/imported/mahjong_atlas0.png-489f964203ff1011bcfed8ce3481dd11.ctex::
 mahjong_atlas0_1.png::CompressedTexture2D::7211608434490517064::1761361485::1761837654::1::::<><><>0<>0<>73069e3800510008af20a62fbf5f32f8<>res://.godot/imported/mahjong_atlas0_1.png-878c83793d5c7609b65dd3d3ef164866.ctex::
 mahjong_atlas0_2.png::CompressedTexture2D::8880347258825159937::1761361485::1761837655::1::::<><><>0<>0<>e9645cc3704d9b8d6a0b56e0bae06924<>res://.godot/imported/mahjong_atlas0_2.png-2def7b7b5b9bef00019de97a0cf260ee.ctex::
-::res://scenes/::1761837265
+::res://scenes/::1761837793
 card_tile.tscn::PackedScene::174978369265417493::1761823203::0::1::::<><><>0<>0<><>::uid://bri3vyo83ouug::::res://scripts/card_tile.gd
 enemy.tscn::PackedScene::807447463389964856::1761671074::0::1::::<><><>0<>0<><>::res://scripts/enemy.gd
 game_ui.tscn::PackedScene::4806390105029397738::1761704170::0::1::::<><><>0<>0<><>::res://scripts/game_ui.gd<>res://scripts/hand_display.gd
@@ -24,7 +24,7 @@ main_simple_new.tscn::PackedScene::-1::1761826069::0::1::::<><><>0<>0<><>::res:/
 player.tscn::PackedScene::2910336473301262287::1761671074::0::1::::<><><>0<>0<><>::res://scripts/player.gd
 test_mahjong_display.tscn::PackedScene::8836627431628844102::1761822693::0::1::::<><><>0<>0<><>::uid://qjxqjecs4ahg::::res://scripts/test_mahjong_display.gd
 test_texture.tscn::PackedScene::4245033070496064169::1761823835::0::1::::<><><>0<>0<><>::uid://ct6hvf8udn4uh::::res://scripts/test_texture_extractor.gd
-wechat_login_final.tscn::PackedScene::8162068374069248848::1761837265::0::1::::<><><>0<>0<><>::uid://dd0tmslhamyb3::::res://scripts/wechat_login.gd<>uid://cehwairlysbid::::res://assets/mahjong_table_bg.png<>uid://ch0eqw0nj3xgn::::res://assets/wechat_icon.png<>uid://dnk5s6d274ung::::res://assets/feifan_logo_transparent.png<>uid://bigg35mhk22ad::::res://shaders/title_effect.gdshader
+wechat_login_final.tscn::PackedScene::8162068374069248848::1761837793::0::1::::<><><>0<>0<><>::uid://dd0tmslhamyb3::::res://scripts/wechat_login.gd<>uid://cehwairlysbid::::res://assets/mahjong_table_bg.png<>uid://ch0eqw0nj3xgn::::res://assets/wechat_icon.png<>uid://dnk5s6d274ung::::res://assets/feifan_logo_transparent.png<>uid://bigg35mhk22ad::::res://shaders/title_effect.gdshader
 ::res://scripts/::1761829575
 achievement.gd::GDScript::2365762732282291709::1761710560::0::1::::Achievement<>RefCounted<><>0<>0<><>::
 achievement_notifier.gd::GDScript::1600693023502617260::1761710560::0::1::::AchievementNotifier<>CanvasLayer<><>0<>0<><>::
@@ -42,7 +42,7 @@ card_data.gd::GDScript::5713573993493068992::1761784666::0::1::::CardData<>RefCo
 card_deck.gd::GDScript::7795628268991315213::1761674565::0::1::::CardDeck<>RefCounted<><>0<>0<><>::
 card_hand.gd::GDScript::3102473411875630767::1761676701::0::1::::CardHand<>RefCounted<><>0<>0<><>::
 card_tile.gd::GDScript::3597884908766619342::1761825467::0::1::::CardTile<>Control<><>0<>0<><>::
-card_ui.gd::GDScript::2976036248937817173::1761837429::0::1::::CardUI<>Control<><>0<>0<><>::
+card_ui.gd::GDScript::2976036248937817173::1761837817::0::1::::CardUI<>Control<><>0<>0<><>::
 chat_message.gd::GDScript::4048095934076231654::1761734646::0::1::::ChatMessage<>RefCounted<><>0<>0<><>::
 chat_system.gd::GDScript::1424038575223971127::1761734646::0::1::::ChatSystem<>Node<><>0<>0<><>::
 chat_ui.gd::GDScript::6980346049041985462::1761735453::0::1::::ChatUI<>CanvasLayer<><>0<>0<><>::
@@ -84,7 +84,7 @@ login_ui.gd::GDScript::6926604842691182723::1761680587::0::1::::LoginUI<>ScreenB
 mahjong_deck.gd::GDScript::1057783228048399813::1761675016::0::1::::MahjongDeck<>CardDeck<><>0<>0<><>::
 main.gd::GDScript::8010359176433068568::1761827302::0::1::::<>Node2D<><>0<>0<><>::
 main_menu_ui.gd::GDScript::2397484432408313283::1761679989::0::1::::MainMenuUI<>ScreenBase<><>0<>0<><>::
-main_simple.gd::GDScript::341057659430100759::1761837429::0::1::::<>Control<><>0<>0<><>::
+main_simple.gd::GDScript::341057659430100759::1761837782::0::1::::<>Control<><>0<>0<><>::
 message_protocol.gd::GDScript::3586038615415879068::1761688776::0::1::::MessageProtocol<>Node<><>0<>0<><>::
 multiplayer_game_flow.gd::GDScript::5194192230529428824::1761688984::0::1::::MultiplayerGameFlow<>Node<><>0<>0<><>::
 network_client.gd::GDScript::7961329778014774112::1761702661::0::1::::NetworkClient<>Node<><>0<>0<><>::
@@ -119,7 +119,7 @@ test_leaderboard.gd::GDScript::7257820034053235426::1761709623::0::1::::TestLead
 test_leaderboard_integration.gd::GDScript::2273057651669817304::1761709796::0::1::::TestLeaderboardIntegration<>Node<><>0<>0<><>::
 test_mahjong_display.gd::GDScript::1143026440536597052::1761791261::0::1::::<>Control<><>0<>0<><>::
 test_texture_extractor.gd::GDScript::6170887942014597627::1761823470::0::1::::<>Node<><>0<>0<><>::
-texture_extractor.gd::GDScript::8492438035171198325::1761837429::0::1::::TextureExtractor<>Node<><>0<>0<><>::
+texture_extractor.gd::GDScript::8492438035171198325::1761837810::0::1::::<>Node<><>0<>0<><>::
 ting_cache.gd::GDScript::6156856260604953828::1761701009::0::1::::TingCache<>RefCounted<><>0<>0<><>::
 ting_checker.gd::GDScript::3278053134624090970::1761693886::0::1::::TingChecker<>RefCounted<><>0<>0<><>::
 ting_result.gd::GDScript::7119824376718239206::1761676360::0::1::::TingResult<>RefCounted<><>0<>0<><>::
@@ -134,5 +134,5 @@ wechat_login.gd::GDScript::7422614040966014878::1761826797::0::1::::<>Control<><
 win_checker.gd::GDScript::2038806321509110005::1761701009::0::1::::WinChecker<>RefCounted<><>0<>0<><>::
 win_pattern.gd::GDScript::3830979509096967415::1761675727::0::1::::WinPattern<>RefCounted<><>0<>0<><>::
 win_result.gd::GDScript::5006585395705283181::1761675649::0::1::::WinResult<>RefCounted<><>0<>0<><>::
-::res://shaders/::1761830628
-title_effect.gdshader::Shader::2960733598078315719::1761834311::0::1::::<><><>0<>0<><>::
+::res://shaders/::1761837777
+title_effect.gdshader::Shader::2960733598078315719::1761837777::0::1::::<><><>0<>0<><>::

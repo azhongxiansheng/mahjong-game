@@ -50,7 +50,6 @@ func _ready() -> void:
 	# 🆕 修复:使用 AutoLoad 单例访问 TextureExtractor
 	if TextureExtractor:
 		texture_extractor = TextureExtractor
-		print("✅ CardUI 找到 TextureExtractor(AutoLoad)")
 	else:
 		print("⚠️ CardUI 未找到 TextureExtractor")
 
@@ -72,8 +71,6 @@ func _try_load_texture() -> void:
 			extractor_tile_texture = texture_extractor.get_tile_texture(tile_name)
 			if extractor_tile_texture:
 				use_texture = true
-				# 仅在成功加载时输出日志
-				print("✅ TextureExtractor 加载成功: %s" % tile_name)
 				return
 			else:
 				print("❌ TextureExtractor 返回 null: %s (TextureExtractor.extracted_tiles 大小: %d)" % [tile_name, texture_extractor.extracted_tiles.size()])
@@ -347,17 +344,11 @@ func _get_tile_name_for_extractor() -> String:
 
 	match card_data.suit:
 		CardData.Suit.WAN:
-			var tile_name = "w%d" % card_data.number
-			print("   [Tile名称] 万牌: %s" % tile_name)
-			return tile_name
+			return "w%d" % card_data.number
 		CardData.Suit.TONG:
-			var tile_name = "t%d" % card_data.number
-			print("   [Tile名称] 筒牌: %s" % tile_name)
-			return tile_name
+			return "t%d" % card_data.number
 		CardData.Suit.TIAO:
-			var tile_name = "s%d" % card_data.number
-			print("   [Tile名称] 条牌: %s" % tile_name)
-			return tile_name
+			return "s%d" % card_data.number
 		CardData.Suit.ZI:
 			match card_data.number:
 				1:

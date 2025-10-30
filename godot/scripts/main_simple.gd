@@ -65,8 +65,6 @@ func _initialize_game_ui():
 		card_ui.position.y = start_y + int(i / float(cards_per_row)) * 180
 		hand_container.add_child(card_ui)
 
-		print("✅ 创建卡牌: %s%d" % [card_data.suit, card_data.number])
-
 	# 创建游戏信息标签
 	var info_label = Label.new()
 	info_label.text = """
