@@ -65,6 +65,12 @@ func _initialize_game_ui():
 		card_ui.position.y = start_y + int(i / float(cards_per_row)) * 180
 		hand_container.add_child(card_ui)
 
+	# ⏱️ 关键:等待所有卡牌添加到场景后,强制重绘以加载纹理
+	await get_tree().process_frame
+	for child in hand_container.get_children():
+		if child is CardUI:
+			child.queue_redraw()
+
 	# 创建游戏信息标签
 	var info_label = Label.new()
 	info_label.text = """
