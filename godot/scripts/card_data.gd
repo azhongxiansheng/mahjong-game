@@ -19,6 +19,23 @@ func get_card_name() -> String:
 	var suit_names = ["万", "筒", "条", "字"]
 	return suit_names[suit] + str(number)
 
+func get_display_name() -> String:
+	"""获取卡牌显示名称（数字或字牌名称）"""
+	# 字牌显示中文名
+	if suit == Suit.ZI:
+		match number:
+			1: return "东"
+			2: return "南"
+			3: return "西"
+			4: return "北"
+			5: return "中"
+			6: return "发"
+			7: return "白"
+			_: return "?"
+	else:
+		# 数字牌显示数字
+		return str(number)
+
 func can_pair_with(other: CardData) -> bool:
 	"""判断是否能和另一张卡配对（完全相同）"""
 	return suit == other.suit and number == other.number
