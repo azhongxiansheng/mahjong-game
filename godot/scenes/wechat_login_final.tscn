@@ -73,14 +73,14 @@ alignment = 1
 
 [node name="LogoSpacer" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 60)
 
 [node name="LogoImage" type="TextureRect" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 120)
+custom_minimum_size = Vector2(400, 100)
 texture = ExtResource("4_feifan_logo")
 expand_mode = 1
-stretch_mode = 5
+stretch_mode = 6
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
@@ -94,7 +94,7 @@ theme_override_constants/outline_size = 2
 
 [node name="Spacer1" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 40)
 
 [node name="WeChatButton" type="Button" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
