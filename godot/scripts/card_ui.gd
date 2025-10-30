@@ -142,9 +142,13 @@ func _draw() -> void:
 
 		if extractor_tile_texture:
 			# 🎨 纹理渲染 - 麻将牌80x120,卡牌100x150,宽高比相同,直接填充
+			var tex_size = extractor_tile_texture.get_size()
+			print("🎨 [_draw] 渲染纹理 %dx%d 到 rect %s" % [tex_size.x, tex_size.y, rect])
 			draw_texture_rect(extractor_tile_texture, rect, false)
 			_draw_card_border(rect)
 			return
+		else:
+			print("⚠️ [_draw] extractor_tile_texture 为 null")
 
 		# 如果没有纹理，绘制背景 + 代码绘制
 		var bg_color = color_bg
