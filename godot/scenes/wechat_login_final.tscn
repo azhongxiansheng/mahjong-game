@@ -1,9 +1,9 @@
-[gd_scene load_steps=10 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=8 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
 [ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 [ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Script" path="res://scripts/title_glow_effect.gd" id="4_title_glow"]
+[ext_resource type="Texture2D" path="res://assets/feifan_logo.png" id="4_feifan_logo"]
 
 [sub_resource type="Gradient" id="Gradient_gold"]
 offsets = PackedFloat32Array(0, 0.5, 1)
@@ -77,70 +77,14 @@ alignment = 1
 
 [node name="LogoSpacer" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 50)
 
-[node name="TitleContainer" type="Control" parent="CenterContainer/VBoxContainer"]
+[node name="LogoImage" type="TextureRect" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 120)
-script = ExtResource("4_title_glow")
-
-[node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer/TitleContainer"]
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -200.0
-offset_top = -45.0
-offset_right = 200.0
-offset_bottom = 45.0
-text = "飞凡娱乐"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 80
-theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
-theme_override_colors/font_outline_color = Color(0.9, 0.5, 0, 1)
-theme_override_constants/outline_size = 8
-theme_override_constants/shadow_offset_x = 6
-theme_override_constants/shadow_offset_y = 6
-theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.6)
-
-[node name="GlowLabel1" type="Label" parent="CenterContainer/VBoxContainer/TitleContainer"]
-modulate = Color(1, 0.8, 0.2, 0.3)
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -202.0
-offset_top = -47.0
-offset_right = 202.0
-offset_bottom = 47.0
-text = "飞凡娱乐"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 84
-theme_override_colors/font_color = Color(1, 0.95, 0.4, 1)
-
-[node name="GlowLabel2" type="Label" parent="CenterContainer/VBoxContainer/TitleContainer"]
-modulate = Color(1, 0.7, 0, 0.2)
-layout_mode = 1
-anchors_preset = 8
-anchor_left = 0.5
-anchor_top = 0.5
-anchor_right = 0.5
-anchor_bottom = 0.5
-offset_left = -205.0
-offset_top = -50.0
-offset_right = 205.0
-offset_bottom = 50.0
-text = "飞凡娱乐"
-horizontal_alignment = 1
-vertical_alignment = 1
-theme_override_font_sizes/font_size = 88
-theme_override_colors/font_color = Color(1, 0.8, 0.2, 1)
+custom_minimum_size = Vector2(500, 150)
+texture = ExtResource("4_feifan_logo")
+expand_mode = 1
+stretch_mode = 5
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
@@ -154,7 +98,7 @@ theme_override_constants/outline_size = 2
 
 [node name="Spacer1" type="Control" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 40)
+custom_minimum_size = Vector2(0, 50)
 
 [node name="WeChatButton" type="Button" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
