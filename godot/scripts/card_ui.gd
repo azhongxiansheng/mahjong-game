@@ -82,7 +82,8 @@ func _draw_card_background(rect: Rect2) -> void:
 	# 绘制阴影效果
 	var shadow_color = Color.BLACK
 	shadow_color.a = 0.15
-	draw_rect(rect.grow_margin(SIDE_BOTTOM, 2).grow_margin(SIDE_RIGHT, 2), shadow_color)
+	var shadow_rect = rect.grow_side(SIDE_RIGHT, 2).grow_side(SIDE_BOTTOM, 2)
+	draw_rect(shadow_rect, shadow_color)
 
 	# 卡牌背景色
 	var bg_color = color_bg
@@ -102,16 +103,16 @@ func _draw_card_background(rect: Rect2) -> void:
 func _draw_card_face(rect: Rect2) -> void:
 	# 根据花色获取颜色
 	var suit_color = _get_suit_color()
-	
+
 	# 调整内容区域
 	var content_rect = rect.grow(-4)
 
 	# 绘制中间大符号
 	_draw_card_symbols(content_rect, suit_color)
-	
+
 	# 绘制顶部角标
 	_draw_corner_mark(content_rect, suit_color, true)
-	
+
 	# 绘制底部角标（倒置）
 	_draw_corner_mark(content_rect, suit_color, false)
 
@@ -122,14 +123,14 @@ func _draw_corner_mark(rect: Rect2, suit_color: Color, is_top: bool) -> void:
 		pos = rect.position + Vector2(2, 2)
 	else:
 		pos = rect.position + rect.size - Vector2(14, 14)
-	
+
 	var display_text = card_data.get_display_name()
 	_draw_text_simple(display_text, pos, suit_color, 8)
 
 ## 绘制卡牌符号（中间图案）
 func _draw_card_symbols(rect: Rect2, color: Color) -> void:
 	var center = rect.get_center()
-	
+
 	# 根据花色绘制不同符号
 	match card_data.suit:
 		CardData.Suit.WAN:
@@ -149,7 +150,7 @@ func _draw_card_symbols(rect: Rect2, color: Color) -> void:
 func _draw_tong_symbols(center: Vector2, color: Color, number: int) -> void:
 	var circle_size = 6.0
 	var positions = []
-	
+
 	# 根据数字显示不同的圆形排列
 	match number:
 		1:
@@ -170,7 +171,7 @@ func _draw_tong_symbols(center: Vector2, color: Color, number: int) -> void:
 			positions = [Vector2(-10, -8), Vector2(0, -8), Vector2(10, -8), Vector2(-10, 0), Vector2(10, 0), Vector2(-10, 8), Vector2(0, 8), Vector2(10, 8)]
 		9:
 			positions = [Vector2(-10, -8), Vector2(0, -8), Vector2(10, -8), Vector2(-10, 0), Vector2(0, 0), Vector2(10, 0), Vector2(-10, 8), Vector2(0, 8), Vector2(10, 8)]
-	
+
 	for pos in positions:
 		draw_circle(center + pos, circle_size, color)
 
@@ -179,19 +180,19 @@ func _draw_tiao_symbols(center: Vector2, color: Color, number: int) -> void:
 	var line_height = 24.0
 	var line_width = 2.0
 	var spacing = 6.0
-	
+
 	match number:
 		1:
-			draw_line(center - Vector2(0, line_height/2), center + Vector2(0, line_height/2), color, line_width)
+			draw_line(center - Vector2(0, line_height / 2), center + Vector2(0, line_height / 2), color, line_width)
 		2:
-			draw_line(center - Vector2(spacing/2, line_height/2), center - Vector2(spacing/2, -line_height/2), color, line_width)
-			draw_line(center + Vector2(spacing/2, line_height/2), center + Vector2(spacing/2, -line_height/2), color, line_width)
+			draw_line(center - Vector2(spacing / 2, line_height / 2), center - Vector2(spacing / 2, -line_height / 2), color, line_width)
+			draw_line(center + Vector2(spacing / 2, line_height / 2), center + Vector2(spacing / 2, -line_height / 2), color, line_width)
 		_:
 			# 3-9条显示多条竖线
 			var start_x = center.x - (number - 1) * spacing / 2.0
 			for i in range(number):
 				var x = start_x + i * spacing
-				draw_line(Vector2(x, center.y - line_height/2), Vector2(x, center.y + line_height/2), color, line_width)
+				draw_line(Vector2(x, center.y - line_height / 2), Vector2(x, center.y + line_height / 2), color, line_width)
 
 ## 绘制卡牌背面
 func _draw_card_back(rect: Rect2) -> void:
