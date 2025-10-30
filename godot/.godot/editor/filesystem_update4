@@ -1,2 +1,3 @@
-res://scripts/game_state.gd
+res://scripts/rank_calculator.gd
 res://scenes/main.tscn
+res://scripts/card_data.gd

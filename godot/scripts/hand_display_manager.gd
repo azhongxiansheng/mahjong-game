@@ -100,9 +100,9 @@ func _create_card_uis(grouped_cards: Array) -> void:
 			var card_ui = CardUI.new()
 			card_ui.set_card(card)
 			card_ui.position = current_pos
-			card_ui.card_clicked.connect(_on_card_clicked.bindv([card_ui]))
-			card_ui.card_hovered.connect(_on_card_hovered.bindv([card_ui]))
-			card_ui.card_unhovered.connect(_on_card_unhovered.bindv([card_ui]))
+			card_ui.card_clicked.connect(_on_card_clicked.bind(card_ui))
+			card_ui.card_hovered.connect(_on_card_hovered.bind(card_ui))
+			card_ui.card_unhovered.connect(_on_card_unhovered.bind(card_ui))
 
 			add_child(card_ui)
 			card_ui_nodes.append(card_ui)
