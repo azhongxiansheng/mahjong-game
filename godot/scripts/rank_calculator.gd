@@ -5,10 +5,10 @@ extends Node
 ## 计算玩家等级分变化、奖励和其他排名相关数据
 
 # ELO 系统参数
-const K_FACTOR = 32              # 等级分变动系数
-const BASE_RATING = 1000         # 基础等级分
-const MAX_RATING = 3000          # 最大等级分
-const MIN_RATING = 400           # 最小等级分
+const K_FACTOR = 32 # 等级分变动系数
+const BASE_RATING = 1000 # 基础等级分
+const MAX_RATING = 3000 # 最大等级分
+const MIN_RATING = 400 # 最小等级分
 
 func _ready() -> void:
     """初始化排名计算器"""
@@ -68,7 +68,7 @@ func calculate_multiplayer_rating_change(
     avg_opponent_rating /= other_ratings.size()
 
     # 根据排名计算结果
-    var actual_score = 1.0 / float(rank)  # 第一名 = 1.0, 第二名 = 0.5 等
+    var actual_score = 1.0 / float(rank) # 第一名 = 1.0, 第二名 = 0.5 等
 
     # 计算期望分数
     var expected_score = 1.0 / (1.0 + pow(10.0, float(avg_opponent_rating - player_rating) / 400.0))
@@ -97,15 +97,15 @@ func calculate_rewards(rank: int, score: int, is_victory: bool = false) -> Dicti
 
     # 根据排名分配基础奖励
     match rank:
-        1:  # 第一名
+        1: # 第一名
             gold = 100
             exp = 50
             points = 50
-        2:  # 第二名
+        2: # 第二名
             gold = 80
             exp = 40
             points = 40
-        3:  # 第三名
+        3: # 第三名
             gold = 60
             exp = 30
             points = 30
@@ -248,7 +248,7 @@ func _calculate_tier(points: int) -> String:
             return "金"
         1800..2399:
             return "铂"
-        2400..(2**31 - 1):
+        2400..(2 ** 31 - 1):
             return "钻"
         _:
             return "未定级"
@@ -326,7 +326,7 @@ func generate_ranking_report(entries: Array) -> String:
         return "📊 暂无排名数据"
 
     var report = "📊 排名统计报告\n"
-    report += "═" * 50 + "\n"
+    report += "══════════════════════════════════════════════════\n"
 
     var total_players = entries.size()
     var avg_rating = 0
@@ -344,6 +344,6 @@ func generate_ranking_report(entries: Array) -> String:
     report += "平均等级分: %d\n" % avg_rating
     report += "最高等级分: %d (%s)\n" % [max_rating, get_tier_description(max_rating)]
     report += "最低等级分: %d (%s)\n" % [min_rating, get_tier_description(min_rating)]
-    report += "═" * 50
+    report += "══════════════════════════════════════════════════"
 
     return report

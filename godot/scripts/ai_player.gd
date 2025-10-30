@@ -2,8 +2,8 @@
 class_name AIPlayer
 
 var hand: CardHand
-var difficulty: int = 1  # 1=简单, 2=中等, 3=困难
-var memory: Dictionary = {}  # 记录对手出过的牌
+var difficulty: int = 1 # 1=简单, 2=中等, 3=困难
+var memory: Dictionary = {} # 记录对手出过的牌
 
 const EASY = 1
 const MEDIUM = 2
@@ -40,6 +40,17 @@ func choose_discard_card() -> CardData:
 			return _choose_hard()
 		_:
 			return hand.cards[0]
+
+## 新增：适配GameController的出牌决策方法
+func decide_card_to_play(ai_hand: CardHand) -> CardData:
+	if ai_hand.cards.size() == 0:
+		return null
+
+	# 更新手牌引用
+	self.hand = ai_hand
+
+	# 调用原始决策逻辑
+	return choose_discard_card()
 
 # 简单难度: 随机出牌
 func _choose_easy() -> CardData:
@@ -85,17 +96,17 @@ func _calculate_risk_score(card: CardData) -> float:
 	# 因素1: 出牌后的听牌数 (越少越好)
 	hand.remove_card(card)
 	var my_ting_count = WinChecker.check_can_hear(hand).size()
-	score -= my_ting_count * 10.0  # 负分，因为听牌多不利
+	score -= my_ting_count * 10.0 # 负分，因为听牌多不利
 	hand.add_card(card)
 
 	# 因素2: 牌的稀有度 (常见牌更安全)
 	var card_count = _count_card_type(card)
-	score += card_count * 5.0  # 相同牌多说明不稀有
+	score += card_count * 5.0 # 相同牌多说明不稀有
 
 	# 因素3: 对手出过的牌安全性 (出过的牌更安全)
 	var card_key = "%d_%d" % [card.suit, card.number]
 	if card_key in memory:
-		score += memory[card_key] * 3.0  # 对手出过这种牌则更安全
+		score += memory[card_key] * 3.0 # 对手出过这种牌则更安全
 
 	# 因素4: 边牌倾向 (1、9号牌通常更安全)
 	if card.number == 1 or card.number == 9:

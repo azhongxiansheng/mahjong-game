@@ -1,244 +1,195 @@
-# 游戏状态 - 捕获和管理游戏状态快照
+## 游戏状态管理类
+## 负责管理游戏的各个阶段和全局游戏状态
 class_name GameState
+extends Node
 
-# 游戏阶段
-enum GamePhase {
-	WAITING = 0,      # 等待开始
-	DRAWING = 1,      # 摸牌阶段
-	PLAYING = 2,      # 出牌阶段
-	DISCARDING = 3,   # 弃牌阶段
-	WIN = 4,          # 胜牌
-	FINISHED = 5      # 游戏结束
+## 游戏状态枚举
+enum State {
+	IDLE, # 等待玩家操作
+	PLAYER_TURN, # 玩家回合（摸牌-出牌）
+	AI_TURN, # AI回合（出牌-响应）
+	SHOW_WIN, # 显示胡牌
+	GAME_OVER # 游戏结束
 }
 
-# 游戏状态快照
-class Snapshot:
-	var version: int = 0                    # 版本号
-	var timestamp: int = 0                  # 时间戳
-	var phase: int = GamePhase.WAITING      # 当前阶段
-	var current_player_id: String = ""      # 当前玩家ID
-	var game_round: int = 1                 # 当前轮数
-	var players: Dictionary = {}            # 玩家状态: player_id -> player_state
-	var discard_pile: Array = []            # 弃牌堆
-	var drawn_card: Dictionary = {}         # 摸到的牌
-	var scores: Dictionary = {}             # 各玩家得分
-	var game_data: Dictionary = {}          # 额外游戏数据
+## 游戏动作类型
+enum Action {
+	DRAW, # 摸牌
+	PLAY, # 出牌
+	PENG, # 碰
+	KONG, # 杠
+	WIN, # 胡牌
+	PASS # 跳过
+}
 
-	func _init() -> void:
-		timestamp = Time.get_ticks_msec()
+## 当前游戏状态
+var current_state: State = State.IDLE
+var previous_state: State = State.IDLE
 
-	func to_dict() -> Dictionary:
-		return {
-			"version": version,
-			"timestamp": timestamp,
-			"phase": phase,
-			"current_player_id": current_player_id,
-			"round": game_round,
-			"players": players.duplicate(true),
-			"discard_pile": discard_pile.duplicate(true),
-			"drawn_card": drawn_card.duplicate(true),
-			"scores": scores.duplicate(true),
-			"game_data": game_data.duplicate(true)
-		}
+## 玩家数据
+var player_hand: CardHand
+var player_discards: Array[CardData] = []
+var player_score: int = 0
+var player_ready_to_play: bool = false
 
-	func to_json() -> String:
-		return JSON.stringify(to_dict())
+## AI数据
+var ai_hand: CardHand
+var ai_discards: Array[CardData] = []
+var ai_score: int = 0
 
-# 状态管理
-var _current_state: Snapshot = Snapshot.new()
-var _state_history: Array = []            # 状态历史
-var _version_counter: int = 0             # 版本计数器
-var _max_history: int = 100               # 最大历史记录
+## 游戏数据
+var discard_pile: Array[CardData] = [] # 当前回合弃牌堆
+var game_round: int = 1
+var game_total_rounds: int = 4
+var last_played_card: CardData = null
+var last_played_by: String = "" # "player" 或 "ai"
 
-# 信号
-signal state_changed(new_state: Snapshot)
-signal state_synced(version: int)
+## 信号
+signal state_changed(new_state: State, old_state: State)
+signal action_performed(player: String, action: Action, card: CardData)
+signal round_started(round_num: int)
+signal round_ended(winner: String)
+signal game_ended(winner: String)
 
-# 初始化
-func _init() -> void:
-	_current_state.version = _version_counter
-	_state_history.append(_current_state.duplicate())
-	print("[GameState] 初始化完成")
+func _ready() -> void:
+	print("🎮 GameState 初始化中...")
+	player_hand = CardHand.new()
+	ai_hand = CardHand.new()
+	print("✅ GameState 初始化完成")
 
-# ==================== 状态更新 ====================
+## 过渡到新状态
+func transition_to(new_state: State) -> void:
+	if new_state == current_state:
+		return
 
-func update_phase(new_phase: int) -> void:
-	_current_state.phase = new_phase
-	_increment_version()
-	state_changed.emit(_current_state)
+	previous_state = current_state
+	current_state = new_state
+	state_changed.emit(new_state, previous_state)
 
-func set_current_player(player_id: String) -> void:
-	_current_state.current_player_id = player_id
-	_increment_version()
+	print("📍 状态转换: %s → %s" % [_state_name(previous_state), _state_name(new_state)])
 
-func add_to_discard_pile(card: Dictionary) -> void:
-	_current_state.discard_pile.append(card)
-	_increment_version()
+## 获取状态名称（调试用）
+func _state_name(state: State) -> String:
+	match state:
+		State.IDLE: return "IDLE"
+		State.PLAYER_TURN: return "PLAYER_TURN"
+		State.AI_TURN: return "AI_TURN"
+		State.SHOW_WIN: return "SHOW_WIN"
+		State.GAME_OVER: return "GAME_OVER"
+		_: return "UNKNOWN"
 
-func set_drawn_card(card: Dictionary) -> void:
-	_current_state.drawn_card = card.duplicate()
-	_increment_version()
+## 记录玩家动作
+func record_action(player: String, action: Action, card: CardData = null) -> void:
+	action_performed.emit(player, action, card)
 
-func update_player_state(player_id: String, player_state: Dictionary) -> void:
-	_current_state.players[player_id] = player_state.duplicate(true)
-	_increment_version()
-	state_changed.emit(_current_state)
+	var action_name = _action_name(action)
+	if card:
+		print("🎯 %s 执行: %s -> %s" % [player, action_name, card.get_display_name()])
+	else:
+		print("🎯 %s 执行: %s" % [player, action_name])
 
-func update_score(player_id: String, score: int) -> void:
-	_current_state.scores[player_id] = score
-	_increment_version()
+## 获取动作名称（调试用）
+func _action_name(action: Action) -> String:
+	match action:
+		Action.DRAW: return "摸牌"
+		Action.PLAY: return "出牌"
+		Action.PENG: return "碰"
+		Action.KONG: return "杠"
+		Action.WIN: return "胡牌"
+		Action.PASS: return "跳过"
+		_: return "未知动作"
 
-func update_scores(scores: Dictionary) -> void:
-	_current_state.scores = scores.duplicate()
-	_increment_version()
+## 开始新一轮
+func start_new_round() -> void:
+	if game_round > game_total_rounds:
+		end_game()
+		return
 
-func set_game_data(key: String, value) -> void:
-	_current_state.game_data[key] = value
-	_increment_version()
+	player_hand.clear()
+	ai_hand.clear()
+	player_discards.clear()
+	ai_discards.clear()
+	discard_pile.clear()
+	player_ready_to_play = false
+	last_played_card = null
+	last_played_by = ""
 
-func increment_round() -> void:
-	_current_state.game_round += 1
-	_increment_version()
+	transition_to(State.PLAYER_TURN)
+	round_started.emit(game_round)
+	print("🎮 第 %d 轮开始" % game_round)
 
-# ==================== 状态查询 ====================
+## 结束当前回合
+func end_round(winner: String) -> void:
+	# 根据胜负更新分数
+	if winner == "player":
+		player_score += 1
+	elif winner == "ai":
+		ai_score += 1
 
-func get_current_state() -> Snapshot:
-	return _current_state
+	round_ended.emit(winner)
+	print("🏆 第 %d 轮结束，胜者: %s" % [game_round, winner])
+	game_round += 1
 
-func get_phase() -> int:
-	return _current_state.phase
+## 结束游戏
+func end_game() -> void:
+	var winner = "player" if player_score > ai_score else ("ai" if ai_score > player_score else "draw")
+	transition_to(State.GAME_OVER)
+	game_ended.emit(winner)
 
+	print("\n==================================================")
+	print("🎉 游戏结束！")
+	print("玩家分数: %d" % player_score)
+	print("AI分数: %d" % ai_score)
+	print("胜者: %s" % winner)
+	print("==================================================\n")
+
+## 重置游戏
+func reset_game() -> void:
+	current_state = State.IDLE
+	previous_state = State.IDLE
+	player_hand.clear()
+	ai_hand.clear()
+	player_discards.clear()
+	ai_discards.clear()
+	discard_pile.clear()
+	player_score = 0
+	ai_score = 0
+	game_round = 1
+	player_ready_to_play = false
+	last_played_card = null
+	last_played_by = ""
+	print("🔄 游戏已重置")
+
+## 获取当前玩家
 func get_current_player() -> String:
-	return _current_state.current_player_id
+	return "player" if current_state == State.PLAYER_TURN else "ai"
 
-func get_discard_pile() -> Array:
-	return _current_state.discard_pile.duplicate()
+## 检查是否是玩家回合
+func is_player_turn() -> bool:
+	return current_state == State.PLAYER_TURN
 
-func get_player_count() -> int:
-	return _current_state.players.size()
+## 检查是否是AI回合
+func is_ai_turn() -> bool:
+	return current_state == State.AI_TURN
 
-func get_round() -> int:
-	return _current_state.game_round
+## 获取游戏进度
+func get_progress() -> float:
+	return float(game_round) / float(game_total_rounds)
 
-func get_version() -> int:
-	return _current_state.version
+## 获取玩家手牌数
+func get_player_hand_count() -> int:
+	return player_hand.cards.size()
 
-func get_scores() -> Dictionary:
-	return _current_state.scores.duplicate()
+## 获取AI手牌数
+func get_ai_hand_count() -> int:
+	return ai_hand.cards.size()
 
-func get_player_state(player_id: String) -> Dictionary:
-	if player_id in _current_state.players:
-		return _current_state.players[player_id].duplicate(true)
-	return {}
-
-# ==================== 版本管理 ====================
-
-func _increment_version() -> void:
-	_version_counter += 1
-	_current_state.version = _version_counter
-	_current_state.timestamp = Time.get_ticks_msec()
-
-	# 保存到历史
-	_save_to_history()
-
-func _save_to_history() -> void:
-	var snapshot_copy = Snapshot.new()
-	snapshot_copy.version = _current_state.version
-	snapshot_copy.timestamp = _current_state.timestamp
-	snapshot_copy.phase = _current_state.phase
-	snapshot_copy.current_player_id = _current_state.current_player_id
-	snapshot_copy.game_round = _current_state.game_round
-	snapshot_copy.players = _current_state.players.duplicate(true)
-	snapshot_copy.discard_pile = _current_state.discard_pile.duplicate()
-	snapshot_copy.drawn_card = _current_state.drawn_card.duplicate()
-	snapshot_copy.scores = _current_state.scores.duplicate()
-	snapshot_copy.game_data = _current_state.game_data.duplicate(true)
-
-	_state_history.append(snapshot_copy)
-
-	# 限制历史大小
-	if _state_history.size() > _max_history:
-		_state_history.pop_front()
-
-# ==================== 历史管理 ====================
-
-func get_history() -> Array:
-	return _state_history.duplicate()
-
-func get_state_at_version(version: int) -> Snapshot:
-	for snapshot in _state_history:
-		if snapshot.version == version:
-			return snapshot
-	return null
-
-func get_history_size() -> int:
-	return _state_history.size()
-
-func clear_history() -> void:
-	_state_history.clear()
-	_state_history.append(_current_state.duplicate())
-
-# ==================== 同步 ====================
-
-func apply_remote_state(remote_state: Dictionary) -> bool:
-	var remote_version = remote_state.get("version", -1)
-	var current_version = _current_state.version
-
-	if remote_version <= current_version:
-		print("[GameState] 远程版本过旧: %d <= %d" % [remote_version, current_version])
-		return false
-
-	# 应用远程状态
-	_current_state.version = remote_version
-	_current_state.timestamp = remote_state.get("timestamp", 0)
-	_current_state.phase = remote_state.get("phase", GamePhase.WAITING)
-	_current_state.current_player_id = remote_state.get("current_player_id", "")
-	_current_state.game_round = remote_state.get("round", 1)
-	_current_state.players = remote_state.get("players", {}).duplicate(true)
-	_current_state.discard_pile = remote_state.get("discard_pile", []).duplicate()
-	_current_state.drawn_card = remote_state.get("drawn_card", {}).duplicate()
-	_current_state.scores = remote_state.get("scores", {}).duplicate()
-	_current_state.game_data = remote_state.get("game_data", {}).duplicate(true)
-
-	_save_to_history()
-	state_synced.emit(remote_version)
-
-	print("[GameState] 状态已同步: 版本 %d" % remote_version)
-	return true
-
-func get_diff_since(version: int) -> Dictionary:
-	var old_state = get_state_at_version(version)
-	if not old_state:
-		return _current_state.to_dict()
-
-	var diff = {}
-	var current_dict = _current_state.to_dict()
-	var old_dict = old_state.to_dict()
-
-	for key in current_dict.keys():
-		if current_dict[key] != old_dict.get(key):
-			diff[key] = current_dict[key]
-
-	return diff
-
-# ==================== 重置 ====================
-
-func reset() -> void:
-	_current_state = Snapshot.new()
-	_current_state.version = _version_counter
-	_state_history.clear()
-	_state_history.append(_current_state.duplicate())
-	print("[GameState] 状态已重置")
-
-# ==================== 调试 ====================
-
-func print_state() -> void:
-	print("\n=== 游戏状态 ===")
-	print("版本: %d" % _current_state.version)
-	print("阶段: %d" % _current_state.phase)
-	print("当前玩家: %s" % _current_state.current_player_id)
-	print("轮数: %d" % _current_state.game_round)
-	print("玩家数: %d" % _current_state.players.size())
-	print("弃牌堆: %d张" % _current_state.discard_pile.size())
-	print("历史记录: %d条" % _state_history.size())
-	print("================\n")
+## 调试输出游戏状态
+func debug_state() -> void:
+	print("\n==================================================")
+	print("🎮 游戏状态调试信息")
+	print("当前状态: %s" % _state_name(current_state))
+	print("当前回合: %d/%d" % [game_round, game_total_rounds])
+	print("玩家分数: %d | AI分数: %d" % [player_score, ai_score])
+	print("玩家手牌数: %d | AI手牌数: %d" % [get_player_hand_count(), get_ai_hand_count()])
+	print("==================================================\n")

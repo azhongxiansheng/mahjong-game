@@ -34,11 +34,11 @@ func main() {
 	addr := "0.0.0.0:" + port
 	fmt.Printf("Server starting on %s...\n", addr)
 	fmt.Printf("Health check: http://localhost:%s/api/health\n", port)
-	
+
 	// 长延迟 - 确保 Railway 的初始检查不会失败
 	fmt.Println("Waiting for initialization...")
 	time.Sleep(2 * time.Second)
-	
+
 	serverReady = true
 	fmt.Println("=== Server Ready ===")
 	fmt.Printf("Ready to accept requests at %s\n", time.Now().Format(time.RFC3339))

@@ -1,1 +1,2 @@
-res://scenes/card_tile.tscn
+res://scripts/game_state.gd
+res://scenes/main.tscn
