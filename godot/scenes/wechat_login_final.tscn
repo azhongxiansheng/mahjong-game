@@ -1,7 +1,7 @@
 [gd_scene load_steps=6 format=3 uid="uid://wechat_login_final"]
 
 [ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
-[ext_resource type="Texture2D" uid="uid://bnxj8t1yabf5t" path="res://assets/loading_screen.png.png" id="2_bg"]
+[ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_normal"]
 bg_color = Color(0.15, 0.7, 0.15, 1)
