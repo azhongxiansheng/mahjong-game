@@ -84,6 +84,8 @@ layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
 script = ExtResource("4_animated_title")
 
+[node name="ParticlesContainer" type="Node2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
+
 [node name="TitleLabel" type="Label" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
 layout_mode = 1
 anchors_preset = 15
@@ -93,9 +95,9 @@ text = "飞凡娱乐"
 horizontal_alignment = 1
 vertical_alignment = 1
 theme_override_font_sizes/font_size = 72
-theme_override_colors/font_color = Color(1, 0.9, 0.3, 1)
-theme_override_colors/font_outline_color = Color(1, 0.6, 0, 0.8)
-theme_override_constants/outline_size = 8
+theme_override_colors/font_color = Color(1, 0.85, 0.2, 1)
+theme_override_colors/font_outline_color = Color(0.6, 0.3, 0, 1)
+theme_override_constants/outline_size = 6
 
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
