@@ -1,10 +1,10 @@
-[gd_scene load_steps=12 format=3 uid="uid://wechat_login_final"]
+[gd_scene load_steps=12 format=3 uid="uid://doj1crd4qvops"]
 
-[ext_resource type="Script" path="res://scripts/wechat_login.gd" id="1_wechat"]
-[ext_resource type="Texture2D" path="res://assets/mahjong_table_bg.png" id="2_bg"]
-[ext_resource type="Texture2D" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
-[ext_resource type="Texture2D" path="res://assets/feifan_logo_transparent.png" id="4_logo"]
-[ext_resource type="Shader" path="res://shaders/title_effect.gdshader" id="5_shader"]
+[ext_resource type="Script" uid="uid://dd0tmslhamyb3" path="res://scripts/wechat_login.gd" id="1_wechat"]
+[ext_resource type="Texture2D" uid="uid://cehwairlysbid" path="res://assets/mahjong_table_bg.png" id="2_bg"]
+[ext_resource type="Texture2D" uid="uid://ch0eqw0nj3xgn" path="res://assets/wechat_icon.png" id="3_wechat_icon"]
+[ext_resource type="Texture2D" uid="uid://dnk5s6d274ung" path="res://assets/feifan_logo_transparent.png" id="4_logo"]
+[ext_resource type="Shader" uid="uid://bigg35mhk22ad" path="res://shaders/title_effect.gdshader" id="5_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_logo"]
 shader = ExtResource("5_shader")
@@ -14,36 +14,26 @@ shader_parameter/wave_speed = 1.5
 shader_parameter/wave_amplitude = 0.15
 shader_parameter/brightness_threshold = 0.4
 
-[sub_resource type="Gradient" id="Gradient_fire"]
-offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(1, 0.3, 0, 0.8, 1, 0.7, 0.2, 0.6, 1, 1, 0.5, 0)
-
-[sub_resource type="Gradient" id="Gradient_gold"]
-offsets = PackedFloat32Array(0, 0.5, 1)
-colors = PackedColorArray(1, 0.7, 0.2, 1, 1, 0.9, 0.4, 1, 1, 0.7, 0.2, 1)
-
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_fire"]
+particle_flag_disable_z = true
 emission_shape = 3
 emission_box_extents = Vector3(200, 10, 1)
-particle_flag_disable_z = true
 direction = Vector3(0, -1, 0)
 spread = 15.0
-gravity = Vector3(0, -30, 0)
 initial_velocity_min = 20.0
 initial_velocity_max = 40.0
 angular_velocity_min = -90.0
 angular_velocity_max = 90.0
-orbit_velocity_min = 0.0
 orbit_velocity_max = 0.1
+gravity = Vector3(0, -30, 0)
 scale_min = 2.0
 scale_max = 5.0
 color = Color(1, 0.5, 0, 1)
-color_ramp = SubResource("Gradient_fire")
 
 [sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_glow"]
+particle_flag_disable_z = true
 emission_shape = 3
 emission_box_extents = Vector3(220, 80, 1)
-particle_flag_disable_z = true
 direction = Vector3(0, 0, 0)
 spread = 180.0
 initial_velocity_min = 10.0
@@ -53,7 +43,6 @@ angular_velocity_max = 45.0
 scale_min = 1.5
 scale_max = 3.5
 color = Color(1, 0.9, 0.3, 0.6)
-color_ramp = SubResource("Gradient_gold")
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_normal"]
 bg_color = Color(0.227, 0.741, 0.251, 1)
@@ -65,16 +54,6 @@ shadow_color = Color(0, 0, 0, 0.3)
 shadow_size = 4
 shadow_offset = Vector2(0, 2)
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_hover"]
-bg_color = Color(0.267, 0.831, 0.291, 1)
-corner_radius_top_left = 6
-corner_radius_top_right = 6
-corner_radius_bottom_right = 6
-corner_radius_bottom_left = 6
-shadow_color = Color(0, 0, 0, 0.4)
-shadow_size = 6
-shadow_offset = Vector2(0, 3)
-
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_pressed"]
 bg_color = Color(0.187, 0.651, 0.211, 1)
 corner_radius_top_left = 6
@@ -85,12 +64,23 @@ shadow_color = Color(0, 0, 0, 0.2)
 shadow_size = 2
 shadow_offset = Vector2(0, 1)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_wechat_hover"]
+bg_color = Color(0.267, 0.831, 0.291, 1)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 6
+shadow_offset = Vector2(0, 3)
 
 [node name="WeChatLogin" type="Control"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 script = ExtResource("1_wechat")
 
 [node name="Background" type="TextureRect" parent="."]
@@ -98,6 +88,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("2_bg")
 expand_mode = 1
 stretch_mode = 5
@@ -107,6 +99,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 color = Color(0, 0, 0, 0.4)
 
 [node name="CenterContainer" type="CenterContainer" parent="."]
@@ -114,20 +108,22 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 
 [node name="VBoxContainer" type="VBoxContainer" parent="CenterContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(400, 500)
+layout_mode = 2
 theme_override_constants/separation = 20
 alignment = 1
 
 [node name="LogoSpacer" type="Control" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
 
 [node name="AnimatedTitleContainer" type="Control" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(500, 150)
+layout_mode = 2
 
 [node name="LogoImage" type="TextureRect" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
 material = SubResource("ShaderMaterial_logo")
@@ -135,6 +131,8 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 texture = ExtResource("4_logo")
 expand_mode = 1
 stretch_mode = 5
@@ -142,39 +140,38 @@ stretch_mode = 5
 [node name="FireParticles" type="GPUParticles2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
 position = Vector2(250, 100)
 amount = 60
-process_material = SubResource("ParticleProcessMaterial_fire")
 lifetime = 2.0
 preprocess = 1.0
+process_material = SubResource("ParticleProcessMaterial_fire")
 
 [node name="GlowParticles" type="GPUParticles2D" parent="CenterContainer/VBoxContainer/AnimatedTitleContainer"]
 position = Vector2(250, 75)
 amount = 40
-process_material = SubResource("ParticleProcessMaterial_glow")
 lifetime = 3.0
 preprocess = 1.0
-
+process_material = SubResource("ParticleProcessMaterial_glow")
 
 [node name="SubtitleLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
-text = "麻将竞技 · 智慧对决"
-horizontal_alignment = 1
-theme_override_font_sizes/font_size = 22
 theme_override_colors/font_color = Color(1, 0.95, 0.6, 1)
 theme_override_colors/font_outline_color = Color(0.3, 0.15, 0, 0.8)
 theme_override_constants/outline_size = 2
+theme_override_font_sizes/font_size = 22
+text = "麻将竞技 · 智慧对决"
+horizontal_alignment = 1
 
 [node name="Spacer1" type="Control" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 50)
+layout_mode = 2
 
 [node name="WeChatButton" type="Button" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(320, 56)
-theme_override_font_sizes/font_size = 20
+layout_mode = 2
 theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 20
 theme_override_styles/normal = SubResource("StyleBoxFlat_wechat_normal")
-theme_override_styles/hover = SubResource("StyleBoxFlat_wechat_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_wechat_pressed")
+theme_override_styles/hover = SubResource("StyleBoxFlat_wechat_hover")
 text = "   微信一键登录"
 
 [node name="WeChatIcon" type="TextureRect" parent="CenterContainer/VBoxContainer/WeChatButton"]
@@ -186,22 +183,21 @@ offset_left = 16.0
 offset_top = -16.0
 offset_right = 48.0
 offset_bottom = 16.0
+grow_vertical = 2
 texture = ExtResource("3_wechat_icon")
 expand_mode = 1
 stretch_mode = 5
 
-
-
 [node name="Spacer2" type="Control" parent="CenterContainer/VBoxContainer"]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
 
 [node name="TipsLabel" type="Label" parent="CenterContainer/VBoxContainer"]
 layout_mode = 2
+theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 0.7)
+theme_override_font_sizes/font_size = 12
 text = "登录即代表同意《用户协议》和《隐私政策》"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 12
-theme_override_colors/font_color = Color(0.8, 0.8, 0.8, 0.7)
 
 [node name="VersionLabel" type="Label" parent="."]
 layout_mode = 1
@@ -214,8 +210,10 @@ offset_left = -100.0
 offset_top = -40.0
 offset_right = -10.0
 offset_bottom = -10.0
+grow_horizontal = 0
+grow_vertical = 0
+theme_override_colors/font_color = Color(1, 1, 1, 0.5)
+theme_override_font_sizes/font_size = 14
 text = "v0.1.0"
 horizontal_alignment = 2
 vertical_alignment = 2
-theme_override_font_sizes/font_size = 14
-theme_override_colors/font_color = Color(1, 1, 1, 0.5)

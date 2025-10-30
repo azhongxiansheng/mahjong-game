@@ -13,6 +13,9 @@ var is_highlighted: bool = false
 var card_width: float = 100.0
 var card_height: float = 150.0
 
+## 🆕 纹理滤波 - 最近邻确保像素完美
+var texture_filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
+
 ## 🆕 纹理提取器
 var texture_extractor: TextureExtractor
 var extractor_tile_texture: Texture2D
@@ -41,16 +44,13 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(card_width, card_height)
 	mouse_filter = MOUSE_FILTER_STOP
 
-	# 🆕 修复：使用绝对路径查找 TextureExtractor
-	# 尝试多种查找方式确保能找到
-	texture_extractor = get_node_or_null("/root/Main/TextureExtractor")
-	if not texture_extractor:
-		texture_extractor = get_node_or_null("/root/TextureExtractor")
-	if not texture_extractor:
-		texture_extractor = get_tree().root.find_child("TextureExtractor", true, false)
+	# 🆕 设置纹理滤波模式(Godot 4.5 的正确方法)
+	texture_filter = texture_filter_mode
 
-	if texture_extractor:
-		print("✅ CardUI 找到 TextureExtractor")
+	# 🆕 修复:使用 AutoLoad 单例访问 TextureExtractor
+	if TextureExtractor:
+		texture_extractor = TextureExtractor
+		print("✅ CardUI 找到 TextureExtractor(AutoLoad)")
 	else:
 		print("⚠️ CardUI 未找到 TextureExtractor")
 
@@ -347,42 +347,34 @@ func _get_tile_name_for_extractor() -> String:
 
 	match card_data.suit:
 		CardData.Suit.WAN:
-			var name = "w%d" % card_data.number
-			print("   [Tile名称] 万牌: %s" % name)
-			return name
+			var tile_name = "w%d" % card_data.number
+			print("   [Tile名称] 万牌: %s" % tile_name)
+			return tile_name
 		CardData.Suit.TONG:
-			var name = "t%d" % card_data.number
-			print("   [Tile名称] 筒牌: %s" % name)
-			return name
+			var tile_name = "t%d" % card_data.number
+			print("   [Tile名称] 筒牌: %s" % tile_name)
+			return tile_name
 		CardData.Suit.TIAO:
-			var name = "s%d" % card_data.number
-			print("   [Tile名称] 条牌: %s" % name)
-			return name
+			var tile_name = "s%d" % card_data.number
+			print("   [Tile名称] 条牌: %s" % tile_name)
+			return tile_name
 		CardData.Suit.ZI:
 			match card_data.number:
 				1:
-					print("   [Tile名称] 字牌 E: %d" % card_data.number)
-					return "E"
+					return "E" # 东
 				2:
-					print("   [Tile名称] 字牌 S: %d" % card_data.number)
-					return "S"
+					return "S" # 南
 				3:
-					print("   [Tile名称] 字牌 W: %d" % card_data.number)
-					return "W"
+					return "W" # 西
 				4:
-					print("   [Tile名称] 字牌 N: %d" % card_data.number)
-					return "N"
+					return "N" # 北
 				5:
-					print("   [Tile名称] 字牌 Z: %d" % card_data.number)
-					return "Z"
+					return "Z" # 中
 				6:
-					print("   [Tile名称] 字牌 F: %d" % card_data.number)
-					return "F"
+					return "F" # 发
 				7:
-					print("   [Tile名称] 字牌 B: %d" % card_data.number)
-					return "B"
+					return "B" # 白
 				_:
-					print("   [Tile名称] 字牌未知: %d" % card_data.number)
 					return ""
-	print("   [Tile名称] 未知花色: %s %d" % [card_data.suit, card_data.number])
-	return ""
+		_:
+			return ""

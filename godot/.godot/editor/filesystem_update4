@@ -1,1 +1,2 @@
-res://scenes/main.tscn
+res://scenes/wechat_login_final.tscn
+res://shaders/title_effect.gdshader

@@ -15,8 +15,8 @@ dest_files=["res://.godot/imported/mahjong_atlas0_1.png-878c83793d5c7609b65dd3d3
 
 [params]
 
-compress/mode=0
-compress/high_quality=false
+compress/mode=1
+compress/high_quality=true
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0
