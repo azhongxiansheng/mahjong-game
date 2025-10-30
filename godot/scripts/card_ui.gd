@@ -63,23 +63,24 @@ func _try_load_texture() -> void:
 	if not card_data:
 		return
 
-	# 🆕 重点：直接从 TextureExtractor 加载纹理
-	# 不再依赖本地文件
+	# 🆕 重点:直接从 TextureExtractor 加载纹理
 	if texture_extractor:
 		var tile_name = _get_tile_name_for_extractor()
 		if not tile_name.is_empty():
 			extractor_tile_texture = texture_extractor.get_tile_texture(tile_name)
 			if extractor_tile_texture:
 				use_texture = true
+				var tex_size = extractor_tile_texture.get_size()
+				print("✅ [%s] 纹理加载成功 %dx%d" % [tile_name, tex_size.x, tex_size.y])
 				return
 			else:
-				print("❌ TextureExtractor 返回 null: %s (TextureExtractor.extracted_tiles 大小: %d)" % [tile_name, texture_extractor.extracted_tiles.size()])
+				print("❌ [%s] TextureExtractor返回 null (dict size: %d)" % [tile_name, texture_extractor.extracted_tiles.size()])
 		else:
-			print("⚠️ _get_tile_name_for_extractor() 返回空字符串，卡牌: %s %d" % [card_data.suit, card_data.number])
+			print("❌ tile_name 为空, 卡牌: suit=%s num=%d" % [card_data.suit, card_data.number])
 	else:
-		print("⚠️ texture_extractor 为 null")
+		print("❌ texture_extractor 为 null")
 
-	# 如果 TextureExtractor 没有纹理，才使用代码绘制
+	# 如果 TextureExtractor 没有纹理,才使用代码绘制
 	use_texture = false
 
 ## 获取卡牌名称
@@ -135,36 +136,13 @@ func _draw() -> void:
 	var rect = Rect2(Vector2.ZERO, custom_minimum_size)
 
 	if show_face:
-		# 🆕 每次绘制时都尝试加载纹理（如果还没加载）
+		# 🆕 每次绘制时都尝试加载纹理(如果还没加载)
 		if not extractor_tile_texture and texture_extractor:
 			_try_load_texture()
 
 		if extractor_tile_texture:
-			# 🎨 优化纹理渲染 - 考虑宽高比
-			var texture_size = extractor_tile_texture.get_size()
-			var card_size = custom_minimum_size
-
-			# 纹理是正方形（85x85），卡牌是竖形（80x120）
-			# 策略：保持纹理完整，在卡牌内居中显示
-
-			# 方案：纹理完全填充卡牌宽度，高度按比例缩放
-			var scale_to_width = card_size.x / texture_size.x
-			var scaled_height = texture_size.y * scale_to_width
-
-			# 如果缩放后高度超过卡牌高度，改为按高度缩放
-			if scaled_height > card_size.y:
-				var scale_to_height = card_size.y / texture_size.y
-				var scaled_width = texture_size.x * scale_to_height
-				var offset_x = (card_size.x - scaled_width) / 2.0
-
-				var scaled_rect = Rect2(Vector2(offset_x, 0), Vector2(scaled_width, card_size.y))
-				draw_texture_rect(extractor_tile_texture, scaled_rect, false)
-			else:
-				# 按宽度缩放，垂直居中
-				var offset_y = (card_size.y - scaled_height) / 2.0
-				var scaled_rect = Rect2(Vector2(0, offset_y), Vector2(card_size.x, scaled_height))
-				draw_texture_rect(extractor_tile_texture, scaled_rect, false)
-
+			# 🎨 纹理渲染 - 麻将牌80x120,卡牌100x150,宽高比相同,直接填充
+			draw_texture_rect(extractor_tile_texture, rect, false)
 			_draw_card_border(rect)
 			return
 
