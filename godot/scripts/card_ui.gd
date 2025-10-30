@@ -145,11 +145,12 @@ func _draw() -> void:
 			var tex_size = extractor_tile_texture.get_size()
 			print("🎨 [_draw] 渲染纹理 %dx%d 到 rect %s" % [tex_size.x, tex_size.y, rect])
 			
-			# 🔑 关键:先绘制白色背景,确保纹理可见
+			# 🔑 关键:先绘制白色背景
 			draw_rect(rect, Color.WHITE)
 			
-			# 然后绘制纹理
-			draw_texture_rect(extractor_tile_texture, rect, false)
+			# 🔑 关键修复:使用 draw_texture_rect 时必须指定 modulate 为白色!
+			# tile=false 不平铺, modulate=白色 保持原始颜色
+			draw_texture_rect(extractor_tile_texture, rect, false, Color.WHITE)
 			_draw_card_border(rect)
 			return
 		else:
