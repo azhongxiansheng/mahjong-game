@@ -1,5 +1,5 @@
 ## 卡牌UI显示脚本
-## 临时使用代码绘制（纹理版正在后台提取）
+## 智能模式：优先加载纹理，备选代码绘制
 class_name CardUI
 extends Control
 
@@ -19,6 +19,11 @@ var color_tiao: Color = Color(0.2, 0.6, 0.2) # 条牌 - 绿色
 var color_letter: Color = Color(0.8, 0.1, 0.1) # 字牌 - 红色
 var color_bg: Color = Color(0.98, 0.98, 0.95) # 背景 - 象牙白
 
+## 纹理系统
+var tile_texture: Texture2D = null
+var use_texture: bool = false
+var texture_path: String = "res://assets/mahjong_tiles/"
+
 ## 状态
 var show_face: bool = true # true=正面, false=背面
 
@@ -35,10 +40,55 @@ func _ready() -> void:
 	mouse_entered.connect(_on_mouse_entered)
 	mouse_exited.connect(_on_mouse_exited)
 	gui_input.connect(_on_gui_input)
+	
+	# 尝试加载纹理
+	_try_load_texture()
+
+## 尝试加载纹理
+func _try_load_texture() -> void:
+	if not card_data:
+		return
+	
+	var tile_name = _get_tile_name()
+	if tile_name.is_empty():
+		return
+	
+	var path = texture_path + tile_name + ".png"
+	if ResourceLoader.exists(path):
+		tile_texture = load(path)
+		use_texture = true
+		print("✅ 纹理已加载: %s" % tile_name)
+	else:
+		print("📦 使用代码绘制: %s (未找到纹理: %s)" % [tile_name, path])
+		use_texture = false
+
+## 获取卡牌名称
+func _get_tile_name() -> String:
+	if not card_data:
+		return ""
+	
+	match card_data.suit:
+		CardData.Suit.WAN:
+			return str(card_data.number) + "w"
+		CardData.Suit.TONG:
+			return str(card_data.number) + "t"
+		CardData.Suit.TIAO:
+			return str(card_data.number) + "s"
+		CardData.Suit.ZI:
+			match card_data.number:
+				1: return "e"
+				2: return "s"
+				3: return "w"
+				4: return "n"
+				5: return "c"
+				6: return "f"
+				7: return "b"
+	return ""
 
 ## 设置卡牌数据
 func set_card(card: CardData) -> void:
 	card_data = card
+	_try_load_texture()
 	queue_redraw()
 
 ## 设置是否显示正面
@@ -72,8 +122,13 @@ func _draw() -> void:
 	draw_rect(rect, bg_color)
 
 	if show_face:
-		# 绘制卡牌正面
-		_draw_card_face(rect)
+		if use_texture and tile_texture:
+			# 使用纹理
+			draw_set_transform(Vector2.ZERO, 0, Vector2(1, 1))
+			draw_texture(tile_texture, Vector2.ZERO)
+		else:
+			# 使用代码绘制
+			_draw_card_face(rect)
 	else:
 		# 绘制卡牌背面
 		_draw_card_back(rect)
