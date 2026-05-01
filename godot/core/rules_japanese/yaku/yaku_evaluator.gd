@@ -17,6 +17,8 @@ static func evaluate(wc: WinContext) -> YakuList:
 		Rinshan,
 		Chankan,
 		Pinfu,
+		Iipeikou, Ryanpeikou, Tanyao,
+		SanshokuDoujun, Ittsu,
 	]
 	for d in single_detectors:
 		var entry: YakuEntry = d.detect(wc)
