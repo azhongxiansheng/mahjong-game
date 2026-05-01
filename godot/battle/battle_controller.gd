@@ -236,11 +236,21 @@ func _adapt_yaku_list(eval_list: YakuEntries) -> YakuList:
 	sc.is_yakuman = eval_list.is_yakuman()
 	sc.yakuman_multiplier = eval_list.yakuman_total_multiplier()
 	sc.dora_count = state.dora_indicators.visible.size()
-	# YakuEntry.yaku_id 是 int，YakuList.add_yaku 入参是 StringName，
-	# 直接 append dict 绕过类型门（ScoreCalc 只读 entry.han 累加）
+	# YakuEntry.yaku_id 是 int (YakuId 常量)，但 YakuList.is_pinfu / is_chiitoi
+	# 走 has_yaku(&"pinfu") / has_yaku(&"chiitoitsu") StringName 比较。
+	# 这里把 PINFU / CHIITOITSU 转 StringName 让 FuCalculator 特殊符识别正确（M4
+	# BattleNodeRunner 跑大量随机牌局触发了这个 M2 留下的类型不匹配 bug）。
 	for entry in eval_list.entries:
-		sc.yaku.append({"id": entry.yaku_id, "han": entry.han})
+		sc.yaku.append({"id": _yaku_id_to_string_name(entry.yaku_id), "han": entry.han})
 	return sc
+
+# YakuId int → StringName 映射。仅覆盖 YakuList.has_yaku 实际查询的 id；
+# 其它 id 用 str(int) 占位（不影响 ScoreCalc 累加 han 的正确性）。
+static func _yaku_id_to_string_name(yaku_id: int) -> StringName:
+	match yaku_id:
+		YakuId.PINFU: return &"pinfu"
+		YakuId.CHIITOITSU: return &"chiitoitsu"
+	return StringName(str(yaku_id))
 
 # ---- 私有 helper ----
 
