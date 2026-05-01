@@ -21,6 +21,8 @@ static func evaluate(wc: WinContext) -> YakuList:
 		SanshokuDoujun, Ittsu,
 		Toitoi, Sanankou, SanshokuDoukou, Sankantsu, Shousangen,
 		Honchanta, Chiitoitsu, Junchan, Honitsu, Chinitsu,
+		# Yakuman
+		KokushiYakuman, Daisangen, Tsuuiisou, Ryuuiisou, Chinroutou,
 	]
 	for d in single_detectors:
 		var entry: YakuEntry = d.detect(wc)
