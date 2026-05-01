@@ -63,3 +63,40 @@ func test_path_b_tsumo_settles_with_payout() -> void:
 	assert_eq(extra.winner_seat, 0)
 	assert_gt(extra.han, 0, "han 应为正（七対子至少 2 番）")
 	assert_gt(extra.payout.size(), 0, "payout 至少含 1 个支付者")
+
+# ---- 路径 C：荣胡 — owner / holder 归属 ----
+# 玩家 seat 0 听 W9（同 path B 七対子），但这次由 seat 1 弃出 W9 → 荣胡。
+# 验证 BattleEvent.tile_instance.owner_seat = 弃牌人座（1） ≠ actor_seat（胡牌人=0）。
+# 这条断言钉住「owner = 牌的来源 / actor = 这次事件的主体」语义区分。
+func test_path_c_ron_owner_holder_distinction() -> void:
+	var tenpai_ids: Array = [
+		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
+		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
+		TileId.W9,
+	]
+	var seat0: Seat = _bc.state.seats[0]
+	seat0.hand._tiles.clear()
+	for tid in tenpai_ids:
+		seat0.hand.add(Tile.new(tid))
+
+	# seat 1 弃出 W9（构造 Tile 携带 owner=1）
+	var ron_tile := Tile.new(TileId.W9)
+	var ok: bool = _bc.apply_ron(0, ron_tile, 1)
+
+	assert_true(ok, "apply_ron 应成立")
+	assert_eq(_bc._last_event_type, &"WIN_DECLARED",
+		"apply_ron 成功后最末事件应为 WIN_DECLARED")
+	var win_event: BattleEvent = _bc.events[_bc.events.size() - 1]
+	assert_eq(win_event.actor_seat, 0, "actor 是胡牌人")
+	assert_ne(win_event.tile_instance.owner_seat, win_event.actor_seat,
+		"owner（弃牌人 1）必须 ≠ actor（胡牌人 0）— 这是 spec §3.1 的 owner/holder 区分核心")
+	assert_eq(win_event.tile_instance.owner_seat, 1, "owner 应等于弃牌人座 1")
+
+	# 中间也应有一条 RON_DECLARED 事件（emit 在 settle 之前，给技能拦截窗口）
+	var has_ron_event := false
+	for ev in _bc.events:
+		if ev.type == &"RON_DECLARED":
+			assert_eq(ev.actor_seat, 0, "RON_DECLARED actor 也是胡牌人")
+			assert_eq(ev.tile_instance.owner_seat, 1, "RON_DECLARED owner 也是弃牌人")
+			has_ron_event = true
+	assert_true(has_ron_event, "结算前必须 emit 一次 RON_DECLARED")

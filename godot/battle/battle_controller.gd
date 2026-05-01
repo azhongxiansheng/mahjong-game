@@ -141,6 +141,68 @@ func _check_tsumo(drawn: Tile) -> Dictionary:
 		"melds": typed_melds,
 	}
 
+# 检查 winner_seat 用 ron_tile 荣胡是否合法。
+# winner.hand 是 13 张听牌期手（不含 ron_tile）；ron_tile 由对家弃牌补上。
+func _check_ron(ron_tile: Tile, winner_seat: int) -> Dictionary:
+	var winner: Seat = state.seats[winner_seat]
+	var typed_melds: Array[Meld] = []
+	for m in winner.melds:
+		typed_melds.append(m)
+	var wp: Dictionary = WinPattern.detect(winner.hand, typed_melds, ron_tile)
+	if not wp.is_winning:
+		return {"is_winning": false}
+	var game_ctx := _build_game_ctx(winner, false)
+	var yaku_wc := WinContext.new(winner.hand, typed_melds, ron_tile, wp, game_ctx)
+	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
+	var has_yaku: bool = yaku_list.is_yakuman() or yaku_list.size() > 0
+	if not has_yaku:
+		return {"is_winning": false}
+	return {
+		"is_winning": true,
+		"wp": wp,
+		"yaku_list": yaku_list,
+		"melds": typed_melds,
+	}
+
+# 公共入口：荣胡（外部 driver 调用，不走 run_to_end 主循环）。
+# discarder_seat: 弃牌人座（决定 ron_tile 的 owner_seat 与 score_ctx.loser_seat）。
+# 返 false 表示和牌不成立（无役 / 听牌不命中 / 技能取消）。
+func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int) -> bool:
+	var ron_ti := TileInstance.make(ron_tile, discarder_seat, null)
+	# 先 emit RON_DECLARED 让技能（如「中·封印」）有机会取消
+	_emit(&"RON_DECLARED", winner_seat, ron_ti, {"discarder_seat": discarder_seat})
+	if state.ron_cancelled[winner_seat]:
+		return false
+	var win := _check_ron(ron_tile, winner_seat)
+	if not win.is_winning:
+		return false
+	_settle_ron(ron_tile, ron_ti, winner_seat, discarder_seat, win.wp, win.yaku_list)
+	return true
+
+func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discarder_seat: int, wp: Dictionary, yaku_list) -> void:
+	var winner: Seat = state.seats[winner_seat]
+
+	var score_ctx := ScoringWinContext.new()
+	score_ctx.is_tsumo = false
+	score_ctx.winning_tile = ron_tile
+	score_ctx.round_wind = state.round_wind
+	score_ctx.seat_wind = winner.seat_wind
+	score_ctx.dealer_seat = state.dealer_seat
+	score_ctx.winner_seat = winner_seat
+	score_ctx.loser_seat = discarder_seat
+	score_ctx.honba = state.honba
+	score_ctx.riichi_sticks = state.riichi_sticks
+
+	var melds_arr: Array = []
+	for m in winner.melds:
+		melds_arr.append(m)
+	var score_yaku_list := _adapt_yaku_list(yaku_list)
+	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
+
+	engine.apply_ron(winner_seat, ron_tile)
+	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
+	_settled = true
+
 func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list) -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var ti := _wrap_tile(drawn)
