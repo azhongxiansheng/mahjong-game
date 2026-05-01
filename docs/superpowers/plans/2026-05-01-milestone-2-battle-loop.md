@@ -23,8 +23,8 @@
    - `run_to_end()` 编排 DRAW→DISCARD→CLAIM(skip)→ADVANCE 循环，emit `GAME_BEGIN` / `TILE_DRAWN` / `TILE_DISCARDED` / `EXHAUSTIVE_DRAW` / `TSUMO_DECLARED` / `RON_DECLARED` / `WIN_DECLARED`
    - `apply_ron(winner_seat, ron_tile, discarder_seat)` 公开方法（外部 driver 调用，绕过主循环）
    - `_check_tsumo` / `_check_ron`：WinPattern.detect → YakuEvaluator.evaluate → 无役校验
-   - `_settle_tsumo` / `_settle_ron`：ScoringWinContext 字段填充 → ScoreCalc.calculate → emit WIN_DECLARED with payout
-   - `_adapt_yaku_list`：把 `yaku/YakuList`（YakuEvaluator 出口，含 entries: Array[YakuEntry]）桥接为 `ScoringYakuList`（ScoreCalc 入口，含 yaku: Array[Dict] + is_yakuman: bool）
+   - `_settle_tsumo` / `_settle_ron`：ScoreContext 字段填充 → ScoreCalc.calculate → emit WIN_DECLARED with payout
+   - `_adapt_yaku_list`：把 `YakuEntries`（YakuEvaluator 出口，含 entries: Array[YakuEntry]）桥接为 `YakuList`（ScoreCalc 入口，含 yaku: Array[Dict] + is_yakuman: bool）— PR #12 已把 yaku 端的 YakuList 改名为 YakuEntries 解决全局重名
 3. **`ai/simple_ai.gd`（新建，19 行）**：`decide_discard(seat) -> Tile` 随机弃手牌一张。不立直、不鸣牌、不杠、不主动宣告自摸（结算由 BC 自动判定）。**有意做最弱**——本里程碑只验证 pipeline。
 4. **`tests/integration/test_battle_e2e.gd`（新建，4 路径）**：
    - 路径 A：随机种子跑完一局，最末事件 ∈ {EXHAUSTIVE_DRAW, WIN_DECLARED}、scores 守恒 100000、event_chain_depth 归零
@@ -34,22 +34,14 @@
 5. **`tests/scenes/battle_e2e_demo.tscn` + `.gd`（新建，F6 手测）**：极简 UI（4 Label + RichTextLabel + 「重跑」Button）；不引用 atlas / TextureExtractor，避开纹理不变量。
 6. **`scripts/test_run_core.sh`**：`-gdir` 增加 `res://tests/integration`。
 
-### 副带修的 main 旧债（必要前置）
+### 副带修的 main 旧债（**已由 main PR #12 抢先修，本 PR rebase 时跟进）**
 
-里程碑 2 串接 YakuEvaluator → ScoreCalc 时撞到 PR #7 合并冲突遗留的 class_name 重名：
+PR #7 合并冲突遗留的 class_name 重名（`core/rules_japanese/{win_context, yaku_list}.gd` 与 `core/rules_japanese/yaku/{win_context, yaku_list}.gd` 同名），main 的 PR #12 已修：
 
-- `core/rules_japanese/win_context.gd` 与 `core/rules_japanese/yaku/win_context.gd` 同声明 `class_name WinContext`
-- `core/rules_japanese/yaku_list.gd` 与 `core/rules_japanese/yaku/yaku_list.gd` 同声明 `class_name YakuList`
+- `core/rules_japanese/win_context.gd`: `class_name WinContext` → `ScoreContext`
+- `core/rules_japanese/yaku/yaku_list.gd`: `class_name YakuList` → `YakuEntries`
 
-`Class "X" hides a global script class` parse error 让 `test_score_calc` / `test_fu_calculator` / `test_payout_calculator` / `test_win_context` / `test_yaku_list` 5 个测试文件被 GUT **静默忽略**（main 上 8 failing tests + ~50 个被忽略的 assertion）。
-
-把 ScoreCalc 端（数量较少）改名：
-- `core/rules_japanese/win_context.gd`: `class_name WinContext` → `ScoringWinContext`
-- `core/rules_japanese/yaku_list.gd`: `class_name YakuList` → `ScoringYakuList`
-- `score_calc` / `fu_calculator` / `payout_calculator` 同步类型注解
-- 5 个相关测试文件批量替换符号
-
-YakuEvaluator 端（30+ detector + 20+ test）保持 `WinContext` / `YakuList` 不变。
+本 PR 在 rebase 时丢弃了我自己的同款修复（命名方案相反，方向相同），跟进 main 的命名。
 
 ## Out-of-scope（推迟到后续里程碑）
 
@@ -63,7 +55,7 @@ YakuEvaluator 端（30+ detector + 20+ test）保持 `WinContext` / `YakuList` �
 
 ## 验证方式
 
-1. `bash scripts/test_run_core.sh` 全绿 — 540+ tests passing（修复 class_name 冲突后从 491 涨到 542）。
+1. `bash scripts/test_run_core.sh` 全绿 — 544 tests passing 0 failing。
 2. `godot --headless --path godot -s addons/gut/gut_cmdln.gd -gdir=res://tests/integration -gexit` 通过 — 4/4 路径全过。
 3. 编辑器打开 `tests/scenes/battle_e2e_demo.tscn`，按 F6：
    - 看到 4 座手牌发出 13 张；
@@ -76,8 +68,8 @@ YakuEvaluator 端（30+ detector + 20+ test）保持 `WinContext` / `YakuList` �
 |--------|------|
 | `chore: 补 plan 0b yaku 测试漏 commit 的 .gd.uid 文件` | 7 个 yakuman 役満测试 .gd 已 commit 但 .gd.uid 漏了 |
 | `feat(battle): 里程碑 2 第 1 步 — BattleController 最小循环 + SimpleAi` | path A green |
-| `fix(rules): WinContext/YakuList class_name 冲突 — 改名 ScoringWinContext/ScoringYakuList` | 副带修 main 旧债 |
 | `feat(battle): 里程碑 2 第 2 步 — BC 自摸结算 + 路径 B 集成测试` | path B green |
 | `feat(battle): 里程碑 2 第 3 步 — apply_ron + 路径 C owner/holder 归属` | path C green |
 | `feat(battle): 里程碑 2 第 4 步 — 路径 D cancel_ron 技能干预` | path D green |
 | `feat(battle): 里程碑 2 第 5 步 — F6 demo 场景 + 同步 plan 至 docs/` | demo + plan markdown |
+| `chore(battle): rebase 跟进 main PR #12 命名（ScoreContext/YakuEntries）` | rebase 后 BC + plan 引用更新 |

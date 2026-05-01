@@ -9,10 +9,11 @@ class_name BattleController
 # spec §13 第 2 项 — 不接 UI、不接交互、4 家全 AI。
 
 # 里程碑 2 完成 YakuEvaluator → ScoreCalc 串接：YakuEvaluator 用 yaku/yaku_list.gd
-# （含 entries / apply_exclusions / is_yakuman()），ScoreCalc 用 rules_japanese/yaku_list.gd
-# （含 yaku: Array[Dict] / is_yakuman: bool / yakuman_multiplier）—— 两份语义不同；
-# main 原本用同名 class_name 共存，已在 chore 中重命名为 ScoringYakuList / ScoringWinContext。
-# _adapt_yaku_list() 在两份之间桥接。
+# （class_name YakuEntries，含 entries: Array[YakuEntry] / apply_exclusions / is_yakuman()），
+# ScoreCalc 用 rules_japanese/yaku_list.gd（class_name YakuList，含 yaku: Array[Dict]
+# / is_yakuman: bool / yakuman_multiplier）—— 两份语义不同；PR #12 已修 class_name 重名
+# （旧 WinContext → 拆为 ScoreContext + WinContext，旧 YakuList → 拆为 YakuList + YakuEntries）。
+# _adapt_yaku_list() 在 YakuEntries → YakuList 之间桥接。
 
 const MAX_LOOP_STEPS := 2000  # 一局上限，防死循环；正常一局 < 200 步
 
@@ -182,7 +183,7 @@ func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int) -> bool:
 func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discarder_seat: int, wp: Dictionary, yaku_list) -> void:
 	var winner: Seat = state.seats[winner_seat]
 
-	var score_ctx := ScoringWinContext.new()
+	var score_ctx := ScoreContext.new()
 	score_ctx.is_tsumo = false
 	score_ctx.winning_tile = ron_tile
 	score_ctx.round_wind = state.round_wind
@@ -208,7 +209,7 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list) -> void:
 	var ti := _wrap_tile(drawn)
 	_emit(&"TSUMO_DECLARED", state.current_seat, ti, {})
 
-	var score_ctx := ScoringWinContext.new()
+	var score_ctx := ScoreContext.new()
 	score_ctx.is_tsumo = true
 	score_ctx.winning_tile = drawn
 	score_ctx.round_wind = state.round_wind
@@ -229,13 +230,13 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list) -> void:
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)
 	_settled = true
 
-# 把 yaku/YakuList（YakuEvaluator 出口）转成 ScoringYakuList（ScoreCalc 入口）。
-func _adapt_yaku_list(eval_list) -> ScoringYakuList:
-	var sc := ScoringYakuList.new()
+# 把 YakuEntries（YakuEvaluator 出口）转成 YakuList（ScoreCalc 入口）。
+func _adapt_yaku_list(eval_list: YakuEntries) -> YakuList:
+	var sc := YakuList.new()
 	sc.is_yakuman = eval_list.is_yakuman()
 	sc.yakuman_multiplier = eval_list.yakuman_total_multiplier()
 	sc.dora_count = state.dora_indicators.visible.size()
-	# YakuEntry.yaku_id 是 int，ScoringYakuList.add_yaku 入参是 StringName，
+	# YakuEntry.yaku_id 是 int，YakuList.add_yaku 入参是 StringName，
 	# 直接 append dict 绕过类型门（ScoreCalc 只读 entry.han 累加）
 	for entry in eval_list.entries:
 		sc.yaku.append({"id": entry.yaku_id, "han": entry.han})
