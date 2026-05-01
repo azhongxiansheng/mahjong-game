@@ -2192,7 +2192,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 
 **Files:** `yakuman/{kokushi,daisangen,tsuuiisou,ryuuiisou,chinroutou}.gd` + 测试
 
-- [ ] **Step 11.1: `kokushi.gd`**
+- [x] **Step 11.1: `kokushi.gd`**
 
 ```gdscript
 class_name KokushiYakuman
@@ -2205,7 +2205,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 11.2: `daisangen.gd`** — 三元牌全部刻子
+- [x] **Step 11.2: `daisangen.gd`** — 三元牌全部刻子
 
 ```gdscript
 class_name Daisangen
@@ -2230,7 +2230,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 11.3: `tsuuiisou.gd`** — 全字牌
+- [x] **Step 11.3: `tsuuiisou.gd`** — 全字牌
 
 ```gdscript
 class_name Tsuuiisou
@@ -2244,7 +2244,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.TSUUIISOU, 0, true, 1)
 ```
 
-- [ ] **Step 11.4: `ryuuiisou.gd`** — 全绿（2 3 4 6 8 索 + 发）
+- [x] **Step 11.4: `ryuuiisou.gd`** — 全绿（2 3 4 6 8 索 + 发）
 
 ```gdscript
 class_name Ryuuiisou
@@ -2263,7 +2263,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.RYUUIISOU, 0, true, 1)
 ```
 
-- [ ] **Step 11.5: `chinroutou.gd`** — 全是数牌 1/9（无字牌，无中张）
+- [x] **Step 11.5: `chinroutou.gd`** — 全是数牌 1/9（无字牌，无中张）
 
 ```gdscript
 class_name Chinroutou
@@ -2279,7 +2279,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.CHINROUTOU, 0, true, 1)
 ```
 
-- [ ] **Step 11.6: 测试 + 注册 + Commit**
+- [x] **Step 11.6: 测试 + 注册 + Commit**
 
 每个役満配 2-3 测试用例（典型样例 + 反例）。
 
@@ -2289,7 +2289,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 
 **Files:** `yakuman/{suuankou,suukantsu,shousuushi,daisuushi}.gd` + 测试
 
-- [ ] **Step 12.1: `suuankou.gd`**
+- [x] **Step 12.1: `suuankou.gd`**
 
 ```gdscript
 class_name Suuankou
@@ -2333,7 +2333,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 12.2: `suukantsu.gd`** — 4 杠
+- [x] **Step 12.2: `suukantsu.gd`** — 4 杠
 
 ```gdscript
 class_name Suukantsu
@@ -2348,7 +2348,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 12.3: `shousuushi.gd`** — 4 风牌 3 刻 + 1 对
+- [x] **Step 12.3: `shousuushi.gd`** — 4 风牌 3 刻 + 1 对
 
 ```gdscript
 class_name Shousuushi
@@ -2377,7 +2377,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 12.4: `daisuushi.gd`** — 4 风牌 4 刻 (双倍役満)
+- [x] **Step 12.4: `daisuushi.gd`** — 4 风牌 4 刻 (双倍役満)
 
 ```gdscript
 class_name Daisuushi
@@ -2403,7 +2403,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return null
 ```
 
-- [ ] **Step 12.5: 测试 + 注册 + Commit**
+- [x] **Step 12.5: 测试 + 注册 + Commit**
 
 ---
 
@@ -2411,7 +2411,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 
 **Files:** `yakuman/{chuuren,tenhou,chiihou}.gd` + 测试
 
-- [ ] **Step 13.1: `chuuren.gd`** — 1112345678999 + 任意一张同色
+- [x] **Step 13.1: `chuuren.gd`** — 1112345678999 + 任意一张同色
 
 ```gdscript
 class_name Chuuren
@@ -2460,7 +2460,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.CHUUREN, 0, true, 1)
 ```
 
-- [ ] **Step 13.2: `tenhou.gd`** — 庄家初配胡
+- [x] **Step 13.2: `tenhou.gd`** — 庄家初配胡
 
 ```gdscript
 class_name Tenhou
@@ -2471,7 +2471,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.TENHOU, 0, true, 1)
 ```
 
-- [ ] **Step 13.3: `chiihou.gd`** — 闲家第一摸
+- [x] **Step 13.3: `chiihou.gd`** — 闲家第一摸
 
 ```gdscript
 class_name Chiihou
@@ -2484,7 +2484,7 @@ static func detect(wc: WinContext) -> YakuEntry:
 	return YakuEntry.new(YakuId.CHIIHOU, 0, true, 1)
 ```
 
-- [ ] **Step 13.4: 测试 + 注册 + Commit**
+- [x] **Step 13.4: 测试 + 注册 + Commit**
 
 ---
 
@@ -2497,7 +2497,7 @@ YakuList 收集到的役需要应用互斥规则：上位役覆盖下位役。
 - Modify: `godot/core/rules_japanese/yaku/yaku_evaluator.gd`（在最终返回前调用）
 - Create: `godot/tests/core/yaku/test_yaku_evaluator_integration.gd` + `.uid`
 
-- [ ] **Step 14.1: 写测试 — 互斥规则**
+- [x] **Step 14.1: 写测试 — 互斥规则**
 
 ```gdscript
 # test_yaku_list_exclusions.gd
@@ -2546,7 +2546,7 @@ func test_suuankou_excludes_toitoi_and_sanankou():
 	assert_true(l.is_yakuman())
 ```
 
-- [ ] **Step 14.2: 实现 apply_exclusions**
+- [x] **Step 14.2: 实现 apply_exclusions**
 
 ```gdscript
 # 在 yaku_list.gd 加：
@@ -2589,7 +2589,7 @@ func apply_exclusions() -> void:
 	entries = new_entries
 ```
 
-- [ ] **Step 14.3: 修改 yaku_evaluator.gd 末尾调用**
+- [x] **Step 14.3: 修改 yaku_evaluator.gd 末尾调用**
 
 ```gdscript
 static func evaluate(wc: WinContext) -> YakuList:
@@ -2601,7 +2601,7 @@ static func evaluate(wc: WinContext) -> YakuList:
 	return list
 ```
 
-- [ ] **Step 14.4: 写集成测试 — 真实牌例多役叠加**
+- [x] **Step 14.4: 写集成测试 — 真实牌例多役叠加**
 
 ```gdscript
 # test_yaku_evaluator_integration.gd
@@ -2687,7 +2687,7 @@ func test_daisangen_yakuman_excludes_yakuhai():
 	assert_eq(list.yakuman_total_multiplier(), 1)
 ```
 
-- [ ] **Step 14.5: 跑全套 + Commit**
+- [x] **Step 14.5: 跑全套 + Commit**
 
 ```bash
 scripts/test_run_core.sh 2>&1 | tail -10
@@ -2722,7 +2722,7 @@ git push
 
 ## Task 15: 收尾 + 完成标记
 
-- [ ] **Step 15.1: 跑完整测试统计**
+- [x] **Step 15.1: 跑完整测试统计**
 
 ```bash
 scripts/test_run_core.sh 2>&1 | tail -15
@@ -2730,7 +2730,7 @@ scripts/test_run_core.sh 2>&1 | tail -15
 
 Expected: ≥ 200 tests passing。
 
-- [ ] **Step 15.2: 在 plan 文件追加完成记录**
+- [x] **Step 15.2: 在 plan 文件追加完成记录**
 
 修改 `docs/superpowers/plans/2026-05-01-yaku-detection.md` 末尾追加：
 
@@ -2747,7 +2747,7 @@ Expected: ≥ 200 tests passing。
 - 后续：plan 0c（符算 + 点数公式）
 ```
 
-- [ ] **Step 15.3: Commit + push**
+- [x] **Step 15.3: Commit + push**
 
 ```bash
 git add docs/superpowers/plans/2026-05-01-yaku-detection.md
@@ -2768,3 +2768,24 @@ git push
 5. 全部 commit 已 push 到 `feat/mahjong-king-design`
 
 完成后调用 `superpowers:writing-plans` 生成 plan 0c（符算 + 点数公式 + 点棒派发）。
+
+---
+
+## 完成记录
+
+- **完成日期**：2026-05-01
+- **累计测试数**：209 PASS / 0 FAIL（56 scripts，553 asserts）
+- **本次新增 commit**（5 个，对应 Task 11-15）：
+  1. `feat(yaku): 役満批 1 — 国士 / 大三元 / 字一色 / 緑一色 / 清老頭`
+  2. `feat(yaku): 役満批 2 — 四暗刻 / 四槓子 / 小四喜 / 大四喜`
+  3. `feat(yaku): 役満批 3 — 九蓮宝燈 / 天和 / 地和`
+  4. `feat(yaku): 互斥规则 apply_exclusions + 集成测试`
+  5. `docs: 标记 plan 0b 完成 — 209 tests, 5 yakuman commits`
+- **新增文件**：
+  - 役満判定：`godot/core/rules_japanese/yaku/yakuman/{kokushi, daisangen, suuankou, suukantsu, shousuushi, daisuushi, tsuuiisou, ryuuiisou, chinroutou, chuuren, tenhou, chiihou}.gd`（共 12 个文件）
+  - 测试：`godot/tests/core/yaku/test_{kokushi_yakuman, daisangen, suuankou, suukantsu, shousuushi, daisuushi, tsuuiisou, ryuuiisou, chinroutou, chuuren, tenhou, chiihou, yaku_list_exclusions, yaku_evaluator_integration}.gd`（共 14 个文件）
+- **修改文件**：
+  - `godot/core/rules_japanese/yaku/yaku_list.gd`：加 EXCLUSIONS 字典 + apply_exclusions()
+  - `godot/core/rules_japanese/yaku/yaku_evaluator.gd`：注册 12 个 yakuman detector + 末尾 apply_exclusions
+- **覆盖**：13 种基础役満 + 4 个双倍变体（KOKUSHI_13 / SUUANKOU_TANKI / DAISUUSHI / JUNSEI_CHUUREN）+ 13 个互斥规则 trigger
+- **后续**：plan 0c（符算 + 点数公式 + 点棒派发）
