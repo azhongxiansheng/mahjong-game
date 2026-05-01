@@ -19,6 +19,8 @@ const RUN_HUD := preload("res://ui/run/run_hud.tscn")
 # M5 第 3 步新增：抽卡 / 商店 UI
 const PACK_OPEN_VIEW := preload("res://ui/run/pack_open_view.tscn")
 const SHOP_VIEW := preload("res://ui/run/shop_view.tscn")
+# M5 第 4 步新增：存档恢复
+const CONTINUE_PROMPT := preload("res://ui/run/continue_prompt.tscn")
 
 var _run_state: RunState = null
 var _hud: RunHud = null
@@ -32,7 +34,12 @@ func _ready() -> void:
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
 	add_child(_hud)
-	_show_starter_picker()
+	# M5 第 4 步：启动时检查是否有存档（user://savegame.json）
+	var ss := _save_system()
+	if ss and ss.has_save():
+		_show_continue_prompt()
+	else:
+		_show_starter_picker()
 
 # ---- panel transitions ----
 
@@ -40,6 +47,35 @@ func _show_starter_picker() -> void:
 	var picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
 	_swap_panel(picker)
 	picker.pack_chosen.connect(_on_pack_chosen)
+
+# M5 第 4 步：存档恢复入口
+func _show_continue_prompt() -> void:
+	var prompt: ContinuePrompt = CONTINUE_PROMPT.instantiate()
+	_swap_panel(prompt)
+	# 试着加载并显示摘要（即使加载失败也允许玩家点 New 清档继续）
+	var ss := _save_system()
+	var saved_rs = ss.load_run() if ss else null
+	prompt.set_save_summary(saved_rs)
+	prompt.continue_run.connect(func(): _on_continue_run(saved_rs))
+	prompt.new_run.connect(_on_new_run_after_clear)
+
+func _on_continue_run(saved_rs) -> void:
+	if saved_rs == null:
+		# 损坏存档：fallback 清档 + 新 Run
+		_on_new_run_after_clear()
+		return
+	_run_state = saved_rs
+	_run_state.node_completed.connect(_on_run_node_completed)
+	_run_state.run_failed.connect(_on_run_failed)
+	_run_state.run_won.connect(_on_run_won)
+	_hud.bind_run_state(_run_state)
+	_show_chapter_map()
+
+func _on_new_run_after_clear() -> void:
+	var ss := _save_system()
+	if ss:
+		ss.clear_run()
+	_show_starter_picker()
 
 func _show_chapter_map() -> void:
 	var view: ChapterMapView = CHAPTER_MAP_VIEW.instantiate()
@@ -66,6 +102,8 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	_run_state.run_failed.connect(_on_run_failed)
 	_run_state.run_won.connect(_on_run_won)
 	_hud.bind_run_state(_run_state)
+	# M5 第 4 步：新 Run 开始时立即存档
+	_save_run_state()
 	_show_chapter_map()
 
 func _on_node_chosen(node_index: int) -> void:
@@ -81,9 +119,9 @@ func _on_node_chosen(node_index: int) -> void:
 
 func _on_run_node_completed(_opts: Array) -> void:
 	_hud.bind_run_state(_run_state)
+	# M5 第 4 步：节点完成后立即自动存档
+	_save_run_state()
 	# M5 第 3 步：战斗节点结算后给 1 抽（spec §9.2 节点单抽自动）。
-	# 占位节点（CAMP/SHOP/EVENT）不给（它们的"奖励"由各自场景内部处理：
-	# SHOP 是金币消费拿卡，EVENT/CAMP 是 M5 实装真奖励）。
 	if _last_node_ref and NodeKind.is_battle(_last_node_ref.kind):
 		_show_node_pack_open()
 	else:
@@ -91,6 +129,10 @@ func _on_run_node_completed(_opts: Array) -> void:
 
 func _on_run_failed() -> void:
 	_hud.bind_run_state(_run_state)
+	# M5 第 4 步：Run 终态清存档（不允许"复活"重玩失败 Run）
+	var ss := _save_system()
+	if ss:
+		ss.clear_run()
 	# M5 第 3 步：跨 Run 声望累计
 	var mp := get_tree().root.get_node_or_null("MetaProgress")
 	if mp:
@@ -99,6 +141,9 @@ func _on_run_failed() -> void:
 
 func _on_run_won() -> void:
 	_hud.bind_run_state(_run_state)
+	var ss := _save_system()
+	if ss:
+		ss.clear_run()
 	var mp := get_tree().root.get_node_or_null("MetaProgress")
 	if mp:
 		mp.add_renown_for_run(true)
@@ -202,3 +247,16 @@ func _reset() -> void:
 	_seed_seed += 1
 	_hud._refresh_default()
 	_show_starter_picker()
+
+# M5 第 4 步：SaveSystem autoload 访问 helper
+func _save_system() -> Node:
+	if not is_inside_tree():
+		return null
+	return get_tree().root.get_node_or_null("SaveSystem")
+
+func _save_run_state() -> void:
+	if _run_state == null:
+		return
+	var ss := _save_system()
+	if ss:
+		ss.save_run(_run_state)
