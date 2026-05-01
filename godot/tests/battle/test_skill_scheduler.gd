@@ -89,6 +89,32 @@ func test_holder_group_sorted_by_rarity_desc():
 	_sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	assert_eq(SpyHook.trace[0].skill_id, &"hhigh")
 
+func test_holder_group_reg_order_tiebreak_within_same_rarity():
+	# 同 rarity 的 holder 组按注册顺序稳定排序。
+	var sk_a := _make_skill(&"ha", [], [&"WIN_DECLARED"], 1)
+	var sk_b := _make_skill(&"hb", [], [&"WIN_DECLARED"], 1)
+	_reg.register(sk_a, _attach_tile(sk_a, 0, 0))
+	_reg.register(sk_b, _attach_tile(sk_b, 0, 0))
+	_sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
+	assert_eq(SpyHook.trace[0].skill_id, &"ha", "holder 组同 rarity 先注册者先")
+	assert_eq(SpyHook.trace[1].skill_id, &"hb")
+
+func test_ability_and_normal_owner_sort_by_rarity_then_reg_order():
+	# ability 与普通 owner 牌技能均落入 group=0；先按 rarity 降序，再按 reg_order。
+	# 注册：rarity=2 ability 'ab2' / rarity=3 owner 'on3' / rarity=2 owner 'on2'
+	# 期望顺序：on3(高 rarity 先) → ab2(同 rarity 先注册) → on2(同 rarity 后注册)
+	var ab2 := _make_skill(&"ab2", [&"WIN_DECLARED"], [], 2, true)
+	var on3 := _make_skill(&"on3", [&"WIN_DECLARED"], [], 3)
+	var on2 := _make_skill(&"on2", [&"WIN_DECLARED"], [], 2)
+	_reg.register(ab2, 0)
+	_reg.register(on3, _attach_tile(on3, 0))
+	_reg.register(on2, _attach_tile(on2, 0))
+	_sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
+	assert_eq(SpyHook.trace.size(), 3)
+	assert_eq(SpyHook.trace[0].skill_id, &"on3", "rarity=3 最先")
+	assert_eq(SpyHook.trace[1].skill_id, &"ab2", "rarity=2 同分先注册的 ability")
+	assert_eq(SpyHook.trace[2].skill_id, &"on2", "rarity=2 后注册的普通牌")
+
 func test_empty_registry_emit_does_not_error():
 	_sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	assert_eq(SpyHook.trace.size(), 0)
