@@ -120,3 +120,118 @@ func test_declare_riichi_fails_when_invalid():
 	assert_false(ok)
 	assert_false(e.state.seats[0].riichi.declared)
 	assert_eq(e.state.seats[0].points, 25000, "未扣点")
+
+# ---- apply_chi/pon/minkan ----
+
+func _setup_after_dealer_discards(e: TurnEngine, discard_id: int) -> Tile:
+	# 让 dealer 摸 + 弃 discard_id；返回弃出的 Tile
+	e.state.seats[0].hand = Hand.new()
+	for tid in range(13):
+		e.state.seats[0].add_to_hand(Tile.new(TileId.W1 + (tid % 9)))
+	e.state.seats[0].add_to_hand(Tile.new(discard_id))  # 14 张
+	e.state.phase = BattlePhase.Kind.DISCARD
+	e.discard(discard_id)
+	# discards_per_seat[0] 末张是刚弃的
+	return e.state.discards_per_seat[0][-1]
+
+func test_apply_chi_success():
+	var e := _new_engine()
+	# claimant=1（下家），手中有 W2 + W4 → 吃 W3
+	e.state.seats[1].hand = Hand.new()
+	e.state.seats[1].add_to_hand(Tile.new(TileId.W2))
+	e.state.seats[1].add_to_hand(Tile.new(TileId.W4))
+	var tile := _setup_after_dealer_discards(e, TileId.W3)
+	var ok := e.apply_chi(1, tile, [TileId.W2, TileId.W4])
+	assert_true(ok)
+	assert_eq(e.state.seats[1].melds.size(), 1)
+	assert_eq(e.state.seats[1].melds[0].kind, Meld.Kind.CHI)
+	assert_eq(e.state.seats[1].hand.size(), 0)
+	assert_eq(e.state.discards_per_seat[0].size(), 0, "弃牌被取走")
+	assert_eq(e.state.current_seat, 1)
+	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
+	assert_false(e.state.first_round_active, "鸣牌打破第一巡")
+
+func test_apply_chi_rejected_for_non_next_seat():
+	var e := _new_engine()
+	e.state.seats[2].hand = Hand.new()
+	e.state.seats[2].add_to_hand(Tile.new(TileId.W2))
+	e.state.seats[2].add_to_hand(Tile.new(TileId.W4))
+	var tile := _setup_after_dealer_discards(e, TileId.W3)
+	var ok := e.apply_chi(2, tile, [TileId.W2, TileId.W4])
+	assert_false(ok, "对家不可吃")
+
+func test_apply_pon_success():
+	var e := _new_engine()
+	e.state.seats[2].hand = Hand.new()
+	e.state.seats[2].add_to_hand(Tile.new(TileId.W5))
+	e.state.seats[2].add_to_hand(Tile.new(TileId.W5))
+	var tile := _setup_after_dealer_discards(e, TileId.W5)
+	var ok := e.apply_pon(2, tile)
+	assert_true(ok)
+	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.PON)
+	assert_eq(e.state.current_seat, 2)
+	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
+
+func test_apply_minkan_reveals_new_dora_and_takes_rinshan():
+	var e := _new_engine()
+	e.state.seats[2].hand = Hand.new()
+	for _i in range(3):
+		e.state.seats[2].add_to_hand(Tile.new(TileId.W5))
+	var initial_dora_count := e.state.dora_indicators.visible.size()
+	var tile := _setup_after_dealer_discards(e, TileId.W5)
+	var ok := e.apply_minkan(2, tile)
+	assert_true(ok)
+	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.MINKAN)
+	assert_eq(e.state.dora_indicators.visible.size(), initial_dora_count + 1, "明杠翻 dora")
+	assert_eq(e.state.seats[2].hand.size(), 1, "摸岭上后 1 张")
+	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
+
+# ---- apply_ankan / apply_added_kan ----
+
+func test_apply_ankan_success():
+	var e := _new_engine()
+	# 自家回合摸了 14 张含 4 张同
+	e.state.seats[0].hand = Hand.new()
+	for _i in range(4):
+		e.state.seats[0].add_to_hand(Tile.new(TileId.W5))
+	for tid in range(10):
+		e.state.seats[0].add_to_hand(Tile.new(TileId.T1 + tid))
+	var initial_dora_count := e.state.dora_indicators.visible.size()
+	var ok := e.apply_ankan(0, TileId.W5)
+	assert_true(ok)
+	assert_eq(e.state.seats[0].melds[0].kind, Meld.Kind.ANKAN)
+	assert_eq(e.state.seats[0].melds[0].tiles.size(), 4, "暗杠 4 张")
+	assert_eq(e.state.dora_indicators.visible.size(), initial_dora_count + 1)
+	# 注：count_of(W5) 不能为 0 — 岭上摸到的可能恰是 W5
+	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
+
+func test_apply_added_kan_success():
+	var e := _new_engine()
+	# 已有 PON W5 副露 + 手中第 4 张 W5
+	var pon := Meld.make_pon(
+		[Tile.new(TileId.W5), Tile.new(TileId.W5), Tile.new(TileId.W5)], 1)
+	e.state.seats[0].melds.append(pon)
+	e.state.seats[0].hand = Hand.new()
+	e.state.seats[0].add_to_hand(Tile.new(TileId.W5))
+	for tid in range(10):
+		e.state.seats[0].add_to_hand(Tile.new(TileId.T1 + tid))
+	var ok := e.apply_added_kan(0, TileId.W5)
+	assert_true(ok)
+	assert_eq(e.state.seats[0].melds[0].kind, Meld.Kind.ADDED_KAN)
+	assert_eq(e.state.seats[0].melds[0].tiles.size(), 4, "加杠 4 张")
+
+# ---- apply_ron / apply_tsumo ----
+
+func test_apply_ron_advances_to_settle():
+	var e := _new_engine()
+	e.state.phase = BattlePhase.Kind.CLAIM
+	var ok := e.apply_ron(2, Tile.new(TileId.W5))
+	assert_true(ok)
+	assert_eq(e.state.phase, BattlePhase.Kind.SETTLE)
+
+func test_apply_tsumo_advances_to_settle():
+	var e := _new_engine()
+	e.state.phase = BattlePhase.Kind.DISCARD
+	var ok := e.apply_tsumo(0, Tile.new(TileId.W5))
+	assert_true(ok)
+	assert_eq(e.state.phase, BattlePhase.Kind.SETTLE)
