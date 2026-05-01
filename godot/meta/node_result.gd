@@ -43,3 +43,24 @@ static func from_placeholder() -> NodeResult:
 	r.gold_reward = 0
 	r.card_reward = 0
 	return r
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	return {
+		"rank": rank,
+		"hp_delta": hp_delta,
+		"gold_reward": gold_reward,
+		"card_reward": card_reward,
+		"final_scores": final_scores.duplicate(),
+	}
+
+static func from_dict(d: Dictionary) -> NodeResult:
+	if d == null or d.is_empty():
+		return null
+	var r := NodeResult.new(int(d.get("rank", 1)), d.get("final_scores", []).duplicate())
+	# 反序列化时尊重原 hp_delta / gold_reward（rank 派生的可能与历史不一致）
+	r.hp_delta = int(d.get("hp_delta", r.hp_delta))
+	r.gold_reward = int(d.get("gold_reward", r.gold_reward))
+	r.card_reward = int(d.get("card_reward", r.card_reward))
+	return r

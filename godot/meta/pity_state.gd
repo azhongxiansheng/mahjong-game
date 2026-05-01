@@ -23,3 +23,15 @@ func node_single_pity_active() -> bool:
 # Run 重置时调（开始新 Run 时清状态；M5 第 2 步元进度可选择跨 Run 保留）
 func reset() -> void:
 	node_single_no_epic_streak = 0
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	return {"node_single_no_epic_streak": node_single_no_epic_streak}
+
+static func from_dict(d: Dictionary) -> PityState:
+	if d == null:
+		return PityState.new()
+	var p := PityState.new()
+	p.node_single_no_epic_streak = int(d.get("node_single_no_epic_streak", 0))
+	return p
