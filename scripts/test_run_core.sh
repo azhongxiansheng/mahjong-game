@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run GUT tests headless across core / battle / skills.
+# Run GUT tests headless across core / battle / skills / integration.
 # Usage: scripts/test_run_core.sh [optional GUT args]
 # Override Godot binary via GODOT env var, e.g.:
 #   GODOT=/path/to/Godot_v4.5-stable_linux.x86_64 scripts/test_run_core.sh
@@ -15,7 +15,7 @@ GODOT_BIN="${GODOT:-godot}"
 
 "$GODOT_BIN" --headless --path "$PROJ_DIR" \
     -s addons/gut/gut_cmdln.gd \
-    "-gdir=res://tests/core,res://tests/battle,res://tests/skills" \
+    "-gdir=res://tests/core,res://tests/battle,res://tests/skills,res://tests/integration" \
     -ginclude_subdirs \
     -gexit \
     "$@"
