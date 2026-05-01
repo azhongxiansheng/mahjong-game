@@ -9,6 +9,7 @@ var seats: Array = []                  # Array[Seat] 长度 4
 var wall: Wall                         # 含 dead_wall 切片
 var dora_indicators: DoraIndicators
 var discards_per_seat: Array = []      # 4 个 Array[Tile]
+var dealer_seat: int = 0               # 庄家 seat_id（一局内不变）
 var current_seat: int = 0
 var phase: int = BattlePhase.Kind.DRAW
 var round_wind: int = TileId.E         # 东风战恒为东
@@ -26,6 +27,7 @@ static func for_east_round(seed: int, dealer_seat: int, hand_number_arg: int, ho
 	s.hand_number = hand_number_arg
 	s.honba = honba_arg
 	s.riichi_sticks = riichi_sticks_arg
+	s.dealer_seat = dealer_seat
 	s.current_seat = dealer_seat
 
 	# 4 seat：自风按 dealer 旋转（dealer 是 E）
