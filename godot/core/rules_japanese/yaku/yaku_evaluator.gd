@@ -1,13 +1,13 @@
 class_name YakuEvaluator
 
 # 入口：传入 WinContext，返回 YakuList。
-# 当前注册 8 个 state detector。后续 task 逐步追加 yakuhai / pattern / yakuman。
 static func evaluate(wc: WinContext) -> YakuList:
 	var list := YakuList.new()
 	if not wc.win_result.is_winning:
 		return list
 
-	var detectors := [
+	# Single-entry detectors
+	var single_detectors := [
 		Riichi,
 		DoubleRiichi,
 		Ippatsu,
@@ -17,8 +17,13 @@ static func evaluate(wc: WinContext) -> YakuList:
 		Rinshan,
 		Chankan,
 	]
-	for d in detectors:
+	for d in single_detectors:
 		var entry: YakuEntry = d.detect(wc)
 		if entry != null:
 			list.add(entry)
+
+	# Multi-entry detectors (return Array)
+	for e in Yakuhai.detect_all(wc):
+		list.add(e)
+
 	return list
