@@ -38,5 +38,5 @@ func to_id_array() -> Array:
 func clone() -> Hand:
 	var c := Hand.new()
 	for t in _tiles:
-		c._tiles.append(Tile.new(t.id, t.is_red_dora))
+		c._tiles.append(Tile.new(t.id, t.is_red_dora, t.owner_seat))
 	return c
