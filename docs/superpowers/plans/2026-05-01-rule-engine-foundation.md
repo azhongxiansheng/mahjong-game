@@ -1689,3 +1689,5 @@ git push
 ### 后续
 
 进入 plan 0b（30+ 役判定）。需要时调用 `superpowers:writing-plans` 生成。
+
+> **更新 2026-05-01**：plan 0b 由协作者并行开展；plan 0c（符算 + 点数）由 claude 已并行完成 — 见 [`2026-05-01-fu-and-score.md`](./2026-05-01-fu-and-score.md)。0b 与 0c 模块独立、共享 `YakuList` 数据契约；0b 完工后由 0c 计划负责开串接 PR。下一步进入 plan 0d（振听 / Dora / 立直 / 流局 / 状态机）。
