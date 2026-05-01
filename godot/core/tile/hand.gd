@@ -35,8 +35,16 @@ func to_id_array() -> Array:
 	ids.sort()
 	return ids
 
+# 返回当前手牌按内部顺序的 owner_seat 数组（不排序，与 _tiles 顺序对应）。
+# 用于 UI 层渲染"按座位 owner 着色的手牌色块"（plan-3 D2/D5）。
+func to_owner_array() -> Array:
+	var owners := []
+	for t in _tiles:
+		owners.append(t.owner_seat)
+	return owners
+
 func clone() -> Hand:
 	var c := Hand.new()
 	for t in _tiles:
-		c._tiles.append(Tile.new(t.id, t.is_red_dora))
+		c._tiles.append(Tile.new(t.id, t.is_red_dora, t.owner_seat))
 	return c

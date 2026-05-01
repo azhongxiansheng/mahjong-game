@@ -20,6 +20,15 @@ const SEAT_ROTATION_DEGREES := [0.0, -90.0, 180.0, 90.0]
 @onready var _label_hand: Label = $VBox/Hand
 @onready var _label_discards: Label = $VBox/Discards
 
+# 手牌色块行：M3 收尾 — 13 个 (或 ≤13) 小 ColorRect 显示 owner_seat 着色，
+# 实现 plan-3 D2/D5 归属可视化（看一家手牌区的"色块拼盘"知道牌从哪 4 家来）。
+const HAND_TILE_W: float = 30.0
+const HAND_TILE_H: float = 45.0
+const HAND_TILE_GAP: float = 3.0
+const HAND_ROW_OFFSET_X: float = -220.0  # 相对 panel 中心
+const HAND_ROW_OFFSET_Y: float = 30.0
+var _hand_tile_row: Node2D = null
+
 var _seat_id: int = 0
 var _seat_wind: int = TileId.E
 var _score: int = 25000
@@ -30,6 +39,9 @@ var _riichi: bool = false
 var _furiten: bool = false
 
 func _ready() -> void:
+	_hand_tile_row = Node2D.new()
+	_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+	add_child(_hand_tile_row)
 	_refresh_labels()
 
 # ---- public setters ----
@@ -76,7 +88,15 @@ func set_furiten(b: bool) -> void:
 	if is_inside_tree():
 		_refresh_labels()
 
-# 一次注入 Seat 全部状态
+# 手牌色块归属可视化（M3 收尾）：传入 owners 数组（每张牌的 owner_seat），
+# 重建 _hand_tile_row 子节点。owners.size() 也作为 hand_size 同步更新文字 Label。
+func set_hand_tile_owners(owners: Array) -> void:
+	_hand_size = owners.size()
+	if is_inside_tree():
+		_rebuild_hand_tile_row(owners)
+		_refresh_labels()
+
+# 一次注入 Seat 全部状态（含手牌色块归属）
 func bind_seat(seat: Seat) -> void:
 	_seat_wind = seat.seat_wind
 	_score = seat.points
@@ -86,6 +106,7 @@ func bind_seat(seat: Seat) -> void:
 	_furiten = seat.furiten.is_furiten() if seat.furiten else false
 	# discards 数量需外部传入（Seat 自身不持，BattleState.discards_per_seat[i] 持）
 	if is_inside_tree():
+		_rebuild_hand_tile_row(seat.hand.to_owner_array())
 		_refresh_labels()
 
 # ---- helpers ----
@@ -126,5 +147,21 @@ func _refresh_labels() -> void:
 	]
 	_label_score.text = "点数: %d" % _score
 	_label_melds.text = "副露: [m×%d]" % _meld_count
-	_label_hand.text = "手牌: [●×%d]" % _hand_size
+	_label_hand.text = "手牌: %d 张" % _hand_size
 	_label_discards.text = "弃牌河: [●×%d]" % _discards_count
+
+# 重建手牌色块行：清空旧子节点，按 owners 数组逐个生成 ColorRect。
+# 颜色复用 CardTileBack.tile_back_color 静态 helper 避免重复定义。
+func _rebuild_hand_tile_row(owners: Array) -> void:
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		child.queue_free()
+	var x := 0.0
+	for owner_seat in owners:
+		var rect := ColorRect.new()
+		rect.position = Vector2(x, 0)
+		rect.size = Vector2(HAND_TILE_W, HAND_TILE_H)
+		rect.color = CardTileBack.tile_back_color(int(owner_seat))
+		_hand_tile_row.add_child(rect)
+		x += HAND_TILE_W + HAND_TILE_GAP

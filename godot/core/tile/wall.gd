@@ -14,13 +14,16 @@ var _rinshan_taken: int = 0
 
 static func new_full_set() -> Wall:
 	var w := Wall.new()
-	# 每种 TileId 4 张，5m/5p/5s 第一张标记为赤
+	# 每种 TileId 4 张，5m/5p/5s 第一张标记为赤。
+	# owner_seat 按 copy_index 分配：4 家各占 1 张副本（"卡组合并"语义占位 v1）。
+	# M6 引入真正卡组系统时改为按玩家 deck 决定；UI 端 SeatPanel 手牌色块只关心
+	# 这一字段，不依赖具体来源，因此后续替换不影响 UI 代码。
 	for tid in TileId.ALL:
 		for copy_index in range(4):
 			var is_red := false
 			if copy_index == 0 and (tid == TileId.W5 or tid == TileId.T5 or tid == TileId.S5):
 				is_red = true
-			w._tiles.append(Tile.new(tid, is_red))
+			w._tiles.append(Tile.new(tid, is_red, copy_index))
 	return w
 
 func size() -> int:
