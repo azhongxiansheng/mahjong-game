@@ -18,6 +18,7 @@ func size() -> int:
 	return _tiles.size() - _draw_index
 
 func remaining() -> int:
+	# alias of size() for readability at call sites
 	return size()
 
 func shuffle(seed: int) -> void:
@@ -33,6 +34,8 @@ func shuffle(seed: int) -> void:
 		i -= 1
 
 func draw() -> Tile:
+	# 不真的 pop：保留全部 136 张以便后续 dora 指示牌检查、王牌区拆分；
+	# 用 _draw_index 推进，避免数组重排开销
 	if size() == 0:
 		return null
 	var t := _tiles[_draw_index]

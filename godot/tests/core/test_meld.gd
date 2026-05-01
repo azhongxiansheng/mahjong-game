@@ -23,7 +23,7 @@ func test_ankan_4_tiles_concealed():
 		Tile.new(TileId.HAKU), Tile.new(TileId.HAKU)
 	])
 	assert_eq(m.kind, Meld.Kind.ANKAN)
-	assert_eq(m.from_seat, -1, "暗杠不来自任何人")
+	assert_eq(m.from_seat, Meld.NO_SOURCE_SEAT, "暗杠不来自任何人")
 
 func test_added_kan_from_existing_pon():
 	var m := Meld.make_added_kan([
