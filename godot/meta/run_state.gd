@@ -23,13 +23,20 @@ var chapter: int = 1                       # 1..MAX_CHAPTERS
 var run_seed: int = 0
 var current_map: ChapterMap = null
 var history: Array = []                    # Array[NodeRef]，已访问节点
-var deck: Dictionary = {}                  # 起始包 + 后续抽卡（M5 占位）
+var deck: Dictionary = {}                  # 起始包 + 后续抽卡（M5 第 1 步起为
+                                            # 单纯持 starter_pack 数据；具体卡片
+                                            # 加进 player_deck 字段）
+var player_deck: Deck = null               # M5 第 3 步：实际玩家卡组（节点抽
+                                            # 卡 / 商店购买 / 卡包打开都加到这）
+var pity_state: PityState = null           # M5 第 3 步：跨 Run 抽卡保底
 var consumables: Array = []
 var finished: bool = false
 var won: bool = false
 
 func _init(p_seed: int = 0) -> void:
 	run_seed = p_seed
+	player_deck = Deck.new()
+	pity_state = PityState.new()
 	_generate_chapter_map(1)
 
 # ---- public API ----
@@ -112,6 +119,8 @@ func to_dict() -> Dictionary:
 		"current_map": _serialize_current_map(),
 		"history": history_dicts,
 		"deck": deck.duplicate(true),
+		"player_deck": player_deck.to_dict() if player_deck else {},
+		"pity_state": pity_state.to_dict() if pity_state else {},
 		"consumables": consumables.duplicate(),
 		"finished": finished,
 		"won": won,
@@ -144,6 +153,8 @@ static func from_dict(d: Dictionary) -> RunState:
 		if n:
 			rs.history.append(n)
 	rs.deck = d.get("deck", {}).duplicate(true)
+	rs.player_deck = Deck.from_dict(d.get("player_deck", {}))
+	rs.pity_state = PityState.from_dict(d.get("pity_state", {}))
 	rs.consumables = d.get("consumables", []).duplicate()
 	rs.finished = bool(d.get("finished", false))
 	rs.won = bool(d.get("won", false))

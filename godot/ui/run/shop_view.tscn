@@ -1,0 +1,37 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/run/shop_view.gd" id="1"]
+
+[node name="ShopView" type="Control"]
+custom_minimum_size = Vector2(1200, 600)
+script = ExtResource("1")
+
+[node name="Bg" type="ColorRect" parent="."]
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.10, 0.06, 0.06, 1.0)
+
+[node name="VBox" type="VBoxContainer" parent="."]
+offset_left = 40.0
+offset_top = 40.0
+offset_right = 1160.0
+offset_bottom = 560.0
+theme_override_constants/separation = 16
+
+[node name="Title" type="Label" parent="VBox"]
+text = "商店 — 4 个槽位（明牌可挑选）"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 22
+
+[node name="GoldLabel" type="Label" parent="VBox"]
+text = "金币: 0"
+horizontal_alignment = 1
+theme_override_font_sizes/font_size = 18
+
+[node name="SlotsBox" type="HBoxContainer" parent="VBox"]
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="NextBtn" type="Button" parent="VBox"]
+text = "下一步"
+custom_minimum_size = Vector2(0, 50)
