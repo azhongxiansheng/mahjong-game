@@ -62,11 +62,13 @@ static func next_for_dora(t: int) -> int:
 	match s:
 		Suit.MAN, Suit.PIN, Suit.SOU:
 			var n := number(t)
-			return t - (n - 1) + (n % 9)  # 1->2,...,8->9,9->1
+			var suit_base := t - (n - 1)   # 该花色 1 牌的索引（W1/T1/S1）
+			return suit_base + (n % 9)     # n=1..8 → +1..+8；n=9 → +0（绕回）
 		Suit.HONOR:
 			# 风牌循环 E->S->W->N->E
 			if t >= E and t <= N:
 				return E + (t - E + 1) % 4
 			# 三元牌循环 白->发->中->白
 			return HAKU + (t - HAKU + 1) % 3
+	# 不可达：suit() 总返回 4 种 enum 之一，且每种均已 return；保留作 GDScript 静态分析的兜底
 	return t

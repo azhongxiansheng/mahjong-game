@@ -66,9 +66,11 @@ func test_next_tile_for_dora_indicator():
 	assert_eq(TileId.next_for_dora(TileId.W1), TileId.W2)
 	assert_eq(TileId.next_for_dora(TileId.W9), TileId.W1)
 	assert_eq(TileId.next_for_dora(TileId.T9), TileId.T1)
-	# 风牌循环：E->S->W->N->E
+	# 风牌循环：E->S->W->N->E（含中段 S->W 边界）
 	assert_eq(TileId.next_for_dora(TileId.E), TileId.S_WIND)
+	assert_eq(TileId.next_for_dora(TileId.S_WIND), TileId.W_WIND)
 	assert_eq(TileId.next_for_dora(TileId.N), TileId.E)
-	# 三元牌循环：白->发->中->白
+	# 三元牌循环：白->发->中->白（含中段 发->中 边界）
 	assert_eq(TileId.next_for_dora(TileId.HAKU), TileId.HATSU)
+	assert_eq(TileId.next_for_dora(TileId.HATSU), TileId.CHUN)
 	assert_eq(TileId.next_for_dora(TileId.CHUN), TileId.HAKU)
