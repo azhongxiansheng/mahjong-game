@@ -1,0 +1,206 @@
+# 麻将王 — 里程碑 6：内容生产任务板（30+ 牌技能 + 8-10 角色能力 + 3 章 Boss + 3 起始包）
+
+> **状态**：进行中。M0-M5 已完成（PR #11-#30）；M6 是内容生产 + 数值填充，工作量大，**适合并行多人协作**。
+>
+> **本仓库 GitHub Issues 被禁用**，本文档 = "Issue Tracker"：每个任务用 `- [ ]` checkbox 标识，认领时改为 `- [x] @owner-name` 在 commit 中标记完成。同事/agent/contributor 可以独立挑一个 checkbox 任务，按 "认领规则" 起一个 PR 实装。
+
+**Spec 锚点**：
+- §8 技能方向示例（§8.1-§8.10）
+- §13.6 里程碑 6（30+ 技能 + 8-10 ability + 3 章 Boss + 3 起始包）
+- §14 可调参数（v1 数值锁住，平衡留 M7）
+
+**前置依赖（已落地）**：
+- M1 技能框架（SkillResource / SkillScheduler / SkillCtx / SkillHook）✅
+- M5 抽卡系统（CardPool / Gacha）✅
+- M5 SaveSystem ✅
+
+---
+
+## 认领规则（重要）
+
+**每个 checkbox = 一个独立 PR**。认领方式：
+
+1. **挑一项 unchecked 任务**（看下面分组），新起分支 `feat/m6-<task-id>`（如 `feat/m6-aggro-tiles` / `feat/m6-ability-yamigan`）
+2. **改的文件路径** 仅以下三类（避免与其它任务冲突）：
+   - 新增 `godot/skills/hooks/<id>_hook.gd`（hook 实装）
+   - 新增 `godot/tests/skills/test_<id>.gd`（GUT 测试）
+   - 在 `godot/meta/card_pool.gd` 的 `all_tile_variants()` / `all_abilities()` 末尾追加 1 行 `_mk_tile(...)` / `_mk_ability(...)` 注册新内容
+3. **不改 SkillScheduler / SkillCtx / SkillResource 等核心** —— 如需新 ctx API（如 multiply_han），单独开 issue 讨论
+4. **每张技能/能力配 ≥ 3 个 GUT cases**（spec §12.2 强制）：
+   - 正路：触发条件满足 → 期望状态变更
+   - 反例：触发条件不满足 → 状态不变
+   - 边界：跨多 seat / 跨事件 / 与已有技能交互
+5. **commit message 格式**：`feat(m6/<category>): 实装 §8.X "<牌名>"（<id>）` + `Co-Authored-By: ...`
+6. **PR 描述含**：`spec §8.X` 锚点 / 实装行为概述 / 测试覆盖矩阵 / 修改的 CardPool 行号
+
+完成后回到本文档把对应 `- [ ]` 改为 `- [x]` 并 commit 进同一 PR。
+
+---
+
+## A. 牌技能（按 §8.X 9 类，目标 30+ 张）
+
+每类目标：3-4 张。M1 已有的 5 张 demo（`thunder_5w_v1` / `seal_chun_v1` / `soul_drain_hatsu_v1` / `xray_1w_v1` / `unfuriten_5p_v1`）已在 CardPool 注册，本节内容**新增**为主。
+
+### §8.1 增番系（Yaku Boost） — 目标 4 张
+
+- [x] **`thunder_5w_v1`** [史] 5 万·闪电 — owner 自胡 +1 番（**M1 demo 已有**）
+- [ ] **`white_haku_holy_v1`** [精] 白板·圣光 — 持此牌且自胡 → +1 番（v1 简化：原 spec ×1.5 数值留 M7）
+- [ ] **`east_dynasty_v1`** [史] 东风·王者气 — owner 是庄家且自胡 → +2 番（需读 ctx.beneficiary_seat == battle_state.dealer_seat；v1 简化：用 ctx.event.extra 字段或 SkillCtx 加 helper）
+- [ ] **`green_hatsu_serenity_v1`** [精] 发·禅意 — 任意人作三元牌胡牌时 +1 番（holder 模式）
+
+### §8.2 加速胡牌系（Tempo） — 目标 3 张
+
+- [ ] **`pin9_speed_v1`** [精] 9 筒·速胡 — 弃此牌后下次摸"摸 2 选 1"。**v1 简化**：弃此牌后给 owner haitei_lucky 标记（M7 接 force_tsumo 路径）
+- [ ] **`sou3_skip_v1`** [精] 3 索·跳跃 — owner 听牌后弃此牌跳过下家 1 巡。**v1 简化**：emit "TURN_SKIP" 占位事件（M7 接 turn_engine）
+- [ ] **`south_riichi_breeze_v1`** [史] 南风·风行 — 立直时多看 1 张牌墙。**v1 简化**：仅记录"reveal_next_wall_tile" 标记，UI 端 v1 不实际渲染
+
+### §8.3 阻止对方胡牌系（Defense） — 目标 3 张
+
+- [x] **`seal_chun_v1`** [史] 中·封印 — owner 弃出导致 RON_DECLARED 时取消（**M1 demo 已有**）
+- [ ] **`pin9_iron_wall_v1`** [精] 9 万·铁壁 — owner 被荣胡时役 -1 番（v1：ctx.add_han(actor, -1)；若降至 ≤ 0 不在本 hook 处理，由 ScoreFormula 钳制）
+- [ ] **`west_mirror_v1`** [史] 西风·镜像 — owner 立直时清振听 1 次
+
+### §8.4 抓马反向得分系（Counter） — 目标 3 张
+
+- [x] **`soul_drain_hatsu_v1`** [神] 发·吸魂 — holder 受益对手胡牌 30%（**M1 demo 已有**）
+- [ ] **`east_mirror_chambo_v1`** [史] 东·镜抓 — owner 放铳时对方得分 ×0.5。**v1 简化**：仅 ctx.transfer_points(loser, winner, -50%)
+- [ ] **`sou8_scapegoat_v1`** [精] 8 索·替罪 — CHAMBO 触发时转嫁责任。**v1 简化**：只 emit "PAO_TRANSFER" 占位
+
+### §8.5 透明牌 / 信息系（Reveal） — 目标 3 张
+
+- [x] **`xray_1w_v1`** [精] 1 万·透视 — owner 摸牌后 reveal 下家手牌 1 张（**M1 demo 已有**）
+- [ ] **`white_oracle_v1`** [精] 白·占卜 — 每巡看 1 张未翻 Dora 指示牌
+- [ ] **`pin2_bluff_v1`** [史] 2 筒·诈和 — 副露时手牌 2 张伪装。**v1 简化**：emit "BLUFF_TILES" 占位
+
+### §8.6 立直系（Riichi） — 目标 3 张
+
+- [ ] **`south_premature_riichi_v1`** [神] 南·先制立直 — 第 1 巡未鸣牌即可宣告立直
+- [x] **`unfuriten_5p_v1`** [史] 5 筒·解振听 — 立直后违反摸切发振听清除（**M1 demo 已有**）
+- [ ] **`hatsu_stick_refund_v1`** [精] 发·点棒返还 — owner 立直棒被取走时返 1000
+
+### §8.7 振听操控系（Furiten Manipulation） — 目标 3 张
+
+- [ ] **`east_phantom_v1`** [史] 东·迷踪 — 弃此牌后下家暂时振听 1 巡
+- [ ] **`man2_lure_v1`** [史] 2 万·诱铳 — 弃此牌时伪装听牌型。**v1 简化**：emit "FAKE_TENPAI_HINT" 占位
+- [ ] **`chun_substitute_v1`** [精] 中·替身 — 振听时指定一对手承担
+
+### §8.8 Dora 系（Dora） — 目标 3 张
+
+- [ ] **`man6_treasure_v1`** [神] 6 万·夺宝 — 摸到此牌翻额外 Dora（仅 owner 享受）
+- [ ] **`white_red_change_v1`** [精] 白·赤变 — 5m/5p/5s 之一改为赤 Dora
+- [ ] **`sou4_uradora_pick_v1`** [史] 4 索·指示牌操纵 — 立直胡牌时重选裏 Dora 指示
+
+### §8.9 役満 / 终局系（Endgame） — 目标 3 张
+
+- [ ] **`north_sweep_v1`** [神] 北·一扫 — 役满时全场 4 家承担。**v1 简化**：ctx 标 "ALL_4_PAY"，PayoutCalculator 端识别
+- [ ] **`white_mangan_floor_v1`** [神] 白·役满下限 — 任意胡牌至少满贯（消耗品化）
+- [ ] **`pin9_haitei_double_v1`** [神] 9 筒·龙断 — 海底/河底役 ×2
+
+---
+
+## B. 角色能力（§8.10 16 个候选 → 落地 8-10 个）
+
+按 spec §13.6 选取标准（神 4-5 + 史 4-5）：
+
+### 神级（4-5）
+
+- [x] **`seabed_hunter_v1`** 海底狩人（spec §8.10 #2）— **M1 demo 已有**
+- [ ] **`mineu_no_oni_v1`** 嶺上の鬼（#1） — 杠后岭上摸 5 选 1
+- [ ] **`san_kyoku_kiseki_v1`** 三局一奇跡（#7）— 每 3 局起手保证 1 役牌刻
+- [ ] **`isshun_senken_v1`** 一巡先見（#4）— 每巡可花 1 巡看下次摸牌
+- [ ] **`shichu_kyu_katsu_v1`** 死中求活（#11）— 点棒 < 5000 时所有役 +2 番
+- [ ] **`tougenkyo_v1`** 偷天换日（#12）— 每局 1 次手牌 ↔ 弃牌河交换
+
+### 史诗（4-5）
+
+- [ ] **`yamagan_v1`** 山眼（#3）— GAME_BEGIN 看牌墙顶 10 张顺序
+- [ ] **`tenpai_seethru_v1`** 听牌看穿（#5）— 对手 HAND_FORMED 时看其听牌张
+- [ ] **`ryukyoku_yudou_v1`** 流局誘導（#6）— 巡数 ≥ 12 后弃牌可强制流局
+- [ ] **`tousotsu_v1`** 統率（#8）— 其它 ability owner_triggers 触发额度 +1
+- [ ] **`riichi_kago_v1`** 立直加護（#9）— 立直一发窗口延长至 2 巡
+
+---
+
+## C. 章节 Boss（3 张签名规则破坏角色能力 — 每章 1 张）
+
+每章 Boss 是一个 AI seat 装备的"签名能力"，规则破坏强 + 主题鲜明。Boss 同时作为该章节地图最末一节点的 NodeKind.BOSS 节点配置。
+
+- [ ] **章 1 Boss：`boss1_iron_curtain_v1`** 铁幕（防御主题）— Boss owner 持有时所有 owner 触发的事件全部命中（无 reg_order tiebreak），且 Boss 受到 RON 时强制取消第 1 次
+- [ ] **章 2 Boss：`boss2_fortune_runner_v1`** 福星（Tempo + Dora）— Boss 起手即视为听牌；每局新增 1 张额外 Dora 指示牌
+- [ ] **章 3 Boss：`boss3_kanmon_v1`** 关门（终局）— 当节点剩余巡数 < 4 时，Boss 任意胡牌升级为役满
+
+每个 Boss issue 的 PR 还需：
+- 修改 `meta/chapter_config.gd` 让对应章节的 BOSS NodeRef.meta 含 `boss_id` 字段
+- 修改 `meta/battle_node_runner.gd`（或新 helper）在 BOSS 节点 inject Boss 的 SkillResource 到 SkillRegistry
+- F6 烟测：手测一场对 Boss 的对局
+
+---
+
+## D. 起始包（3 套：火力 / 速胡 / 控场）
+
+替换 `meta/starter_packs.gd` 中 v1 仅"控场可选"的占位为 3 套真实可选。每个起始包 = 8-10 张牌技能（来自 A 节）+ 1-2 张角色能力（来自 B 节）。
+
+- [ ] **`starter_aggro` 火力包** — 增番系（§8.1）+ 终局系（§8.9）为主；建议含 thunder_5w / east_dynasty / north_sweep / mangan_floor + 1-2 ability
+- [ ] **`starter_fast` 速胡包** — 加速（§8.2）+ 立直（§8.6）为主；建议含 pin9_speed / south_breeze / unfuriten_5p / premature_riichi + 1-2 ability
+- [ ] **`starter_control` 控场包**（v1 已有占位）— 阻胡（§8.3）+ 透明牌（§8.5）+ 振听操控（§8.7）；填真实 tile_variants + abilities
+
+每个起始包 PR 还需更新 `tests/meta/test_starter_packs.gd` 验证 3 套都 available + 内容非空。
+
+---
+
+## 进度追踪
+
+| 类别 | 总数 | 已完成 | 完成率 |
+|---|---|---|---|
+| §8.1 增番系 | 4 | 1 | 25% |
+| §8.2 加速 | 3 | 0 | 0% |
+| §8.3 阻胡 | 3 | 1 | 33% |
+| §8.4 抓马 | 3 | 1 | 33% |
+| §8.5 透明牌 | 3 | 1 | 33% |
+| §8.6 立直 | 3 | 1 | 33% |
+| §8.7 振听 | 3 | 0 | 0% |
+| §8.8 Dora | 3 | 0 | 0% |
+| §8.9 终局 | 3 | 0 | 0% |
+| **§8 牌技能小计** | **28** | **5** | **18%** |
+| 神级角色能力 | 5 | 1 | 20% |
+| 史诗角色能力 | 5 | 0 | 0% |
+| **§8.10 角色能力小计** | **10** | **1** | **10%** |
+| 章 Boss | 3 | 0 | 0% |
+| 起始包 | 3 | 0 | 0% |
+
+**M6 整体进度：6 / 44 任务（13.6%）**
+
+> 完成项更新方式：在 PR 中把对应 `- [ ]` 改为 `- [x]`，同时更新本表"已完成"数。
+
+---
+
+## 接口约束（重要）
+
+为让多 PR 并行不冲突，约束如下：
+
+1. **Hook 文件命名**：`<id>_hook.gd`（如 `white_haku_holy_hook.gd`）
+2. **Hook 必继承 SkillHook** 并 override `on_event(skill, event, ctx)`
+3. **Hook 内不直接读 BattleState** —— 如需 dealer_seat / round_wind 等只能通过 `ctx.event.extra` 或 SkillCtx 现有 API。**若发现需要新 ctx 字段**，先在本文档添加一节"开放问题"待讨论
+4. **CardPool 注册**：在 `card_pool.gd` 的 `all_tile_variants()` 函数最后追加（不要改前面的）。append 顺序是稳定 testing 用途
+5. **测试用例最少 3 个**（spec §12.2）。复用 `_setup()` / `_make_skill()` 模式（参考 `test_thunder_5w.gd`）
+6. **GUT 必须 0 fail / 0 parse / 0 SCRIPT ERROR**（`gut_run_full.sh` or `--gdir=res://tests --ginclude_subdirs`）
+
+---
+
+## v1 简化与待办
+
+许多 spec §8 描述的效果需要 SkillCtx 现在没有的 API（如 `force_tsumo` 已有，但 `multiply_han` / `force_riichi_no_tenpai` / `swap_hand_with_pile` 还没有）。**M6 v1 实装时一律降级**为现有 SkillCtx 能表达的最简版（如 ×1.5 → +1 番），并在 hook 注释里标注 "M7 增强为 spec 原效果"。
+
+**禁止扩展 SkillCtx 公共 API** 在 M6 v1 内（除非用户明确批准）。理由：扩 API 会让所有现有 hook 和 SkillScheduler / 单测同步改动，工作量爆炸。
+
+---
+
+## 关于本会话的示范实装
+
+本会话同 PR 演示工作模式（已勾选 §8.1 中"白板·圣光"）：
+- 新增 `skills/hooks/white_haku_holy_hook.gd`（5 行）
+- 新增 `tests/skills/test_white_haku_holy.gd`（3 cases）
+- `card_pool.gd:all_tile_variants` 末尾追加 1 行 `pool.append(_mk_tile(...))`
+- 所有 GUT 0 回归
+
+剩余 ~38 个任务等同事 / 后续会话认领。
