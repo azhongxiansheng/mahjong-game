@@ -1,0 +1,55 @@
+name: core-tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: core-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gut:
+    runs-on: ubuntu-latest
+    env:
+      GODOT_VERSION: 4.5-stable
+      GODOT_BIN_DIR: ${{ github.workspace }}/.godot-bin
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.GODOT_BIN_DIR }}
+          key: godot-${{ env.GODOT_VERSION }}-linux-x86_64
+
+      - name: Download Godot ${{ env.GODOT_VERSION }} headless
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p "$GODOT_BIN_DIR"
+          cd "$GODOT_BIN_DIR"
+          ZIP="Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${ZIP}"
+          curl -fsSL -o "$ZIP" "$URL"
+          unzip -q "$ZIP"
+          rm "$ZIP"
+          mv "Godot_v${GODOT_VERSION}_linux.x86_64" godot
+          chmod +x godot
+
+      - name: Run core tests (GUT headless)
+        env:
+          GODOT: ${{ env.GODOT_BIN_DIR }}/godot
+        run: scripts/test_run_core.sh
+
+      - name: Upload Godot logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: godot-logs
+          path: |
+            godot/.godot/logs/
+          if-no-files-found: ignore
+          retention-days: 7
