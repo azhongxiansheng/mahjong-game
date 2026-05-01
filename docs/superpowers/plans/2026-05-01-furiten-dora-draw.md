@@ -88,3 +88,36 @@ Out-of-scope:
 完成后：
 1. 进入下一计划（turn_engine + BattleState 状态机）
 2. 之后里程碑 1（技能框架 + 事件总线 + SkillScheduler + 5 demo 技能）
+
+---
+
+## 完成记录
+
+- **完成日期**：2026-05-01
+- **累计测试数**：236（GUT，Scripts 28 / Asserts 613，全部 PASS）
+- **本计划新增**：72 测试（236 - 0c 末 164）
+- **commit 数**：8（每 task 1 个）+ 1 docs
+- **分支**：`feat/plan-0d-furiten-dora-draw`
+
+### 提交清单（按时间倒序）
+
+| SHA | 主题 |
+|-----|------|
+| `bafde6f` | AbortiveDraw 5 种途中流局判定（Task 8） |
+| `fc69cdc` | ExhaustiveDraw 罚符 + 庄连庄（Task 7） |
+| `2798582` | DoraIndicators 容器（Task 6） |
+| `fa95001` | DoraIndicator 指示牌→dora + 张数（Task 5） |
+| `3ee8e5e` | FuritenState 振听状态对象（Task 4） |
+| `2b7885a` | RiichiState 立直状态对象（Task 3） |
+| `c074152` | FuritenChecker 振听判定（Task 2） |
+| `9ca6786` | WaitCalculator 听牌张枚举（Task 1） |
+| `ad7d460` | docs: plan 0d 实现计划（base） |
+
+### 已确认事实
+
+- 0a/0c 已交付的源/测试 一字未动
+- 5 个新源到 `godot/core/rules_japanese/`（wait_calculator / furiten_checker / dora_indicator / exhaustive_draw / abortive_draw）
+- 3 个新源到首次创建的 `godot/battle/`（riichi_state / furiten_state / dora_indicators）
+- 8 个新测试全部 `godot/tests/core/`
+- 累计 236 个测试，0 失败
+
