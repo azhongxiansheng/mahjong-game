@@ -26,6 +26,10 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"unfuriten_5p_v1", "5筒·解振听", "owner 进入振听时清除",
 		TileId.T5, Rarity.Kind.UNCOMMON, "res://skills/hooks/unfuriten_5p_hook.gd"))
 
+	# M6 内容生产：增番系（§8.1）
+	pool.append(_mk_tile(&"white_haku_holy_v1", "白板·圣光", "持牌者作三元牌一员胡牌时 +1 番（v1 简化）",
+		TileId.HAKU, Rarity.Kind.UNCOMMON, "res://skills/hooks/white_haku_holy_hook.gd"))
+
 	# 30 张普通占位"无技能牌"，覆盖 30 个 TileId（万 9 + 筒 9 + 条 9 + 3 风）
 	var placeholder_ids: Array = []
 	for i in range(9):
