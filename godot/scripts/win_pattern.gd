@@ -1,5 +1,7 @@
-class_name WinPattern
-
+# LegacyWinPattern (旧中式麻将牌型识别)
+# class_name 已移除以避免与 core/rules_japanese/win_pattern.gd (日麻 WinPattern) 冲突。
+# 仅作旧 scripts/ 下中式麻将代码的内部 helper；如需引用请 preload。
+#
 # 牌型识别类
 # 用于识别和分类各种麻将牌型（顺子、刻子、对子等）
 

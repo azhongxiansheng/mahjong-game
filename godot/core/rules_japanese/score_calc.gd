@@ -12,7 +12,7 @@ class_name ScoreCalc
 #   —— 因为 yaku 判定依赖具体分解（如平和需要全顺子），不同分解可能不同 han。
 #   届时 ScoreCalc.calculate 接口加 yaku_calculator 回调，对每个分解算 yaku 再选 max。
 
-static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_list: YakuList, win_ctx: WinContext) -> Dictionary:
+static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_list: YakuList, win_ctx: ScoreContext) -> Dictionary:
 	var fu: int
 	var han := yaku_list.total_han()
 
@@ -44,7 +44,7 @@ static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_
 		"winner_total": winner_total,
 	}
 
-static func _pick_best_fu(decompositions: Array, called_melds: Array, win_ctx: WinContext, yaku_list: YakuList) -> int:
+static func _pick_best_fu(decompositions: Array, called_melds: Array, win_ctx: ScoreContext, yaku_list: YakuList) -> int:
 	var best := 0
 	for d in decompositions:
 		var fu: int = FuCalculator.calculate(d, called_melds, win_ctx, yaku_list)

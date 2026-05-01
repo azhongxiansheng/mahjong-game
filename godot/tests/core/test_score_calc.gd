@@ -32,7 +32,7 @@ func test_golden_30fu_1han_non_dealer_tsumo():
 		"is_kokushi": false,
 		"standard_decompositions": [d],
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.S6), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.S6), TileId.E, TileId.S_WIND, 0, 1)
 	# winning S6 在 [S6,S7,S8] a=S6, winning=a, number=6 ≠ 7 → 双面 0
 	var y := _make_yaku([[&"riichi", 1]])
 	var r := ScoreCalc.calculate(win_pattern, [], y, ctx)
@@ -64,7 +64,7 @@ func test_golden_40fu_4han_clamps_to_mangan():
 		"is_kokushi": false,
 		"standard_decompositions": [d],
 	}
-	var ctx := WinContext.ron(Tile.new(TileId.W5), TileId.E, TileId.S_WIND, 0, 1, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.W5), TileId.E, TileId.S_WIND, 0, 1, 2)
 	# fu: 20 + 10 门清荣 + 0 雀头 + 0 双面(W5 在 [W5,W6,W7] a=W5 num=5) + 4 暗刻222(中) + 4 暗刻333(中) + 4 暗刻444(中) + 0 顺
 	# 等等：W2/W3/W4 的 number 是 2/3/4 都是中张
 	# fu = 20 + 10 + 0 + 0 + 4 + 4 + 4 + 0 = 42 → 50 ?
@@ -88,7 +88,7 @@ func test_chiitoi_25fu():
 		"is_kokushi": false,
 		"standard_decompositions": [],
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.W5), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.W5), TileId.E, TileId.S_WIND, 0, 1)
 	var y := _make_yaku([[&"chiitoitsu", 2], [&"riichi", 1]])
 	var r := ScoreCalc.calculate(win_pattern, [], y, ctx)
 	assert_eq(r.fu, 25)
@@ -110,7 +110,7 @@ func test_yakuman_dealer_tsumo():
 		"is_thirteen_wait": false,
 		"standard_decompositions": [],
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.W1), TileId.E, TileId.E, 0, 0)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.W1), TileId.E, TileId.E, 0, 0)
 	var y := YakuList.empty()
 	y.is_yakuman = true
 	y.yakuman_multiplier = 1
@@ -142,7 +142,7 @@ func test_riichi_sticks_added_to_winner_total():
 		"is_kokushi": false,
 		"standard_decompositions": [d],
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.S6), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.S6), TileId.E, TileId.S_WIND, 0, 1)
 	ctx.riichi_sticks = 2  # 桌上 2 根
 	var y := _make_yaku([[&"riichi", 1]])
 	var r := ScoreCalc.calculate(win_pattern, [], y, ctx)
@@ -179,7 +179,7 @@ func test_picks_highest_fu_decomposition():
 		"is_kokushi": false,
 		"standard_decompositions": [d_low, d_high],
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.T2), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.T2), TileId.E, TileId.S_WIND, 0, 1)
 	# winning T2 在 [T2,T3,T4] a=T2, winning=a, number=2 → 双面 0
 	var y := _make_yaku([[&"riichi", 1]])
 	var r := ScoreCalc.calculate(win_pattern, [], y, ctx)

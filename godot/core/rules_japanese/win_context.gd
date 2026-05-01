@@ -1,4 +1,4 @@
-class_name WinContext
+class_name ScoreContext
 
 # 胡牌瞬时上下文。区别于持续的 BattleState，本对象只携带一次胡牌结算所需的全部入参。
 # 所有 seat 字段取值 0..3；不适用时用 NO_SEAT 哨兵。
@@ -34,8 +34,8 @@ var winner_seat: int = 0             # 胡牌者
 var loser_seat: int = NO_SEAT        # 放铳者（仅荣胡有效）
 var pao_seat: int = NO_SEAT          # 包牌责任者（不触发时为 NO_SEAT）
 
-static func tsumo(p_winning_tile: Tile, p_round_wind: int, p_seat_wind: int, p_dealer_seat: int, p_winner_seat: int) -> WinContext:
-	var ctx := WinContext.new()
+static func tsumo(p_winning_tile: Tile, p_round_wind: int, p_seat_wind: int, p_dealer_seat: int, p_winner_seat: int) -> ScoreContext:
+	var ctx := ScoreContext.new()
 	ctx.winning_tile = p_winning_tile
 	ctx.is_tsumo = true
 	ctx.round_wind = p_round_wind
@@ -45,8 +45,8 @@ static func tsumo(p_winning_tile: Tile, p_round_wind: int, p_seat_wind: int, p_d
 	ctx.loser_seat = NO_SEAT
 	return ctx
 
-static func ron(p_winning_tile: Tile, p_round_wind: int, p_seat_wind: int, p_dealer_seat: int, p_winner_seat: int, p_loser_seat: int) -> WinContext:
-	var ctx := WinContext.new()
+static func ron(p_winning_tile: Tile, p_round_wind: int, p_seat_wind: int, p_dealer_seat: int, p_winner_seat: int, p_loser_seat: int) -> ScoreContext:
+	var ctx := ScoreContext.new()
 	ctx.winning_tile = p_winning_tile
 	ctx.is_tsumo = false
 	ctx.round_wind = p_round_wind

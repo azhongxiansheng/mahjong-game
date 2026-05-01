@@ -19,7 +19,7 @@ func _make_yaku_list(yaku_pairs: Array) -> YakuList:
 
 func test_chiitoi_fixed_25():
 	var d := {"melds": [], "pair": -1}  # 七対子不走 standard 分解
-	var ctx := WinContext.tsumo(Tile.new(TileId.W5), TileId.E, TileId.E, 0, 0)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.W5), TileId.E, TileId.E, 0, 0)
 	var y := _make_yaku_list([[&"chiitoitsu", 2]])
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 25)
 
@@ -36,7 +36,7 @@ func test_pinfu_tsumo_20():
 		],
 		"pair": TileId.S5,
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.T8), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.T8), TileId.E, TileId.S_WIND, 0, 1)
 	var y := _make_yaku_list([[&"pinfu", 1]])
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 20, "平和自摸固定 20")
 
@@ -50,7 +50,7 @@ func test_pinfu_ron_30():
 		],
 		"pair": TileId.S5,
 	}
-	var ctx := WinContext.ron(Tile.new(TileId.T8), TileId.E, TileId.S_WIND, 0, 1, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.T8), TileId.E, TileId.S_WIND, 0, 1, 2)
 	var y := _make_yaku_list([[&"pinfu", 1]])
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 30, "平和荣胡固定 30")
 
@@ -68,7 +68,7 @@ func test_standard_concealed_tsumo_simple_kanchan():
 		],
 		"pair": TileId.E,
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 30)
 
@@ -83,7 +83,7 @@ func test_standard_concealed_ron_with_yakuhai_pair():
 		],
 		"pair": TileId.E,
 	}
-	var ctx := WinContext.ron(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0, 2)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 40)
 
@@ -101,7 +101,7 @@ func test_open_hand_minimum_fu():
 	}
 	var pon := Meld.make_pon(
 		[Tile.new(TileId.T5), Tile.new(TileId.T5), Tile.new(TileId.T5)], 1)
-	var ctx := WinContext.tsumo(Tile.new(TileId.W3), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.W3), TileId.E, TileId.S_WIND, 0, 1)
 	var y := _make_yaku_list([[&"tanyao", 1]])
 	# winning W3 是 [W1,W2,W3] 的端，a=W1, number(a)=1 → 边？不对：
 	# winning=a (W1) ? 不是。winning=W3=a+2, number(a)=1 → 边张 +2
@@ -125,7 +125,7 @@ func test_ankan_keeps_concealed():
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1)])
 	# winning S5: 在 [S5,S6,S7], a=S5, winning=a, number(a)=5 → 双面 0
-	var ctx := WinContext.ron(Tile.new(TileId.S5), TileId.E, TileId.E, 0, 0, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.S5), TileId.E, TileId.E, 0, 0, 2)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	assert_eq(FuCalculator.calculate(d, [ankan], ctx, y), 70)
 
@@ -144,7 +144,7 @@ func test_minkan_breaks_concealed():
 	var minkan := Meld.make_minkan([
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1)], 2)
-	var ctx := WinContext.ron(Tile.new(TileId.S5), TileId.E, TileId.E, 0, 0, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.S5), TileId.E, TileId.E, 0, 0, 2)
 	var y := _make_yaku_list([[&"yakuhai_east", 1]])
 	assert_eq(FuCalculator.calculate(d, [minkan], ctx, y), 40)
 
@@ -161,7 +161,7 @@ func test_concealed_triplet_in_decomp_when_tsumo():
 		],
 		"pair": TileId.S2,
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.S5), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.S5), TileId.E, TileId.S_WIND, 0, 1)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	# winning S5 在 [S5,S6,S7] a=S5, number=5 → 双面 0
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 30)
@@ -180,7 +180,7 @@ func test_open_triplet_in_decomp_when_ron():
 		],
 		"pair": TileId.S2,
 	}
-	var ctx := WinContext.ron(Tile.new(TileId.W3), TileId.E, TileId.S_WIND, 0, 1, 2)
+	var ctx := ScoreContext.ron(Tile.new(TileId.W3), TileId.E, TileId.S_WIND, 0, 1, 2)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	# winning W3 在 [W3,W3,W3] 刻子 → 双碰 0；门清→+10
 	# 但 W3 也在 [W6,W7,W8]? 不在。也在 [T2,T3,T4]? 不在 (T3 != W3)
@@ -201,7 +201,7 @@ func test_yakuhai_pair_adds_2_fu():
 		],
 		"pair": TileId.HAKU,
 	}
-	var ctx := WinContext.tsumo(Tile.new(TileId.T2), TileId.E, TileId.S_WIND, 0, 1)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.T2), TileId.E, TileId.S_WIND, 0, 1)
 	var y := _make_yaku_list([[&"riichi", 1]])
 	# winning T2 在 [T2,T3,T4] a=T2, winning=a, number=2 ≠ 7 → 双面 0
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 30)
@@ -209,7 +209,7 @@ func test_yakuhai_pair_adds_2_fu():
 func test_yakuman_returns_zero():
 	# 役满走 score_formula 不算 fu，FuCalculator 返 0 即可
 	var d := {"melds": [], "pair": -1}
-	var ctx := WinContext.tsumo(Tile.new(TileId.HAKU), TileId.E, TileId.E, 0, 0)
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.HAKU), TileId.E, TileId.E, 0, 0)
 	var y := YakuList.empty()
 	y.is_yakuman = true
 	y.yakuman_multiplier = 1
