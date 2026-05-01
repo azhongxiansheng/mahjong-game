@@ -16,5 +16,6 @@ GODOT_BIN="${GODOT:-godot}"
 "$GODOT_BIN" --headless --path "$PROJ_DIR" \
     -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests/core \
+    -ginclude_subdirs \
     -gexit \
     "$@"
