@@ -35,9 +35,9 @@ func live_wall_size() -> int:
 	# 显式语义：可摸的 live wall 张数（排除 dead wall 与已摸）
 	return size()
 
-func shuffle(seed: int) -> void:
+func shuffle(rng_seed: int) -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = seed
+	rng.seed = rng_seed
 	# Fisher-Yates 在剩余未抽部分洗
 	var i := _tiles.size() - 1
 	while i > _draw_index:

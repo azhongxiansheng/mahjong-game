@@ -14,7 +14,9 @@ static func noten_payout(tenpai_array: Array) -> Dictionary:
 	var n_count := tenpai_array.size() - t_count
 	if t_count == 0 or n_count == 0:
 		return result
+	@warning_ignore("integer_division")
 	var per_tenpai: int = 3000 / t_count
+	@warning_ignore("integer_division")
 	var per_noten: int = -3000 / n_count
 	for seat in range(tenpai_array.size()):
 		result[seat] = per_tenpai if tenpai_array[seat] else per_noten
