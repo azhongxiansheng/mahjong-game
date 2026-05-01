@@ -9,7 +9,9 @@ PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)/godot"
 GODOT_BIN="${GODOT:-godot}"
 
 # Ensure GUT class names are registered in the project cache before running.
-"$GODOT_BIN" --headless --path "$PROJ_DIR" --import 2>/dev/null || true
+# `|| true` because --import can return non-zero on benign warnings;
+# stderr is intentionally NOT suppressed so real project-load failures stay visible.
+"$GODOT_BIN" --headless --path "$PROJ_DIR" --import || true
 
 "$GODOT_BIN" --headless --path "$PROJ_DIR" \
     -s addons/gut/gut_cmdln.gd \

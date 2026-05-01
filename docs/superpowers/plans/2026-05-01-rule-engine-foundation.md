@@ -14,6 +14,8 @@
 
 **Spec 锚点:** `docs/superpowers/specs/2026-05-01-mahjong-king-design.md` §4.1 工程结构 / §5 数据类型 / §12 测试策略 / §13 里程碑 0
 
+> **缩进约定**：本仓库 GDScript 文件统一使用 **TAB** 缩进（与 `godot/scripts/*.gd` 现有约定一致）。本计划代码块为节省篇幅使用 4 空格显示，**写入实际 `.gd` 文件时必须转为 TAB**。bash / markdown / ini 文件按各自约定。
+
 ---
 
 ## File Structure
