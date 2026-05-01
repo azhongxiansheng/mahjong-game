@@ -49,3 +49,40 @@ func test_clone_independent():
 	c.add(Tile.new(TileId.W2))
 	assert_eq(h.size(), 1)
 	assert_eq(c.size(), 2)
+
+# ---- M3 收尾：owner_seat 跟踪 ----
+
+func test_clone_preserves_owner_seat():
+	var h := Hand.new()
+	h.add(Tile.new(TileId.W1, false, 0))
+	h.add(Tile.new(TileId.W2, false, 2))
+	h.add(Tile.new(TileId.S5, true, 1))
+	var c := h.clone()
+	assert_eq(c.size(), 3)
+	# 内部顺序保留
+	assert_eq(c._tiles[0].owner_seat, 0)
+	assert_eq(c._tiles[1].owner_seat, 2)
+	assert_eq(c._tiles[2].owner_seat, 1)
+	# 赤 dora 也保留
+	assert_true(c._tiles[2].is_red_dora)
+
+func test_to_owner_array_in_internal_order():
+	var h := Hand.new()
+	h.add(Tile.new(TileId.W1, false, 3))
+	h.add(Tile.new(TileId.E, false, 0))
+	h.add(Tile.new(TileId.S_WIND, false, 2))
+	var owners := h.to_owner_array()
+	# 不排序，按 _tiles 顺序
+	assert_eq(owners, [3, 0, 2])
+
+func test_to_owner_array_default_no_owner():
+	# 用 Tile.new(id) 默认无主
+	var h := Hand.new()
+	h.add(Tile.new(TileId.W1))
+	h.add(Tile.new(TileId.W2))
+	var owners := h.to_owner_array()
+	assert_eq(owners, [Tile.NO_OWNER, Tile.NO_OWNER])
+
+func test_to_owner_array_empty_hand():
+	var h := Hand.new()
+	assert_eq(h.to_owner_array(), [])
