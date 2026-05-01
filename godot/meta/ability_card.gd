@@ -17,3 +17,23 @@ func _init(p_id: StringName = &"", p_rarity: int = Rarity.Kind.COMMON) -> void:
 func summary() -> String:
 	var rarity_str := Rarity.display_name(rarity)
 	return "[%s 角色能力] %s" % [rarity_str, display_name if display_name != "" else String(id)]
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	return {
+		"id": String(id),
+		"display_name": display_name,
+		"description": description,
+		"rarity": rarity,
+		"hook_resource_path": hook_resource_path,
+	}
+
+static func from_dict(d: Dictionary) -> AbilityCard:
+	if d == null or d.is_empty():
+		return null
+	var a := AbilityCard.new(StringName(d.get("id", "")), int(d.get("rarity", Rarity.Kind.COMMON)))
+	a.display_name = d.get("display_name", "")
+	a.description = d.get("description", "")
+	a.hook_resource_path = d.get("hook_resource_path", "")
+	return a

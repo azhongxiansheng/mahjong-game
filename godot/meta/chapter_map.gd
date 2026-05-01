@@ -70,3 +70,31 @@ func all_nodes_reachable_from_entry() -> bool:
 				visited[nb] = true
 				stack.append(nb)
 	return visited.size() == nodes.size()
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	var node_dicts: Array = []
+	for n in nodes:
+		node_dicts.append(n.to_dict())
+	return {
+		"nodes": node_dicts,
+		"edges": edges.duplicate(true),
+		"entry_node": entry_node,
+		"boss_node": boss_node,
+		"current_node": current_node,
+	}
+
+static func from_dict(d: Dictionary) -> ChapterMap:
+	if d == null or d.is_empty():
+		return null
+	var m := ChapterMap.new()
+	for nd in d.get("nodes", []):
+		var n := NodeRef.from_dict(nd)
+		if n:
+			m.nodes.append(n)
+	m.edges = d.get("edges", []).duplicate(true)
+	m.entry_node = int(d.get("entry_node", 0))
+	m.boss_node = int(d.get("boss_node", -1))
+	m.current_node = int(d.get("current_node", -1))
+	return m

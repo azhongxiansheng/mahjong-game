@@ -93,3 +93,58 @@ func _generate_chapter_map(chapter_index: int) -> void:
 	var config: Dictionary = ChapterConfig.get_chapter(chapter_index)
 	var seed: int = run_seed * 1000 + chapter_index
 	current_map = ChapterMapGenerator.generate(config, seed)
+
+# ---- 序列化（M5 SaveSystem） ----
+
+const SAVE_VERSION: int = 1
+
+func to_dict() -> Dictionary:
+	var history_dicts: Array = []
+	for h in history:
+		history_dicts.append(h.to_dict())
+	return {
+		"version": SAVE_VERSION,
+		"hp": hp,
+		"max_hp": max_hp,
+		"gold": gold,
+		"chapter": chapter,
+		"run_seed": run_seed,
+		"current_map": _serialize_current_map(),
+		"history": history_dicts,
+		"deck": deck.duplicate(true),
+		"consumables": consumables.duplicate(),
+		"finished": finished,
+		"won": won,
+	}
+
+# Helper：避开 ternary "Values not mutually compatible" warning
+# （GDScript 4 严格类型推断，{} vs null 在 ternary 上下文中要显式 helper）。
+func _serialize_current_map() -> Variant:
+	if current_map == null:
+		return null
+	return current_map.to_dict()
+
+# 反序列化：调用方需自行处理 version 兼容（v1 不支持迁移；非 v1 返 null）。
+static func from_dict(d: Dictionary) -> RunState:
+	if d == null or d.is_empty():
+		return null
+	if int(d.get("version", 0)) != SAVE_VERSION:
+		return null  # 版本不匹配；M7 加迁移逻辑
+	var rs := RunState.new(int(d.get("run_seed", 0)))
+	rs.hp = int(d.get("hp", STARTING_HP))
+	rs.max_hp = int(d.get("max_hp", STARTING_HP))
+	rs.gold = int(d.get("gold", 0))
+	rs.chapter = int(d.get("chapter", 1))
+	# current_map 从 dict 恢复；不再走 _generate_chapter_map（避免覆盖 advance_to 后的状态）
+	var map_dict = d.get("current_map")
+	if map_dict != null and not (map_dict is Dictionary and map_dict.is_empty()):
+		rs.current_map = ChapterMap.from_dict(map_dict)
+	for hd in d.get("history", []):
+		var n := NodeRef.from_dict(hd)
+		if n:
+			rs.history.append(n)
+	rs.deck = d.get("deck", {}).duplicate(true)
+	rs.consumables = d.get("consumables", []).duplicate()
+	rs.finished = bool(d.get("finished", false))
+	rs.won = bool(d.get("won", false))
+	return rs

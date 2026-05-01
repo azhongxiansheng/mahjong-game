@@ -17,3 +17,23 @@ func _init(p_index: int = -1, p_floor: int = 0, p_kind: int = NodeKind.Kind.NORM
 
 func display_name() -> String:
 	return NodeKind.display_name(kind)
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	return {
+		"index": index,
+		"floor_index": floor_index,
+		"kind": kind,
+		"meta": meta.duplicate(true),
+	}
+
+static func from_dict(d: Dictionary) -> NodeRef:
+	if d == null or d.is_empty():
+		return null
+	var n := NodeRef.new()
+	n.index = int(d.get("index", -1))
+	n.floor_index = int(d.get("floor_index", 0))
+	n.kind = int(d.get("kind", NodeKind.Kind.NORMAL))
+	n.meta = d.get("meta", {}).duplicate(true) if d.has("meta") else {}
+	return n

@@ -64,3 +64,33 @@ func ability_count() -> int:
 
 func ability_slots_remaining() -> int:
 	return MAX_ABILITIES - abilities.size()
+
+# ---- 序列化（M5 SaveSystem） ----
+
+func to_dict() -> Dictionary:
+	var tv_dict: Dictionary = {}
+	for tile_id in tile_variants:
+		tv_dict[str(tile_id)] = tile_variants[tile_id].to_dict()
+	var ab_array: Array = []
+	for c in abilities:
+		ab_array.append(c.to_dict())
+	return {
+		"tile_variants": tv_dict,
+		"abilities": ab_array,
+	}
+
+static func from_dict(d: Dictionary) -> Deck:
+	var deck := Deck.new()
+	if d == null or d.is_empty():
+		return deck
+	var tv_dict: Dictionary = d.get("tile_variants", {})
+	for key in tv_dict:
+		var v := TileVariant.from_dict(tv_dict[key])
+		if v:
+			deck.tile_variants[int(key)] = v
+	var ab_array: Array = d.get("abilities", [])
+	for ad in ab_array:
+		var a := AbilityCard.from_dict(ad)
+		if a:
+			deck.abilities.append(a)
+	return deck
