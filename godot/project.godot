@@ -21,6 +21,10 @@ config/features=PackedStringArray("4.5")
 GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
 [debug]
 
 gdscript/warnings/unused_argument=1
