@@ -1649,3 +1649,43 @@ git push
 5. 全部 commit 已 push 到 `feat/mahjong-king-design` 分支
 
 完成后调用 `superpowers:writing-plans` 生成 plan 0b（30+ 役判定）。
+
+---
+
+## 完成记录
+
+- **完成日期**：2026-05-01
+- **累计测试数**：63（Scripts 10 / Asserts 309，全部 PASS）
+- **commit 数**：12（含 1 个 fix-up 补 .uid + 1 个 refactor 应 reviewer concerns）
+- **执行方式**：superpowers:subagent-driven-development（implementer + spec/quality reviewer 双轨）
+- **最终 HEAD**：`218feb3`
+
+### 提交清单（按时间倒序）
+
+| SHA | 主题 |
+|-----|------|
+| `218feb3` | WinPattern 和牌型识别统一入口（Task 10） |
+| `672b891` | 国士無双检测 + 13 面待判定（Task 9） |
+| `dcaf6b9` | 七対子检测 — 7 个不同对子（Task 8） |
+| `8985e22` | 4 面子+1 雀头分解器（递归回溯）（Task 7） |
+| `193887c` | 补 8 个遗漏的 .gd.uid + 2 处 reviewer 微调（fix-up） |
+| `c218b9a` | Meld 面子 — chi/pon/minkan/ankan/added_kan（Task 6） |
+| `0ef6080` | Hand 手牌 — add/remove_by_id/count/clone（Task 5） |
+| `ebafd1c` | Wall 牌墙 — 136 张完整洗牌 + 顺序摸取（Task 4） |
+| `c617123` | Tile 值对象 + 赤 Dora 工厂（Task 3） |
+| `316433b` | TileId next_for_dora 可读性 + 补 2 个边界测试（refactor） |
+| `32926e7` | TileId 枚举 + 工具方法（suit/number/yaochu/dora-next）（Task 2） |
+| `9fcf2af` | 缩进规约 + test wrapper 错误可见性（fix-up） |
+| `9616020` | 安装 GUT 9.4.0 并跑通 headless 烟测试（Task 1，base） |
+
+### 已确认事实
+
+- GUT 9.4.0 在 Godot 4.5.0 下跑通（headless）
+- 现有 216 个 `godot/scripts/*.gd` 一字未动
+- `addons/gut/` 进 git；`.godot/` 排除（新增；已存在的旧 `.godot/` cache 文件不在本计划范围）
+- `core/tile/` + `core/rules_japanese/` 共 9 个新源文件，9 个测试文件，全部 TAB 缩进
+- 全部 commit 已 push 到 `feat/mahjong-king-design`
+
+### 后续
+
+进入 plan 0b（30+ 役判定）。需要时调用 `superpowers:writing-plans` 生成。
