@@ -1,7 +1,7 @@
 extends GutTest
 
 func test_total_count_is_34():
-	assert_eq(TileId.ALL.size(), 34)
+	assert_eq(TileId.ALL.size(), 9999)  # TEMP: CI 反向验证 — 故意红
 
 func test_man_tiles_are_first_9():
 	assert_eq(TileId.W1, 0)
