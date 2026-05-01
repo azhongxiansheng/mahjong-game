@@ -20,6 +20,7 @@ config/features=PackedStringArray("4.5")
 
 GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
+SaveSystem="*res://meta/save_system.gd"
 
 [editor_plugins]
 
