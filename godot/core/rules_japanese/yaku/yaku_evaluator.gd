@@ -35,4 +35,5 @@ static func evaluate(wc: WinContext) -> YakuList:
 	for e in Yakuhai.detect_all(wc):
 		list.add(e)
 
+	list.apply_exclusions()
 	return list
