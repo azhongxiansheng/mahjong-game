@@ -3,6 +3,8 @@ extends GutTest
 # 里程碑 2 — 端到端集成测试。
 # 验证 BattleController 把 TurnEngine + SkillScheduler + 规则引擎串成可跑的一局。
 
+const SealChunHook := preload("res://skills/hooks/seal_chun_hook.gd")
+
 var _bc: BattleController
 
 func before_each() -> void:
@@ -100,3 +102,47 @@ func test_path_c_ron_owner_holder_distinction() -> void:
 			assert_eq(ev.tile_instance.owner_seat, 1, "RON_DECLARED owner 也是弃牌人")
 			has_ron_event = true
 	assert_true(has_ron_event, "结算前必须 emit 一次 RON_DECLARED")
+
+# ---- 路径 D：cancel_ron 技能干预 ----
+# 重建 path C 场面，但给 seat 1（弃牌人）注册「中·封印」demo 技能（里程碑 1 实现）。
+# 该技能在 RON_DECLARED 时如果 owner==discarder，调 cancel_ron(actor=胡牌人)。
+# 验证：apply_ron 返 false、ron_cancelled[0]=true、最末事件不是 WIN_DECLARED、技能被消耗。
+func test_path_d_seal_chun_cancels_ron() -> void:
+	var tenpai_ids: Array = [
+		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
+		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
+		TileId.W9,
+	]
+	var seat0: Seat = _bc.state.seats[0]
+	seat0.hand._tiles.clear()
+	for tid in tenpai_ids:
+		seat0.hand.add(Tile.new(tid))
+
+	# 注册「中·封印」demo 在 seat 1 名下（attached_tile=CHUN 仅是元数据，scheduler 不查；
+	# 真正决定 owner 的是 TileInstance.owner_seat=1）
+	var skill := SkillResource.new()
+	skill.id = &"seal_chun_v1"
+	skill.attached_tile = TileId.CHUN
+	skill.rarity = 2
+	var ot: Array[StringName] = [&"RON_DECLARED"]
+	skill.owner_triggers = ot
+	skill.hook_script = SealChunHook
+	var skill_ti := TileInstance.make(Tile.new(TileId.CHUN), 1, skill)
+	_bc.registry.register(skill, skill_ti)
+
+	var ron_tile := Tile.new(TileId.W9)
+	var ok: bool = _bc.apply_ron(0, ron_tile, 1)
+
+	assert_false(ok, "apply_ron 应被技能拦截，返 false")
+	assert_true(_bc.state.ron_cancelled[0],
+		"BattleState.ron_cancelled[0] 应被 SkillCtx.cancel_ron 写为 true")
+	assert_ne(_bc._last_event_type, &"WIN_DECLARED",
+		"最末事件不应是 WIN_DECLARED — 结算被技能取消")
+	assert_false(_bc._settled, "_settled 应仍为 false — 对局可继续")
+	assert_true(skill.consumed, "中·封印一次性触发后应被消耗")
+	# RON_DECLARED 仍然 emit 了一次（给技能拦截窗口本身）
+	var ron_count := 0
+	for ev in _bc.events:
+		if ev.type == &"RON_DECLARED":
+			ron_count += 1
+	assert_eq(ron_count, 1, "RON_DECLARED 应被 emit 1 次")
