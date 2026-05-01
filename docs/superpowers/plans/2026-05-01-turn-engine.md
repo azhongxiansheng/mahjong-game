@@ -92,3 +92,41 @@ scripts/test_run_core.sh
 完成后：
 1. 进入里程碑 1（技能框架 + 事件总线 + SkillScheduler + 5 demo 技能 + 1 角色能力）—— 0e 的 TurnEngine 改为通过 EventBus emit 事件
 2. 之后里程碑 2（单局对战 vs 1 AI）—— 加 AI decision-maker，复用 TurnEngine + ClaimValidator
+
+---
+
+## 完成记录
+
+- **完成日期**：2026-05-01
+- **累计测试数**：333（GUT，Scripts 35 / Asserts 922，全部 PASS）
+- **本计划新增**：97 测试（333 - 0d 末 236）
+- **commit 数**：10（plan + 9 task）
+- **分支**：`feat/plan-0e-turn-engine`（基于 main）
+
+### 提交清单（按时间倒序）
+
+| SHA | 主题 |
+|-----|------|
+| `ec3922f` | TurnEngine apply_chi/pon/minkan/ankan/added_kan/ron/tsumo（Task 9b）|
+| —       | TurnEngine 最小骨架（Task 9）|
+| —       | DrawDetector 流局触发包装（Task 8）|
+| —       | RiichiValidator 立直触发条件（Task 7）|
+| —       | ClaimValidator 鸣牌/荣胡/自摸（Task 6）|
+| —       | BattleState 快照对象 + for_east_round（Task 5）|
+| —       | Seat 对象（Task 4）|
+| —       | BattlePhase 枚举（Task 3）|
+| —       | Wall dead_wall API（Task 2）|
+| —       | Tile.owner_seat 字段（Task 1）|
+
+### 范围说明
+
+- 实际范围超出原 plan 的 "minimum 9 method"：Task 9b 补齐 7 个 apply_xxx，使 TurnEngine 一次性覆盖 draw/discard/advance/riichi/chi/pon/minkan/ankan/added_kan/ron/tsumo。
+- 仍未做：BattleEventBus / SkillScheduler / AI decision / UI（按原 plan 留里程碑 1+）
+
+### 已确认事实
+
+- 0a/0c/0d 现有代码 0 退化（除 Tile/Wall/BattleState 的非破坏性扩展）
+- 7 个新源到 `godot/battle/` 与 `godot/core/turn_engine/`
+- 9 个新测试文件 + 1 个旧测试扩展（test_tile.gd 加 3 测试）
+- 累计 333 个测试，0 失败
+- 全部 commit 待 push 到 `feat/plan-0e-turn-engine`
