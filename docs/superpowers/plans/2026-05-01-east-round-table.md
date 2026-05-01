@@ -1,6 +1,6 @@
-# 麻将王 — 里程碑 3：东风战 + 4 人桌 + 牌背 + 归属可视化（brainstorm 草案）
+# 麻将王 — 里程碑 3：东风战 + 4 人桌 + 牌背 + 归属可视化（实施 plan）
 
-> **状态**：**草案**。里程碑 2（单局对战 vs 1 AI）由其他同事在做，本 plan 是为里程碑 3 做的**前瞻 brainstorm**，把 spec §10、§13.3、§14 中关于 4 人桌与归属可视化的散点拢成一份可推进的工作分解。**未启动实装**；落实清单与文件结构会在里程碑 2 收尾后再细化（接口可能因里程碑 2 的最终决定有微调）。
+> **状态**：**进行中**。里程碑 2（单局对战 vs 1 AI，PR #13）已合并 main，BattleController API 已稳定。本 plan 自原 brainstorm 草案升级为正式实施 plan：基于 M2 事实把原 5 个开放问题全部写死答案，并细化任务到可勾选粒度。任务按"第 1-4 步"拆批，每批一组 commits（与里程碑 2 风格一致）。
 
 **Spec 锚点**：
 - `docs/superpowers/specs/2026-05-01-mahjong-king-design.md`
@@ -8,6 +8,11 @@
   - §13.3 里程碑 3 一句话定义
   - §14 可调参数（包含 5 槽角色能力面板等 v1 默认值）
   - §3.1 术语（Owner / Holder / Seat 区分）
+
+**前置依赖（已落地）**：
+- 里程碑 0a-0e（规则引擎全栈）✅
+- 里程碑 1（技能框架 + 6 demo）✅
+- 里程碑 2（`BattleController.run_to_end()` 单局编排 + `SimpleAi.decide_discard(seat)`）✅
 
 **Goal（来自 spec §13.3）：**
 > 东风战 + 4 人桌 + 牌背 + 归属可视化 — 4 套牌背贴图 + AI 座位 + 完整东风战流程。
@@ -33,24 +38,25 @@
 - 3 章 Boss + 起始包内容（里程碑 6）
 - 联机 / 远端权威（spec §4.3 标记 Phase 2）
 
-**与里程碑 2 的接口约定（待对齐）：**
-- 里程碑 2 应已定下：`BattleController` / `LocalBattleController` 接口、AI 决策入口（如 `AIProfile.decide_discard(state, seat) -> Tile`）、BattleState 在 hand 内的完整 lifecycle。本 plan 仅在外层包一个"hand 序列"循环、不重写底层 controller。
+**里程碑 2 已固化的事实（来自 PR #13）：**
+- `BattleController` 是 **per-hand** 实例化（不是单例）：`_init(seed, dealer_seat)` 自建 BattleState/TurnEngine/SkillRegistry/SkillScheduler/SimpleAi。
+- 主入口：`run_to_end() -> {last_event, events}`，跑到 `EXHAUSTIVE_DRAW` 或 `WIN_DECLARED` 退出。
+- 公共方法：`apply_ron(winner_seat, ron_tile, discarder_seat) -> bool`（外部驱动用）。
+- 结算结果通过最末 `WIN_DECLARED` 事件 `extra` 字段传出（含 `payout`、`han`、`fu`、`base_points`、`yakuman_multiplier`、`winner_total`）—— **`state.scores` 不会被自动更新**，跨局累加由本 plan 引入的 `GameDriver` 负责。
+- AI 接口：`SimpleAi.decide_discard(seat: Seat) -> Tile`，**M2 用最弱实现，M7 才会做 `AIProfile` 资源化**。
 
 ---
 
 ## 关键设计决策
 
-### D1. 跨局状态对象：新增 `GameState` vs 扩 `BattleState`
+### D1. 跨局状态对象：新增 `GameDriver`（不扩 `BattleState`）
 
-**决策**：**新增 `GameState`**（在 `battle/game_state.gd`，与 `core/turn_engine/game_state.gd` 注意命名冲突 —— 后者是旧 scripts/ 内中麻 GameState，必须保证 class_name 不撞）。
+**决策（已定）**：新增 `GameDriver`（在 `battle/game_driver.gd`）。**避开 `GameState` 名字** —— `scripts/game_state.gd` 已用 `class_name GameState`（旧中麻代码），按 PR #11 教训不可重名。
 
 理由：
-- `BattleState` 文档已声明"一局对战"快照（spec §5），跨局信息塞进去违反单一职责。
-- `GameState` 持：`hand_index`（0..3 表东 1..东 4）、`honba`、`riichi_sticks`、`cumulative_scores: Array[int]`、`dealer_seat`、`battle: BattleState`（当前 hand 的活跃实例）。
-- 一局结束 → `GameState.advance_or_finish(result)` 决定连庄或下一局，重建 `BattleState`。
-- `GameState` 替代 v1 单 hand 模式下里程碑 2 直接持有的 `BattleState`，并向 UI 提供 hand-level 进度。
-
-> **开放问题 1**：里程碑 2 是否已经引入了类似的"hand sequence holder"？若有，本 plan 直接复用、不新建。**待里程碑 2 完成后核对**。
+- M2 已确认 `BattleController` 是 per-hand 实例化、`BattleState` 仅描述一局快照。跨局信息塞 `BattleState` 违反单一职责。
+- `GameDriver` 是上层驱动器，持东风战层状态：`hand_index`（0..3 表东 1..东 4）、`honba`、`riichi_sticks`、`cumulative_scores: Array[int]`、`dealer_seat`、`battle: BattleController`（当前活跃 hand）、`finished: bool`。
+- 命名"驱动器"也呼应 M2 的命名学（`BattleController` 驱动一局；`GameDriver` 驱动多局）。
 
 ### D2. 4 套牌背贴图来源
 
@@ -65,20 +71,16 @@ spec §10 仅规定"4 套花纹/底色"，未指定来源。
 | **C. 4 套手绘** | 美术外包 / 自绘 4 张 80×120 PNG | 中 | 最终目标 |
 | **D. AI 生成** | Stable Diffusion / Midjourney 出 4 张统一风格 | 低 | 后期可补 |
 
-**初版决策**：**先 A 后 C**。v1 用程序化色块跑通归属可视化的代码路径 + 数据流；美术替换是后续 PR 的纯资源换图，不阻塞功能实装。
+**决策（已定）**：**先 A 后 C**。v1 用程序化色块跑通归属可视化的代码路径 + 数据流；美术替换是后续 PR 的纯资源换图，不阻塞功能实装。
 
-> **开放问题 2**：是否允许程序化色块作为 v1 默认？还是必须等手绘到位才合并？**默认按"先 A 再 C"推进，等用户反对再调**。
-
-### D3. AI 主题着色
+### D3. AI 主题着色（不引入 AIProfile）
 
 spec §10：「seat 1..3 AI：随关卡 AI 主题着色」 —— 暗示 AI 有"主题"概念。
 
-**结构**：
-- 新增 `AIProfile` 资源类型（`ai/profile.gd`，与里程碑 6 的 AI 内容生产对接），含 `display_name`、`portrait`、`tile_back_color: Color`、`decide_*` 行为入口。
-- 4 人桌按"当前关卡的 AI 阵容"装载 3 个 `AIProfile`，分配到 seat 1/2/3，每个的 tile_back_color 决定该 seat 的牌背基色。
-- v1 用 3 个内置 AIProfile（如 `default_red`、`default_blue`、`default_green`），里程碑 6 才会扩到 8-10 个角色。
-
-> **开放问题 3**：里程碑 2 是否已经定义了 `AIProfile`？若已存在，复用；否则在本 plan 引入并明确告知里程碑 2 同事。
+**决策（已定）**：M3 **不**引入 `AIProfile` 资源类型（按 M2 plan 的 Out-of-scope 已明确推到 M7）。M3 用：
+- 3 个 `SimpleAi` 实例分别给 seat 1/2/3（M2 的现成实现，无需改）。
+- 牌背颜色硬编码到 `card_tile_back.gd`：`SEAT_TILE_BACK_COLORS = [GOLD, RED, GREEN, BLUE]`，按 `owner_seat` 取色。
+- 文档化：M7 引入 `AIProfile` 时把 `tile_back_color` 字段补上即可，UI 只需把 `SEAT_TILE_BACK_COLORS[i]` 换成 `ai_profiles[i].tile_back_color`，是局部增量修改。
 
 ### D4. 4 人桌布局
 
@@ -117,7 +119,7 @@ spec §10：「seat 1..3 AI：随关卡 AI 主题着色」 —— 暗示 AI 有"
 └──────────────────────────────────────────────────────┴──────┘
 ```
 
-> **开放问题 4**：现有 `scenes/game_ui.tscn` 是单家布局（仅 seat 0），是否扩展它还是新建 `scenes/four_player_table.tscn`？**默认新建**；旧场景留作 1v1 调试场景。
+**决策（已定）**：**新建** `godot/ui/four_player_table/four_player_table.tscn`。`scenes/game_ui.tscn` 是中麻旧 UI（M2 plan 已标 legacy），不动。
 
 ### D5. 印章 + tooltip + 透明牌
 
@@ -138,72 +140,91 @@ spec §10：「seat 1..3 AI：随关卡 AI 主题着色」 —— 暗示 AI 有"
 
 **连庄上限**：v1 不限（连庄到底也合法，符合 spec §3.2 注释）；里程碑 6 平衡时再视需要加上限。
 
+**Payout 应用**（M2 留给 M3 的工作）：
+
+`BattleController._settle_xxx` 把 `ScoreCalc.calculate(...)` 的 `result` dict 通过最末 `WIN_DECLARED.extra` 传出，但**未应用到 `BattleController.state.scores`**（M2 plan Out-of-scope）。`GameDriver` 在 `controller.run_to_end()` 返回后，从 `events` 数组找最末 `WIN_DECLARED`，把 `extra.payout` 应用到 `cumulative_scores`：
+
+```gdscript
+# 简化伪代码
+for ev in events.reverse_iter():
+    if ev.type == &"WIN_DECLARED":
+        var payout: Dictionary = ev.extra.get("payout", {})
+        for seat_id in payout:
+            cumulative_scores[seat_id] += payout[seat_id]
+        cumulative_scores[ev.actor_seat] += extra.get("winner_total", 0)
+        break
+```
+
+流局立直棒：`riichi_sticks` 在流局时跨局保留；下次胡牌（自摸或荣胡）由胜者收走。这部分逻辑已在 `ScoreFormula` 内核计算 winner_total 时考虑（包含 `state.riichi_sticks * 1000`）—— 我们只需在流局路径下让 `riichi_sticks` 跨 hand 保留即可。
+
 ---
 
-## 文件结构（拟）
+## 文件结构（最终）
 
 ```
 godot/
 ├── battle/
-│   ├── game_state.gd              # 新：跨局 (东 1..4) 状态对象
-│   └── ai_profile.gd              # 新：AI 个性 + 牌背色 + 决策入口（待对齐里程碑 2）
+│   └── game_driver.gd                # 新：跨局 (东 1..4) 驱动器（D1）
 ├── ui/
-│   ├── four_player_table/
-│   │   ├── four_player_table.tscn # 新：4 人桌主场景
-│   │   ├── four_player_table.gd
-│   │   ├── seat_panel.tscn/.gd    # 子组件：单 seat 区域
-│   │   ├── center_info_panel.tscn # 子组件：局/本场/Dora/牌墙剩余
-│   │   └── ability_panel.tscn/.gd # 角色能力 5 槽面板
-│   ├── card_tile_back.gd          # 新：牌背贴图选择 + 透明牌渲染（消费 owner_seat + revealed_tiles）
-│   └── tile_stamp.gd              # 新：技能印章 + tooltip
+│   └── four_player_table/
+│       ├── four_player_table.tscn    # 新：4 人桌主场景
+│       ├── four_player_table.gd
+│       ├── seat_panel.tscn/.gd       # 子组件：单 seat 区域（含旋转）
+│       ├── center_info_panel.tscn    # 子组件：局/本场/Dora/牌墙剩余
+│       ├── ability_panel.tscn/.gd    # 角色能力 5 槽面板
+│       ├── card_tile_back.gd         # 牌背色块 + 透明牌（D2/D5）
+│       └── tile_stamp.gd             # 技能印章 + tooltip（D5）
 ├── tests/
 │   ├── battle/
-│   │   └── test_game_state.gd     # 新：连庄 / 流转 / 流局 / 跨局立直棒等
-│   ├── scenes/
-│   │   └── four_player_table_smoke.tscn  # F6：把 4 家用占位 BattleState 渲染一遍
+│   │   └── test_game_driver.gd       # 新：连庄 / 流转 / 流局 / 跨局立直棒
+│   └── scenes/
+│       └── four_player_table_smoke.tscn  # F6：占位 BattleState 渲染 4 家
 └── docs/superpowers/plans/
     └── 2026-05-01-east-round-table.md   # 本文档
 ```
 
 ---
 
-## 任务清单（待里程碑 2 收尾后细化）
+## 任务清单（按 4 步分批，每步一组 commits）
 
-### A. 数据层（与里程碑 2 对接）
-- [ ] 核对里程碑 2 是否已引入"hand 序列"对象；若无，新增 `GameState`
-- [ ] 实装 `GameState.advance_or_finish(result)` + 单测（连庄 / 流转 / 流局 / 立直棒收走）
-- [ ] 核对里程碑 2 的 `AIProfile`；若无，引入并对接 AI 决策入口
+### 第 1 步：GameDriver 数据层（纯 GDScript + GUT，无 UI）
 
-### B. UI 层
-- [ ] `four_player_table.tscn` 主布局（4 区 + 中心 + 右侧能力面板）
-- [ ] `seat_panel` 旋转手牌渲染（90/180/-90 三档）
-- [ ] `center_info_panel` 显示局 / 本场 / Dora 指示牌列 / 牌墙剩余
-- [ ] `ability_panel` 5 槽 + 详情弹窗
+- [ ] `godot/battle/game_driver.gd`：`class_name GameDriver`，持 `hand_index` / `honba` / `riichi_sticks` / `cumulative_scores: Array[int]` / `dealer_seat: int` / `seed: int` / `battle: BattleController` / `finished: bool`
+- [ ] API：
+  - `_init(p_seed: int = 0)` 初始化 cumulative_scores=[25000]×4
+  - `start_hand() -> BattleController` 用 `seed + hand_index` 实例化 BC，把 cumulative_scores 注入 `battle.state.scores`
+  - `apply_result(events: Array) -> Dictionary` 从最末 `WIN_DECLARED` 取 `extra.payout` 应用到 cumulative_scores；返 {kind, winner_seat?, payout?, han?, fu?}
+  - `advance_or_finish(run_result: Dictionary) -> Dictionary` 解析 last_event；连庄/流转/结束三分支；返 {finished, renchan, kind}
+  - 流局路径：调 `ExhaustiveDraw.calculate(...)`（已在 0d 实装）拿罚符 + 庄家是否听牌
+- [ ] 单测 `tests/battle/test_game_driver.gd` 覆盖：
+  - 庄家自摸 → renchan，honba+=1，scores 更新
+  - 闲家自摸 → 流转，honba=0，dealer 顺转
+  - 闲家荣胡庄家 → 流转，honba=0
+  - 流局庄家听 → renchan，honba+=1
+  - 流局庄家不听 → 流转，honba=0
+  - 流局立直棒留台 → riichi_sticks 跨 hand 保留；下次胡牌由胜者收走
+  - 整场结束：东 4 局且不连庄 → finished=true
+  - 整场不结束：东 4 局连庄 → finished=false（不限上限，spec §3.2）
+  - 点数守恒：sum(cumulative_scores) + riichi_sticks*1000 == 100000
 
-### C. 归属可视化
-- [ ] `card_tile_back.gd` v1：按 `owner_seat` 取程序化 4 色 ImageTexture（D2 方案 A）
-- [ ] `card_tile_back.gd` 透明牌路径：消费 `BattleState.revealed_tiles`
-- [ ] `tile_stamp.gd` 印章 + tooltip
+### 第 2 步：4 人桌 UI 主场景 + seat_panel + center/ability_panel 占位
 
-### D. 集成
-- [ ] 把里程碑 2 的 `LocalBattleController` 包进 `GameState` 循环
-- [ ] hand → battle 实例化 → 战斗结束 → `advance_or_finish` → 下 hand
-- [ ] F6 smoke 场景：用占位 BattleState（4 家发好 13 张）渲染 4 人桌、按按钮触发 advance
+- [ ] `four_player_table.tscn` 主布局（参见 D4 ASCII 草图）
+- [ ] `seat_panel.tscn/.gd` 子组件，参数 `seat_id`，按 `seat_id ∈ {1,2,3}` 旋转 -90/180/+90；显示手牌（自家正面、他家牌背）+ 弃牌河 + 副露区 + 点数 + 风牌 + 立直/振听标记
+- [ ] `center_info_panel.tscn/.gd` 显示局/本场/Dora 指示牌列/牌墙剩余
+- [ ] `ability_panel.tscn/.gd` 5 槽空容器（M3 内不放真实 ability，留接口）
 
-### E. 验收测试
-- [ ] GUT：`test_game_state.gd` 覆盖 5 种 hand 结束路径 × 3 种庄家位置
-- [ ] F6：`four_player_table_smoke.tscn` 4 家旋转无错位、能力面板可点开、印章 + tooltip 在带技能牌上显示
-- [ ] 整场东风战 e2e 跑通（手测）：东 1 → 东 4，含至少一次连庄、一次流局、一次立直
+### 第 3 步：归属可视化（牌背色块 + 印章 + 透明牌）
 
----
+- [ ] `card_tile_back.gd`：常量 `SEAT_TILE_BACK_COLORS = [GOLD, RED, GREEN, BLUE]`，按 `tile_instance.owner_seat` 程序化生成 80×120 ImageTexture（D2 方案 A）
+- [ ] `card_tile_back.gd` 透明牌路径：每帧/每事件检查 `BattleState.revealed_tiles[viewer_seat]` 中是否含本 TileInstance.id；命中则换正面贴图 + alpha=0.5；只对 viewer=seat 0 生效
+- [ ] `tile_stamp.gd`：80×120 牌右下角 16×16 `TextureRect`，仅 `tile_instance.skill != null` 时显示；颜色按 `skill.rarity ∈ {0,1,2,3}` 取灰/蓝/紫/金；hover tooltip 显示 `id / display_name / description / triggers`
 
-## 开放问题（待对齐）
+### 第 4 步：集成 + F6 端到端 demo
 
-1. 里程碑 2 是否已经定义"hand 序列对象" / `AIProfile`？若有，复用；否则本 plan 引入。
-2. 牌背贴图是否接受程序化色块作为 v1 默认（D2 方案 A）？还是必须等手绘到位再合并？
-3. 4 人桌是新建 `scenes/four_player_table.tscn` 还是扩 `scenes/game_ui.tscn`？
-4. v1 是否限制连庄上限？（spec 未限）
-5. AI 主题着色是硬编码 3 色，还是从 `AIProfile` 动态读取？
+- [ ] `four_player_table.gd` 接入 `GameDriver`：`_ready` 创建 driver，`Button.pressed` 触发 `start_hand → run_to_end → apply_result → advance_or_finish` 一局；on-screen 更新 cumulative_scores、hand_index、honba
+- [ ] F6：`tests/scenes/four_player_table_smoke.tscn` 用 driver 跑一整场东风战；事件 log 至少含 1 次连庄、1 次流局、1 次胡牌
+- [ ] 验收：sum(cumulative_scores) + riichi_sticks*1000 == 100000；UI 4 家正确旋转、归属色块按 owner_seat 区分
 
 ---
 
@@ -211,18 +232,20 @@ godot/
 
 | 风险 | 缓解 |
 |---|---|
-| 与里程碑 2 接口耦合度高，可能因 M2 改动需返工 | 本文为草案；实装在 M2 收尾后启动；接口决策列在"开放问题"等用户对齐 |
-| 4 家 UI 旋转 + 弃牌河"井字"布局工程量大 | 拆 `seat_panel` 为子组件，先做单家布局；旋转通过 Godot 节点 `rotation` 属性，不重写贴图 |
+| BattleController 不应用 payout 到 state.scores | GameDriver 自己解析最末 WIN_DECLARED 的 extra.payout 应用到 cumulative_scores（D6 已写明）；点数守恒 GUT 强制 |
+| 4 家 UI 旋转 + 弃牌河"井字"布局工程量大 | 拆 `seat_panel` 为子组件，参数 `seat_id` 决定旋转角；旋转通过 Godot 节点 `rotation_degrees` 属性，不重写贴图 |
 | 牌背贴图美术 v1 不到位影响"归属可视化"卖点 | D2 方案 A 程序化色块 v1 验证流程；美术补 PR 不阻塞 |
-| 透明牌 reveal 路径与 SkillCtx.revealed_tiles 数据源未连通 | 里程碑 1 已定义 `SkillCtx.reveal_tile_to`；本 plan UI 端只读 `BattleState.revealed_tiles`，单向数据流 |
-| 跨局立直棒收走遗漏（导致点数不守恒） | `test_game_state.gd` 强制覆盖；assert 局结束时 sum(scores) + riichi_sticks * 1000 == 100000 |
+| 透明牌 reveal 路径与 SkillCtx.revealed_tiles 数据源未连通 | M1 已定义 `SkillCtx.reveal_tile_to`；UI 端只读 `BattleState.revealed_tiles`，单向数据流 |
+| 跨局立直棒收走遗漏（导致点数不守恒） | `test_game_driver.gd` 强制覆盖；assert 每 hand 结束时 sum(cumulative_scores) + riichi_sticks*1000 == 100000 |
+| `class_name GameDriver` 与现有名字重复 | 已 grep 验证无冲突（PR #11 教训：先 grep 再加 class_name） |
 
 ---
 
 ## 验证
 
-- **plan 阶段（本 PR）**：仅文档化；无代码改动；不跑测试。
-- **实装阶段（未来 PR）**：
-  - GUT：`test_game_state.gd` 全套 PASS；现有 ~94 个测试零回归
+- **plan 阶段（本 PR 第一个 commit）**：仅 plan 文档更新；无代码改动；不跑测试。
+- **第 1 步实装（本 PR 第二个 commit）**：
+  - GUT：`test_game_driver.gd` 全套 PASS；现有 ~94 个测试零回归
+- **第 2-4 步实装（后续 PR）**：
   - F6：`four_player_table_smoke.tscn` 4 家正确显示、归属色块不串、点击 advance 进入下一局
   - 端到端：手动跑一场东风战，至少含一次连庄、一次流局、一次立直，结算正确
