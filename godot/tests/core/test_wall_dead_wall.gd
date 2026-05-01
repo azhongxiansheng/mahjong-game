@@ -58,7 +58,7 @@ func test_peek_uradora_indicator_independent():
 	var w := Wall.new_full_set()
 	w.shuffle(42)
 	w.reserve_dead_wall()
-	var dora0 := w.peek_dora_indicator(0)
+	var _dora0 := w.peek_dora_indicator(0)
 	var ura0 := w.peek_uradora_indicator(0)
 	# 表/裏 dora 在 dead wall 不同物理槽，不应同张（至少 id 大概率不同；这里只验非 null）
 	assert_not_null(ura0)

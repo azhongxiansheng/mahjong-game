@@ -24,5 +24,7 @@ static func _count_identical_sequence_pairs(decomp: Dictionary) -> int:
 	var pairs := 0
 	for k in seq_keys:
 		var count: int = seq_keys[k]
-		pairs += count / 2  # integer division (3 same -> 1 pair, 4 same -> 2 pairs)
+		@warning_ignore("integer_division")
+		var inc: int = count / 2  # integer division (3 same -> 1 pair, 4 same -> 2 pairs)
+		pairs += inc
 	return pairs

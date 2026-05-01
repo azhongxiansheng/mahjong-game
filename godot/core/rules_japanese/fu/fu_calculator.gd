@@ -52,4 +52,6 @@ static func _is_concealed(called_melds: Array) -> bool:
 	return true
 
 static func _ceil_to_10(fu: int) -> int:
-	return ((fu + 9) / 10) * 10
+	@warning_ignore("integer_division")
+	var rounded: int = ((fu + 9) / 10) * 10
+	return rounded

@@ -52,6 +52,7 @@ static func _ron_payout(base: int, ctx: ScoreContext) -> Dictionary:
 
 	if ctx.has_pao():
 		# 各半（v1 简化）：取 loser_total 一半，整数除法
+		@warning_ignore("integer_division")
 		var half: int = loser_total / 2
 		return {
 			ctx.loser_seat: half,
@@ -61,4 +62,6 @@ static func _ron_payout(base: int, ctx: ScoreContext) -> Dictionary:
 	return {ctx.loser_seat: loser_total}
 
 static func _ceil_to_100(n: int) -> int:
-	return ((n + 99) / 100) * 100
+	@warning_ignore("integer_division")
+	var rounded: int = ((n + 99) / 100) * 100
+	return rounded

@@ -42,24 +42,24 @@ var ron_cancelled: Array[bool] = [false, false, false, false]
 var revealed_tiles: Array = []
 var haitei_forced_seat: int = -1
 
-static func for_east_round(seed: int, dealer_seat: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int) -> BattleState:
+static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int) -> BattleState:
 	var s := BattleState.new()
 	s.hand_number = hand_number_arg
 	s.honba = honba_arg
 	s.riichi_sticks = riichi_sticks_arg
-	s.dealer_seat = dealer_seat
-	s.current_seat = dealer_seat
+	s.dealer_seat = p_dealer
+	s.current_seat = p_dealer
 
 	# 4 seat：自风按 dealer 旋转（dealer 是 E）
 	for i in range(4):
-		var relative: int = (i - dealer_seat + 4) % 4
+		var relative: int = (i - p_dealer + 4) % 4
 		var seat_wind: int = _SEAT_WINDS[relative]
 		s.seats.append(Seat.new(i, seat_wind))
 		s.discards_per_seat.append([])
 
 	# 牌墙：洗 + 切 dead wall
 	s.wall = Wall.new_full_set()
-	s.wall.shuffle(seed)
+	s.wall.shuffle(rng_seed)
 	s.wall.reserve_dead_wall(14)
 
 	# 翻初始 dora indicator

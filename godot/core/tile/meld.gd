@@ -14,20 +14,20 @@ func _init(p_kind: Kind, p_tiles: Array[Tile], p_from: int) -> void:
 	tiles = p_tiles
 	from_seat = p_from
 
-static func make_chi(p_tiles: Array[Tile], from_seat: int) -> Meld:
-	return Meld.new(Kind.CHI, p_tiles, from_seat)
+static func make_chi(p_tiles: Array[Tile], p_from: int) -> Meld:
+	return Meld.new(Kind.CHI, p_tiles, p_from)
 
-static func make_pon(p_tiles: Array[Tile], from_seat: int) -> Meld:
-	return Meld.new(Kind.PON, p_tiles, from_seat)
+static func make_pon(p_tiles: Array[Tile], p_from: int) -> Meld:
+	return Meld.new(Kind.PON, p_tiles, p_from)
 
-static func make_minkan(p_tiles: Array[Tile], from_seat: int) -> Meld:
-	return Meld.new(Kind.MINKAN, p_tiles, from_seat)
+static func make_minkan(p_tiles: Array[Tile], p_from: int) -> Meld:
+	return Meld.new(Kind.MINKAN, p_tiles, p_from)
 
 static func make_ankan(p_tiles: Array[Tile]) -> Meld:
 	return Meld.new(Kind.ANKAN, p_tiles, NO_SOURCE_SEAT)
 
-static func make_added_kan(p_tiles: Array[Tile], from_seat: int) -> Meld:
-	return Meld.new(Kind.ADDED_KAN, p_tiles, from_seat)
+static func make_added_kan(p_tiles: Array[Tile], p_from: int) -> Meld:
+	return Meld.new(Kind.ADDED_KAN, p_tiles, p_from)
 
 func is_concealed() -> bool:
 	return kind == Kind.ANKAN
