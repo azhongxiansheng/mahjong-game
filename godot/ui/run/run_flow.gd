@@ -16,6 +16,9 @@ const CHAPTER_MAP_VIEW := preload("res://ui/run/chapter_map_view.tscn")
 const PLACEHOLDER_NODE := preload("res://ui/run/placeholder_node.tscn")
 const RUN_SUMMARY := preload("res://ui/run/run_summary.tscn")
 const RUN_HUD := preload("res://ui/run/run_hud.tscn")
+# M5 第 3 步新增：抽卡 / 商店 UI
+const PACK_OPEN_VIEW := preload("res://ui/run/pack_open_view.tscn")
+const SHOP_VIEW := preload("res://ui/run/shop_view.tscn")
 
 var _run_state: RunState = null
 var _hud: RunHud = null
@@ -71,19 +74,34 @@ func _on_node_chosen(node_index: int) -> void:
 	_last_node_ref = node_ref
 	if NodeKind.is_battle(node_ref.kind):
 		_run_battle_node(node_ref)
+	elif node_ref.kind == NodeKind.Kind.SHOP:
+		_show_shop(node_ref)
 	else:
 		_show_placeholder(node_ref)
 
 func _on_run_node_completed(_opts: Array) -> void:
 	_hud.bind_run_state(_run_state)
-	_show_chapter_map()
+	# M5 第 3 步：战斗节点结算后给 1 抽（spec §9.2 节点单抽自动）。
+	# 占位节点（CAMP/SHOP/EVENT）不给（它们的"奖励"由各自场景内部处理：
+	# SHOP 是金币消费拿卡，EVENT/CAMP 是 M5 实装真奖励）。
+	if _last_node_ref and NodeKind.is_battle(_last_node_ref.kind):
+		_show_node_pack_open()
+	else:
+		_show_chapter_map()
 
 func _on_run_failed() -> void:
 	_hud.bind_run_state(_run_state)
+	# M5 第 3 步：跨 Run 声望累计
+	var mp := get_tree().root.get_node_or_null("MetaProgress")
+	if mp:
+		mp.add_renown_for_run(false)
 	_show_summary()
 
 func _on_run_won() -> void:
 	_hud.bind_run_state(_run_state)
+	var mp := get_tree().root.get_node_or_null("MetaProgress")
+	if mp:
+		mp.add_renown_for_run(true)
 	_show_summary()
 
 # ---- node execution ----
@@ -108,6 +126,48 @@ func _show_placeholder(node_ref: NodeRef) -> void:
 		_last_result = BattleNodeRunner.placeholder_result()
 		_run_state.complete_node(_last_result)
 	)
+
+# M5 第 3 步：战斗节点结算后弹 1 张抽卡奖励
+func _show_node_pack_open() -> void:
+	var view: PackOpenView = PACK_OPEN_VIEW.instantiate()
+	_swap_panel(view)
+	view.set_title_text("节点抽卡奖励（保底 streak: %d / %d）" % [
+		_run_state.pity_state.node_single_no_epic_streak,
+		PityState.NODE_SINGLE_PITY_THRESHOLD
+	])
+	# 用节点 index 决定 seed
+	var draw_seed: int = _run_state.run_seed * 1000 + (_last_node_ref.index if _last_node_ref else 0)
+	var result: GachaResult = Gacha.draw_node_single(_run_state.pity_state, draw_seed)
+	_run_state.pity_state.record_draw(result.rarity)
+	_apply_gacha_to_deck(result)
+	view.set_results([result])
+	view.done.connect(_show_chapter_map)
+
+# M5 第 3 步：商店节点
+func _show_shop(node_ref: NodeRef) -> void:
+	var view: ShopView = SHOP_VIEW.instantiate()
+	_swap_panel(view)
+	var shop_seed: int = _run_state.run_seed * 1000 + node_ref.index + 7  # 偏移 7 避免与 pack 抽卡重复
+	view.set_seed_and_gold(shop_seed, _run_state.gold)
+	view.item_bought.connect(func(slot_index: int, result: GachaResult):
+		_run_state.gold -= ShopView.price_for(result)
+		_apply_gacha_to_deck(result)
+		view.update_gold(_run_state.gold)
+		_hud.bind_run_state(_run_state)
+	)
+	view.done.connect(func():
+		_last_result = BattleNodeRunner.placeholder_result()
+		_run_state.complete_node(_last_result)
+	)
+
+# 把 GachaResult 加进玩家 deck
+func _apply_gacha_to_deck(result: GachaResult) -> void:
+	if result == null or _run_state == null or _run_state.player_deck == null:
+		return
+	if result.kind == GachaResult.KIND_TILE and result.tile_variant:
+		_run_state.player_deck.add_tile_variant(result.tile_variant)
+	elif result.kind == GachaResult.KIND_ABILITY and result.ability:
+		_run_state.player_deck.add_ability(result.ability)
 
 # ---- helpers ----
 

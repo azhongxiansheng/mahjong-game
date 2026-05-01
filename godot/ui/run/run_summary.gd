@@ -23,7 +23,12 @@ func bind_run_state(rs: RunState) -> void:
 		return
 	_title.text = format_outcome_title(rs.won)
 	_summary_label.text = format_summary(rs)
-	_renown_label.text = format_renown_placeholder(rs.won)
+	# M5 第 3 步：尝试从 MetaProgress autoload 取真声望；若不存在 fallback 占位
+	var mp := get_tree().root.get_node_or_null("MetaProgress") if is_inside_tree() else null
+	if mp:
+		_renown_label.text = format_renown_with_meta(rs.won, int(mp.renown), int(mp.runs_completed), int(mp.runs_won))
+	else:
+		_renown_label.text = format_renown_placeholder(rs.won)
 
 # ---- helpers (static) ----
 
@@ -40,8 +45,18 @@ static func format_summary(rs: RunState) -> String:
 	lines.append("访问节点: %d" % rs.history.size())
 	return "\n".join(lines)
 
-# 占位声望奖励：通关 +50 / 失败 +5（M5 实装时按 spec §9.4 真规则）
+# 占位声望奖励：通关 +50 / 失败 +5（M4 占位；M5 第 2 步起 MetaProgress
+# 实装真元进度）。format_renown_with_meta 用真数据；本函数仅作 fallback。
 static func format_renown_placeholder(won: bool) -> String:
 	if won:
-		return "声望 +50（M5 实装真元进度）"
-	return "声望 +5（M5 实装真元进度）"
+		return "声望 +50（占位）"
+	return "声望 +5（占位）"
+
+# M5 第 3 步：MetaProgress 已存在时显示真声望增量 + 累计 + 跨 Run 战绩
+static func format_renown_with_meta(won: bool, total_renown: int, runs_completed: int, runs_won: int) -> String:
+	var amount: int = MetaProgress.RENOWN_RUN_WON if won else MetaProgress.RENOWN_RUN_FAILED
+	var lines: Array[String] = []
+	lines.append("声望 +%d" % amount)
+	lines.append("累计声望: %d" % total_renown)
+	lines.append("跨 Run 战绩: %d 胜 / %d 局" % [runs_won, runs_completed])
+	return "  |  ".join(lines)
