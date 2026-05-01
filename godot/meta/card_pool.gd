@@ -29,6 +29,14 @@ static func all_tile_variants() -> Array:
 	# M6 内容生产：增番系（§8.1）
 	pool.append(_mk_tile(&"white_haku_holy_v1", "白板·圣光", "持牌者作三元牌一员胡牌时 +1 番（v1 简化）",
 		TileId.HAKU, Rarity.Kind.UNCOMMON, "res://skills/hooks/white_haku_holy_hook.gd"))
+	pool.append(_mk_tile(&"green_hatsu_serenity_v1", "发·禅意", "任意人作三元牌一员胡牌时 +1 番（v1 简化为 holder 自胡）",
+		TileId.HATSU, Rarity.Kind.UNCOMMON, "res://skills/hooks/green_hatsu_serenity_hook.gd"))
+
+	# M6 内容生产：阻胡系（§8.3）
+	pool.append(_mk_tile(&"pin9_iron_wall_v1", "9 万·铁壁", "owner 被荣胡时役 -1 番",
+		TileId.W9, Rarity.Kind.UNCOMMON, "res://skills/hooks/pin9_iron_wall_hook.gd"))
+	pool.append(_mk_tile(&"west_mirror_v1", "西风·镜像", "owner 立直时清振听 1 次",
+		TileId.W_WIND, Rarity.Kind.EPIC, "res://skills/hooks/west_mirror_hook.gd"))
 
 	# 30 张普通占位"无技能牌"，覆盖 30 个 TileId（万 9 + 筒 9 + 条 9 + 3 风）
 	var placeholder_ids: Array = []
