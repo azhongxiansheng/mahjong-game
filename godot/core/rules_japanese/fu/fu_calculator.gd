@@ -10,7 +10,7 @@ class_name FuCalculator
 # 门清判定：called_melds 中只允许 ANKAN（暗杠不破坏门清）
 # 荣胡完成的刻子（含 winning_tile 的刻子）算明刻
 
-static func calculate(decomposition: Dictionary, called_melds: Array, win_ctx: WinContext, yaku_list: YakuList) -> int:
+static func calculate(decomposition: Dictionary, called_melds: Array, win_ctx: ScoreContext, yaku_list: YakuList) -> int:
 	if yaku_list.is_yakuman:
 		return 0
 	if yaku_list.is_chiitoi():

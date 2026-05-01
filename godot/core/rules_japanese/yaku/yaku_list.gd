@@ -1,4 +1,4 @@
-class_name YakuList
+class_name YakuEntries
 
 var entries: Array[YakuEntry] = []
 

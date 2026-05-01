@@ -1,8 +1,8 @@
 class_name YakuEvaluator
 
-# 入口：传入 WinContext，返回 YakuList。
-static func evaluate(wc: WinContext) -> YakuList:
-	var list := YakuList.new()
+# 入口：传入 WinContext，返回 YakuEntries。
+static func evaluate(wc: WinContext) -> YakuEntries:
+	var list := YakuEntries.new()
 	if not wc.win_result.is_winning:
 		return list
 

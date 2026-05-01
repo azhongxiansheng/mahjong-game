@@ -1,6 +1,6 @@
 class_name PayoutCalculator
 
-# 把基本点 + WinContext 转成 {payer_seat: points_owed_to_winner}。
+# 把基本点 + ScoreContext 转成 {payer_seat: points_owed_to_winner}。
 # 立直棒不在字典里（由 ScoreCalc 单独加给 winner）；本场已合并入 payer 出的钱。
 #
 # 公式：
@@ -12,12 +12,12 @@ class_name PayoutCalculator
 #   自摸：仅 pao_seat 出全额
 #   荣胡：pao_seat 与 loser 各半
 
-static func payout(base_points: int, win_ctx: WinContext) -> Dictionary:
+static func payout(base_points: int, win_ctx: ScoreContext) -> Dictionary:
 	if win_ctx.is_tsumo:
 		return _tsumo_payout(base_points, win_ctx)
 	return _ron_payout(base_points, win_ctx)
 
-static func _tsumo_payout(base: int, ctx: WinContext) -> Dictionary:
+static func _tsumo_payout(base: int, ctx: ScoreContext) -> Dictionary:
 	var dealer_share: int = _ceil_to_100(base * 2)
 	var non_dealer_share: int = _ceil_to_100(base)
 	var honba_per_seat: int = ctx.honba * 100  # 自摸 3 家分摊本场
@@ -46,7 +46,7 @@ static func _tsumo_payout(base: int, ctx: WinContext) -> Dictionary:
 				result[seat] = non_dealer_share + honba_per_seat
 	return result
 
-static func _ron_payout(base: int, ctx: WinContext) -> Dictionary:
+static func _ron_payout(base: int, ctx: ScoreContext) -> Dictionary:
 	var multiplier: int = 6 if ctx.winner_is_dealer() else 4
 	var loser_total: int = _ceil_to_100(base * multiplier) + ctx.honba * 300
 
