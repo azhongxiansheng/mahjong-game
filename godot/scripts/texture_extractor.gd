@@ -11,8 +11,8 @@ const TILE_WIDTH = 80
 const TILE_HEIGHT = 120
 const PADDING = 0 # 没有间距
 
-## 🆕 纹理滤波模式 - 最近邻滤波确保像素完美
-const TEXTURE_FILTER_MODE = CanvasItem.TEXTURE_FILTER_NEAREST
+## NEAREST 滤波由 project.godot `rendering/textures/canvas_textures/default_texture_filter=1`
+## 在工程级别设置；AtlasTexture 本身没有 filter_mode 属性，无法在此处设置。
 
 ## 贵州弈乐麻将原始资源位置
 const SOURCE_ATLASES = {
@@ -103,9 +103,7 @@ func _extract_from_source() -> void:
 		var atlas_tex = AtlasTexture.new()
 		atlas_tex.atlas = atlas_texture
 		atlas_tex.region = Rect2(x, y, w, h)
-		
-		# 🔑 设置过滤模式为最近邻滤波
-		atlas_tex.filter_mode = CanvasItem.TEXTURE_FILTER_NEAREST
+		# NEAREST 滤波在 project.godot 工程级别已设置（见文件顶部常量注释）。
 
 		extracted_tiles[tile_name] = atlas_tex
 		extracted_count += 1
