@@ -146,14 +146,34 @@ static func all_abilities() -> Array:
 		"章 3 Boss：海底/河底自胡 +3 番（v1 简化模拟役满升级）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss3_kanmon_hook.gd"))
 
-	# 5 张占位 ability
-	for i in range(5):
-		pool.append(_mk_ability(
-			StringName("placeholder_ability_%d" % i),
-			"占位能力 %d" % (i + 1),
-			"v1 占位；M6 内容生产时填",
-			Rarity.Kind.COMMON, ""
-		))
+	# M6 内容生产：神级角色能力（§8.10 #1/#7/#4）
+	pool.append(_mk_ability(&"mineu_no_oni_v1", "嶺上の鬼",
+		"杠后岭上摸 5 选 1（v1：自胡 +2 番）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/mineu_no_oni_hook.gd"))
+	pool.append(_mk_ability(&"san_kyoku_kiseki_v1", "三局一奇跡",
+		"每 3 局起手保证 1 役牌刻（v1：自胡 +1 番）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/san_kyoku_kiseki_hook.gd"))
+	pool.append(_mk_ability(&"isshun_senken_v1", "一巡先見",
+		"每巡可花 1 巡看下次摸牌（v1：DRAW 时 reveal 占位）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/isshun_senken_hook.gd"))
+
+	# M6 内容生产：史诗角色能力（§8.10 #3/#5/#6/#8/#9）
+	pool.append(_mk_ability(&"yamagan_v1", "山眼",
+		"GAME_BEGIN 看牌墙顶 10 张（v1：reveal 1 张占位）",
+		Rarity.Kind.EPIC, "res://skills/hooks/yamagan_hook.gd"))
+	pool.append(_mk_ability(&"tenpai_seethru_v1", "听牌看穿",
+		"对手 HAND_FORMED 时看其听牌张（v1：reveal 占位给 owner）",
+		Rarity.Kind.EPIC, "res://skills/hooks/tenpai_seethru_hook.gd"))
+	pool.append(_mk_ability(&"ryukyoku_yudou_v1", "流局誘導",
+		"巡数 ≥ 12 后弃牌可强制流局（v1：自胡 +1 番）",
+		Rarity.Kind.EPIC, "res://skills/hooks/ryukyoku_yudou_hook.gd"))
+	pool.append(_mk_ability(&"tousotsu_v1", "統率",
+		"其它 ability 触发额度 +1（v1：自胡 +1 番）",
+		Rarity.Kind.EPIC, "res://skills/hooks/tousotsu_hook.gd"))
+	pool.append(_mk_ability(&"riichi_kago_v1", "立直加護",
+		"一发窗口延长至 2 巡（v1：自胡 +1 番）",
+		Rarity.Kind.EPIC, "res://skills/hooks/riichi_kago_hook.gd"))
+
 	return pool
 
 static func abilities_by_rarity(rarity: int) -> Array:

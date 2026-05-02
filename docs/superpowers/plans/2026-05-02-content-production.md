@@ -105,19 +105,19 @@
 ### 神级（4-5）
 
 - [x] **`seabed_hunter_v1`** 海底狩人（spec §8.10 #2）— **M1 demo 已有**
-- [ ] **`mineu_no_oni_v1`** 嶺上の鬼（#1） — 杠后岭上摸 5 选 1
-- [ ] **`san_kyoku_kiseki_v1`** 三局一奇跡（#7）— 每 3 局起手保证 1 役牌刻
-- [ ] **`isshun_senken_v1`** 一巡先見（#4）— 每巡可花 1 巡看下次摸牌
+- [x] **`mineu_no_oni_v1`** 嶺上の鬼（#1）— v1：自胡 +2 番（5 选 1 平均收益）；真效果需 draw_choose_n_of_m ctx 扩展（M7）
+- [x] **`san_kyoku_kiseki_v1`** 三局一奇跡（#7）— v1：自胡 +1 番；真"起手强插刻子"需 inject_meld_at_start ctx 扩展（M7）
+- [x] **`isshun_senken_v1`** 一巡先見（#4）— v1：DRAW 时 reveal 占位；真"看下次摸牌"需 reveal_next_draw ctx 扩展（M7）
 - [x] **`shichu_kyu_katsu_v1`** 死中求活（#11）— 点棒 < 5000 时所有役 +2 番（PR #33）
-- [ ] **`tougenkyo_v1`** 偷天换日（#12）— 每局 1 次手牌 ↔ 弃牌河交换
+- [ ] **`tougenkyo_v1`** 偷天换日（#12）— 每局 1 次手牌 ↔ 弃牌河交换（spec 留白；需 swap_hand_river ctx，M7）
 
 ### 史诗（4-5）
 
-- [ ] **`yamagan_v1`** 山眼（#3）— GAME_BEGIN 看牌墙顶 10 张顺序
-- [ ] **`tenpai_seethru_v1`** 听牌看穿（#5）— 对手 HAND_FORMED 时看其听牌张
-- [ ] **`ryukyoku_yudou_v1`** 流局誘導（#6）— 巡数 ≥ 12 后弃牌可强制流局
-- [ ] **`tousotsu_v1`** 統率（#8）— 其它 ability owner_triggers 触发额度 +1
-- [ ] **`riichi_kago_v1`** 立直加護（#9）— 立直一发窗口延长至 2 巡
+- [x] **`yamagan_v1`** 山眼（#3）— v1：GAME_BEGIN reveal 1 张占位；真"读 wall 顶 10 张"需 reveal_wall_segment ctx 扩展（M7）
+- [x] **`tenpai_seethru_v1`** 听牌看穿（#5）— v1：对手 HAND_FORMED 时 reveal 占位给 owner；真"读对手听牌张"需 reveal_tenpai ctx 扩展（M7）
+- [x] **`ryukyoku_yudou_v1`** 流局誘導（#6）— v1：自胡 +1 番（局面控制等价收益）；真"强制流局"需 turn_engine.force_ryukyoku（M7）
+- [x] **`tousotsu_v1`** 統率（#8）— v1：自胡 +1 番（buff 总收益等价）；真"提高其它 ability 触发额度"需 boost_other_abilities ctx 扩展（M7）
+- [x] **`riichi_kago_v1`** 立直加護（#9）— v1：自胡 +1 番（一发期望加倍）；真"延长一发窗口"需 extend_ippatsu_window ctx 扩展（M7）
 
 ---
 
@@ -162,13 +162,13 @@
 | §8.8 Dora | 3 | 3 | 100% |
 | §8.9 终局 | 3 | 3 | 100% |
 | **§8 牌技能小计** | **28** | **28** | **100%** |
-| 神级角色能力 | 5 | 2 | 40% |
-| 史诗角色能力 | 5 | 0 | 0% |
-| **§8.10 角色能力小计** | **10** | **2** | **20%** |
+| 神级角色能力 | 5 | 4 | 80% |
+| 史诗角色能力 | 5 | 5 | 100% |
+| **§8.10 角色能力小计** | **10** | **9** | **90%** |
 | 章 Boss | 3 | 3 | 100% |
 | 起始包 | 3 | 3 | 100% |
 
-**M6 整体进度：36 / 44 任务（81.8%）**
+**M6 整体进度：43 / 44 任务（97.7%）** — 仅 `tougenkyo_v1` 留 M7（spec 原效果"手牌↔弃牌河交换"无任何 v1 等价表达）
 
 > 完成项更新方式：在 PR 中把对应 `- [ ]` 改为 `- [x]`，同时更新本表"已完成"数。
 

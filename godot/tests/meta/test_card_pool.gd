@@ -51,6 +51,7 @@ func test_seabed_hunter_ability_present():
 	assert_true(ids.has(&"seabed_hunter_v1"))
 
 func test_each_rarity_has_at_least_one_ability_with_fallback():
-	# 不强求每档都有 ability（v1 占位简化）；至少 COMMON 与 LEGENDARY 各 1
-	assert_gt(CardPool.abilities_by_rarity(Rarity.Kind.COMMON).size(), 0)
+	# M6 内容生产：5 张 COMMON 占位 ability 已被真实 EPIC/LEGENDARY 替换；
+	# 至少 EPIC 与 LEGENDARY 各 1（spec §10 ability 槽位强制高质量）。
+	assert_gt(CardPool.abilities_by_rarity(Rarity.Kind.EPIC).size(), 0)
 	assert_gt(CardPool.abilities_by_rarity(Rarity.Kind.LEGENDARY).size(), 0)
