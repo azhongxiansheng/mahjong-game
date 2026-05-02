@@ -1,319 +1,163 @@
-# 🎲 麻将游戏 v1.0.0 - 企业级在线麻将平台
+# 麻将王 — 日麻 + 卡牌技能 + Roguelike
 
-[![Release](https://img.shields.io/badge/Release-v1.0.0-green.svg)](https://github.com/yourusername/mahjong-game/releases/tag/v1.0.0)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Security](https://img.shields.io/badge/Security-A%2B-brightgreen.svg)](SECURITY_AUDIT_GUIDE.md)
-[![Quality](https://img.shields.io/badge/Quality-5%2F5-brightgreen.svg)](PROJECT_COMPLETION_SUMMARY.md)
+> 单机日式麻将 roguelike：每张牌 / 每个角色都可以挂技能；按 StS 风格地图节点推进 Run；通关解锁更多内容。
 
-完整的企业级多人在线麻将游戏平台，包含完整的游戏逻辑、社交系统、排行榜、成就系统和高级竞技功能。
+**这不是一个联机麻将服务器。** 仓库根的 `main.go` 只是一个健康检查桩（仅 `/api/health` 返回 OK）以满足 Railway 部署需求；游戏本身是 Godot 4.5+ 单机客户端（`godot/`）。
 
 ---
 
-## ✨ 核心特性
+## 当前状态
 
-### 🎮 游戏系统
-- ✅ **完整的 4 人麻将** - 标准麻将规则实现
-- ✅ **实时多人对战** - 支持 10,000+ 并发用户
-- ✅ **房间管理** - 创建、加入、退出
-- ✅ **游戏统计** - 胜负记录、积分追踪
-- ✅ **自动出牌** - 智能辅助建议
+按 [`docs/superpowers/specs/2026-05-01-mahjong-king-design.md`](docs/superpowers/specs/2026-05-01-mahjong-king-design.md) §13 拆里程碑：
 
-### 👥 社交系统
-- ✅ **好友管理** - 添加、删除、查询
-- ✅ **好友请求** - 邀请和接受管理
-- ✅ **黑名单功能** - 屏蔽不想见的玩家
-- ✅ **在线状态** - 实时显示玩家状态
-- ✅ **私聊系统** - 一对一消息通信
-- ✅ **好友通知** - 实时通知提醒
+| 里程碑 | 范围 | 状态 |
+|---|---|---|
+| **0** | 日麻规则引擎（38 个役 / 符算 / 点数 / 振听 / Dora / 流局 / 立直） | ✅ 完成 |
+| **1** | 技能框架 + 5 demo 牌技能 + 1 demo 角色能力 | ✅ 完成 |
+| **2** | 单局对战 vs 1 AI（端到端 BattleController + SimpleAi） | ✅ 完成 |
+| **3** | 东风战 + 4 人桌 + 牌背 + 归属可视化 | ✅ 完成 |
+| **4** | Run 流程骨架（StS 地图 + 节点切换 + 营地/商店占位） | ✅ 完成 |
+| **5** | 抽卡 + 卡包 + 元进度 + 存档 | ✅ 完成 |
+| **6** | 30+ 牌技能 + 8-10 角色能力 + 3 章 Boss + 3 起始包 内容 | ⏳ 进行中 |
+| **7** | 平衡迭代 | ⏳ 待启动 |
 
-### 🏆 排行榜系统
-- ✅ **ELO 积分** - 动态积分计算
-- ✅ **多层级排行** - 日/周/月/赛季/全球
-- ✅ **排名追踪** - 历史排名记录
-- ✅ **奖励分配** - 自动奖励发放
-
-### 🎖️ 成就系统
-- ✅ **50+ 成就** - 丰富的成就类型
-- ✅ **进度追踪** - 实时进度显示
-- ✅ **成就徽章** - 视觉化成就展示
-- ✅ **解锁通知** - 成就解锁提醒
-- ✅ **奖励系统** - 完成成就获得奖励
-
-### 🌟 高级功能
-- ✅ **实时通知系统** - 11 种通知类型
-- ✅ **战队系统** - 创建、管理、升级
-- ✅ **组队功能** - 4 人队伍组织
-- ✅ **赛季系统** - 30 天周期竞技
-- ✅ **自动奖励** - 赛季奖励自动发放
+工作流、TDD、代码闸门、Git 约定见 [`AGENTS.md`](AGENTS.md)；项目结构与已知陷阱见 [`CLAUDE.md`](CLAUDE.md)。
 
 ---
 
-## 🚀 快速开始
+## 仓库结构
 
-### 方式 1: Docker (推荐，5分钟)
+```
+godot/                          # Godot 客户端（主体）
+├── core/
+│   ├── tile/                   # TileId / Tile（带 owner_seat）/ Hand / Meld / Wall
+│   ├── rules_japanese/         # 日麻规则：和牌识别 / 符算 / 点数 / 振听 / Dora / 流局
+│   │   ├── fu/                 # 符算
+│   │   ├── score/              # 点数公式
+│   │   └── yaku/               # 38 个役判定 + YakuEvaluator
+│   └── turn_engine/            # TurnEngine 状态机 + Validator
+├── battle/                     # 一局运行时：BattleState / SkillScheduler / BattleController
+├── skills/                     # SkillResource + SkillHook + SkillRegistry（含 6 demo hook）
+├── meta/                       # Run 流程：RunState / ChapterMap / Gacha / SaveSystem / MetaProgress
+├── ai/                         # SimpleAi（M2 最简随机弃牌）
+├── ui/                         # 4 人桌 + Run 占位 UI
+├── scenes/                     # 游戏场景
+├── scripts/                    # 历史平铺脚本（旧中式麻将 / 登录 / 网络草稿，按里程碑迁移）
+├── assets/                     # 美术资源（含 mahjong_tiles atlas）
+├── tests/                      # GUT 单测（按模块分子目录）
+└── addons/gut/                 # GUT 9.x 测试框架
+
+docs/superpowers/
+├── specs/                      # 设计 spec（mahjong-king-design 主 spec）
+└── plans/                      # 各里程碑实现计划 / brainstorm 草案
+
+main.go                         # Railway 健康检查桩（不是后端）
+Dockerfile / start.sh           # 桩的部署脚本
+AGENTS.md                       # Agent 工作流 + 编码纪律 + Git 约定
+CLAUDE.md                       # 项目结构 + Godot 不变量 + 已知陷阱
+```
+
+---
+
+## 快速开始
+
+### 跑 Godot 客户端
 
 ```bash
-# 1. 克隆项目
-git clone https://github.com/yourusername/mahjong-game.git
-cd mahjong-game
-git checkout v1.0.0
+# 编辑器（默认主场景：scenes/wechat_login_final.tscn）
+godot -e --path godot
 
-# 2. 启动服务
-docker-compose up -d
+# 无头跑主场景
+godot --path godot
 
-# 3. 验证部署
-curl http://localhost:8080/api/health
-
-# 4. 访问游戏
-# 使用 Godot 编辑器打开项目或使用编译的客户端
-# 连接到 localhost:8080
+# F6 跑特定测试场景（如 4 人桌 smoke）
+godot --path godot tests/scenes/four_player_table_smoke.tscn
 ```
 
-### 方式 2: 本地开发
+需要 [Godot 4.5+](https://godotengine.org/)（已在 4.6.1 验证）。
+
+### 跑 Go 健康检查桩（部署用）
 
 ```bash
-# 前端 (Godot)
-cd godot
-godot -e
-
-# 后端 (Go)
-cd backend
-go mod download
-go run main.go
-
-# 访问
-http://localhost:8080
+go run main.go               # 监听 $PORT，默认 8080
+curl http://localhost:8080/api/health    # → {"status":"ok"}
 ```
 
-### 方式 3: 生产部署 (30分钟)
-
-详见 [部署指南](DEPLOYMENT_GUIDE.md)
-
----
-
-## 📊 项目统计
-
-| 类别 | 数量 |
-|------|------|
-| **代码行数** | 20,000+ |
-| **文档行数** | 11,000+ |
-| **API 端点** | 50+ |
-| **前端组件** | 80+ |
-| **数据库表** | 20+ |
-| **测试用例** | 200+ |
-| **测试覆盖率** | 95%+ |
-
----
-
-## 🔒 安全
-
-- **等级**: A+ 企业级
-- **审计**: 23/23 检查通过 (100%)
-- **漏洞**: 0 个已知漏洞
-- **认证**: JWT 令牌 (24小时过期)
-- **加密**: bcrypt 密码加密
-- **防护**: OWASP Top 10 全覆盖
-
-详见 [安全审计指南](SECURITY_AUDIT_GUIDE.md)
-
----
-
-## 📈 性能
-
-| 指标 | 值 |
-|------|-----|
-| **API 响应时间** | < 100ms |
-| **吞吐量** | > 1,000,000 ops/s |
-| **并发连接** | 10,000+ |
-| **内存占用** | < 500MB |
-| **可用性** | 99.9% |
-
----
-
-## 📋 系统要求
-
-### 客户端
-- **OS**: Windows 10+, macOS 10.13+, Linux
-- **CPU**: 2+ 核心
-- **内存**: 2GB+
-- **网络**: 10Mbps+
-
-### 服务器
-- **OS**: Ubuntu 20.04 LTS
-- **CPU**: 4+ 核心
-- **内存**: 8GB+
-- **存储**: 100GB SSD
-
-### 数据库
-- MySQL 8.0+ 或
-- PostgreSQL 12+ 或
-- SQLite 3.30+
-
----
-
-## 📚 文档
-
-- **[发布说明](RELEASE_NOTES_v1.0.0.md)** - 版本信息和更新说明
-- **[部署指南](DEPLOYMENT_GUIDE.md)** - 开发、测试、生产部署
-- **[安全审计](SECURITY_AUDIT_GUIDE.md)** - 安全检查和最佳实践
-- **[项目总结](PROJECT_COMPLETION_SUMMARY.md)** - 项目完成总结
-- **[最终报告](FINAL_DELIVERY_REPORT.md)** - 交付报告和质量评估
-
----
-
-## 🛠️ 技术栈
-
-### 前端
-- **Godot 4.x** - 游戏引擎
-- **GDScript** - 脚本语言
-- **5,250+ 行** 生产代码
-
-### 后端
-- **Go 1.20+** - 服务器语言
-- **Gin Framework** - Web 框架
-- **gorilla/websocket** - 实时通信
-- **2,100+ 行** 生产代码
-
-### 数据库
-- **MySQL / PostgreSQL** - 关系数据库
-- **600+ 行** 数据库架构
-
-### 基础设施
-- **Docker** - 容器化
-- **Nginx** - 反向代理
-- **Let's Encrypt** - SSL/TLS
-- **Prometheus** - 监控
-
----
-
-## 🧪 测试
+或 Docker：
 
 ```bash
-# 运行所有测试
-go test -v ./...
-
-# 性能基准
-go test -bench=. -benchmem ./...
-
-# 覆盖率
-go test -cover ./...
+docker build -t mahjong .
+docker run -p 8080:8080 mahjong
 ```
-
-**测试统计**:
-- 200+ 测试用例
-- 100% 通过率
-- 95%+ 代码覆盖
 
 ---
 
-## 📖 API 文档
+## 测试
 
-### 认证端点
-```
-POST   /auth/register       - 用户注册
-POST   /auth/login          - 用户登录
-POST   /auth/refresh        - 刷新令牌
-POST   /auth/logout         - 用户登出
-```
+### Godot — GUT 单测
 
-### 游戏端点
-```
-POST   /game/rooms          - 创建房间
-GET    /game/rooms          - 获取房间列表
-POST   /game/join           - 加入房间
-POST   /game/leave          - 离开房间
-POST   /game/play           - 游戏操作
+```bash
+# 拉新分支后必须先重建 class cache
+godot --headless --path godot --import
+
+# 跑全套
+godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
+    -gdir=res://tests -ginclude_subdirs -gexit
+
+# 只跑某个目录
+godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
+    -gdir=res://tests/battle -gexit
 ```
 
-### 社交端点
-```
-POST   /friend/add          - 添加好友
-GET    /friend/list         - 获取好友列表
-POST   /friend/remove       - 删除好友
-POST   /friend/block        - 屏蔽玩家
+测试覆盖日麻规则引擎、技能框架、Battle / Run / Meta 各层，按模块分在 `godot/tests/` 子目录。
+
+`godot/scripts/test_*.gd` 是早期遗留 scene-driven 手测；`godot/tests/scenes/skills/skill_*_test.tscn` 是技能框架 F6 手测场景（编辑器按 F6 跑）。新写测试一律放 `godot/tests/<module>/test_*.gd` 走 GUT。
+
+### Go — 无测试
+
+```bash
+go test ./...    # → "no test files"
 ```
 
-### 排行榜端点
-```
-GET    /leaderboard/daily   - 日排行
-GET    /leaderboard/weekly  - 周排行
-GET    /leaderboard/monthly - 月排行
-GET    /leaderboard/global  - 全球排行
-```
-
-详见完整 [API 文档](docs/API.md)
+桩没有业务逻辑，没必要写测试。
 
 ---
 
-## 🤝 贡献指南
+## 关键设计
 
-欢迎提交 Pull Request！
-
-1. Fork 项目
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送分支 (`git push origin feature/AmazingFeature`)
-5. 提交 Pull Request
-
----
-
-## 📄 许可证
-
-本项目采用 MIT 许可证。详见 [LICENSE](LICENSE) 文件。
+- **owner_seat 归属可视化**：每张 `TileInstance` 记 `owner_seat`（0-3）；牌背贴图按 owner 着色，即使被鸣到别人副露区也保持原牌背。技能触发时区分 owner（持有人）与 holder（当前位置）。
+- **事件总线 + SkillScheduler**：所有局内副作用都通过 `BattleEventBus` 发出 + `SkillScheduler` 处理；不写绕过总线直改 `BattleState` 的代码。这是 Phase 2 联机扩展的硬约束。
+- **分层状态对象**：`BattleState`（一局快照）→ `GameState`（一场东风战 4 局序列）→ `RunState`（一 Run 跨章节）→ `MetaProgress`（跨 Run 声望解锁）。每层独立可测、可序列化。
+- **抽卡决定性**：`RandomNumberGenerator.state` 持久化进 `current_run.json`，中途退出再进 RNG 状态严格一致 → 防读档刷抽卡。
+- **Class_name 全局唯一**：GDScript `class_name` 重复会让其中一个被 hide，编译链断裂导致 GUT Parse error 雪崩。新增 `class_name` 前先 `grep -rn 'class_name <Name>' godot/`。
+- **牌渲染不变量**：80×120 / 0 padding / `AtlasTexture` / WHITE 调制 / NEAREST 过滤（通过 `project.godot` 的 `default_texture_filter=1` 设置）。详见 CLAUDE.md。
 
 ---
 
-## 📞 支持
+## 文档索引
 
-- **文档**: [完整文档](docs/)
-- **问题**: [GitHub Issues](https://github.com/yourusername/mahjong-game/issues)
-- **讨论**: [GitHub Discussions](https://github.com/yourusername/mahjong-game/discussions)
-- **邮件**: support@example.com
-
----
-
-## 🎖️ 项目成就
-
-- ✅ **20,000+ 行** 生产级代码
-- ✅ **11,000+ 行** 完整文档
-- ✅ **A+ 级** 安全评级
-- ✅ **5/5 星** 质量评分
-- ✅ **95%+** 测试覆盖
-- ✅ **100%** 功能完成
-- ✅ **生产就绪** 🟢
+| 文档 | 用途 |
+|---|---|
+| [`AGENTS.md`](AGENTS.md) | Agent 工作流、编码纪律、TDD、闸门、Git/发布原则 |
+| [`CLAUDE.md`](CLAUDE.md) | 项目结构、Godot 不变量、已知陷阱、GUT 命令 |
+| [`docs/superpowers/specs/2026-05-01-mahjong-king-design.md`](docs/superpowers/specs/2026-05-01-mahjong-king-design.md) | 主 spec：架构、数据类型、事件、技能方向库、里程碑 |
+| `docs/superpowers/plans/` | 各里程碑实现计划 / brainstorm 草案 |
 
 ---
 
-## 🎯 后续版本
+## 不实装 / 路线图外
 
-- **v1.0.1** (修复版) - 2025-11-23
-- **v1.1** (增强版) - 2025-12-15
-  - 水平扩展和负载均衡
-  - 国际化多语言支持
-  - AI 机器人对手
-- **v2.0** (下一代) - 2026-Q2
-  - 移动端原生应用
-  - 视频通话功能
-  - 高级统计分析
+以下功能在历史 README 中出现过但**当前不在 spec 范围**：
 
----
+- 联机对战 / 服务器权威（spec §4.3 标记 Phase 2）
+- 排行榜 / ELO / 赛季 / 战队 / 好友 / 私聊 / 黑名单 / 通知系统
+- 微信登录（`scenes/wechat_login_final.tscn` 仅作启动占位）
+- 付费抽卡（spec §9.4 明确不引入付费）
 
-## 👥 致谢
-
-感谢所有贡献者和用户的支持！
+如需翻历史信息查 `git log`；不要信根目录散落的旧 `PHASE*.md` / `RAILWAY_*.md` / `项目*.md` 状态报告（详见 CLAUDE.md "Don't trust the README's API surface"）。
 
 ---
 
-<div align="center">
+## 许可证
 
-**麻将游戏 v1.0.0 - 企业级在线麻将平台**
-
-[📖 文档](docs/) • [🐛 报告问题](https://github.com/yourusername/mahjong-game/issues) • [💬 讨论](https://github.com/yourusername/mahjong-game/discussions)
-
-[![Star](https://img.shields.io/github/stars/yourusername/mahjong-game.svg?style=social)](https://github.com/yourusername/mahjong-game)
-[![Fork](https://img.shields.io/github/forks/yourusername/mahjong-game.svg?style=social)](https://github.com/yourusername/mahjong-game/fork)
-
-祝您游戏愉快！🎲
-
-</div>
-
+MIT。
