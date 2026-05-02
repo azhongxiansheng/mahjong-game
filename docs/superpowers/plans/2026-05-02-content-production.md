@@ -57,13 +57,13 @@
 ### §8.3 阻止对方胡牌系（Defense） — 目标 3 张
 
 - [x] **`seal_chun_v1`** [史] 中·封印 — owner 弃出导致 RON_DECLARED 时取消（**M1 demo 已有**）
-- [x] **`pin9_iron_wall_v1`** [精] 9 万·铁壁 — owner 被荣胡时役 -1 番（v1：ctx.add_han(actor, -1)；若降至 ≤ 0 不在本 hook 处理，由 ScoreFormula 钳制）（PR #32）
+- [x] **`man9_iron_wall_v1`** [精] 9 万·铁壁 — owner 被荣胡时役 -1 番（v1：ctx.add_han(actor, -1)；若降至 ≤ 0 不在本 hook 处理，由 ScoreFormula 钳制）（PR #32）
 - [x] **`west_mirror_v1`** [史] 西风·镜像 — owner 立直时清振听 1 次（PR #32）
 
 ### §8.4 抓马反向得分系（Counter） — 目标 3 张
 
 - [x] **`soul_drain_hatsu_v1`** [神] 发·吸魂 — holder 受益对手胡牌 30%（**M1 demo 已有**）
-- [x] **`east_mirror_chambo_v1`** [精] 东·镜抓 — v1：owner 放铳时给胜者 -1 番（模拟 ×0.5 减分）；真"按倍率减分"需 scale_payout ctx 扩展（M7）
+- [x] **`east_mirror_chambo_v1`** [精] 东·镜抓 — v1：owner 放铳被荣胡时 transfer_points(winner→owner, points_won × 0.5) 真实施 ×0.5 退款（PR #42 同事采纳；优于早期 -1 番桩）
 - [x] **`sou8_scapegoat_v1`** [精] 8 索·替罪 — v1：owner 放铳时给胜者 -1 番（模拟责任转嫁）；真"指对手放铳"需 mark_pao_transfer ctx 扩展（M7）
 
 ### §8.5 透明牌 / 信息系（Reveal） — 目标 3 张
@@ -142,7 +142,7 @@
 
 - [x] **`starter_aggro` 火力包** — thunder_5w + white_haku_holy + green_hatsu_serenity + pin9_haitei_double + shichu_kyu_katsu ability
 - [x] **`starter_fast` 速胡包** — unfuriten_5p（已实装的立直系）；premature_riichi 等待 §8.6 实装时再扩
-- [x] **`starter_control` 控场包** — xray_1w + seal_chun + west_mirror + pin9_iron_wall + soul_drain_hatsu + seabed_hunter ability
+- [x] **`starter_control` 控场包** — xray_1w + seal_chun + west_mirror + man9_iron_wall + soul_drain_hatsu + seabed_hunter ability
 
 每个起始包 PR 还需更新 `tests/meta/test_starter_packs.gd` 验证 3 套都 available + 内容非空。
 

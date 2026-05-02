@@ -1,16 +1,23 @@
-# 东·镜抓 — §8.4 抓马反向得分系（M6 内容生产）
+# 东·镜抓 — §8.4 抓马反向得分系
 #
-# v1: owner 放铳时给胜者 -1 番（模拟"对方得分减半"）
-# spec 原效果："owner 放铳时对方得分 ×0.5"
-# v1 简化：用 add_han(winner, -1) 表达"该役 -1 番 ≈ 半分"；ScoreFormula
-# 钳制 < 0 时按 0 算。真"乘 0.5"需 ctx.scale_payout(winner, factor) 扩展（M7）。
+# v1: owner 放铳被荣胡时，胡牌方得分 ×0.5（owner 拿回 50%）。
+# 对照 soul_drain_hatsu 的 transfer_points 模式，但触发条件不同：
+#   soul_drain：holder_trigger，任意对手胡（含 tsumo）→ holder 拿 30%
+#   东·镜抓：  owner_trigger，**owner 出铳被 RON** → owner 拿回 50%
+#
+# event.extra: {"discarder_seat": int, "points_won": int}
+# 由 turn_engine / scene 在结算 RON 时填好。
 extends SkillHook
 
-const CHAMBO_HAN_PENALTY: int = -1
+const REFUND_FRACTION := 0.5
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
+	# owner_trigger 模式：beneficiary_seat = owner（出铳方候选）
 	var discarder: int = int(event.extra.get("discarder_seat", -1))
 	if discarder != ctx.beneficiary_seat:
+		return  # owner 不是出铳方
+	var points_won: int = int(event.extra.get("points_won", 0))
+	if points_won <= 0:
 		return
-	# event.actor_seat = winner（RON_DECLARED 的 actor）
-	ctx.add_han(event.actor_seat, CHAMBO_HAN_PENALTY)
+	var refund := int(points_won * REFUND_FRACTION)
+	ctx.transfer_points(event.actor_seat, ctx.beneficiary_seat, refund)

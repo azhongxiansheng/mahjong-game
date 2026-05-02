@@ -2,7 +2,6 @@ extends GutTest
 
 # 麻将王 — M6 内容生产：§8.4 抓马 + §8.6 立直续 + §8.9 终局续 单测
 
-const EastMirrorHook := preload("res://skills/hooks/east_mirror_chambo_hook.gd")
 const Sou8ScapegoatHook := preload("res://skills/hooks/sou8_scapegoat_hook.gd")
 const PrematureRiichiHook := preload("res://skills/hooks/south_premature_riichi_hook.gd")
 const RefundHook := preload("res://skills/hooks/hatsu_stick_refund_hook.gd")
@@ -31,25 +30,8 @@ func _register_owned_by(reg: SkillRegistry, sk: SkillResource, owner_seat: int) 
 	var ti := TileInstance.make(Tile.new(sk.attached_tile), owner_seat, sk)
 	reg.register(sk, ti)
 
-# ---- §8.4 east_mirror_chambo ----
-
-func test_east_mirror_chambo_minus_1_to_winner_when_owner_discards():
-	var ctx := _setup()
-	var reg: SkillRegistry = ctx[0]
-	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"east_mirror_chambo_v1", EastMirrorHook, TileId.E, [&"RON_DECLARED"])
-	_register_owned_by(reg, sk, 0)
-	var out := sched.emit_event(BattleEvent.make(&"RON_DECLARED", 2, null, {"discarder_seat": 0}))
-	assert_eq(int(out.han_deltas.get(2, 0)), -1)
-
-func test_east_mirror_chambo_no_effect_when_other_discards():
-	var ctx := _setup()
-	var reg: SkillRegistry = ctx[0]
-	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"east_mirror_chambo_v1", EastMirrorHook, TileId.E, [&"RON_DECLARED"])
-	_register_owned_by(reg, sk, 0)
-	var out := sched.emit_event(BattleEvent.make(&"RON_DECLARED", 2, null, {"discarder_seat": 1}))
-	assert_eq(int(out.han_deltas.get(2, 0)), 0)
+# NOTE: east_mirror_chambo 单测移到 tests/skills/test_east_mirror_chambo.gd
+# （PR #42 同事的实现采纳了 transfer_points 50% 真效果，比这里的 -1 番桩更准）
 
 # ---- §8.4 sou8_scapegoat ----
 

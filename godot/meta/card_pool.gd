@@ -33,8 +33,8 @@ static func all_tile_variants() -> Array:
 		TileId.HATSU, Rarity.Kind.UNCOMMON, "res://skills/hooks/green_hatsu_serenity_hook.gd"))
 
 	# M6 内容生产：阻胡系（§8.3）
-	pool.append(_mk_tile(&"pin9_iron_wall_v1", "9 万·铁壁", "owner 被荣胡时役 -1 番",
-		TileId.W9, Rarity.Kind.UNCOMMON, "res://skills/hooks/pin9_iron_wall_hook.gd"))
+	pool.append(_mk_tile(&"man9_iron_wall_v1", "9 万·铁壁", "owner 被荣胡时役 -1 番",
+		TileId.W9, Rarity.Kind.UNCOMMON, "res://skills/hooks/man9_iron_wall_hook.gd"))
 	pool.append(_mk_tile(&"west_mirror_v1", "西风·镜像", "owner 立直时清振听 1 次",
 		TileId.W_WIND, Rarity.Kind.EPIC, "res://skills/hooks/west_mirror_hook.gd"))
 
@@ -63,7 +63,7 @@ static func all_tile_variants() -> Array:
 		TileId.S_WIND, Rarity.Kind.EPIC, "res://skills/hooks/south_riichi_breeze_hook.gd"))
 
 	# M6 内容生产：抓马反向得分系（§8.4）
-	pool.append(_mk_tile(&"east_mirror_chambo_v1", "东·镜抓", "owner 放铳时给胜者 -1 番（v1 模拟得分减半）",
+	pool.append(_mk_tile(&"east_mirror_chambo_v1", "东·镜抓", "owner 放铳被荣胡时拿回 50% 得分（v1：transfer_points 实施）",
 		TileId.E, Rarity.Kind.EPIC, "res://skills/hooks/east_mirror_chambo_hook.gd"))
 	pool.append(_mk_tile(&"sou8_scapegoat_v1", "8 索·替罪", "owner 放铳时给胜者 -1 番（v1 模拟责任转嫁）",
 		TileId.S8, Rarity.Kind.UNCOMMON, "res://skills/hooks/sou8_scapegoat_hook.gd"))

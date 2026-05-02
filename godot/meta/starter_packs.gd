@@ -14,7 +14,7 @@ class_name StarterPacks
 # 引用其他 class_name enum 的静态初始化顺序问题（同 ChapterConfig）。
 
 # 控场型（spec §7.2 主题）— 透明牌 / 阻胡 / 抓马
-# 已实装：xray_1w_v1 / seal_chun_v1 / west_mirror_v1 / pin9_iron_wall_v1 /
+# 已实装：xray_1w_v1 / seal_chun_v1 / west_mirror_v1 / man9_iron_wall_v1 /
 # soul_drain_hatsu_v1 / 角色能力 seabed_hunter_v1
 static func control_pack() -> Dictionary:
 	return {
@@ -25,7 +25,7 @@ static func control_pack() -> Dictionary:
 			TileId.W1: &"xray_1w_v1",
 			TileId.CHUN: &"seal_chun_v1",
 			TileId.W_WIND: &"west_mirror_v1",
-			TileId.W9: &"pin9_iron_wall_v1",
+			TileId.W9: &"man9_iron_wall_v1",
 			TileId.HATSU: &"soul_drain_hatsu_v1",
 		},
 		"abilities": [&"seabed_hunter_v1"],
