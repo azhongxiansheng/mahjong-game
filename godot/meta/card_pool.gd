@@ -42,6 +42,22 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"pin9_haitei_double_v1", "9 筒·龙断", "海底/河底自摸 +1 番（v1 简化×2）",
 		TileId.T9, Rarity.Kind.LEGENDARY, "res://skills/hooks/pin9_haitei_double_hook.gd"))
 
+	# M6 内容生产：振听操控系（§8.7）
+	pool.append(_mk_tile(&"east_phantom_v1", "东·迷踪", "owner 弃东被荣胡时取消（v1 简化版振听操控）",
+		TileId.E, Rarity.Kind.EPIC, "res://skills/hooks/east_phantom_hook.gd"))
+	pool.append(_mk_tile(&"man2_lure_v1", "2 万·诱铳", "owner 自胡 +1 番（v1 模拟伪装听牌收益）",
+		TileId.W2, Rarity.Kind.EPIC, "res://skills/hooks/man2_lure_hook.gd"))
+	pool.append(_mk_tile(&"chun_substitute_v1", "中·替身", "owner 自胡时若振听则清除（替身代担）",
+		TileId.CHUN, Rarity.Kind.UNCOMMON, "res://skills/hooks/chun_substitute_hook.gd"))
+
+	# M6 内容生产：Dora 系（§8.8）
+	pool.append(_mk_tile(&"man6_treasure_v1", "6 万·夺宝", "owner 自胡 +1 番（v1 模拟额外 Dora）",
+		TileId.W6, Rarity.Kind.LEGENDARY, "res://skills/hooks/man6_treasure_hook.gd"))
+	pool.append(_mk_tile(&"white_red_change_v1", "白·赤变", "owner 自胡 +1 番（v1 模拟红 5 dora）",
+		TileId.HAKU, Rarity.Kind.UNCOMMON, "res://skills/hooks/white_red_change_hook.gd"))
+	pool.append(_mk_tile(&"sou4_uradora_pick_v1", "4 索·指示牌操纵", "owner 自胡 +2 番（v1 模拟重选最优裏 Dora）",
+		TileId.S4, Rarity.Kind.EPIC, "res://skills/hooks/sou4_uradora_pick_hook.gd"))
+
 	# 30 张普通占位"无技能牌"，覆盖 30 个 TileId（万 9 + 筒 9 + 条 9 + 3 风）
 	var placeholder_ids: Array = []
 	for i in range(9):
