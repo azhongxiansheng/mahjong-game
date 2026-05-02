@@ -170,6 +170,24 @@
 
 **M6 整体进度：43 / 44 任务（97.7%）** — 仅 `tougenkyo_v1` 留 M7（spec 原效果"手牌↔弃牌河交换"无任何 v1 等价表达）
 
+### M6 收尾
+
+- 全套 GUT：**881/881 PASS**（M5 收尾时 840 → +41 case）
+- 28 张牌技能 + 9 张角色能力 + 3 章 Boss + 3 起始包 全部落地
+- v1 简化策略：所有需新 ctx API 的真效果都用 `add_han` / `cancel_ron` /
+  `force_tsumo` / `reveal_tile_to` / `clear_furiten` 等价表达；具体留
+  M7 项已在每个 hook 文件头部注释。
+- M7 待扩 ctx 一览（按出现频次排序）：
+  - `set_furiten(seat, turns)` — 振听操控系
+  - `mark_extra_dora_for_seat` / `mark_red_dora` / `reroll_uradora` — Dora 系
+  - `mark_pao_transfer` — 抓马责任转嫁
+  - `force_yakuman` / `ensure_mangan` — 终局保底
+  - `force_double_riichi` / `extend_ippatsu_window` — 立直系
+  - `reveal_wall_segment_to` / `reveal_next_draw` / `reveal_tenpai_tiles` — 信息系
+  - `inject_meld_at_start` / `swap_hand_river` / `draw_choose_n_of_m` — 角色能力
+  - `scale_payout` / `mark_all_pay` — 计分调整
+  - `consume_self` — 一次性消耗品（替代 `skill.consumed = true` 直写）
+
 > 完成项更新方式：在 PR 中把对应 `- [ ]` 改为 `- [x]`，同时更新本表"已完成"数。
 
 ---
