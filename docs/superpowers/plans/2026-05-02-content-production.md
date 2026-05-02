@@ -125,9 +125,9 @@
 
 每章 Boss 是一个 AI seat 装备的"签名能力"，规则破坏强 + 主题鲜明。Boss 同时作为该章节地图最末一节点的 NodeKind.BOSS 节点配置。
 
-- [ ] **章 1 Boss：`boss1_iron_curtain_v1`** 铁幕（防御主题）— Boss owner 持有时所有 owner 触发的事件全部命中（无 reg_order tiebreak），且 Boss 受到 RON 时强制取消第 1 次
-- [ ] **章 2 Boss：`boss2_fortune_runner_v1`** 福星（Tempo + Dora）— Boss 起手即视为听牌；每局新增 1 张额外 Dora 指示牌
-- [ ] **章 3 Boss：`boss3_kanmon_v1`** 关门（终局）— 当节点剩余巡数 < 4 时，Boss 任意胡牌升级为役满
+- [x] **章 1 Boss：`boss1_iron_curtain_v1`** 铁幕（防御主题）— v1：Boss 受 RON 时取消（cancel_ron）；reg_order 全命中需 M7 扩 ctx
+- [x] **章 2 Boss：`boss2_fortune_runner_v1`** 福星（Tempo + Dora）— v1：自胡 +2 番（模拟额外 Dora）；force_tenpai_at_start 需 M7
+- [x] **章 3 Boss：`boss3_kanmon_v1`** 关门（终局）— v1：HAITEI/HOUTEI 自胡 +3 番（模拟役满升级）；force_yakuman 需 M7
 
 每个 Boss issue 的 PR 还需：
 - 修改 `meta/chapter_config.gd` 让对应章节的 BOSS NodeRef.meta 含 `boss_id` 字段
@@ -140,9 +140,9 @@
 
 替换 `meta/starter_packs.gd` 中 v1 仅"控场可选"的占位为 3 套真实可选。每个起始包 = 8-10 张牌技能（来自 A 节）+ 1-2 张角色能力（来自 B 节）。
 
-- [ ] **`starter_aggro` 火力包** — 增番系（§8.1）+ 终局系（§8.9）为主；建议含 thunder_5w / east_dynasty / north_sweep / mangan_floor + 1-2 ability
-- [ ] **`starter_fast` 速胡包** — 加速（§8.2）+ 立直（§8.6）为主；建议含 pin9_speed / south_breeze / unfuriten_5p / premature_riichi + 1-2 ability
-- [ ] **`starter_control` 控场包**（v1 已有占位）— 阻胡（§8.3）+ 透明牌（§8.5）+ 振听操控（§8.7）；填真实 tile_variants + abilities
+- [x] **`starter_aggro` 火力包** — thunder_5w + white_haku_holy + green_hatsu_serenity + pin9_haitei_double + shichu_kyu_katsu ability
+- [x] **`starter_fast` 速胡包** — unfuriten_5p（已实装的立直系）；premature_riichi 等待 §8.6 实装时再扩
+- [x] **`starter_control` 控场包** — xray_1w + seal_chun + west_mirror + pin9_iron_wall + soul_drain_hatsu + seabed_hunter ability
 
 每个起始包 PR 还需更新 `tests/meta/test_starter_packs.gd` 验证 3 套都 available + 内容非空。
 
@@ -165,10 +165,10 @@
 | 神级角色能力 | 5 | 2 | 40% |
 | 史诗角色能力 | 5 | 0 | 0% |
 | **§8.10 角色能力小计** | **10** | **2** | **20%** |
-| 章 Boss | 3 | 0 | 0% |
-| 起始包 | 3 | 0 | 0% |
+| 章 Boss | 3 | 3 | 100% |
+| 起始包 | 3 | 3 | 100% |
 
-**M6 整体进度：12 / 44 任务（27.3%）**
+**M6 整体进度：18 / 44 任务（40.9%）**
 
 > 完成项更新方式：在 PR 中把对应 `- [ ]` 改为 `- [x]`，同时更新本表"已完成"数。
 

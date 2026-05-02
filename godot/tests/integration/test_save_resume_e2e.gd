@@ -35,14 +35,17 @@ func test_after_new_run_save_exists():
 # ---- save → load → continue 完整路径 ----
 
 func test_save_load_continue_preserves_state():
-	# 玩家创建 Run
+	# 玩家创建 Run（M6 后 apply_to 会注入 control pack 牌；本测试覆盖同 TileId
+	# 验证 add 同 TileId 覆盖；count 仍是 pack_size）
 	var rs1 := RunState.new(42)
 	StarterPacks.apply_to(rs1, &"starter_control")
+	var pack_size: int = rs1.player_deck.tile_variant_count()
 
 	# 走几步：选 entry，加点假抽卡
 	rs1.choose_next_node(rs1.current_map.entry_node)
 	rs1.gold = 75
-	var v := TileVariant.new(&"saved_tile", TileId.W5, Rarity.Kind.UNCOMMON)
+	# 用 TileId.W1（control pack 已有 xray_1w_v1）以覆盖；count 不变
+	var v := TileVariant.new(&"saved_tile", TileId.W1, Rarity.Kind.UNCOMMON)
 	v.display_name = "保存测试"
 	rs1.player_deck.add_tile_variant(v)
 	rs1.pity_state.record_draw(Rarity.Kind.COMMON)
@@ -53,7 +56,7 @@ func test_save_load_continue_preserves_state():
 	var ss := _save_system()
 	ss.save_run(rs1)
 
-	# 模拟玩家退出 / 重启：构造一个新 RunFlow 检查 has_save 后 load
+	# 模拟玩家退出 / 重启
 	assert_true(ss.has_save())
 	var rs2 = ss.load_run()
 	assert_not_null(rs2)
@@ -62,8 +65,8 @@ func test_save_load_continue_preserves_state():
 	assert_eq(rs2.run_seed, 42)
 	assert_eq(rs2.gold, 75)
 	assert_eq(rs2.current_map.current_node, rs1.current_map.entry_node)
-	assert_eq(rs2.player_deck.tile_variant_count(), 1)
-	assert_eq(rs2.player_deck.get_tile_variant(TileId.W5).display_name, "保存测试")
+	assert_eq(rs2.player_deck.tile_variant_count(), pack_size, "deck size 跨重启保留")
+	assert_eq(rs2.player_deck.get_tile_variant(TileId.W1).display_name, "保存测试")
 	assert_eq(rs2.pity_state.node_single_no_epic_streak, 3)
 
 # ---- 失败 / 通关 后清档 ----

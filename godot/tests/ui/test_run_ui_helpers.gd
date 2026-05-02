@@ -92,10 +92,11 @@ func test_starter_pack_picker_format_card_available():
 	assert_true(s.find("控场型") >= 0)
 	assert_false(s.find("（M6 实装）") >= 0, "可用包不该有 M6 标记")
 
-func test_starter_pack_picker_format_card_unavailable():
+func test_starter_pack_picker_format_card_aggro_now_available():
+	# M6 内容生产：aggro pack 已 available，不再显示 M6 标记
 	var p: Dictionary = StarterPacks.aggro_pack()
 	var s: String = StarterPackPicker.format_card_text(p)
-	assert_true(s.find("（M6 实装）") >= 0, "不可用包应有 M6 标记")
+	assert_false(s.find("（M6 实装）") >= 0, "M6 后 aggro 已 available")
 
 # ---- RunSummary ----
 

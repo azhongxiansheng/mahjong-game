@@ -38,6 +38,10 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"west_mirror_v1", "西风·镜像", "owner 立直时清振听 1 次",
 		TileId.W_WIND, Rarity.Kind.EPIC, "res://skills/hooks/west_mirror_hook.gd"))
 
+	# M6 内容生产：终局系（§8.9）
+	pool.append(_mk_tile(&"pin9_haitei_double_v1", "9 筒·龙断", "海底/河底自摸 +1 番（v1 简化×2）",
+		TileId.T9, Rarity.Kind.LEGENDARY, "res://skills/hooks/pin9_haitei_double_hook.gd"))
+
 	# 30 张普通占位"无技能牌"，覆盖 30 个 TileId（万 9 + 筒 9 + 条 9 + 3 风）
 	var placeholder_ids: Array = []
 	for i in range(9):
@@ -73,6 +77,23 @@ static func all_abilities() -> Array:
 	pool.append(_mk_ability(&"seabed_hunter_v1", "海底狩人",
 		"海底捞月时强制 owner 自摸（M1 demo）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/seabed_hunter_hook.gd"))
+
+	# M6 内容生产：神级角色能力（§8.10）
+	pool.append(_mk_ability(&"shichu_kyu_katsu_v1", "死中求活",
+		"owner 点棒 < 5000 时所有役 +2 番（spec §8.10 #11）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/shichu_kyu_katsu_hook.gd"))
+
+	# M6 内容生产：3 章 Boss 签名能力（plan-6 C）
+	pool.append(_mk_ability(&"boss1_iron_curtain_v1", "铁幕",
+		"章 1 Boss：受到 RON 时强制取消（v1 简化：每次都取消，无消耗追踪）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss1_iron_curtain_hook.gd"))
+	pool.append(_mk_ability(&"boss2_fortune_runner_v1", "福星",
+		"章 2 Boss：自胡 +2 番（v1 简化模拟额外 Dora）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss2_fortune_runner_hook.gd"))
+	pool.append(_mk_ability(&"boss3_kanmon_v1", "关门",
+		"章 3 Boss：海底/河底自胡 +3 番（v1 简化模拟役满升级）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss3_kanmon_hook.gd"))
+
 	# 5 张占位 ability
 	for i in range(5):
 		pool.append(_mk_ability(
