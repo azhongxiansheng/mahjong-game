@@ -62,6 +62,24 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"south_riichi_breeze_v1", "南风·风行", "owner 自胡 +1 番（v1 模拟立直多看牌收益）",
 		TileId.S_WIND, Rarity.Kind.EPIC, "res://skills/hooks/south_riichi_breeze_hook.gd"))
 
+	# M6 内容生产：抓马反向得分系（§8.4）
+	pool.append(_mk_tile(&"east_mirror_chambo_v1", "东·镜抓", "owner 放铳时给胜者 -1 番（v1 模拟得分减半）",
+		TileId.E, Rarity.Kind.EPIC, "res://skills/hooks/east_mirror_chambo_hook.gd"))
+	pool.append(_mk_tile(&"sou8_scapegoat_v1", "8 索·替罪", "owner 放铳时给胜者 -1 番（v1 模拟责任转嫁）",
+		TileId.S8, Rarity.Kind.UNCOMMON, "res://skills/hooks/sou8_scapegoat_hook.gd"))
+
+	# M6 内容生产：立直系（§8.6 续）
+	pool.append(_mk_tile(&"south_premature_riichi_v1", "南·先制立直", "owner 自胡 +2 番（v1 模拟先制立直收益）",
+		TileId.S_WIND, Rarity.Kind.LEGENDARY, "res://skills/hooks/south_premature_riichi_hook.gd"))
+	pool.append(_mk_tile(&"hatsu_stick_refund_v1", "发·点棒返还", "owner 自胡 +1 番（v1 模拟立直棒返还）",
+		TileId.HATSU, Rarity.Kind.UNCOMMON, "res://skills/hooks/hatsu_stick_refund_hook.gd"))
+
+	# M6 内容生产：终局系（§8.9 续）
+	pool.append(_mk_tile(&"north_sweep_v1", "北·一扫", "owner 自胡 +3 番（v1 模拟役满全场分摊）",
+		TileId.N, Rarity.Kind.LEGENDARY, "res://skills/hooks/north_sweep_hook.gd"))
+	pool.append(_mk_tile(&"white_mangan_floor_v1", "白·役满下限", "owner 自胡 +5 番（v1 模拟满贯下限，消耗品）",
+		TileId.HAKU, Rarity.Kind.LEGENDARY, "res://skills/hooks/white_mangan_floor_hook.gd"))
+
 	# M6 内容生产：透明牌 / 信息系（§8.5）
 	pool.append(_mk_tile(&"white_oracle_v1", "白·占卜", "owner 摸牌后 reveal 一张未翻 Dora 占位",
 		TileId.HAKU, Rarity.Kind.UNCOMMON, "res://skills/hooks/white_oracle_hook.gd"))
