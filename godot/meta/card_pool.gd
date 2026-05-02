@@ -50,6 +50,24 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"chun_substitute_v1", "中·替身", "owner 自胡时若振听则清除（替身代担）",
 		TileId.CHUN, Rarity.Kind.UNCOMMON, "res://skills/hooks/chun_substitute_hook.gd"))
 
+	# M6 内容生产：增番系（§8.1 续）
+	pool.append(_mk_tile(&"east_dynasty_v1", "东风·王者气", "owner 是庄家且自胡 +2 番（需 dealer_seat extra）",
+		TileId.E, Rarity.Kind.LEGENDARY, "res://skills/hooks/east_dynasty_hook.gd"))
+
+	# M6 内容生产：加速胡牌系（§8.2）
+	pool.append(_mk_tile(&"pin9_speed_v1", "9 筒·速胡", "owner 自摸时强制海底（force_tsumo 模拟双摸收益）",
+		TileId.T9, Rarity.Kind.UNCOMMON, "res://skills/hooks/pin9_speed_hook.gd"))
+	pool.append(_mk_tile(&"sou3_skip_v1", "3 索·跳跃", "owner 自胡 +1 番（v1 模拟跳过下家收益）",
+		TileId.S3, Rarity.Kind.UNCOMMON, "res://skills/hooks/sou3_skip_hook.gd"))
+	pool.append(_mk_tile(&"south_riichi_breeze_v1", "南风·风行", "owner 自胡 +1 番（v1 模拟立直多看牌收益）",
+		TileId.S_WIND, Rarity.Kind.EPIC, "res://skills/hooks/south_riichi_breeze_hook.gd"))
+
+	# M6 内容生产：透明牌 / 信息系（§8.5）
+	pool.append(_mk_tile(&"white_oracle_v1", "白·占卜", "owner 摸牌后 reveal 一张未翻 Dora 占位",
+		TileId.HAKU, Rarity.Kind.UNCOMMON, "res://skills/hooks/white_oracle_hook.gd"))
+	pool.append(_mk_tile(&"pin2_bluff_v1", "2 筒·诈和", "owner 自胡 +1 番（v1 模拟伪装手牌收益）",
+		TileId.T2, Rarity.Kind.EPIC, "res://skills/hooks/pin2_bluff_hook.gd"))
+
 	# M6 内容生产：Dora 系（§8.8）
 	pool.append(_mk_tile(&"man6_treasure_v1", "6 万·夺宝", "owner 自胡 +1 番（v1 模拟额外 Dora）",
 		TileId.W6, Rarity.Kind.LEGENDARY, "res://skills/hooks/man6_treasure_hook.gd"))

@@ -45,14 +45,14 @@
 
 - [x] **`thunder_5w_v1`** [史] 5 万·闪电 — owner 自胡 +1 番（**M1 demo 已有**）
 - [x] **`white_haku_holy_v1`** [精] 白板·圣光 — 持此牌且自胡 → +1 番（v1 简化：原 spec ×1.5 数值留 M7）（PR #31）
-- [ ] **`east_dynasty_v1`** [史] 东风·王者气 — owner 是庄家且自胡 → +2 番（需读 ctx.beneficiary_seat == battle_state.dealer_seat；v1 简化：用 ctx.event.extra 字段或 SkillCtx 加 helper）
+- [x] **`east_dynasty_v1`** [神] 东风·王者气 — v1：owner==dealer（event.extra["dealer_seat"] 注入）且自胡 +2 番
 - [x] **`green_hatsu_serenity_v1`** [精] 发·禅意 — 任意人作三元牌胡牌时 +1 番（holder 模式）（PR #32）
 
 ### §8.2 加速胡牌系（Tempo） — 目标 3 张
 
-- [ ] **`pin9_speed_v1`** [精] 9 筒·速胡 — 弃此牌后下次摸"摸 2 选 1"。**v1 简化**：弃此牌后给 owner haitei_lucky 标记（M7 接 force_tsumo 路径）
-- [ ] **`sou3_skip_v1`** [精] 3 索·跳跃 — owner 听牌后弃此牌跳过下家 1 巡。**v1 简化**：emit "TURN_SKIP" 占位事件（M7 接 turn_engine）
-- [ ] **`south_riichi_breeze_v1`** [史] 南风·风行 — 立直时多看 1 张牌墙。**v1 简化**：仅记录"reveal_next_wall_tile" 标记，UI 端 v1 不实际渲染
+- [x] **`pin9_speed_v1`** [精] 9 筒·速胡 — v1：owner 摸到此牌触发 force_tsumo（标 haitei_forced_seat=owner）
+- [x] **`sou3_skip_v1`** [精] 3 索·跳跃 — v1：owner 自胡 +1 番（模拟跳过下家收益）；真"跳过下家"需 turn_engine.skip_seat（M7）
+- [x] **`south_riichi_breeze_v1`** [精] 南风·风行 — v1：owner 自胡 +1 番（模拟立直多看牌收益）；真 reveal_next_wall_tile 需 ctx 扩展（M7）
 
 ### §8.3 阻止对方胡牌系（Defense） — 目标 3 张
 
@@ -69,8 +69,8 @@
 ### §8.5 透明牌 / 信息系（Reveal） — 目标 3 张
 
 - [x] **`xray_1w_v1`** [精] 1 万·透视 — owner 摸牌后 reveal 下家手牌 1 张（**M1 demo 已有**）
-- [ ] **`white_oracle_v1`** [精] 白·占卜 — 每巡看 1 张未翻 Dora 指示牌
-- [ ] **`pin2_bluff_v1`** [史] 2 筒·诈和 — 副露时手牌 2 张伪装。**v1 简化**：emit "BLUFF_TILES" 占位
+- [x] **`white_oracle_v1`** [精] 白·占卜 — v1：owner 摸牌时 reveal HAKU 占位代表"未翻 Dora 指示"；真"读 wall.dora_indicators"需 reveal_wall_segment_to ctx 扩展（M7）
+- [x] **`pin2_bluff_v1`** [精] 2 筒·诈和 — v1：owner 自胡 +1 番（模拟伪装收益）；真"伪装手牌"需 mask_hand_tiles ctx 扩展（M7）
 
 ### §8.6 立直系（Riichi） — 目标 3 张
 
@@ -152,23 +152,23 @@
 
 | 类别 | 总数 | 已完成 | 完成率 |
 |---|---|---|---|
-| §8.1 增番系 | 4 | 3 | 75% |
-| §8.2 加速 | 3 | 0 | 0% |
+| §8.1 增番系 | 4 | 4 | 100% |
+| §8.2 加速 | 3 | 3 | 100% |
 | §8.3 阻胡 | 3 | 3 | 100% |
 | §8.4 抓马 | 3 | 1 | 33% |
-| §8.5 透明牌 | 3 | 1 | 33% |
+| §8.5 透明牌 | 3 | 3 | 100% |
 | §8.6 立直 | 3 | 1 | 33% |
 | §8.7 振听 | 3 | 3 | 100% |
 | §8.8 Dora | 3 | 3 | 100% |
 | §8.9 终局 | 3 | 1 | 33% |
-| **§8 牌技能小计** | **28** | **16** | **57%** |
+| **§8 牌技能小计** | **28** | **22** | **79%** |
 | 神级角色能力 | 5 | 2 | 40% |
 | 史诗角色能力 | 5 | 0 | 0% |
 | **§8.10 角色能力小计** | **10** | **2** | **20%** |
 | 章 Boss | 3 | 3 | 100% |
 | 起始包 | 3 | 3 | 100% |
 
-**M6 整体进度：24 / 44 任务（54.5%）**
+**M6 整体进度：30 / 44 任务（68.2%）**
 
 > 完成项更新方式：在 PR 中把对应 `- [ ]` 改为 `- [x]`，同时更新本表"已完成"数。
 
