@@ -13,4 +13,5 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var discarder: int = int(event.extra.get("discarder_seat", -1))
 	if discarder != ctx.beneficiary_seat:
 		return
-	ctx.add_han(event.actor_seat, -1)
+	var penalty: int = int(BalanceConstants.lookup(&"iron_wall_han_penalty"))
+	ctx.add_han(event.actor_seat, penalty)

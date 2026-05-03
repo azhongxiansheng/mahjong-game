@@ -7,7 +7,7 @@
 # 同 discarder_seat 模式（seal_chun / iron_wall）。
 extends SkillHook
 
-const DYNASTY_HAN_BONUS: int = 2
+# 数值已迁移到 BalanceConstants (&"east_dynasty_dealer_tsumo_bonus")，本地 const 移除。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
@@ -15,4 +15,5 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var dealer: int = int(event.extra.get("dealer_seat", -1))
 	if dealer != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, DYNASTY_HAN_BONUS)
+	var bonus: int = int(BalanceConstants.lookup(&"east_dynasty_dealer_tsumo_bonus"))
+	ctx.add_han(ctx.beneficiary_seat, bonus)

@@ -6,9 +6,10 @@
 # 棒接收方，留 M7 在 stick_accounting 接驳后做。
 extends SkillHook
 
-const REFUND_HAN_BONUS: int = 1
+# REFUND_HAN_BONUS 已迁移到 BalanceConstants (&"stick_refund_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, REFUND_HAN_BONUS)
+	var bonus: int = int(BalanceConstants.lookup(&"stick_refund_han_bonus"))
+	ctx.add_han(ctx.beneficiary_seat, bonus)

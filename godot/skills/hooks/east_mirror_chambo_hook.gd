@@ -9,7 +9,7 @@
 # 由 turn_engine / scene 在结算 RON 时填好。
 extends SkillHook
 
-const REFUND_FRACTION := 0.5
+# REFUND_FRACTION 已迁移到 BalanceConstants (&"mirror_chambo_refund_fraction")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	# owner_trigger 模式：beneficiary_seat = owner（出铳方候选）
@@ -19,5 +19,6 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var points_won: int = int(event.extra.get("points_won", 0))
 	if points_won <= 0:
 		return
-	var refund := int(points_won * REFUND_FRACTION)
+	var fraction: float = BalanceConstants.get_number(&"mirror_chambo_refund_fraction")
+	var refund := int(points_won * fraction)
 	ctx.transfer_points(event.actor_seat, ctx.beneficiary_seat, refund)
