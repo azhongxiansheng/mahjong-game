@@ -27,6 +27,12 @@ const _SUITED_RANGES: Array = [
 func _init(seed_arg: int = 0) -> void:
 	super(seed_arg)
 
+# M7：tenpai 时自动立直。判定走 RiichiValidator（门清 + 听牌 + 1000 点 +
+# 牌墙剩 4）。本 AI 无策略，能立直就立直；M8+ 玩家 UI 替换为玩家选择。
+# 调用方应在 discard 之后（hand=13 张）调用本函数。
+func decide_riichi(seat: Seat, wall_live_size: int) -> bool:
+	return RiichiValidator.can_declare_riichi(seat, wall_live_size)
+
 func decide_discard(seat: Seat) -> Tile:
 	var hand_tiles: Array = seat.hand._tiles
 	if hand_tiles.is_empty():

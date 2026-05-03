@@ -1,5 +1,7 @@
 class_name BattleController
 
+const RIICHI_STICK_COST: int = 1000
+
 # 里程碑 2 — 端到端编排器。
 # 职责：
 #   1. 自建 BattleState / TurnEngine / SkillRegistry / SkillScheduler / SimpleAi
@@ -93,6 +95,15 @@ func _step_discard() -> void:
 		_settled = true
 		return
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
+	# M7：discard 后 hand=13 张，AI 可决定立直（HeuristicAi.decide_riichi 走
+	# RiichiValidator）。declare_riichi 成功 → state.scores[seat] -= 1000 让
+	# GameDriver._apply_in_hand_skill_deltas 同步到 cumulative，避免守恒被破。
+	if ai.has_method("decide_riichi"):
+		var seat_after: Seat = state.seats[actor]
+		if ai.decide_riichi(seat_after, state.wall.live_wall_size()):
+			if engine.declare_riichi(actor):
+				state.scores[actor] -= RIICHI_STICK_COST
+				_emit(&"RIICHI_DECLARED", actor, null, {})
 	# M7：自动 RON 检测。在每次 TILE_DISCARDED 后按 atama-hane 顺序遍历对家。
 	# v1：任一对家若可胡（非振听 + 听牌 + 有役）→ 自动 apply_ron。
 	# 真实玩家 UI 路径下（M8+）会替换为玩家选择窗口；当前 SimpleAi-only 阶段

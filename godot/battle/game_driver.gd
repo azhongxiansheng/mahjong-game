@@ -100,6 +100,10 @@ func apply_result(events: Array) -> Dictionary:
 	# 没找到 WIN_DECLARED → 流局
 	# 流局也要应用 in-hand skill 转分（流局期间也可能 transfer_points）
 	_apply_in_hand_skill_deltas()
+	# M7：把 in-hand 立直累积的 state.riichi_sticks 同步回 driver，让下一
+	# 次胡时 winner 能收走 pool（不然流局后 pool 丢失，scores 守恒被破）
+	if battle != null:
+		riichi_sticks = battle.state.riichi_sticks
 	return {"kind": "exhaustive_draw"}
 
 # M7：把 battle.state.scores 与 _pre_hand_state_scores 之间的 delta 应用到

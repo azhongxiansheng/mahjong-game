@@ -55,6 +55,12 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 			apply_res["tenpai_array"] = _detect_tenpai_array(bc)
 		driver.advance_or_finish(apply_res)
 
+	# M7：未收的立直棒池转给庄家（v1 单 east round 节点 house rule，避免
+	# pool 在节点边界丢失破坏 sum 守恒；spec Phase 2 半庄战时 pool 跨 round 保留）
+	if driver.riichi_sticks > 0:
+		driver.cumulative_scores[driver.dealer_seat] += driver.riichi_sticks * 1000
+		driver.riichi_sticks = 0
+
 	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT)
 	return {
 		"node_result": NodeResult.new(rank, driver.cumulative_scores),

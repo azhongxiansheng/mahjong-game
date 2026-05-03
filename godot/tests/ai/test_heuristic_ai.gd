@@ -74,11 +74,12 @@ func test_battle_controller_with_heuristic_ai_completes():
 	# 不应崩；最末事件 ∈ {EXHAUSTIVE_DRAW, WIN_DECLARED}
 	var allowed: Array = [&"EXHAUSTIVE_DRAW", &"WIN_DECLARED"]
 	assert_true(allowed.has(result.last_event))
-	# 守恒
+	# 守恒：state.scores + 立直棒池（流局未收的）= 100000
+	# HeuristicAi 在 tenpai 时会立直 → 单 hand 流局可能留 pool
 	var sum := 0
 	for s in bc.state.scores:
 		sum += s
-	assert_eq(sum, 100000)
+	assert_eq(sum + bc.state.riichi_sticks * 1000, 100000)
 
 # ---- BattleNodeRunner: heuristic_ai 参数 ----
 
