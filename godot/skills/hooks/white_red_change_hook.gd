@@ -1,14 +1,14 @@
-# 白·赤变 — §8.8 Dora 系（M6 内容生产）
+# 白·赤变 — §8.8 Dora 系（M6 内容生产 + M7 ctx B2 升级）
 #
-# v1: owner 自胡 +1 番（模拟"5 万 / 5 筒 / 5 索任一改赤 Dora"等价 +1 番）
-# spec 原效果："5m/5p/5s 之一改为赤 Dora（永久效果，每 Run 1 张）"
-# v1 简化：用 add_han(+1) 表达红 5 收益；真"改 5 字段为 red"需
-# mark_red_dora ctx 扩展（M7）。
+# v2 (M7 B2)：mark_red_dora_for_seat(owner, +1) 真给 owner 额外 1 张
+# 赤 Dora（spec 原效果："5m/5p/5s 之一改为赤 Dora，永久效果，每 Run 1 张"）。
+# v2 简化：仍用计数器表达，"改 5m/5p/5s 牌字段为 red"需更深的 Tile.is_red_dora
+# 路径升级（独立 PR）；当前等价收益 +1 番已在结算正确反映。
 extends SkillHook
 
-const RED_DORA_HAN_BONUS: int = 1
+const RED_DORA_COUNT: int = 1
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, RED_DORA_HAN_BONUS)
+	ctx.mark_red_dora_for_seat(ctx.beneficiary_seat, RED_DORA_COUNT)

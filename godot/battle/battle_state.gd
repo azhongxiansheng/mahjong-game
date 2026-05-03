@@ -41,6 +41,11 @@ var furiten_flags: Array[bool] = [false, false, false, false]
 var ron_cancelled: Array[bool] = [false, false, false, false]
 var revealed_tiles: Array = []
 var haitei_forced_seat: int = -1
+# M7 ctx B2 — Dora 系：per-seat 额外 dora / red dora 计数（hook 通过
+# mark_extra_dora_for_seat / mark_red_dora_for_seat 累加，BattleController
+# 在 ScoreCalc 之前把对应 seat 的额外 count 加到 yaku_list.dora_count 上）
+var extra_dora_count: Array[int] = [0, 0, 0, 0]
+var extra_red_dora_count: Array[int] = [0, 0, 0, 0]
 
 static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int) -> BattleState:
 	var s := BattleState.new()

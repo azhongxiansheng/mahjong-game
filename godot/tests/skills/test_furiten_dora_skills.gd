@@ -99,34 +99,38 @@ func test_chun_substitute_no_op_when_not_furiten():
 
 # ---- §8.8 man6_treasure ----
 
-func test_man6_treasure_adds_1_han_on_self_win():
+func test_man6_treasure_marks_1_extra_dora_on_self_win():
+	# M7 B2 升级：从 add_han(+1) 改为 mark_extra_dora_for_seat(+1)
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_tile_skill(&"man6_treasure_v1", Man6TreasureHook, TileId.W6, [&"WIN_DECLARED"], Rarity.Kind.LEGENDARY)
 	_register_owned_by(reg, sk, 0)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
-	assert_eq(int(out.han_deltas.get(0, 0)), 1)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
+	assert_eq(int(st.extra_dora_count[0]), 1, "owner 自胡 → +1 额外 dora")
 
-func test_man6_treasure_no_han_for_other_seat():
+func test_man6_treasure_no_dora_for_other_seat():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_tile_skill(&"man6_treasure_v1", Man6TreasureHook, TileId.W6, [&"WIN_DECLARED"], Rarity.Kind.LEGENDARY)
 	_register_owned_by(reg, sk, 0)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
-	assert_eq(int(out.han_deltas.get(0, 0)), 0)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
+	assert_eq(int(st.extra_dora_count[0]), 0)
 
 # ---- §8.8 white_red_change ----
 
-func test_white_red_change_adds_1_han_on_win():
+func test_white_red_change_marks_1_red_dora_on_win():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_tile_skill(&"white_red_change_v1", WhiteRedHook, TileId.HAKU, [&"WIN_DECLARED"], Rarity.Kind.UNCOMMON)
 	_register_owned_by(reg, sk, 3)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
-	assert_eq(int(out.han_deltas.get(3, 0)), 1)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
+	assert_eq(int(st.extra_red_dora_count[3]), 1, "owner 自胡 → +1 赤 dora")
 
 # ---- §8.8 sou4_uradora_pick ----
 

@@ -41,6 +41,24 @@ func clear_furiten(seat: int) -> void:
 func set_furiten(seat: int, value: bool = true) -> void:
 	_state.furiten_flags[seat] = value
 
+# M7 ctx 扩展 B2：Dora 系。
+# mark_extra_dora_for_seat：给指定 seat 额外 +N 张普通 Dora（私有可见，
+# 仅该 seat 自胡时计入 yaku_list.dora_count）。man6_treasure / boss2_fortune_runner
+# 等 hook 用。
+# mark_red_dora_for_seat：同理，给 seat 额外 +N 张赤 Dora。语义与普通
+# Dora 相同（每张 +1 番），但分桶以便未来 spec §14 红 dora 上限调整时
+# 独立审计。
+# BattleController 在 ScoreCalc 之前把对应 seat 的累计加到 yaku_list.dora_count。
+func mark_extra_dora_for_seat(seat: int, count: int = 1) -> void:
+	if seat < 0 or seat >= _state.extra_dora_count.size():
+		return
+	_state.extra_dora_count[seat] += count
+
+func mark_red_dora_for_seat(seat: int, count: int = 1) -> void:
+	if seat < 0 or seat >= _state.extra_red_dora_count.size():
+		return
+	_state.extra_red_dora_count[seat] += count
+
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat
 

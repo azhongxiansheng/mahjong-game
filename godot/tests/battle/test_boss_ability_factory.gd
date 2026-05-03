@@ -62,11 +62,11 @@ func test_inject_boss1_then_emit_ron_cancels():
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 0, null, {"discarder_seat": 1}))
 	assert_true(st.ron_cancelled[0], "Boss(seat 1) 出铳被 actor=0 荣胡 → cancel")
 
-func test_inject_boss2_then_emit_win_pre_adds_2_han():
-	# M7：trigger 改 WIN_DECLARED_PRE
+func test_inject_boss2_then_emit_win_pre_marks_2_extra_dora():
+	# M7 B2：boss2 已升级到 mark_extra_dora_for_seat（替代 add_han）
 	var reg := SkillRegistry.new()
 	var st := BattleState.new()
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"boss2_fortune_runner_v1", 2)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
-	assert_eq(int(out.han_deltas.get(2, 0)), 2)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
+	assert_eq(int(st.extra_dora_count[2]), 2)

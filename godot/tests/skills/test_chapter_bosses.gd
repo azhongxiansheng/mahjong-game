@@ -48,24 +48,27 @@ func test_boss1_no_cancel_when_other_seat_discards():
 
 # ---- Boss 2 福星 ----
 
-func test_boss2_adds_2_han_when_self_wins():
+func test_boss2_marks_2_extra_dora_when_self_wins():
+	# M7 B2 升级：从 add_han(+2) 改为 mark_extra_dora_for_seat(+2)
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var ab := _make_ability(&"boss2_fortune_runner_v1", Boss2Hook, [&"WIN_DECLARED"])
+	var ab := _make_ability(&"boss2_fortune_runner_v1", Boss2Hook, [&"WIN_DECLARED_PRE"])
 	reg.register(ab, 1)  # Boss 在 seat 1
-	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
-	assert_eq(int(out_ctx.han_deltas.get(1, 0)), 2)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1))
+	assert_eq(int(st.extra_dora_count[1]), 2)
 
-func test_boss2_no_han_when_other_wins():
+func test_boss2_no_dora_when_other_wins():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var ab := _make_ability(&"boss2_fortune_runner_v1", Boss2Hook, [&"WIN_DECLARED"])
+	var ab := _make_ability(&"boss2_fortune_runner_v1", Boss2Hook, [&"WIN_DECLARED_PRE"])
 	reg.register(ab, 1)
-	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
-	assert_eq(int(out_ctx.han_deltas.get(1, 0)), 0)
-	assert_eq(int(out_ctx.han_deltas.get(3, 0)), 0)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 3))
+	assert_eq(int(st.extra_dora_count[1]), 0)
+	assert_eq(int(st.extra_dora_count[3]), 0)
 
 # ---- Boss 3 关门 ----
 

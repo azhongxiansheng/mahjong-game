@@ -211,6 +211,7 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra)
 	skill_han += int(pre_ctx.han_deltas.get(winner_seat, 0))
 	_apply_skill_han_delta(score_yaku_list, skill_han)
+	_apply_extra_dora(score_yaku_list, winner_seat)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -248,6 +249,7 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", state.current_seat, ti, pre_extra)
 	skill_han += int(pre_ctx.han_deltas.get(state.current_seat, 0))
 	_apply_skill_han_delta(score_yaku_list, skill_han)
+	_apply_extra_dora(score_yaku_list, state.current_seat)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -277,6 +279,13 @@ static func _apply_skill_han_delta(yaku_list: YakuList, delta: int) -> void:
 	if delta == 0:
 		return
 	yaku_list.add_yaku(&"skill_bonus", delta)
+
+# M7 B2：把 BattleState.extra_dora_count[winner] + extra_red_dora_count[winner]
+# 加到 yaku_list.dora_count（hooks 通过 ctx.mark_extra_dora_for_seat /
+# ctx.mark_red_dora_for_seat 累积）。
+func _apply_extra_dora(yaku_list: YakuList, winner_seat: int) -> void:
+	yaku_list.dora_count += int(state.extra_dora_count[winner_seat])
+	yaku_list.dora_count += int(state.extra_red_dora_count[winner_seat])
 
 # 兼容性 wrapper：从单个 ctx 取 han_deltas[winner_seat] 调 _apply_skill_han_delta。
 # 现存测试 / 后续 PR 还会调用，保留。
