@@ -14,12 +14,19 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 
 # 跑一整场东风战，返 NodeResult（已含 viewer 排名 / hp_delta / final_scores）。
 # seed 决定洗牌；node_index 通常作为 seed 偏移避免同 Run 内不同节点重复牌局。
-static func run_battle_to_node_result(seed: int) -> NodeResult:
+#
+# boss_id（plan-6 C，M6 收尾）：传非空 StringName 时，每局开始把对应 Boss 能力
+# inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
+# 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
+# 普通对局（不 inject）。
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"") -> NodeResult:
 	var driver := GameDriver.new(seed)
 	var hand_count := 0
 	while not driver.finished and hand_count < HAND_LIMIT:
 		hand_count += 1
 		var bc := driver.start_hand()
+		if boss_id != &"":
+			BossAbilityFactory.inject(bc.registry, boss_id)
 		var run_result: Dictionary = bc.run_to_end()
 		var apply_res: Dictionary = driver.apply_result(run_result.events)
 		if apply_res.kind == "exhaustive_draw":

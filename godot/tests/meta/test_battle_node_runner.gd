@@ -57,3 +57,36 @@ func test_placeholder_result_is_no_op():
 	assert_eq(r.hp_delta, 0)
 	assert_eq(r.gold_reward, 0)
 	assert_eq(r.card_reward, 0)
+
+# ---- M6 收尾：boss_id 参数 ----
+
+func test_run_battle_with_empty_boss_id_falls_back_to_normal():
+	# 空 boss_id 应等同于不传参数（向后兼容）
+	var a: NodeResult = BattleNodeRunner.run_battle_to_node_result(42)
+	var b: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"")
+	assert_eq(a.rank, b.rank)
+	assert_eq(a.final_scores, b.final_scores)
+
+func test_run_battle_with_unknown_boss_id_silently_falls_back():
+	# 未知 boss_id 不应崩；BossAbilityFactory.inject 返 false 时安全跳过
+	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"unknown_boss_v1")
+	assert_not_null(r)
+	assert_gte(r.rank, 1)
+	assert_lte(r.rank, 4)
+
+func test_run_battle_with_boss1_completes_without_crash():
+	# boss1 有效 inject + 跑完整 4 局；只验证不崩 + 守恒
+	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"boss1_iron_curtain_v1")
+	assert_not_null(r)
+	var sum := 0
+	for s in r.final_scores:
+		sum += int(s)
+	assert_eq(sum, 100000, "Boss inject 后总分仍守恒")
+
+func test_run_battle_with_boss2_completes_without_crash():
+	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"boss2_fortune_runner_v1")
+	assert_not_null(r)
+
+func test_run_battle_with_boss3_completes_without_crash():
+	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"boss3_kanmon_v1")
+	assert_not_null(r)

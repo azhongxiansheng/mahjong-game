@@ -22,6 +22,7 @@ static func chapter_1() -> Dictionary:
 			NodeKind.Kind.SHOP: 0.10,
 			NodeKind.Kind.EVENT: 0.15,
 		},
+		"boss_id": &"boss1_iron_curtain_v1",
 	}
 
 static func chapter_2() -> Dictionary:
@@ -35,6 +36,7 @@ static func chapter_2() -> Dictionary:
 			NodeKind.Kind.SHOP: 0.1,
 			NodeKind.Kind.EVENT: 0.2,
 		},
+		"boss_id": &"boss2_fortune_runner_v1",
 	}
 
 static func chapter_3() -> Dictionary:
@@ -48,6 +50,7 @@ static func chapter_3() -> Dictionary:
 			NodeKind.Kind.SHOP: 0.1,
 			NodeKind.Kind.EVENT: 0.2,
 		},
+		"boss_id": &"boss3_kanmon_v1",
 	}
 
 static func get_chapter(chapter_index: int) -> Dictionary:
@@ -56,6 +59,12 @@ static func get_chapter(chapter_index: int) -> Dictionary:
 		2: return chapter_2()
 		3: return chapter_3()
 	return {}
+
+# 取章节 Boss 能力 id（CardPool 中注册的 ability id）。
+# chapter_index 越界返 &""（调用方应当 fallback 到不 inject Boss）。
+static func get_boss_id(chapter_index: int) -> StringName:
+	var c: Dictionary = get_chapter(chapter_index)
+	return c.get("boss_id", &"") as StringName
 
 static func chapter_count() -> int:
 	return 3

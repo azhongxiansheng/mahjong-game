@@ -159,7 +159,11 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	_swap_panel(battle_label)
 	# 用节点 index 做 seed 偏移，避免同 Run 重复牌局
 	var node_seed: int = _run_state.run_seed * 100 + node_ref.index
-	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(node_seed)
+	# M6 收尾：BOSS 节点把当前章节 Boss inject 到对战 registry
+	var boss_id: StringName = &""
+	if node_ref.kind == NodeKind.Kind.BOSS:
+		boss_id = ChapterConfig.get_boss_id(_run_state.chapter)
+	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(node_seed, boss_id)
 	_last_result = result
 	_run_state.complete_node(result)
 
