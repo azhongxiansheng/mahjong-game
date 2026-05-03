@@ -19,7 +19,7 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"") -> NodeResult:
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = []) -> NodeResult:
 	var driver := GameDriver.new(seed)
 	var hand_count := 0
 	while not driver.finished and hand_count < HAND_LIMIT:
@@ -27,6 +27,9 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"") -> N
 		var bc := driver.start_hand()
 		if boss_id != &"":
 			BossAbilityFactory.inject(bc.registry, boss_id)
+		# M7：玩家 deck.abilities → registry（每局重建）
+		if not player_ability_ids.is_empty():
+			BossAbilityFactory.inject_player_abilities(bc.registry, player_ability_ids, VIEWER_SEAT)
 		var run_result: Dictionary = bc.run_to_end()
 		var apply_res: Dictionary = driver.apply_result(run_result.events)
 		if apply_res.kind == "exhaustive_draw":

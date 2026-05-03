@@ -163,9 +163,24 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var boss_id: StringName = &""
 	if node_ref.kind == NodeKind.Kind.BOSS:
 		boss_id = ChapterConfig.get_boss_id(_run_state.chapter)
-	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(node_seed, boss_id)
+	# M7：玩家 deck.abilities → BattleController.registry，让玩家角色能力
+	# 在真实战斗中 fire（之前只有 Boss inject 路径工作）
+	var player_ability_ids: Array = _player_ability_ids()
+	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(
+		node_seed, boss_id, player_ability_ids
+	)
 	_last_result = result
 	_run_state.complete_node(result)
+
+func _player_ability_ids() -> Array:
+	# 从 run_state.player_deck.abilities (Array[AbilityCard]) 抽 id 列表
+	var ids: Array = []
+	if _run_state == null or _run_state.player_deck == null:
+		return ids
+	for a in _run_state.player_deck.abilities:
+		if a != null:
+			ids.append(a.id)
+	return ids
 
 func _show_placeholder(node_ref: NodeRef) -> void:
 	var p: PlaceholderNode = PLACEHOLDER_NODE.instantiate()
