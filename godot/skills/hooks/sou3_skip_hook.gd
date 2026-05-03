@@ -6,9 +6,9 @@
 # 等价。真"跳过下家"需 turn_engine.skip_seat 扩展（M7）。
 extends SkillHook
 
-const SKIP_HAN_BONUS: int = 1
+# SKIP_HAN_BONUS 已迁移到 BalanceConstants (&"sou3_skip_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, SKIP_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"sou3_skip_han_bonus")))

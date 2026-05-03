@@ -6,9 +6,9 @@
 # 真"第 1 巡立直"需 force_double_riichi_at_first_turn ctx 扩展（M7）。
 extends SkillHook
 
-const PREMATURE_RIICHI_HAN_BONUS: int = 2
+# PREMATURE_RIICHI_HAN_BONUS 已迁移到 BalanceConstants (&"premature_riichi_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, PREMATURE_RIICHI_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"premature_riichi_han_bonus")))

@@ -6,9 +6,9 @@
 # turn_engine.force_ryukyoku ctx 扩展（M7）。
 extends SkillHook
 
-const YUDOU_HAN_BONUS: int = 1
+# YUDOU_HAN_BONUS 已迁移到 BalanceConstants (&"ryukyoku_yudou_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, YUDOU_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"ryukyoku_yudou_han_bonus")))

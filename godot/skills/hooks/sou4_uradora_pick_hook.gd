@@ -7,9 +7,9 @@
 # v1 不区分立直 / 非立直；M7 扩 BattleState.riichi_declared[] 后再加判定。
 extends SkillHook
 
-const URADORA_HAN_BONUS: int = 2
+# URADORA_HAN_BONUS 已迁移到 BalanceConstants (&"sou4_uradora_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, URADORA_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"sou4_uradora_han_bonus")))

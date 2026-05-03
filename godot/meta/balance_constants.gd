@@ -59,8 +59,29 @@ const VALUES: Dictionary = {
 	# §8.4 抓马
 	&"soul_drain_fraction": 0.30,
 	&"mirror_chambo_refund_fraction": 0.50,
+	&"sou8_scapegoat_han_penalty": -1,
 	# §8.6 立直
 	&"stick_refund_han_bonus": 1,
+	&"premature_riichi_han_bonus": 2,
+	# §8.7 振听操控
+	&"man2_lure_han_bonus": 1,
+	# §8.8 Dora
+	&"sou4_uradora_han_bonus": 2,
+	# §8.9 终局
+	&"north_sweep_han_bonus": 3,
+	# §8.10 角色能力
+	&"mineu_oni_han_bonus": 2,
+	&"san_kyoku_kiseki_han_bonus": 1,
+	&"ryukyoku_yudou_han_bonus": 1,
+	&"tousotsu_han_bonus": 1,
+	&"riichi_kago_han_bonus": 1,
+	# 章 Boss
+	&"boss3_kanmon_han_bonus": 3,
+	# §8.5 透明牌（数字桩）
+	&"pin2_bluff_han_bonus": 1,
+	# §8.2 加速（数字桩）
+	&"sou3_skip_han_bonus": 1,
+	&"south_breeze_han_bonus": 1,
 }
 
 # 取值；缺 key 立即 assert（catch dev typo，不静默 fallback）。

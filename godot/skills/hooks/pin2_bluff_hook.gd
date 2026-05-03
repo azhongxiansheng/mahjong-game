@@ -6,9 +6,9 @@
 # 真"伪装手牌"需 mask_hand_tiles_for_opponents ctx 扩展（M7）。
 extends SkillHook
 
-const BLUFF_HAN_BONUS: int = 1
+# BLUFF_HAN_BONUS 已迁移到 BalanceConstants (&"pin2_bluff_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, BLUFF_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"pin2_bluff_han_bonus")))

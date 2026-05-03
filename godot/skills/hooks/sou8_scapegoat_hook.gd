@@ -6,10 +6,10 @@
 # 真"指定对手承担放铳"需 mark_pao_transfer ctx 扩展（M7）。
 extends SkillHook
 
-const SCAPEGOAT_HAN_PENALTY: int = -1
+# SCAPEGOAT_HAN_PENALTY 已迁移到 BalanceConstants (&"sou8_scapegoat_han_penalty")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var discarder: int = int(event.extra.get("discarder_seat", -1))
 	if discarder != ctx.beneficiary_seat:
 		return
-	ctx.add_han(event.actor_seat, SCAPEGOAT_HAN_PENALTY)
+	ctx.add_han(event.actor_seat, int(BalanceConstants.lookup(&"sou8_scapegoat_han_penalty")))

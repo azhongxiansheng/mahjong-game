@@ -6,9 +6,9 @@
 # 等价收益。真"伪装听牌型"需 set_fake_tenpai_for_seat ctx 扩展（M7）。
 extends SkillHook
 
-const LURE_HAN_BONUS: int = 1
+# LURE_HAN_BONUS 已迁移到 BalanceConstants (&"man2_lure_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, LURE_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"man2_lure_han_bonus")))

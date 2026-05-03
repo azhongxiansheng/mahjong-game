@@ -7,9 +7,9 @@
 # trigger: WIN_DECLARED + owner（最贴近"立直后胡"的可观察事件）
 extends SkillHook
 
-const BREEZE_HAN_BONUS: int = 1
+# BREEZE_HAN_BONUS 已迁移到 BalanceConstants (&"south_breeze_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, BREEZE_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"south_breeze_han_bonus")))

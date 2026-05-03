@@ -6,9 +6,9 @@
 # 子"需 inject_meld_at_start ctx 扩展（M7）。
 extends SkillHook
 
-const KISEKI_HAN_BONUS: int = 1
+# KISEKI_HAN_BONUS 已迁移到 BalanceConstants (&"san_kyoku_kiseki_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, KISEKI_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"san_kyoku_kiseki_han_bonus")))

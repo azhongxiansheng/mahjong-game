@@ -6,9 +6,9 @@
 # ability 触发额度"需 boost_other_abilities ctx 扩展（M7）。
 extends SkillHook
 
-const TOUSOTSU_HAN_BONUS: int = 1
+# TOUSOTSU_HAN_BONUS 已迁移到 BalanceConstants (&"tousotsu_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, TOUSOTSU_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"tousotsu_han_bonus")))

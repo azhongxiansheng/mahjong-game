@@ -6,9 +6,9 @@
 # 需要 force_yakuman API（M7 加）。
 extends SkillHook
 
-const KANMON_HAN_BONUS: int = 3
+# KANMON_HAN_BONUS 已迁移到 BalanceConstants (&"boss3_kanmon_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, KANMON_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"boss3_kanmon_han_bonus")))

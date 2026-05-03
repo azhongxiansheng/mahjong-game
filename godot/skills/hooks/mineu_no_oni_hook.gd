@@ -6,9 +6,9 @@
 # 真"5 选 1 摸牌"需 draw_choose_n_of_m ctx 扩展（M7）。
 extends SkillHook
 
-const ONI_HAN_BONUS: int = 2
+# ONI_HAN_BONUS 已迁移到 BalanceConstants (&"mineu_oni_han_bonus")。
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, ONI_HAN_BONUS)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"mineu_oni_han_bonus")))
