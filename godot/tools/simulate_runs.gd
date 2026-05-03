@@ -19,7 +19,7 @@ func _parse_args() -> Dictionary:
 	var config: Dictionary = {
 		"runs": 10,
 		"seed": 0,
-		"starter": &"control",
+		"starter": &"starter_control",
 		"pick_strategy": "first",
 	}
 	for arg in OS.get_cmdline_user_args():
@@ -28,7 +28,12 @@ func _parse_args() -> Dictionary:
 		elif arg.begins_with("--seed="):
 			config["seed"] = int(arg.substr(7))
 		elif arg.begins_with("--starter="):
-			config["starter"] = StringName(arg.substr(10))
+			# 支持 --starter=control（短名）或 --starter=starter_control（全名）
+			var raw_name := arg.substr(10)
+			if raw_name.begins_with("starter_"):
+				config["starter"] = StringName(raw_name)
+			else:
+				config["starter"] = StringName("starter_" + raw_name)
 		elif arg.begins_with("--pick="):
 			config["pick_strategy"] = arg.substr(7)
 		elif arg.begins_with("--max-nodes="):

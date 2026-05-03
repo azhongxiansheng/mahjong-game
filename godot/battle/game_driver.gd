@@ -28,6 +28,10 @@ var battle: BattleController = null
 var finished: bool = false
 # M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
 var use_heuristic_ai: bool = false
+# M7：start_hand 时拍照 battle.state.scores，apply_result 时算"in-hand skill
+# 转分增量"（由 ctx.transfer_points / steal_score 写入 state.scores），把
+# 这部分 delta 应用到 cumulative_scores 让玩家技能（如 soul_drain_hatsu）真生效
+var _pre_hand_state_scores: Array[int] = [0, 0, 0, 0]
 
 func _init(p_seed: int = 0) -> void:
 	seed = p_seed
@@ -41,6 +45,9 @@ func start_hand() -> BattleController:
 		battle.state.scores[i] = cumulative_scores[i]
 	battle.state.honba = honba
 	battle.state.riichi_sticks = riichi_sticks
+	# 拍照供 apply_result 算 skill 转分增量
+	for i in range(4):
+		_pre_hand_state_scores[i] = battle.state.scores[i]
 	return battle
 
 # 解析 events，把最末 WIN_DECLARED 的 payout 应用到 cumulative_scores。
@@ -68,6 +75,10 @@ func apply_result(events: Array) -> Dictionary:
 			cumulative_scores[ev.actor_seat] += winner_total
 			# 立直棒被胜者收走，本驱动器清零
 			riichi_sticks = 0
+			# M7：把 in-hand skill 转分增量（state.scores 偏离 _pre_hand_state_scores）
+			# 应用到 cumulative_scores —— 让 soul_drain_hatsu 等 transfer_points-based
+			# 玩家技能在跨局累计中真生效
+			_apply_in_hand_skill_deltas()
 			# 区分自摸/荣胡：往前找最近的 TSUMO_DECLARED 或 RON_DECLARED
 			var kind := "tsumo"
 			for j in range(i - 1, -1, -1):
@@ -87,7 +98,20 @@ func apply_result(events: Array) -> Dictionary:
 			}
 
 	# 没找到 WIN_DECLARED → 流局
+	# 流局也要应用 in-hand skill 转分（流局期间也可能 transfer_points）
+	_apply_in_hand_skill_deltas()
 	return {"kind": "exhaustive_draw"}
+
+# M7：把 battle.state.scores 与 _pre_hand_state_scores 之间的 delta 应用到
+# cumulative_scores。这部分 delta 来自 skill ctx.transfer_points / steal_score
+# 等直接修改 state.scores 的 hooks（payout 不在 state.scores，已由调用方
+# 单独 apply）。
+func _apply_in_hand_skill_deltas() -> void:
+	if battle == null:
+		return
+	for i in range(4):
+		var delta: int = int(battle.state.scores[i]) - int(_pre_hand_state_scores[i])
+		cumulative_scores[i] += delta
 
 # 决定连庄 / 流转 / 整场结束。
 #

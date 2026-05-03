@@ -254,6 +254,11 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
+	# M7：把 discarder_seat / points_won 注入 WIN_DECLARED.extra，让 post-score
+	# hooks（soul_drain_hatsu / east_mirror_chambo 等用 transfer_points）能读到
+	result["discarder_seat"] = discarder_seat
+	result["points_won"] = int(result.get("winner_total", 0))
+
 	engine.apply_ron(winner_seat, ron_tile)
 	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
 	_settled = true
@@ -293,6 +298,9 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 		_apply_mangan_floor(score_yaku_list)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
+
+	# M7：tsumo 无 discarder_seat（自摸无放铳人），仅设 points_won
+	result["points_won"] = int(result.get("winner_total", 0))
 
 	engine.apply_tsumo(state.current_seat, drawn)
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)

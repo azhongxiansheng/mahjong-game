@@ -25,7 +25,9 @@ const VIEWER_SEAT: int = 0
 static func simulate(config: Dictionary) -> Dictionary:
 	var runs: int = int(config.get("runs", 10))
 	var base_seed: int = int(config.get("seed", 0))
-	var starter: StringName = config.get("starter", &"control")
+	# starter id 形如 "starter_control"；CLI 接受 "control" 短名，由
+	# simulate_runs.gd 加 "starter_" 前缀
+	var starter: StringName = config.get("starter", &"starter_control")
 	var max_nodes: int = int(config.get("max_nodes_per_run", DEFAULT_MAX_NODES_PER_RUN))
 	var pick_strategy: String = config.get("pick_strategy", "first")
 	# M7：是否用 HeuristicAi（保留启发式弃牌）；默认 false 为兼容历史 baseline
@@ -127,8 +129,16 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 			if current.kind == NodeKind.Kind.BOSS:
 				boss_id = ChapterConfig.get_boss_id(rs.chapter)
 			var node_seed := run_seed * 1000 + nodes_visited
-			# M7 D4：用 with_stats 版本收 hand-level 统计
-			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, [], use_heuristic_ai)
+			# M7 D4：用 with_stats 版本收 hand-level 统计；M7：传 player deck
+			# (abilities + tile_variants) 让玩家技能在 sim 真生效
+			var ability_ids: Array = []
+			var tile_variants: Dictionary = {}
+			if rs.player_deck != null:
+				for a in rs.player_deck.abilities:
+					if a != null:
+						ability_ids.append(a.id)
+				tile_variants = rs.player_deck.tile_variants
+			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants)
 			result = node_stats.node_result
 			for k in node_stats.hand_outcomes.keys():
 				hand_outcomes[k] = int(hand_outcomes.get(k, 0)) + int(node_stats.hand_outcomes[k])
