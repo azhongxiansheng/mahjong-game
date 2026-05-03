@@ -198,6 +198,13 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	for m in winner.melds:
 		melds_arr.append(m)
 	var score_yaku_list := _adapt_yaku_list(yaku_list)
+
+	# M7: 在 ScoreCalc 之前 emit WIN_DECLARED_PRE，让 hook 可通过 ctx.add_han
+	# 真正影响计分（之前 WIN_DECLARED 在 ScoreCalc 之后 emit，han_deltas 是装饰）
+	var pre_extra: Dictionary = {"discarder_seat": discarder_seat, "is_tsumo": false}
+	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra)
+	_apply_skill_han(score_yaku_list, pre_ctx, winner_seat)
+
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
 	engine.apply_ron(winner_seat, ron_tile)
@@ -224,6 +231,12 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list) -> void:
 		melds_arr.append(m)
 
 	var score_yaku_list := _adapt_yaku_list(yaku_list)
+
+	# M7: WIN_DECLARED_PRE 同 _settle_ron，让 hook +han 进入计分
+	var pre_extra: Dictionary = {"is_tsumo": true}
+	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", state.current_seat, ti, pre_extra)
+	_apply_skill_han(score_yaku_list, pre_ctx, state.current_seat)
+
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
 	engine.apply_tsumo(state.current_seat, drawn)
@@ -243,6 +256,18 @@ func _adapt_yaku_list(eval_list: YakuEntries) -> YakuList:
 	for entry in eval_list.entries:
 		sc.yaku.append({"id": _yaku_id_to_string_name(entry.yaku_id), "han": entry.han})
 	return sc
+
+# M7：把 WIN_DECLARED_PRE hook 累积的 han_deltas[winner_seat] 注入到
+# ScoreCalc 输入的 yaku_list（作为 &"skill_bonus" 合成 yaku entry）。
+# delta = 0 不注入，避免污染 yaku_list；delta != 0 追加单 entry，由
+# ScoreCalc 累加到 total_han。
+static func _apply_skill_han(yaku_list: YakuList, ctx: SkillCtx, winner_seat: int) -> void:
+	if ctx == null:
+		return
+	var delta: int = int(ctx.han_deltas.get(winner_seat, 0))
+	if delta == 0:
+		return
+	yaku_list.add_yaku(&"skill_bonus", delta)
 
 # YakuId int → StringName 映射。仅覆盖 YakuList.has_yaku 实际查询的 id；
 # 其它 id 用 str(int) 占位（不影响 ScoreCalc 累加 han 的正确性）。

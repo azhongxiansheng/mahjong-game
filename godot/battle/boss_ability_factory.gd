@@ -13,9 +13,11 @@ class_name BossAbilityFactory
 # 对应的 hook_resource_path"约定（同 chapter_config.boss_id）。
 
 # Boss id → triggers 映射；hook_path 仍走 CardPool 的 ability metadata。
+# M7：boss2 改用 WIN_DECLARED_PRE（在 ScoreCalc 之前）让 +2 番真生效；
+# WIN_DECLARED 是 ScoreCalc 之后的"结果通知"事件。
 const _BOSS_TRIGGERS: Dictionary = {
 	&"boss1_iron_curtain_v1": [&"RON_DECLARED"],
-	&"boss2_fortune_runner_v1": [&"WIN_DECLARED"],
+	&"boss2_fortune_runner_v1": [&"WIN_DECLARED_PRE"],
 	&"boss3_kanmon_v1": [&"HAITEI", &"HOUTEI"],
 }
 
