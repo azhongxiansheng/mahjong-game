@@ -3,6 +3,10 @@ class_name SkillCtx
 var _state: BattleState
 var _event: BattleEvent
 var han_deltas: Dictionary = {}
+# M7 ctx B3-mini：per-seat 番数倍率（Dictionary[int → float]，缺省视为 1.0）。
+# hook 通过 multiply_han_for_seat 累乘；BattleController 在 ScoreCalc 之前读取
+# 以"补偿合成 yaku entry"形式作用到 yaku_list。
+var han_multipliers: Dictionary = {}
 var beneficiary_seat: int = -1  # 由 scheduler 在每个 candidate 派发前设置
 var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派发前设置；M7 ctx.consume_self 用
 
@@ -58,6 +62,16 @@ func mark_red_dora_for_seat(seat: int, count: int = 1) -> void:
 	if seat < 0 or seat >= _state.extra_red_dora_count.size():
 		return
 	_state.extra_red_dora_count[seat] += count
+
+# M7 ctx B3-mini：番数倍率。多次调用累乘（如两个 ×2 effect → ×4）。
+# 用于 pin9_haitei_double（spec "海底/河底役 ×2"）等 multiplicative 效果。
+# 注：本 PR 只暴露 ctx API + BattleController 读取；首批落地 hook 是
+# pin9_haitei_double 升级到真 ×2（替代 v1 +1 番桩）。
+func multiply_han_for_seat(seat: int, factor: float) -> void:
+	if seat < 0 or seat >= 4:
+		return
+	var current: float = float(han_multipliers.get(seat, 1.0))
+	han_multipliers[seat] = current * factor
 
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat

@@ -202,16 +202,17 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	var score_yaku_list := _adapt_yaku_list(yaku_list)
 
 	# M7：在 ScoreCalc 之前 emit pre-score 事件（HOUTEI? + WIN_DECLARED_PRE），
-	# hooks 此时可通过 ctx.add_han 真正影响计分。
-	var skill_han: int = 0
+	# hooks 此时可通过 ctx.add_han / mark_extra_dora / multiply_han_for_seat
+	# 真正影响计分。所有 pre-score ctx 收集到 pre_ctxs 数组里以便统一应用。
+	var pre_ctxs: Array = []
 	if is_houtei:
-		var houtei_ctx: SkillCtx = _emit(&"HOUTEI", winner_seat, ron_ti, {})
-		skill_han += int(houtei_ctx.han_deltas.get(winner_seat, 0))
+		pre_ctxs.append(_emit(&"HOUTEI", winner_seat, ron_ti, {}))
 	var pre_extra: Dictionary = {"discarder_seat": discarder_seat, "is_tsumo": false, "is_houtei": is_houtei}
-	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra)
-	skill_han += int(pre_ctx.han_deltas.get(winner_seat, 0))
-	_apply_skill_han_delta(score_yaku_list, skill_han)
+	pre_ctxs.append(_emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra))
+	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(winner_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, winner_seat)
+	# M7 B3-mini：把 multiplicative effect（任一 pre ctx）应用到番数
+	_apply_han_multiplier(score_yaku_list, _composite_multiplier(winner_seat, pre_ctxs))
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -240,16 +241,16 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 
 	var score_yaku_list := _adapt_yaku_list(yaku_list)
 
-	# M7：HAITEI? + WIN_DECLARED_PRE，accumulate hook han_deltas
-	var skill_han: int = 0
+	# M7：HAITEI? + WIN_DECLARED_PRE，accumulate hook 影响（han_deltas / dora /
+	# multiplier）。pre_ctxs 持所有 pre-score ctx 引用。
+	var pre_ctxs: Array = []
 	if is_haitei:
-		var haitei_ctx: SkillCtx = _emit(&"HAITEI", state.current_seat, ti, {})
-		skill_han += int(haitei_ctx.han_deltas.get(state.current_seat, 0))
+		pre_ctxs.append(_emit(&"HAITEI", state.current_seat, ti, {}))
 	var pre_extra: Dictionary = {"is_tsumo": true, "is_haitei": is_haitei}
-	var pre_ctx: SkillCtx = _emit(&"WIN_DECLARED_PRE", state.current_seat, ti, pre_extra)
-	skill_han += int(pre_ctx.han_deltas.get(state.current_seat, 0))
-	_apply_skill_han_delta(score_yaku_list, skill_han)
+	pre_ctxs.append(_emit(&"WIN_DECLARED_PRE", state.current_seat, ti, pre_extra))
+	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(state.current_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, state.current_seat)
+	_apply_han_multiplier(score_yaku_list, _composite_multiplier(state.current_seat, pre_ctxs))
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -286,6 +287,36 @@ static func _apply_skill_han_delta(yaku_list: YakuList, delta: int) -> void:
 func _apply_extra_dora(yaku_list: YakuList, winner_seat: int) -> void:
 	yaku_list.dora_count += int(state.extra_dora_count[winner_seat])
 	yaku_list.dora_count += int(state.extra_red_dora_count[winner_seat])
+
+# M7 B3-mini：把 ctx.han_multipliers[winner] 应用到 yaku_list。
+# 用合成"&\"skill_multiplier\""yaku entry 表达：(factor - 1) * total_han 番。
+# 例如 factor=2.0、当前 total_han=5 → 加 +5 番（合 10 番）。
+# factor <= 1.0 不操作（避免 ScoreFormula 钳制 < 0 番时混乱）。
+static func _apply_han_multiplier(yaku_list: YakuList, factor: float) -> void:
+	if factor <= 1.0:
+		return
+	var current_total: int = yaku_list.total_han()
+	var added: int = int(current_total * (factor - 1.0))
+	if added != 0:
+		yaku_list.add_yaku(&"skill_multiplier", added)
+
+# 累加多个 ctx 中 winner_seat 的 han_deltas（用于 HAITEI/HOUTEI + WIN_DECLARED_PRE）
+static func _sum_skill_han(winner_seat: int, ctxs: Array) -> int:
+	var total: int = 0
+	for c in ctxs:
+		if c == null:
+			continue
+		total += int(c.han_deltas.get(winner_seat, 0))
+	return total
+
+# 多个 ctx 的 han_multipliers 累乘（×2 + ×1.5 = ×3 复合）
+static func _composite_multiplier(winner_seat: int, ctxs: Array) -> float:
+	var product: float = 1.0
+	for c in ctxs:
+		if c == null:
+			continue
+		product *= float(c.han_multipliers.get(winner_seat, 1.0))
+	return product
 
 # 兼容性 wrapper：从单个 ctx 取 han_deltas[winner_seat] 调 _apply_skill_han_delta。
 # 现存测试 / 后续 PR 还会调用，保留。
