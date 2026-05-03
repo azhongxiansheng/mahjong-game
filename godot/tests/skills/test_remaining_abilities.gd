@@ -31,14 +31,15 @@ func _make_ability(id: StringName, hook: GDScript, triggers: Array, rarity: int 
 
 # ---- mineu_no_oni ----
 
-func test_mineu_no_oni_adds_2_han_on_self_win():
+func test_mineu_no_oni_adds_3_han_on_self_win():
+	# balance tune-1：mineu_oni_han_bonus 2 → 3
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var ab := _make_ability(&"mineu_no_oni_v1", MineuOniHook, [&"WIN_DECLARED"])
 	reg.register(ab, 0)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
-	assert_eq(int(out.han_deltas.get(0, 0)), 2)
+	assert_eq(int(out.han_deltas.get(0, 0)), 3)
 
 func test_mineu_no_oni_no_effect_for_other_seat():
 	var ctx := _setup()

@@ -57,12 +57,15 @@ const VALUES: Dictionary = {
 	# §8.3 阻胡
 	&"iron_wall_han_penalty": -1,
 	# §8.4 抓马
-	&"soul_drain_fraction": 0.30,
+	# soul_drain_fraction: M7 #66 数据显示 control pack 70% 通关偏 OP（baseline-3）；
+	# 30% → 20% 降一档，让 control 跟 aggro/fast 拉近
+	&"soul_drain_fraction": 0.20,
 	&"mirror_chambo_refund_fraction": 0.50,
 	&"sou8_scapegoat_han_penalty": -1,
 	# §8.6 立直
 	&"stick_refund_han_bonus": 1,
-	&"premature_riichi_han_bonus": 2,
+	# premature_riichi: aggro 0% 通关偏弱，从 +2 → +3 番尝试加力（spec 双立直 + 一发期望近 +3）
+	&"premature_riichi_han_bonus": 3,
 	# §8.7 振听操控
 	&"man2_lure_han_bonus": 1,
 	# §8.8 Dora
@@ -70,7 +73,8 @@ const VALUES: Dictionary = {
 	# §8.9 终局
 	&"north_sweep_han_bonus": 3,
 	# §8.10 角色能力
-	&"mineu_oni_han_bonus": 2,
+	# mineu_oni: aggro 0% 通关偏弱；2 → 3 番（杠后 5 选 1 期望应 ≥ +3 番）
+	&"mineu_oni_han_bonus": 3,
 	&"san_kyoku_kiseki_han_bonus": 1,
 	&"ryukyoku_yudou_han_bonus": 1,
 	&"tousotsu_han_bonus": 1,

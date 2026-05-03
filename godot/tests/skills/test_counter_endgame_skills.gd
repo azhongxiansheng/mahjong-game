@@ -46,14 +46,15 @@ func test_sou8_scapegoat_minus_1_to_winner_when_owner_discards():
 
 # ---- §8.6 south_premature_riichi ----
 
-func test_premature_riichi_adds_2_han_on_self_win():
+func test_premature_riichi_adds_3_han_on_self_win():
+	# balance tune-1：premature_riichi_han_bonus 2 → 3
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_tile_skill(&"south_premature_riichi_v1", PrematureRiichiHook, TileId.S_WIND, [&"WIN_DECLARED"])
 	_register_owned_by(reg, sk, 0)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
-	assert_eq(int(out.han_deltas.get(0, 0)), 2)
+	assert_eq(int(out.han_deltas.get(0, 0)), 3)
 
 # ---- §8.6 hatsu_stick_refund ----
 

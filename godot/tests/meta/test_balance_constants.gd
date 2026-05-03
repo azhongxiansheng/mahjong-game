@@ -61,8 +61,8 @@ func test_node_rank_arrays_size_4():
 
 func test_skill_magic_numbers_present():
 	# hook 内魔数已抽出（M7 升级 hook 时按需取）
-	assert_true(BalanceConstants.lookup(&"soul_drain_fraction") == 0.30,
-		"soul_drain 30%（M1 demo 魔数 → BalanceConstants）")
+	assert_true(BalanceConstants.lookup(&"soul_drain_fraction") == 0.20,
+		"soul_drain 20%（balance tune-1：30→20% 让 control 不太 OP）")
 	assert_true(BalanceConstants.lookup(&"mirror_chambo_refund_fraction") == 0.50,
 		"mirror_chambo 50%（M6 east_mirror_chambo 魔数 → BalanceConstants）")
 	assert_eq(BalanceConstants.lookup(&"iron_wall_han_penalty"), -1,
@@ -82,4 +82,4 @@ func test_get_number_returns_float():
 	var hp: float = BalanceConstants.get_number(&"starting_hp")
 	assert_eq(hp, 5.0, "int → float")
 	var fraction: float = BalanceConstants.get_number(&"soul_drain_fraction")
-	assert_eq(fraction, 0.30, "float → float")
+	assert_eq(fraction, 0.20, "float → float")
