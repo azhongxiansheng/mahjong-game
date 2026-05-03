@@ -28,6 +28,8 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var starter: StringName = config.get("starter", &"control")
 	var max_nodes: int = int(config.get("max_nodes_per_run", DEFAULT_MAX_NODES_PER_RUN))
 	var pick_strategy: String = config.get("pick_strategy", "first")
+	# M7：是否用 HeuristicAi（保留启发式弃牌）；默认 false 为兼容历史 baseline
+	var use_heuristic_ai: bool = bool(config.get("heuristic_ai", false))
 
 	var completed: int = 0
 	var failed: int = 0
@@ -41,7 +43,7 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var seat_score_samples: int = 0
 
 	for i in range(runs):
-		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy)
+		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy, use_heuristic_ai)
 		if run_outcome.won:
 			completed += 1
 		elif run_outcome.failed:
@@ -98,7 +100,7 @@ static func simulate(config: Dictionary) -> Dictionary:
 
 # 跑单 Run 直到 finished 或超过 max_nodes。
 # 返 {won, failed, chapter_at_end, nodes_visited, final_hp}
-static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String) -> Dictionary:
+static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String, use_heuristic_ai: bool = false) -> Dictionary:
 	var rs := RunState.new(run_seed)
 	if starter != &"":
 		StarterPacks.apply_to(rs, starter)
@@ -126,7 +128,7 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 				boss_id = ChapterConfig.get_boss_id(rs.chapter)
 			var node_seed := run_seed * 1000 + nodes_visited
 			# M7 D4：用 with_stats 版本收 hand-level 统计
-			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id)
+			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, [], use_heuristic_ai)
 			result = node_stats.node_result
 			for k in node_stats.hand_outcomes.keys():
 				hand_outcomes[k] = int(hand_outcomes.get(k, 0)) + int(node_stats.hand_outcomes[k])

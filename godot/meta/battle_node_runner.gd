@@ -19,8 +19,8 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = []) -> NodeResult:
-	return run_battle_with_stats(seed, boss_id, player_ability_ids).node_result
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false) -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai).node_result
 
 # M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
 # 返：
@@ -30,8 +30,9 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 #     final_scores: Array[int]（4 seats），
 #     hand_count: int（实际跑了几局）
 #   }
-static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = []) -> Dictionary:
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false) -> Dictionary:
 	var driver := GameDriver.new(seed)
+	driver.use_heuristic_ai = use_heuristic_ai
 	var hand_count: int = 0
 	var hand_outcomes: Dictionary = {"tsumo": 0, "ron": 0, "exhaustive_draw": 0}
 	while not driver.finished and hand_count < HAND_LIMIT:

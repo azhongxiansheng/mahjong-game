@@ -33,4 +33,6 @@ func _parse_args() -> Dictionary:
 			config["pick_strategy"] = arg.substr(7)
 		elif arg.begins_with("--max-nodes="):
 			config["max_nodes_per_run"] = int(arg.substr(12))
+		elif arg == "--heuristic-ai":
+			config["heuristic_ai"] = true
 	return config

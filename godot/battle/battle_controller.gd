@@ -27,12 +27,16 @@ var events: Array = []  # 事件 log（仅本地引用，便于断言）
 var _settled: bool = false
 var _last_event_type: StringName = &""
 
-func _init(seed: int = 0, dealer_seat: int = 0) -> void:
+func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false) -> void:
 	state = BattleState.for_east_round(seed, dealer_seat, 1, 0, 0)
 	engine = TurnEngine.new(state)
 	registry = SkillRegistry.new()
 	scheduler = SkillScheduler.new(registry, state)
-	ai = SimpleAi.new(seed + 1)  # AI 用不同 seed，与洗牌 seed 解耦
+	# AI 用不同 seed，与洗牌 seed 解耦
+	if use_heuristic_ai:
+		ai = HeuristicAi.new(seed + 1)
+	else:
+		ai = SimpleAi.new(seed + 1)
 
 # ---- 主入口 ----
 

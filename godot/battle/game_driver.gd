@@ -26,6 +26,8 @@ var dealer_seat: int = 0
 var cumulative_scores: Array[int] = []
 var battle: BattleController = null
 var finished: bool = false
+# M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
+var use_heuristic_ai: bool = false
 
 func _init(p_seed: int = 0) -> void:
 	seed = p_seed
@@ -34,7 +36,7 @@ func _init(p_seed: int = 0) -> void:
 # 创建当前 hand 的 BattleController；把累计分 + honba + riichi_sticks 注入
 # 到 battle.state，便于 ScoreFormula 在结算时引用本场起点。
 func start_hand() -> BattleController:
-	battle = BattleController.new(seed + hand_index, dealer_seat)
+	battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai)
 	for i in range(4):
 		battle.state.scores[i] = cumulative_scores[i]
 	battle.state.honba = honba
@@ -55,10 +57,13 @@ func apply_result(events: Array) -> Dictionary:
 		if ev.type == &"WIN_DECLARED":
 			var extra: Dictionary = ev.extra
 			var payout: Dictionary = extra.get("payout", {})
-			# payout dict 中的负值 = 出，正值 = 收（ScoreCalc 已经分摊好）
+			# M7 修：PayoutCalculator 返 {loser: amount_owed_to_winner}（正值 = 输出）。
+			# 历史 GameDriver 用 += 把"输出"加到 loser → 等价 winner +X 的同时
+			# loser 也 +X，每次胡破坏守恒 +2X。SimpleAi 几乎不胡时偏差小未察；
+			# HeuristicAi 让胡频升高后偏差爆发（sim 看到 sum 远超 100000）。
+			# 修正：loser 用 -=（输出 → 减分），winner += winner_total（含立直棒）。
 			for seat_id in payout:
-				cumulative_scores[seat_id] += int(payout[seat_id])
-			# winner 总收入（含 riichi_sticks 收走 + 本场加成等）
+				cumulative_scores[seat_id] -= int(payout[seat_id])
 			var winner_total: int = int(extra.get("winner_total", 0))
 			cumulative_scores[ev.actor_seat] += winner_total
 			# 立直棒被胜者收走，本驱动器清零

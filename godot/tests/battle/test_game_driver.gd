@@ -70,7 +70,7 @@ func test_initial_state():
 func test_dealer_tsumo_renchan():
 	var d := GameDriver.new(42)
 	# 庄家自摸 mangan：3 闲各出 -2000，庄收 6000
-	var events := _make_tsumo_events(0, {1: -2000, 2: -2000, 3: -2000}, 6000)
+	var events := _make_tsumo_events(0, {1: 2000, 2: 2000, 3: 2000}, 6000)
 	var result := d.apply_result(events)
 	assert_eq(result.kind, "tsumo")
 	assert_eq(result.winner_seat, 0)
@@ -90,7 +90,7 @@ func test_dealer_tsumo_renchan():
 func test_non_dealer_tsumo_advance():
 	var d := GameDriver.new(42)
 	# seat 1 自摸 mangan 闲家：庄出 -2000，2 闲各出 -1000，胜者收 4000
-	var events := _make_tsumo_events(1, {0: -2000, 2: -1000, 3: -1000}, 4000)
+	var events := _make_tsumo_events(1, {0: 2000, 2: 1000, 3: 1000}, 4000)
 	var result := d.apply_result(events)
 	var adv := d.advance_or_finish(result)
 	assert_false(adv.renchan, "闲家胡应流转")
@@ -104,7 +104,7 @@ func test_non_dealer_tsumo_advance():
 func test_non_dealer_ron_dealer_advance():
 	var d := GameDriver.new(42)
 	# seat 2 荣胡庄(0) 6400 点：庄独出，胜者收 6400
-	var events := _make_ron_events(2, 0, {0: -6400}, 6400)
+	var events := _make_ron_events(2, 0, {0: 6400}, 6400)
 	var result := d.apply_result(events)
 	assert_eq(result.kind, "ron")
 	assert_eq(result.winner_seat, 2)
@@ -198,7 +198,7 @@ func test_riichi_sticks_collected_on_win():
 	assert_true(d.is_score_conserved())
 
 	# seat 1 自摸：基本 4000 + 2 立直棒 2000 = winner_total 6000
-	var events := _make_tsumo_events(1, {0: -2000, 2: -1000, 3: -1000}, 6000)
+	var events := _make_tsumo_events(1, {0: 2000, 2: 1000, 3: 1000}, 6000)
 	d.apply_result(events)
 	assert_eq(d.riichi_sticks, 0, "立直棒被胜者收走")
 	assert_eq(d.cumulative_scores[1], 25000 + 6000)
@@ -251,10 +251,10 @@ func test_start_hand_injects_cumulative_scores():
 func test_full_east_round_score_conservation():
 	var d := GameDriver.new(123)
 	# 东 1：seat 1 自摸 mangan 闲
-	d.advance_or_finish(d.apply_result(_make_tsumo_events(1, {0: -2000, 2: -1000, 3: -1000}, 4000)))
+	d.advance_or_finish(d.apply_result(_make_tsumo_events(1, {0: 2000, 2: 1000, 3: 1000}, 4000)))
 	assert_true(d.is_score_conserved())
 	# 东 2：seat 2 荣胡 seat 0
-	d.advance_or_finish(d.apply_result(_make_ron_events(2, 0, {0: -3900}, 3900)))
+	d.advance_or_finish(d.apply_result(_make_ron_events(2, 0, {0: 3900}, 3900)))
 	assert_true(d.is_score_conserved())
 	# 东 3：流局，庄(2)听
 	var draw_result := d.apply_result(_make_exhaustive_events())
@@ -265,9 +265,9 @@ func test_full_east_round_score_conservation():
 	assert_eq(d.dealer_seat, 2)
 	assert_eq(d.honba, 1)
 	# 东 3 二本场：seat 3 自摸
-	d.advance_or_finish(d.apply_result(_make_tsumo_events(3, {0: -1500, 1: -1500, 2: -3000}, 6000)))
+	d.advance_or_finish(d.apply_result(_make_tsumo_events(3, {0: 1500, 1: 1500, 2: 3000}, 6000)))
 	assert_true(d.is_score_conserved())
 	# 东 4：庄=seat 3，闲胡 → 流转 → 整场结束
-	d.advance_or_finish(d.apply_result(_make_ron_events(0, 3, {3: -8000}, 8000)))
+	d.advance_or_finish(d.apply_result(_make_ron_events(0, 3, {3: 8000}, 8000)))
 	assert_true(d.finished)
 	assert_true(d.is_score_conserved())
