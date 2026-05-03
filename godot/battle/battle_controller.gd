@@ -89,6 +89,12 @@ func _step_discard() -> void:
 		_settled = true
 		return
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
+	# M7：自动 RON 检测。在每次 TILE_DISCARDED 后按 atama-hane 顺序遍历对家。
+	# v1：任一对家若可胡（非振听 + 听牌 + 有役）→ 自动 apply_ron。
+	# 真实玩家 UI 路径下（M8+）会替换为玩家选择窗口；当前 SimpleAi-only 阶段
+	# 自动接受所有可胡机会以让 sim 看见 RON 路径。
+	if not _settled:
+		_try_auto_ron(to_discard, actor)
 
 # ---- 事件 emit ----
 
@@ -167,11 +173,36 @@ func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false) -> Di
 		"melds": typed_melds,
 	}
 
+# M7：在 TILE_DISCARDED 后自动尝试 ron。按 atama-hane 顺序（discarder + 1
+# 优先），首个可胡的对家直接 apply_ron。被 cancel_ron 跳过该候选试下一个
+# （v1 简化：spec 严格 atama-hane 是"被取消即不再考虑"；本 v1 让其它候选
+# 也有机会 fire 以让 sim 看到更多 RON 数据点）。
+# is_houtei = (wall.live_wall_size() == 0) — 当前 discard 来自最后一张 live 牌。
+func _try_auto_ron(discarded: Tile, discarder: int) -> void:
+	var is_houtei: bool = (state.wall.live_wall_size() == 0)
+	for offset in range(1, 4):
+		var candidate: int = (discarder + offset) % 4
+		var candidate_seat: Seat = state.seats[candidate]
+		# 1) 振听 + 听牌检查（ClaimValidator 已封装）
+		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
+			continue
+		# 2) 有役检查（_check_ron 内部跑 YakuEvaluator + 无役拒绝）
+		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
+		if not ron_check.is_winning:
+			continue
+		# 3) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
+		if apply_ron(candidate, discarded, discarder, is_houtei):
+			return  # 已 settle
+
 # 公共入口：荣胡（外部 driver 调用，不走 run_to_end 主循环）。
 # discarder_seat: 弃牌人座（决定 ron_tile 的 owner_seat 与 score_ctx.loser_seat）。
 # 返 false 表示和牌不成立（无役 / 听牌不命中 / 技能取消）。
 func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false) -> bool:
 	var ron_ti := TileInstance.make(ron_tile, discarder_seat, null)
+	# M7：reset 上一次 emit 留下的 cancel 标记，避免同 hand 多次 ron 尝试时
+	# 旧值粘连（例：先 seat 1 的 ron 被 cancel；再 seat 2 试 ron 时 ron_cancelled[2]
+	# 默认 false，但若上次 emit 不小心也触发了 seat 2 的 cancel 就会粘连）
+	state.ron_cancelled[winner_seat] = false
 	# 先 emit RON_DECLARED 让技能（如「中·封印」）有机会取消
 	_emit(&"RON_DECLARED", winner_seat, ron_ti, {"discarder_seat": discarder_seat})
 	if state.ron_cancelled[winner_seat]:
