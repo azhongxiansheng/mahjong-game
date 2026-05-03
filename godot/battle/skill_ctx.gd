@@ -4,6 +4,7 @@ var _state: BattleState
 var _event: BattleEvent
 var han_deltas: Dictionary = {}
 var beneficiary_seat: int = -1  # 由 scheduler 在每个 candidate 派发前设置
+var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派发前设置；M7 ctx.consume_self 用
 
 func _init(p_state: BattleState, p_event: BattleEvent) -> void:
 	_state = p_state
@@ -34,6 +35,14 @@ func clear_furiten(seat: int) -> void:
 
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat
+
+# 一次性消耗品：把当前正在派发的 skill 标记为 consumed。
+# 替代 hook 内直写 `skill.consumed = true`（leaky abstraction，未来联机权威化时
+# 所有状态改动必须走 ctx）。current_skill 由 SkillScheduler._dispatch 注入。
+# M7 待办：逐步把现有 6 个 hook 的直写改为本 API（独立小 PR，避免一次性大改）。
+func consume_self() -> void:
+	if current_skill != null:
+		current_skill.consumed = true
 
 # ---- Read-only accessors ----
 

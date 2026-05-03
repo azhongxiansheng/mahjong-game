@@ -93,7 +93,9 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 		if c.skill.consumed:
 			continue
 		ctx.beneficiary_seat = c.beneficiary_seat
+		ctx.current_skill = c.skill  # M7: ctx.consume_self() 用
 		c.hook.on_event(c.skill, event, ctx)
+	ctx.current_skill = null  # 防止 hook 外部误用残留引用
 
 func _dump_state() -> Dictionary:
 	return {
