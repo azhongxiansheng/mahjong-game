@@ -34,6 +34,11 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var failed_at_chapter: Array[int] = [0, 0, 0]  # 章 1 / 章 2 / 章 3 内 hp 归零
 	var nodes_per_run: Array[int] = []
 	var final_hp_dist: Array[int] = []
+	# M7 D4 扩展（baseline 假设 B 下一步）：hand-level 统计跨所有 Run × 所有节点
+	var hand_kind_total: Dictionary = {"tsumo": 0, "ron": 0, "exhaustive_draw": 0}
+	# 4 个 seat 节点结束时累计点数（每节点 4 个数字），跨所有 Run 累计后取均值
+	var seat_score_sum: Array[float] = [0.0, 0.0, 0.0, 0.0]
+	var seat_score_samples: int = 0
 
 	for i in range(runs):
 		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy)
@@ -46,6 +51,29 @@ static func simulate(config: Dictionary) -> Dictionary:
 				failed_at_chapter[ch - 1] += 1
 		nodes_per_run.append(run_outcome.nodes_visited)
 		final_hp_dist.append(run_outcome.final_hp)
+		# 累 hand_outcomes
+		for k in run_outcome.hand_outcomes.keys():
+			hand_kind_total[k] = int(hand_kind_total.get(k, 0)) + int(run_outcome.hand_outcomes[k])
+		# 累 seat_scores（按节点取样）
+		for sample in run_outcome.seat_score_samples:
+			for s in range(4):
+				seat_score_sum[s] += float(sample[s])
+			seat_score_samples += 1
+
+	var hand_total: int = int(hand_kind_total.get("tsumo", 0)) \
+		+ int(hand_kind_total.get("ron", 0)) \
+		+ int(hand_kind_total.get("exhaustive_draw", 0))
+	var hand_kind_pct: Dictionary = {}
+	if hand_total > 0:
+		for k in hand_kind_total.keys():
+			hand_kind_pct[k] = float(hand_kind_total[k]) / float(hand_total)
+	else:
+		hand_kind_pct = {"tsumo": 0.0, "ron": 0.0, "exhaustive_draw": 0.0}
+
+	var avg_seat_score: Array[float] = [0.0, 0.0, 0.0, 0.0]
+	if seat_score_samples > 0:
+		for s in range(4):
+			avg_seat_score[s] = seat_score_sum[s] / float(seat_score_samples)
 
 	return {
 		"runs": runs,
@@ -60,6 +88,12 @@ static func simulate(config: Dictionary) -> Dictionary:
 		"max_nodes": _max(nodes_per_run),
 		"avg_final_hp": _avg(final_hp_dist),
 		"max_hp": BalanceConstants.lookup(&"max_hp"),
+		# M7 D4 扩展
+		"hand_kind_total": hand_kind_total,
+		"hand_kind_pct": hand_kind_pct,
+		"hand_total": hand_total,
+		"avg_seat_score": avg_seat_score,
+		"seat_score_samples": seat_score_samples,
 	}
 
 # 跑单 Run 直到 finished 或超过 max_nodes。
@@ -73,6 +107,8 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 	rng.seed = run_seed * 7919  # 与节点 seed 解耦
 
 	var nodes_visited: int = 0
+	var hand_outcomes: Dictionary = {"tsumo": 0, "ron": 0, "exhaustive_draw": 0}
+	var seat_score_samples: Array = []  # Array of Array[int]，每节点结束时 4 seats 累计点数
 	while not rs.finished and nodes_visited < max_nodes:
 		var options: Array = rs.next_node_options()
 		if options.is_empty():
@@ -89,7 +125,12 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 			if current.kind == NodeKind.Kind.BOSS:
 				boss_id = ChapterConfig.get_boss_id(rs.chapter)
 			var node_seed := run_seed * 1000 + nodes_visited
-			result = BattleNodeRunner.run_battle_to_node_result(node_seed, boss_id)
+			# M7 D4：用 with_stats 版本收 hand-level 统计
+			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id)
+			result = node_stats.node_result
+			for k in node_stats.hand_outcomes.keys():
+				hand_outcomes[k] = int(hand_outcomes.get(k, 0)) + int(node_stats.hand_outcomes[k])
+			seat_score_samples.append(node_stats.final_scores.duplicate())
 		else:
 			result = BattleNodeRunner.placeholder_result()
 		rs.complete_node(result)
@@ -101,6 +142,8 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 		"chapter_at_end": rs.chapter,
 		"nodes_visited": nodes_visited,
 		"final_hp": rs.hp,
+		"hand_outcomes": hand_outcomes,
+		"seat_score_samples": seat_score_samples,
 	}
 
 static func _pick(options: Array, strategy: String, rng: RandomNumberGenerator) -> NodeRef:
@@ -122,6 +165,29 @@ static func format_summary(stats: Dictionary) -> String:
 	lines.append("")
 	lines.append("节点 / Run: avg=%.1f, min=%d, max=%d" % [stats.avg_nodes_per_run, stats.min_nodes, stats.max_nodes])
 	lines.append("最终 HP avg: %.1f / %d" % [stats.avg_final_hp, stats.max_hp])
+	# M7 D4 扩展
+	lines.append("")
+	var pct: Dictionary = stats.hand_kind_pct
+	lines.append("局结果分布（共 %d 局）:" % stats.hand_total)
+	lines.append("  tsumo:           %.1f%% (%d)" % [
+		float(pct.get("tsumo", 0.0)) * 100.0,
+		int(stats.hand_kind_total.get("tsumo", 0)),
+	])
+	lines.append("  ron:             %.1f%% (%d)" % [
+		float(pct.get("ron", 0.0)) * 100.0,
+		int(stats.hand_kind_total.get("ron", 0)),
+	])
+	lines.append("  exhaustive_draw: %.1f%% (%d)" % [
+		float(pct.get("exhaustive_draw", 0.0)) * 100.0,
+		int(stats.hand_kind_total.get("exhaustive_draw", 0)),
+	])
+	var seat_avg: Array = stats.avg_seat_score
+	lines.append("")
+	lines.append("各 seat 节点终局平均点数（取样 %d 节点）:" % stats.seat_score_samples)
+	lines.append("  seat 0 (玩家): %.0f" % seat_avg[0])
+	lines.append("  seat 1 (AI):   %.0f" % seat_avg[1])
+	lines.append("  seat 2 (AI):   %.0f" % seat_avg[2])
+	lines.append("  seat 3 (AI):   %.0f" % seat_avg[3])
 	return "\n".join(lines)
 
 # ---- internal stats helpers ----

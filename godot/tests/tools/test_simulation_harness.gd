@@ -57,3 +57,60 @@ func test_format_summary_contains_key_metrics():
 	assert_true(s.contains("失败"), "summary 含失败计数")
 	assert_true(s.contains("节点 / Run"), "summary 含节点数")
 	assert_true(s.contains("最终 HP"), "summary 含最终 HP")
+	# M7 D4 扩展
+	assert_true(s.contains("局结果分布"), "summary 含局结果分布")
+	assert_true(s.contains("各 seat"), "summary 含 seat 平均点数")
+
+# ---- M7 D4 扩展统计 ----
+
+func test_simulate_returns_extended_keys():
+	var stats := SimulationHarness.simulate({"runs": 2, "seed": 13})
+	var required: Array[String] = [
+		"hand_kind_total", "hand_kind_pct", "hand_total",
+		"avg_seat_score", "seat_score_samples",
+	]
+	for k in required:
+		assert_true(stats.has(k), "stats 缺 M7 D4 扩展 key: %s" % k)
+
+func test_hand_kind_total_keys():
+	var stats := SimulationHarness.simulate({"runs": 2, "seed": 17})
+	var hkt: Dictionary = stats.hand_kind_total
+	for k in ["tsumo", "ron", "exhaustive_draw"]:
+		assert_true(hkt.has(k), "hand_kind_total 含 %s" % k)
+		assert_true(int(hkt[k]) >= 0, "%s 计数 ≥ 0" % k)
+
+func test_hand_total_equals_sum_of_kinds():
+	var stats := SimulationHarness.simulate({"runs": 2, "seed": 19})
+	var hkt: Dictionary = stats.hand_kind_total
+	var sum: int = int(hkt.get("tsumo", 0)) + int(hkt.get("ron", 0)) + int(hkt.get("exhaustive_draw", 0))
+	assert_eq(stats.hand_total, sum, "hand_total = sum(hand_kind_total)")
+
+func test_hand_kind_pct_sums_to_1():
+	var stats := SimulationHarness.simulate({"runs": 3, "seed": 23})
+	if stats.hand_total == 0:
+		return  # 没局打 → 跳过百分比测试
+	var pct: Dictionary = stats.hand_kind_pct
+	var sum: float = 0.0
+	for v in pct.values():
+		sum += float(v)
+	assert_almost_eq(sum, 1.0, 0.001, "hand_kind_pct 总和 ≈ 1.0")
+
+func test_avg_seat_score_size_4():
+	var stats := SimulationHarness.simulate({"runs": 2, "seed": 29})
+	var ass: Array = stats.avg_seat_score
+	assert_eq(ass.size(), 4, "avg_seat_score 4 元素（4 seats）")
+
+func test_avg_seat_score_sum_close_to_100000():
+	# 麻将守恒：4 家点数总和 = 4 × 25000 = 100000（不计立直棒）
+	# 节点结束时立直棒收走 / 跨局保留，所以节点终局点数 sum 可能偏离少量
+	# 但 |sum - 100000| 应在 ±立直棒数 × 1000 范围内（v1 不立直 → 应严格 100000）
+	var stats := SimulationHarness.simulate({"runs": 5, "seed": 31})
+	var ass: Array = stats.avg_seat_score
+	if stats.seat_score_samples == 0:
+		return
+	var total: float = 0.0
+	for s in ass:
+		total += float(s)
+	# 当前 SimpleAi 不立直 → 立直棒永远 0，4 家应严格守恒
+	assert_almost_eq(total, 100000.0, 100.0,
+		"4 家平均点数总和 ≈ 100000（守恒 + SimpleAi 不立直）")

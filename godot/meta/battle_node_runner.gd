@@ -20,8 +20,20 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
 static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = []) -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids).node_result
+
+# M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
+# 返：
+#   {
+#     node_result: NodeResult,
+#     hand_outcomes: {tsumo: int, ron: int, exhaustive_draw: int},
+#     final_scores: Array[int]（4 seats），
+#     hand_count: int（实际跑了几局）
+#   }
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = []) -> Dictionary:
 	var driver := GameDriver.new(seed)
-	var hand_count := 0
+	var hand_count: int = 0
+	var hand_outcomes: Dictionary = {"tsumo": 0, "ron": 0, "exhaustive_draw": 0}
 	while not driver.finished and hand_count < HAND_LIMIT:
 		hand_count += 1
 		var bc := driver.start_hand()
@@ -32,12 +44,20 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 			BossAbilityFactory.inject_player_abilities(bc.registry, player_ability_ids, VIEWER_SEAT)
 		var run_result: Dictionary = bc.run_to_end()
 		var apply_res: Dictionary = driver.apply_result(run_result.events)
+		var kind: String = apply_res.kind
+		if hand_outcomes.has(kind):
+			hand_outcomes[kind] = int(hand_outcomes[kind]) + 1
 		if apply_res.kind == "exhaustive_draw":
 			apply_res["tenpai_array"] = _detect_tenpai_array(bc)
 		driver.advance_or_finish(apply_res)
 
 	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT)
-	return NodeResult.new(rank, driver.cumulative_scores)
+	return {
+		"node_result": NodeResult.new(rank, driver.cumulative_scores),
+		"hand_outcomes": hand_outcomes,
+		"final_scores": driver.cumulative_scores.duplicate(),
+		"hand_count": hand_count,
+	}
 
 # 占位节点（CAMP / SHOP / EVENT）的快捷桥接。
 static func placeholder_result() -> NodeResult:
