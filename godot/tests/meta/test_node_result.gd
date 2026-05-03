@@ -70,3 +70,21 @@ func test_from_placeholder_no_hp_no_reward():
 	assert_eq(r.hp_delta, 0, "占位节点不掉血")
 	assert_eq(r.gold_reward, 0, "占位节点不给金币（由占位场景内部 hook）")
 	assert_eq(r.card_reward, 0, "占位节点不给抽卡")
+
+# ---- M7：NodeResult 与 BalanceConstants 单源（plan-7 D2 落地） ----
+
+func test_hp_delta_matches_balance_constants():
+	# NodeResult.hp_delta 必须与 BalanceConstants[node_rank_hp_delta] 严格对齐，
+	# 否则 D6 调参 PR 改 BalanceConstants 不会实际生效（baseline 3 发现的 drift bug）
+	var bc_hp: Array = BalanceConstants.get_array(&"node_rank_hp_delta")
+	for r in range(1, 5):
+		var nr := NodeResult.new(r)
+		assert_eq(nr.hp_delta, int(bc_hp[r - 1]),
+			"rank %d hp_delta 与 BalanceConstants[%d] 一致" % [r, r - 1])
+
+func test_gold_reward_matches_balance_constants():
+	var bc_gold: Array = BalanceConstants.get_array(&"node_rank_gold_reward")
+	for r in range(1, 5):
+		var nr := NodeResult.new(r)
+		assert_eq(nr.gold_reward, int(bc_gold[r - 1]),
+			"rank %d gold_reward 与 BalanceConstants[%d] 一致" % [r, r - 1])

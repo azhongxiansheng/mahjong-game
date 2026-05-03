@@ -3,10 +3,14 @@ class_name NodeResult extends RefCounted
 # 麻将王 — 里程碑 4 第 1 步：节点结算（plan-4 D4）
 #
 # spec §7.1 排名 → hp_delta 映射；plan-4 D4 拍板金币奖励 30/15/5/0。
-# v1 数值非架构性，里程碑 7 平衡时再调。
+# M7：数值改为运行时从 BalanceConstants 取（plan-7 D2 集中表），让 D6 调参 PR
+# 改 BalanceConstants 即生效，无需改 NodeResult。
+#
+# 历史背景：本类原 hardcode `const HP_DELTA_BY_RANK = [0,0,0,-1,-2]`（5 元素含
+# rank 0 占位）；BalanceConstants 平行存了 `node_rank_hp_delta = [0,0,-1,-2]`
+# （4 元素，0-indexed = rank 1）。两份定义 drift → 任何 BalanceConstants tune
+# 不实际生效。本 commit 把 NodeResult 切到 BalanceConstants 单源。
 
-const HP_DELTA_BY_RANK: Array = [0, 0, 0, -1, -2]   # [-, rank1, rank2, rank3, rank4]
-const GOLD_BY_RANK: Array = [0, 30, 15, 5, 0]
 const CARD_REWARD_PER_NODE: int = 1
 
 var rank: int = 1
@@ -17,10 +21,19 @@ var final_scores: Array = []  # 4 家最终 cumulative_scores（来自 GameDrive
 
 func _init(p_rank: int = 1, p_final_scores: Array = []) -> void:
 	rank = clampi(p_rank, 1, 4)
-	hp_delta = HP_DELTA_BY_RANK[rank]
-	gold_reward = GOLD_BY_RANK[rank]
+	hp_delta = _hp_delta_for_rank(rank)
+	gold_reward = _gold_for_rank(rank)
 	card_reward = CARD_REWARD_PER_NODE
 	final_scores = p_final_scores
+
+# 取 BalanceConstants 的 4 元素数组并把 rank（1..4）映射到 0..3 索引。
+static func _hp_delta_for_rank(r: int) -> int:
+	var arr: Array = BalanceConstants.get_array(&"node_rank_hp_delta")
+	return int(arr[clampi(r, 1, 4) - 1])
+
+static func _gold_for_rank(r: int) -> int:
+	var arr: Array = BalanceConstants.get_array(&"node_rank_gold_reward")
+	return int(arr[clampi(r, 1, 4) - 1])
 
 # 静态：从 4 家累计分推 viewer_seat 的排名（1=最高，4=最低）。
 # 同分时 viewer 优先得高排名（v1 简化；spec §14 末段提到平衡留 M7）。
