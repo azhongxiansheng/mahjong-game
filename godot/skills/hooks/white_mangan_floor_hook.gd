@@ -9,8 +9,8 @@ extends SkillHook
 
 const MANGAN_FLOOR_HAN_BONUS: int = 5
 
-func on_event(skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
+func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
 	ctx.add_han(ctx.beneficiary_seat, MANGAN_FLOOR_HAN_BONUS)
-	skill.consumed = true  # 消耗品语义；M7 接 ctx.consume_self 后真清
+	ctx.consume_self()  # 消耗品语义

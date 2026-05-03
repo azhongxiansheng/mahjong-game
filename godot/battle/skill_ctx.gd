@@ -33,6 +33,14 @@ func reveal_tile_to(tile: TileInstance, target_seat: int) -> void:
 func clear_furiten(seat: int) -> void:
 	_state.furiten_flags[seat] = false
 
+# M7 ctx 扩展 B1：set_furiten — 主动把指定座位置振听 / 解振听。
+# 现有 clear_furiten(seat) 是 set_furiten(seat, false) 的 alias，保留以维持
+# 5 个调用点的稳定（hook 升级到本 API 走独立 PR）。
+# 真"振听 N 巡倒计时"需 furiten_turns_remaining 状态字段（M7 后续 PR）；
+# 当前版本只切 bool 标记，配合 turn_engine 在 turn 结束清振听做一巡过期。
+func set_furiten(seat: int, value: bool = true) -> void:
+	_state.furiten_flags[seat] = value
+
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat
 

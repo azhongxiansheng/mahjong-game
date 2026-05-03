@@ -6,9 +6,9 @@
 # 真"对家振听 1 巡"需 set_furiten(seat, turns) ctx 扩展（M7）。
 extends SkillHook
 
-func on_event(skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
+func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var discarder: int = int(event.extra.get("discarder_seat", -1))
 	if discarder != ctx.beneficiary_seat:
 		return
 	ctx.cancel_ron(event.actor_seat)
-	skill.consumed = true
+	ctx.consume_self()

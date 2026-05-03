@@ -2,9 +2,8 @@
 #
 # v1: owner 立直时清振听 1 次
 # spec 原效果："owner 立直时，此牌防一次振听（清除 FuritenState.permanent）"
-# v1 简化：trigger = RIICHI_DECLARED + owner，调 ctx.clear_furiten(owner)。
-# "1 次"语义靠 SkillResource.consumed = true 标记（M7 加 ctx.consume_self
-# API 后真消耗）。
+# trigger = RIICHI_DECLARED + owner，调 ctx.clear_furiten(owner)。
+# "1 次"语义：M7 ctx.consume_self() 落地后真消耗（PR #46）。
 extends SkillHook
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
@@ -13,3 +12,4 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
 	ctx.clear_furiten(ctx.beneficiary_seat)
+	ctx.consume_self()
