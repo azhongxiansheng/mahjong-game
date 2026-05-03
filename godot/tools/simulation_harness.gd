@@ -32,6 +32,11 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var pick_strategy: String = config.get("pick_strategy", "first")
 	# M7：是否用 HeuristicAi（保留启发式弃牌）；默认 false 为兼容历史 baseline
 	var use_heuristic_ai: bool = bool(config.get("heuristic_ai", false))
+	# M7 实验 flag：临时覆盖 BalanceConstants（不动 BC 全局，仅本次 sim）
+	# - starting_hp_override: int > 0 表覆盖，0/null 表用默认
+	# - rank_hp_delta_override: Array[int] 4 元素表覆盖，[] 表默认
+	var starting_hp_override: int = int(config.get("starting_hp_override", 0))
+	var rank_hp_delta_override: Array = config.get("rank_hp_delta_override", [])
 
 	var completed: int = 0
 	var failed: int = 0
@@ -45,7 +50,7 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var seat_score_samples: int = 0
 
 	for i in range(runs):
-		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy, use_heuristic_ai)
+		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy, use_heuristic_ai, starting_hp_override, rank_hp_delta_override)
 		if run_outcome.won:
 			completed += 1
 		elif run_outcome.failed:
@@ -102,10 +107,14 @@ static func simulate(config: Dictionary) -> Dictionary:
 
 # 跑单 Run 直到 finished 或超过 max_nodes。
 # 返 {won, failed, chapter_at_end, nodes_visited, final_hp}
-static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String, use_heuristic_ai: bool = false) -> Dictionary:
+static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String, use_heuristic_ai: bool = false, starting_hp_override: int = 0, rank_hp_delta_override: Array = []) -> Dictionary:
 	var rs := RunState.new(run_seed)
 	if starter != &"":
 		StarterPacks.apply_to(rs, starter)
+	# M7 实验：临时覆盖 starting hp（baseline 1/3 假设 C 实验）
+	if starting_hp_override > 0:
+		rs.hp = starting_hp_override
+		rs.max_hp = starting_hp_override
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = run_seed * 7919  # 与节点 seed 解耦
@@ -140,6 +149,9 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 				tile_variants = rs.player_deck.tile_variants
 			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants)
 			result = node_stats.node_result
+			# M7 实验：覆盖 hp_delta（baseline 3 假设 H 实验，rank → 0-indexed）
+			if rank_hp_delta_override.size() == 4 and result.rank >= 1 and result.rank <= 4:
+				result.hp_delta = int(rank_hp_delta_override[result.rank - 1])
 			for k in node_stats.hand_outcomes.keys():
 				hand_outcomes[k] = int(hand_outcomes.get(k, 0)) + int(node_stats.hand_outcomes[k])
 			seat_score_samples.append(node_stats.final_scores.duplicate())

@@ -100,6 +100,36 @@ func test_avg_seat_score_size_4():
 	var ass: Array = stats.avg_seat_score
 	assert_eq(ass.size(), 4, "avg_seat_score 4 元素（4 seats）")
 
+func test_starting_hp_override_reduces_max_hp():
+	# starting_hp=1 → 玩家从 1 hp 起；任何 rank 3/4 节点都会立即 GG
+	var stats := SimulationHarness.simulate({
+		"runs": 3, "seed": 41, "starting_hp_override": 1
+	})
+	# 不验证具体通关率（同 seed 决定），只验证 hp 真被覆盖：
+	# 若 hp 永远 1 且 rank 永远 1-2，avg_final_hp ≤ 1
+	assert_true(stats.avg_final_hp <= 1.0,
+		"starting_hp=1 → 玩家最终 hp 不可能 > 1（除非 hp 系统已上界 clamp）")
+
+func test_rank_hp_delta_override_aggressive_makes_runs_fail():
+	# 极端覆盖：所有 rank 都扣 5 hp。通关率应跌到 0%（玩家起手 hp 5，
+	# 第 1 个节点结算就 hp <= 0 → run failed）
+	var stats := SimulationHarness.simulate({
+		"runs": 3, "seed": 43,
+		"rank_hp_delta_override": [-5, -5, -5, -5],
+	})
+	assert_eq(stats.completed, 0, "所有 rank 扣 5 hp → 无法通关")
+	assert_eq(stats.failed, 3, "所有 3 runs 都应失败")
+
+func test_rank_hp_delta_override_size_must_be_4_else_ignored():
+	# 非 4 元素数组应被忽略（行为同默认）
+	var stats_default := SimulationHarness.simulate({"runs": 2, "seed": 47})
+	var stats_bad_override := SimulationHarness.simulate({
+		"runs": 2, "seed": 47, "rank_hp_delta_override": [0, -1]  # 只 2 元素
+	})
+	assert_eq(stats_default.completed, stats_bad_override.completed,
+		"非 4 元素 override 应被忽略")
+	assert_eq(stats_default.avg_final_hp, stats_bad_override.avg_final_hp)
+
 func test_avg_seat_score_sum_close_to_100000():
 	# 麻将守恒：4 家点数总和 = 4 × 25000 = 100000（不计立直棒）
 	# 节点结束时立直棒收走 / 跨局保留，所以节点终局点数 sum 可能偏离少量

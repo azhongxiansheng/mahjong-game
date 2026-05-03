@@ -6,8 +6,15 @@ extends SceneTree
 #   godot --headless --path godot --script tools/simulate_runs.gd -- --runs=100 --seed=42
 #   godot --headless --path godot --script tools/simulate_runs.gd -- --runs=10 --starter=fast
 #   godot --headless --path godot --script tools/simulate_runs.gd -- --runs=50 --pick=random
+#   godot --headless --path godot --script tools/simulate_runs.gd -- --runs=30 --starting-hp=1
+#   godot --headless --path godot --script tools/simulate_runs.gd -- --runs=30 --rank-hp-delta=0,-1,-1,-2
 #
 # 业务逻辑全在 SimulationHarness（可单测）；本文件只解析 args + 打印。
+#
+# 实验 flags（M7 D6 三步法 用）：
+#   --starting-hp=N        覆盖 BalanceConstants.starting_hp（baseline 1/3 假设 C 实验）
+#   --rank-hp-delta=a,b,c,d 覆盖 node_rank_hp_delta（baseline 3 假设 H 实验）
+#   --heuristic-ai         AI 用 HeuristicAi 启发式弃牌（vs SimpleAi）
 
 func _init() -> void:
 	var config := _parse_args()
@@ -40,4 +47,14 @@ func _parse_args() -> Dictionary:
 			config["max_nodes_per_run"] = int(arg.substr(12))
 		elif arg == "--heuristic-ai":
 			config["heuristic_ai"] = true
+		elif arg.begins_with("--starting-hp="):
+			config["starting_hp_override"] = int(arg.substr(14))
+		elif arg.begins_with("--rank-hp-delta="):
+			# 解析 "0,-1,-1,-2" → [0, -1, -1, -2]
+			var raw := arg.substr(16)
+			var parts: PackedStringArray = raw.split(",")
+			var arr: Array = []
+			for p in parts:
+				arr.append(int(p))
+			config["rank_hp_delta_override"] = arr
 	return config
