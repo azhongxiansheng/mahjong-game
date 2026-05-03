@@ -67,8 +67,8 @@ func test_skill_magic_numbers_present():
 		"mirror_chambo 50%（M6 east_mirror_chambo 魔数 → BalanceConstants）")
 	assert_eq(BalanceConstants.lookup(&"iron_wall_han_penalty"), -1,
 		"iron_wall -1 番（M6 man9_iron_wall 魔数 → BalanceConstants）")
-	assert_eq(BalanceConstants.lookup(&"thunder_5w_han_bonus"), 1,
-		"thunder_5w +1 番（M1 demo 魔数 → BalanceConstants）")
+	assert_eq(BalanceConstants.lookup(&"thunder_5w_han_bonus"), 2,
+		"thunder_5w +2 番（balance tune-2：1 → 2 加力 aggro pack）")
 
 func test_get_array_type_check():
 	# 非 array key 调 get_array 应 assert（dev 接口误用立即可见）

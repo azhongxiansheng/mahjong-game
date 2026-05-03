@@ -129,8 +129,8 @@ func test_thunder_5w_inject_then_emit_wins_with_skill_bonus():
 	var sched := SkillScheduler.new(reg, st)
 	TileSkillFactory.inject_one(reg, &"thunder_5w_v1", 0)
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	# thunder_5w +1 番 (来自 BalanceConstants)
-	assert_eq(int(ctx.han_deltas.get(0, 0)), 1)
+	# thunder_5w +2 番 (tune-2 后 BalanceConstants 1 → 2)
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 2)
 
 func test_seal_chun_inject_then_ron_cancels():
 	var reg := SkillRegistry.new()

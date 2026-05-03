@@ -8,4 +8,4 @@ extends SkillHook
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, 1)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"green_hatsu_serenity_han_bonus")))

@@ -21,8 +21,8 @@ func _setup() -> Array:
 	var sched := SkillScheduler.new(reg, st)
 	return [reg, st, sched]
 
-func test_holy_adds_1_han_when_holder_is_winner():
-	# seat 2 是 holder 也是 actor（自胡）→ +1 番
+func test_holy_adds_2_han_when_holder_is_winner():
+	# tune-2：white_haku_holy_han_bonus 1 → 2
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
@@ -31,7 +31,7 @@ func test_holy_adds_1_han_when_holder_is_winner():
 	ti.holder_seat = 2
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
-	assert_eq(int(out_ctx.han_deltas.get(2, 0)), 1, "holder=2 自胡 → +1 番")
+	assert_eq(int(out_ctx.han_deltas.get(2, 0)), 2, "holder=2 自胡 → +2 番")
 
 func test_holy_no_han_when_holder_not_winner():
 	# seat 2 是 holder，但 seat 0 是胡牌者 → 不加番

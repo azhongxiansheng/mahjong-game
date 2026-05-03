@@ -7,7 +7,6 @@ extends SkillHook
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	# holder_trigger 模式：beneficiary_seat 是 holder（持牌者）
-	# 当 actor（胡牌者）= holder 时给 +1 番
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, 1)
+	ctx.add_han(ctx.beneficiary_seat, int(BalanceConstants.lookup(&"white_haku_holy_han_bonus")))

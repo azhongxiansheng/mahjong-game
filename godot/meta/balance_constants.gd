@@ -52,8 +52,12 @@ const VALUES: Dictionary = {
 
 	# ---- 技能数值（hook 引用，逐步替换魔数） ----
 	# §8.1 增番系
-	&"thunder_5w_han_bonus": 1,
+	# tune-2：thunder_5w 1 → 2（aggro pack 加力让 0% 通关向 5%+ 推）
+	&"thunder_5w_han_bonus": 2,
 	&"east_dynasty_dealer_tsumo_bonus": 2,
+	# tune-2：白 / 发 三元牌 holder 自胡 +han（M7 升级前用 add_han 桩；从 1 → 2）
+	&"white_haku_holy_han_bonus": 2,
+	&"green_hatsu_serenity_han_bonus": 2,
 	# §8.3 阻胡
 	&"iron_wall_han_penalty": -1,
 	# §8.4 抓马
