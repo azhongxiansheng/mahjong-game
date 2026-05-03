@@ -79,14 +79,15 @@ func test_north_sweep_adds_3_han_on_self_win():
 
 # ---- §8.9 white_mangan_floor ----
 
-func test_mangan_floor_adds_5_han_and_consumes():
+func test_mangan_floor_marks_seat_and_consumes():
+	# M7 B3-mini 升级：v1 add_han(+5) → v2 ensure_mangan_for_seat
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_tile_skill(&"white_mangan_floor_v1", ManganFloorHook, TileId.HAKU, [&"WIN_DECLARED"])
 	_register_owned_by(reg, sk, 3)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
-	assert_eq(int(out.han_deltas.get(3, 0)), 5)
+	assert_true(bool(out.mangan_floor_seats.get(3, false)), "winner=3 标 mangan_floor")
 	assert_true(sk.consumed)
 
 func test_mangan_floor_no_effect_when_other_wins():
@@ -96,5 +97,5 @@ func test_mangan_floor_no_effect_when_other_wins():
 	var sk := _make_tile_skill(&"white_mangan_floor_v1", ManganFloorHook, TileId.HAKU, [&"WIN_DECLARED"])
 	_register_owned_by(reg, sk, 3)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
-	assert_eq(int(out.han_deltas.get(3, 0)), 0)
+	assert_false(bool(out.mangan_floor_seats.get(3, false)))
 	assert_false(sk.consumed)

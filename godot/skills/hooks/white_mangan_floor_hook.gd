@@ -1,16 +1,14 @@
-# 白·役满下限 — §8.9 役満 / 终局系（M6 内容生产）
+# 白·役满下限 — §8.9 役満 / 终局系（M6 内容生产 + M7 ctx B3-mini 升级）
 #
-# v1: owner 自胡 +5 番（模拟"任意胡牌至少满贯 ≈ 满贯下限对小役 +5"）
-# spec 原效果："任意胡牌至少满贯（消耗品化）"
-# v1 简化：用 add_han(+5) 把任何胡牌推到满贯线（满贯 = 5 番阈值）；
-# ScoreFormula 端钳制 +5 ≥ 5 即满贯。真"满贯下限保底"需 ensure_mangan
-# ctx 扩展 + 消耗品标记（M7）。
+# v2 (M7 B3-mini)：ctx.ensure_mangan_for_seat(owner) 真补差到 5 番下限
+# （替代 v1 +5 番粗暴叠加）。
+# spec 原效果："任意胡牌至少满贯（消耗品化）"。
+# 满贯下限：spec §6.4 / ScoreFormula 5 番 = 满贯阈值；本 hook 标记后由
+# BattleController._apply_mangan_floor 在 ScoreCalc 之前补差。
 extends SkillHook
-
-const MANGAN_FLOOR_HAN_BONUS: int = 5
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.add_han(ctx.beneficiary_seat, MANGAN_FLOOR_HAN_BONUS)
+	ctx.ensure_mangan_for_seat(ctx.beneficiary_seat)
 	ctx.consume_self()  # 消耗品语义

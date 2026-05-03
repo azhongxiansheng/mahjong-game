@@ -213,6 +213,9 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	_apply_extra_dora(score_yaku_list, winner_seat)
 	# M7 B3-mini：把 multiplicative effect（任一 pre ctx）应用到番数
 	_apply_han_multiplier(score_yaku_list, _composite_multiplier(winner_seat, pre_ctxs))
+	# M7 B3-mini：满贯下限保底（white_mangan_floor 等消耗品）
+	if _has_mangan_floor(winner_seat, pre_ctxs):
+		_apply_mangan_floor(score_yaku_list)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -251,6 +254,8 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(state.current_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, state.current_seat)
 	_apply_han_multiplier(score_yaku_list, _composite_multiplier(state.current_seat, pre_ctxs))
+	if _has_mangan_floor(state.current_seat, pre_ctxs):
+		_apply_mangan_floor(score_yaku_list)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -317,6 +322,24 @@ static func _composite_multiplier(winner_seat: int, ctxs: Array) -> float:
 			continue
 		product *= float(c.han_multipliers.get(winner_seat, 1.0))
 	return product
+
+# M7 B3-mini：ensure_mangan — winner 在任一 ctx 标了 mangan_floor 时，
+# 若当前 total_han < 5（满贯阈值）补差到 5（合成 &"skill_mangan_floor" yaku）。
+const MANGAN_HAN_THRESHOLD: int = 5
+
+static func _has_mangan_floor(winner_seat: int, ctxs: Array) -> bool:
+	for c in ctxs:
+		if c == null:
+			continue
+		if bool(c.mangan_floor_seats.get(winner_seat, false)):
+			return true
+	return false
+
+static func _apply_mangan_floor(yaku_list: YakuList) -> void:
+	var current: int = yaku_list.total_han()
+	if current >= MANGAN_HAN_THRESHOLD:
+		return  # 已满贯，无需补差
+	yaku_list.add_yaku(&"skill_mangan_floor", MANGAN_HAN_THRESHOLD - current)
 
 # 兼容性 wrapper：从单个 ctx 取 han_deltas[winner_seat] 调 _apply_skill_han_delta。
 # 现存测试 / 后续 PR 还会调用，保留。

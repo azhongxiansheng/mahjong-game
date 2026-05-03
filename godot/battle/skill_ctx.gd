@@ -7,6 +7,9 @@ var han_deltas: Dictionary = {}
 # hook 通过 multiply_han_for_seat 累乘；BattleController 在 ScoreCalc 之前读取
 # 以"补偿合成 yaku entry"形式作用到 yaku_list。
 var han_multipliers: Dictionary = {}
+# M7 ctx B3-mini：mangan 下限标记（Dictionary[int → bool]，true 时 winner
+# 该胡牌至少 5 番 = 满贯）。BattleController 在 ScoreCalc 之前补差。
+var mangan_floor_seats: Dictionary = {}
 var beneficiary_seat: int = -1  # 由 scheduler 在每个 candidate 派发前设置
 var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派发前设置；M7 ctx.consume_self 用
 
@@ -72,6 +75,16 @@ func multiply_han_for_seat(seat: int, factor: float) -> void:
 		return
 	var current: float = float(han_multipliers.get(seat, 1.0))
 	han_multipliers[seat] = current * factor
+
+# M7 ctx B3-mini：ensure_mangan_for_seat。
+# 标记指定 seat 的胡牌至少满贯（≥ 5 番 → ScoreFormula 钳到满贯下限）。
+# 用于 white_mangan_floor 等"满贯保底"消耗品（spec §8.9：任意胡牌至少满贯）。
+# BattleController 在 ScoreCalc 之前读 mangan_floor_seats，若包含 winner 且
+# 当前 yaku_list.total_han < 5 则补差 → 5 番。
+func ensure_mangan_for_seat(seat: int) -> void:
+	if seat < 0 or seat >= 4:
+		return
+	mangan_floor_seats[seat] = true
 
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat
