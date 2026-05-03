@@ -58,10 +58,17 @@ static func fast_pack() -> Dictionary:
 		"id": &"starter_fast",
 		"display_name": "速胡型",
 		"description": "立直 / 加速胡牌。靠立直系减少振听 + 抢先听牌。",
+		# M7 balance：fast 此前只有 1 张 tile + 0 abilities，sim 0% 通关。
+		# 补齐 spec §7.2 主题（立直 / 加速）：先制立直 + 速胡 + 加速 + 解振听 +
+		# 振听干扰 + 立直加護 / 山眼。
 		"tile_variants": {
-			TileId.T5: &"unfuriten_5p_v1",
+			TileId.T5: &"unfuriten_5p_v1",            # 立直后清振听
+			TileId.S_WIND: &"south_premature_riichi_v1",  # 第 1 巡先制立直
+			TileId.T9: &"pin9_speed_v1",              # 摸到此牌 force_tsumo（速胡）
+			TileId.S3: &"sou3_skip_v1",               # 自胡 +1 番（加速主题）
+			TileId.W2: &"man2_lure_v1",               # 自胡 +1 番（伪听干扰）
 		},
-		"abilities": [],  # M6 后续新增 yamagan_v1 / riichi_kago_v1 后填
+		"abilities": [&"riichi_kago_v1"],  # 一发期望延长（自胡 +1 番桩，立直主题）
 		"available": true,
 	}
 
