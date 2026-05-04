@@ -74,21 +74,27 @@ func test_is_endgame_east_round_3():
 
 # ---- decide_riichi 决策分支：endgame + rank 1 → 拒绝 ----
 
-func test_decide_riichi_endgame_rank_1_refuses():
-	# 用 mock seat：构造 RiichiValidator 会返 true 的最小 fixture
-	# 通过 monkey-patch RiichiValidator 不现实；改成 BC 跑场后读 seat 路径。
-	#
-	# v1 简化：跑 32 场 BattleController + 终局领先注入，统计 RIICHI_DECLARED
-	# 事件来自 seat 1 的频率。预期 < default（无 endgame strategic context）。
-	#
-	# 但此实证测试依赖大量 sample，本单测只锁住"领先时 _should_skip_riichi 返 true"
-	# 的纯函数逻辑分支。
+func test_decide_riichi_endgame_rank_1_with_significant_lead_refuses():
+	# M9 假设 P：仅在"显著领先"（≥ 12000 默认）才跳过立直。
+	# seat 0 = 40000 vs seat 1 = 25000，领先 15000 ≥ 12000 → 跳过
 	var ai := HeuristicAi.new(42)
-	ai.set_strategic_context([40000, 25000, 20000, 15000], 6, 8)  # seat 0 第 1
-	# seat 1 第 2 位 → endgame 不收紧立直（仍可立）
+	ai.set_strategic_context([40000, 25000, 20000, 15000], 6, 8)
 	assert_false(ai._should_skip_riichi(1), "seat 1 排名 2 → 不应跳过立直")
-	# seat 0 第 1 位 + endgame → 跳过
-	assert_true(ai._should_skip_riichi(0), "seat 0 排名 1 + endgame → 跳过立直")
+	assert_true(ai._should_skip_riichi(0), "seat 0 显著领先 15000 ≥ 12000 → 跳过")
+
+func test_decide_riichi_endgame_rank_1_marginal_lead_does_not_skip():
+	# M9 假设 P：微弱领先（< 12000）仍立直，避免 spread 无脑扩大
+	var ai := HeuristicAi.new(42)
+	# seat 0 = 30000 vs seat 1 = 26000，领先 4000 < 12000 → 不跳过
+	ai.set_strategic_context([30000, 26000, 22000, 22000], 6, 8)
+	assert_false(ai._should_skip_riichi(0), "微弱领先 4000 < 12000 → 仍立直")
+
+func test_lead_over_second_helper():
+	var ai := HeuristicAi.new(42)
+	ai.set_strategic_context([40000, 25000, 20000, 15000], 6, 8)
+	assert_eq(ai._lead_over_second(0), 15000, "第 1 减第 2")
+	assert_eq(ai._lead_over_second(1), 0, "非第 1 返 0")
+	assert_eq(ai._lead_over_second(3), 0, "第 4 返 0")
 
 func test_decide_riichi_non_endgame_rank_1_does_not_skip():
 	var ai := HeuristicAi.new(42)

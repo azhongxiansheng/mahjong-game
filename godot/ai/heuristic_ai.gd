@@ -66,11 +66,36 @@ func _is_endgame() -> bool:
 		return false
 	return _hand_index >= _total_hands - 2
 
-# 终局 + 自家第 1 → 跳过立直（保守）。其它情况按 M7 默认决策。
+# 显著领先时与第 2 名的点数差。context 未注入返 0。
+func _lead_over_second(seat_id: int) -> int:
+	if _cumulative_scores.is_empty():
+		return 0
+	if seat_id < 0 or seat_id >= _cumulative_scores.size():
+		return 0
+	if _rank_for(seat_id) != 1:
+		return 0  # 不是第 1 → 无领先意义
+	var my_score: int = _cumulative_scores[seat_id]
+	var second_best: int = -2147483648
+	for i in range(_cumulative_scores.size()):
+		if i == seat_id:
+			continue
+		if _cumulative_scores[i] > second_best:
+			second_best = _cumulative_scores[i]
+	return my_score - second_best
+
+# 终局 + 自家第 1 + **显著领先** → 跳过立直。
+# M8.5 v1 在"任何领先即跳"过于激进 — baseline 7 让 AI 间不对称扩大
+# （seat 1 领先后保护点数 → 强者越强，spread 翻倍）。M9 假设 P：仅当
+# 领先 ≥ BalanceConstants.endgame_skip_riichi_lead_gap（默认 12000，
+# 半庄子家满贯）才跳过；微弱领先仍立直让 spread 不无脑扩大。
 func _should_skip_riichi(seat_id: int) -> bool:
 	if not _is_endgame():
 		return false
-	return _rank_for(seat_id) == 1
+	if _rank_for(seat_id) != 1:
+		return false
+	var gap: int = _lead_over_second(seat_id)
+	var threshold: int = int(BalanceConstants.lookup(&"endgame_skip_riichi_lead_gap"))
+	return gap >= threshold
 
 # M7：tenpai 时自动立直。判定走 RiichiValidator（门清 + 听牌 + 1000 点 +
 # 牌墙剩 4）。本 AI 无策略，能立直就立直；M8+ 玩家 UI 替换为玩家选择。

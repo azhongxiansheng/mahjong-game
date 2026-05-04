@@ -59,6 +59,12 @@ const VALUES: Dictionary = {
 	# 南入条件 (top1 ≥ 30000 提前结束半庄)；spec 未规定，默认关闭
 	&"enable_south_exit_top30k": false,
 
+	# ---- M9 AI 终局策略（假设 P） ----
+	# HeuristicAi endgame 跳过立直的"显著领先"门槛。12000 = 半庄子家满贯
+	# 一发胡。M8.5 baseline 7 观察"任何领先即跳"让 AI 间 spread 翻倍；
+	# 加阈值让微弱领先仍立直，spread 不无脑扩大。
+	&"endgame_skip_riichi_lead_gap": 12000,
+
 	# ---- 技能数值（hook 引用，逐步替换魔数） ----
 	# §8.1 增番系
 	# tune-2：thunder_5w 1 → 2（aggro pack 加力让 0% 通关向 5%+ 推）
