@@ -64,6 +64,11 @@ const VALUES: Dictionary = {
 	# 一发胡。M8.5 baseline 7 观察"任何领先即跳"让 AI 间 spread 翻倍；
 	# 加阈值让微弱领先仍立直，spread 不无脑扩大。
 	&"endgame_skip_riichi_lead_gap": 12000,
+	# baseline 8 (PR #90) 通关率仍 30% 持平 — 假设 Q：endgame 触发条件
+	# 太宽（剩 ≤ 2 局）让玩家也跳过立直 → 攻击不足 → 通关率被压。
+	# 收窄为"剩 ≤ 1 局"（半庄南 4 only / 东风战东 4 only），仅在最后一局
+	# 收紧；前一局让玩家正常立直保持攻击力。
+	&"endgame_skip_riichi_remaining_hands": 1,
 
 	# ---- 技能数值（hook 引用，逐步替换魔数） ----
 	# §8.1 增番系

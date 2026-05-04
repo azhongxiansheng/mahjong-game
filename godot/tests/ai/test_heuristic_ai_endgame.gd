@@ -54,23 +54,30 @@ func test_strategic_context_rank_with_ties():
 	for s in range(4):
 		assert_eq(ai._rank_for(s), 1, "seat %d 同分 → rank 1" % s)
 
-func test_is_endgame_hanchan_south_4_remaining_2():
+func test_is_endgame_hanchan_last_hand_only():
+	# M9 baseline 8 修：endgame 收窄为剩 ≤ 1 局。半庄 8 局：仅 hand_index=7（南 4）endgame
 	var ai := HeuristicAi.new(42)
-	# 半庄 8 局 hand_index=6（南 3）→ 剩 2 局，进入 endgame
+	ai.set_strategic_context(_STARTING_SCORES, 7, 8)
+	assert_true(ai._is_endgame(), "hand_index=7 total=8 → 剩 1 局（南 4），endgame")
+
+func test_is_endgame_hanchan_south_3_not_yet():
+	# 半庄南 3（hand_index=6）下不算 endgame（剩 2 局），让玩家正常立直保持攻击力
+	var ai := HeuristicAi.new(42)
 	ai.set_strategic_context(_STARTING_SCORES, 6, 8)
-	assert_true(ai._is_endgame(), "hand_index=6 total=8 → 剩 2 局，endgame")
+	assert_false(ai._is_endgame(), "hand_index=6 total=8 → 剩 2 局，未到 endgame（M9 收窄）")
 
 func test_is_endgame_hanchan_south_2_not_yet():
 	var ai := HeuristicAi.new(42)
-	# 半庄 8 局 hand_index=4（南 1）→ 剩 4 局，未进入 endgame
 	ai.set_strategic_context(_STARTING_SCORES, 4, 8)
 	assert_false(ai._is_endgame(), "hand_index=4 total=8 → 剩 4 局，未到 endgame")
 
-func test_is_endgame_east_round_3():
+func test_is_endgame_east_round_4_only():
+	# 东风战仅东 4（hand_index=3）endgame；东 3 不算
 	var ai := HeuristicAi.new(42)
-	# 东风 4 局 hand_index=2（东 3）→ 剩 2 局，endgame
+	ai.set_strategic_context(_STARTING_SCORES, 3, 4)
+	assert_true(ai._is_endgame(), "东风战 hand_index=3 → 剩 1 局（东 4），endgame")
 	ai.set_strategic_context(_STARTING_SCORES, 2, 4)
-	assert_true(ai._is_endgame(), "东风战剩 2 局也是 endgame（合理 — 东 3/东 4 是终盘）")
+	assert_false(ai._is_endgame(), "东风战 hand_index=2 → 剩 2 局（东 3），未到 endgame")
 
 # ---- decide_riichi 决策分支：endgame + rank 1 → 拒绝 ----
 
@@ -78,7 +85,7 @@ func test_decide_riichi_endgame_rank_1_with_significant_lead_refuses():
 	# M9 假设 P：仅在"显著领先"（≥ 12000 默认）才跳过立直。
 	# seat 0 = 40000 vs seat 1 = 25000，领先 15000 ≥ 12000 → 跳过
 	var ai := HeuristicAi.new(42)
-	ai.set_strategic_context([40000, 25000, 20000, 15000], 6, 8)
+	ai.set_strategic_context([40000, 25000, 20000, 15000], 7, 8)
 	assert_false(ai._should_skip_riichi(1), "seat 1 排名 2 → 不应跳过立直")
 	assert_true(ai._should_skip_riichi(0), "seat 0 显著领先 15000 ≥ 12000 → 跳过")
 
@@ -86,12 +93,12 @@ func test_decide_riichi_endgame_rank_1_marginal_lead_does_not_skip():
 	# M9 假设 P：微弱领先（< 12000）仍立直，避免 spread 无脑扩大
 	var ai := HeuristicAi.new(42)
 	# seat 0 = 30000 vs seat 1 = 26000，领先 4000 < 12000 → 不跳过
-	ai.set_strategic_context([30000, 26000, 22000, 22000], 6, 8)
+	ai.set_strategic_context([30000, 26000, 22000, 22000], 7, 8)
 	assert_false(ai._should_skip_riichi(0), "微弱领先 4000 < 12000 → 仍立直")
 
 func test_lead_over_second_helper():
 	var ai := HeuristicAi.new(42)
-	ai.set_strategic_context([40000, 25000, 20000, 15000], 6, 8)
+	ai.set_strategic_context([40000, 25000, 20000, 15000], 7, 8)
 	assert_eq(ai._lead_over_second(0), 15000, "第 1 减第 2")
 	assert_eq(ai._lead_over_second(1), 0, "非第 1 返 0")
 	assert_eq(ai._lead_over_second(3), 0, "第 4 返 0")
@@ -117,7 +124,7 @@ func test_endgame_strategy_reduces_seat_0_riichi_count_when_leading():
 	for s in range(32):
 		# with strategy: seat 0 第 1 大幅领先 + endgame
 		var bc1 := BattleController.new(s * 7 + 11, 0, true)
-		bc1.ai.set_strategic_context([60000, 20000, 10000, 10000], 6, 8)
+		bc1.ai.set_strategic_context([60000, 20000, 10000, 10000], 7, 8)
 		bc1.run_to_end()
 		for ev in bc1.events:
 			if ev.type == &"RIICHI_DECLARED" and ev.actor_seat == 0:

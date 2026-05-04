@@ -58,13 +58,14 @@ func _rank_for(seat_id: int) -> int:
 			rank += 1
 	return rank
 
-# Endgame = 剩 ≤ 2 局（hand_index >= total_hands - 2）。
-# 半庄战 8 局 → endgame 始于 hand_index=6（南 3）；
-# 东风战 4 局 → endgame 始于 hand_index=2（东 3，合理终盘）。
+# Endgame = 剩 ≤ N 局（hand_index >= total_hands - N），N 来自 BalanceConstants。
+# baseline 8 (PR #90) 显示 N=2 让玩家也跳过立直 → 攻击不足；M9 收窄到 N=1：
+# 仅最后一局收紧（半庄南 4 / 东风战东 4），前一局正常立直。
 func _is_endgame() -> bool:
 	if _total_hands <= 0:
 		return false
-	return _hand_index >= _total_hands - 2
+	var remaining_threshold: int = int(BalanceConstants.lookup(&"endgame_skip_riichi_remaining_hands"))
+	return _hand_index >= _total_hands - remaining_threshold
 
 # 显著领先时与第 2 名的点数差。context 未注入返 0。
 func _lead_over_second(seat_id: int) -> int:
