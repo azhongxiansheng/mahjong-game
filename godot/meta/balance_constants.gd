@@ -94,6 +94,8 @@ const VALUES: Dictionary = {
 	&"ryukyoku_yudou_han_bonus": 1,
 	&"tousotsu_han_bonus": 1,
 	&"riichi_kago_han_bonus": 1,
+	# tougenkyo: spec "手牌↔弃牌河交换"无 v1 等价；用 +3 番桩 + consume_self
+	&"tougenkyo_han_bonus": 3,
 	# 章 Boss
 	&"boss3_kanmon_han_bonus": 3,
 	# §8.5 透明牌（数字桩）

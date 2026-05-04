@@ -34,6 +34,8 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"ryukyoku_yudou_v1": [&"WIN_DECLARED_PRE"],
 	&"tousotsu_v1": [&"WIN_DECLARED_PRE"],
 	&"riichi_kago_v1": [&"WIN_DECLARED_PRE"],
+	# M7 收尾：tougenkyo_v1（M6 holdout）
+	&"tougenkyo_v1": [&"WIN_DECLARED_PRE"],
 }
 
 # Boss-only 子集（用于 chapter_config 校验：每章 boss_id 必须在 boss 列表里）。
