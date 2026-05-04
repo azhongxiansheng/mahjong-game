@@ -66,6 +66,9 @@ func start_hand() -> BattleController:
 	# 拍照供 apply_result 算 skill 转分增量
 	for i in range(4):
 		_pre_hand_state_scores[i] = battle.state.scores[i]
+	# M8.5：注入 strategic context 给 HeuristicAi（终局策略：领先时不立直）
+	if use_heuristic_ai and battle.ai is HeuristicAi:
+		(battle.ai as HeuristicAi).set_strategic_context(cumulative_scores, hand_index, total_hands)
 	return battle
 
 # 解析 events，把最末 WIN_DECLARED 的 payout 应用到 cumulative_scores。

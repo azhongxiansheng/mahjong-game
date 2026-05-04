@@ -27,11 +27,60 @@ const _SUITED_RANGES: Array = [
 func _init(seed_arg: int = 0) -> void:
 	super(seed_arg)
 
+# M8.5：strategic context 注入（GameDriver / BattleNodeRunner 可选调用）。
+# 默认为空 → AI 维持 M7 stateless 行为。设值后开启终局策略：
+# 半庄南场尾盘 + 自家排名第 1 时不立直（防止立直棒丢失 + 振听被反超）。
+var _cumulative_scores: Array[int] = []
+var _hand_index: int = 0
+var _total_hands: int = 0  # 0 = 未注入
+
+func set_strategic_context(scores: Array, hand_index: int, total_hands: int) -> void:
+	_cumulative_scores.clear()
+	for s in scores:
+		_cumulative_scores.append(int(s))
+	_hand_index = hand_index
+	_total_hands = total_hands
+
+# 计 seat_id 当前累计分排名（1 最高，4 最低）。同分时 rank_for 不裁决
+# （AI 决策侧不需要 sim 公平裁决；返最高 rank 是保守选择）。
+# context 未注入时返 0 表示中性（不应触发任何 strategic 分支）。
+func _rank_for(seat_id: int) -> int:
+	if _cumulative_scores.is_empty():
+		return 0
+	if seat_id < 0 or seat_id >= _cumulative_scores.size():
+		return 0
+	var my_score: int = _cumulative_scores[seat_id]
+	var rank := 1
+	for i in range(_cumulative_scores.size()):
+		if i == seat_id:
+			continue
+		if _cumulative_scores[i] > my_score:
+			rank += 1
+	return rank
+
+# Endgame = 剩 ≤ 2 局（hand_index >= total_hands - 2）。
+# 半庄战 8 局 → endgame 始于 hand_index=6（南 3）；
+# 东风战 4 局 → endgame 始于 hand_index=2（东 3，合理终盘）。
+func _is_endgame() -> bool:
+	if _total_hands <= 0:
+		return false
+	return _hand_index >= _total_hands - 2
+
+# 终局 + 自家第 1 → 跳过立直（保守）。其它情况按 M7 默认决策。
+func _should_skip_riichi(seat_id: int) -> bool:
+	if not _is_endgame():
+		return false
+	return _rank_for(seat_id) == 1
+
 # M7：tenpai 时自动立直。判定走 RiichiValidator（门清 + 听牌 + 1000 点 +
 # 牌墙剩 4）。本 AI 无策略，能立直就立直；M8+ 玩家 UI 替换为玩家选择。
-# 调用方应在 discard 之后（hand=13 张）调用本函数。
+# M8.5：终局领先时跳过立直（_should_skip_riichi）。
 func decide_riichi(seat: Seat, wall_live_size: int) -> bool:
-	return RiichiValidator.can_declare_riichi(seat, wall_live_size)
+	if not RiichiValidator.can_declare_riichi(seat, wall_live_size):
+		return false
+	if _should_skip_riichi(seat.seat_id):
+		return false
+	return true
 
 func decide_discard(seat: Seat) -> Tile:
 	var hand_tiles: Array = seat.hand._tiles
