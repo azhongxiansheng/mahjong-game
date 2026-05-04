@@ -10,6 +10,10 @@ var han_multipliers: Dictionary = {}
 # M7 ctx B3-mini：mangan 下限标记（Dictionary[int → bool]，true 时 winner
 # 该胡牌至少 5 番 = 满贯）。BattleController 在 ScoreCalc 之前补差。
 var mangan_floor_seats: Dictionary = {}
+# M9 ctx B3：yakuman 强制标记。true 时 BattleController 在 ScoreCalc 之前
+# 把 yaku_list.is_yakuman = true、yakuman_multiplier = max(1, current)。
+# 用于 boss3_kanmon "任意胡牌升级为役满" 等 spec 原效果。
+var yakuman_force_seats: Dictionary = {}
 var beneficiary_seat: int = -1  # 由 scheduler 在每个 candidate 派发前设置
 var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派发前设置；M7 ctx.consume_self 用
 
@@ -85,6 +89,15 @@ func ensure_mangan_for_seat(seat: int) -> void:
 	if seat < 0 or seat >= 4:
 		return
 	mangan_floor_seats[seat] = true
+
+# M9 ctx B3：force_yakuman_for_seat。
+# 标记指定 seat 的胡牌升级为役满（≥ yakuman base，BattleController 会在
+# ScoreCalc 之前把 yaku_list.is_yakuman = true，yakuman_multiplier 至少为 1）。
+# 用于 boss3_kanmon spec 原效果"任意胡牌升级为役满"等。
+func force_yakuman_for_seat(seat: int) -> void:
+	if seat < 0 or seat >= 4:
+		return
+	yakuman_force_seats[seat] = true
 
 func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat

@@ -72,23 +72,24 @@ func test_boss2_no_dora_when_other_wins():
 
 # ---- Boss 3 关门 ----
 
-func test_boss3_adds_3_han_at_haitei():
+func test_boss3_force_yakuman_at_haitei():
+	# M9 B3 升级：v1 add_han(+3) → v2 force_yakuman_for_seat
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var ab := _make_ability(&"boss3_kanmon_v1", Boss3Hook, [&"HAITEI", &"HOUTEI"])
 	reg.register(ab, 3)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HAITEI", 3))
-	assert_eq(int(out_ctx.han_deltas.get(3, 0)), 3)
+	assert_true(bool(out_ctx.yakuman_force_seats.get(3, false)), "boss=3 自胡 → 标记役满")
 
-func test_boss3_adds_3_han_at_houtei():
+func test_boss3_force_yakuman_at_houtei():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var ab := _make_ability(&"boss3_kanmon_v1", Boss3Hook, [&"HAITEI", &"HOUTEI"])
 	reg.register(ab, 3)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HOUTEI", 3))
-	assert_eq(int(out_ctx.han_deltas.get(3, 0)), 3)
+	assert_true(bool(out_ctx.yakuman_force_seats.get(3, false)))
 
 func test_boss3_no_effect_when_other_seat_wins():
 	var ctx := _setup()
@@ -97,5 +98,5 @@ func test_boss3_no_effect_when_other_seat_wins():
 	var ab := _make_ability(&"boss3_kanmon_v1", Boss3Hook, [&"HAITEI", &"HOUTEI"])
 	reg.register(ab, 3)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HAITEI", 0))
-	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0)
-	assert_eq(int(out_ctx.han_deltas.get(3, 0)), 0)
+	assert_false(bool(out_ctx.yakuman_force_seats.get(0, false)))
+	assert_false(bool(out_ctx.yakuman_force_seats.get(3, false)))

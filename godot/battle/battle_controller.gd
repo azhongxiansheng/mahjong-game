@@ -264,6 +264,9 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	# M7 B3-mini：满贯下限保底（white_mangan_floor 等消耗品）
 	if _has_mangan_floor(winner_seat, pre_ctxs):
 		_apply_mangan_floor(score_yaku_list)
+	# M9 B3：force_yakuman（boss3_kanmon spec 原效果"任意胡牌升级为役满"等）
+	if _has_yakuman_force(winner_seat, pre_ctxs):
+		_apply_yakuman_force(score_yaku_list)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -309,6 +312,9 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	_apply_han_multiplier(score_yaku_list, _composite_multiplier(state.current_seat, pre_ctxs))
 	if _has_mangan_floor(state.current_seat, pre_ctxs):
 		_apply_mangan_floor(score_yaku_list)
+	# M9 B3：force_yakuman 自摸路径
+	if _has_yakuman_force(state.current_seat, pre_ctxs):
+		_apply_yakuman_force(score_yaku_list)
 
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
@@ -396,6 +402,22 @@ static func _apply_mangan_floor(yaku_list: YakuList) -> void:
 	if current >= MANGAN_HAN_THRESHOLD:
 		return  # 已满贯，无需补差
 	yaku_list.add_yaku(&"skill_mangan_floor", MANGAN_HAN_THRESHOLD - current)
+
+# M9 ctx B3：force_yakuman 检测 + 应用。
+# winner 在任一 pre_ctx 标了 yakuman_force → yaku_list.is_yakuman=true,
+# yakuman_multiplier=max(1, current)。已是役满则不变。
+static func _has_yakuman_force(winner_seat: int, ctxs: Array) -> bool:
+	for c in ctxs:
+		if c == null:
+			continue
+		if bool(c.yakuman_force_seats.get(winner_seat, false)):
+			return true
+	return false
+
+static func _apply_yakuman_force(yaku_list: YakuList) -> void:
+	yaku_list.is_yakuman = true
+	if yaku_list.yakuman_multiplier < 1:
+		yaku_list.yakuman_multiplier = 1
 
 # 兼容性 wrapper：从单个 ctx 取 han_deltas[winner_seat] 调 _apply_skill_han_delta。
 # 现存测试 / 后续 PR 还会调用，保留。
