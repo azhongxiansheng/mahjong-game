@@ -10,7 +10,8 @@ class_name CenterInfoPanel extends Node2D
 @onready var _label_wall: Label = $VBox/Wall
 @onready var _label_riichi: Label = $VBox/RiichiSticks
 
-var _hand_index: int = 0  # 0..3 表东 1..东 4
+var _hand_index: int = 0  # 0..3 表东 1..东 4；M8 半庄战 4..7 表南 1..南 4
+var _hands_per_round: int = 4  # M8: 一风圈局数（东/南各 4）
 var _honba: int = 0
 var _dora_indicators: Array = []  # Array[int] of TileId
 var _wall_remaining: int = 70  # 一局起手 70 张 live wall
@@ -23,6 +24,12 @@ func _ready() -> void:
 
 func set_hand_index(idx: int) -> void:
 	_hand_index = idx
+	if is_inside_tree():
+		_refresh_labels()
+
+# M8: 半庄战调用方需 set 此值为 4（一风圈 4 局），让 round_name 推进到南场
+func set_hands_per_round(n: int) -> void:
+	_hands_per_round = n
 	if is_inside_tree():
 		_refresh_labels()
 
@@ -47,8 +54,11 @@ func set_riichi_sticks(n: int) -> void:
 		_refresh_labels()
 
 # 一次注入 BattleState 摘要（供 GameDriver / SmokeScene 用）
-func bind_state(state: BattleState, hand_index_arg: int) -> void:
+# M8: hands_per_round_arg 默认 4 兼容 M7；半庄战调用方传 4（不变）但
+# 要求传足够大的 hand_index_arg（4..7 表南 1..南 4）
+func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: int = 4) -> void:
 	_hand_index = hand_index_arg
+	_hands_per_round = hands_per_round_arg
 	_honba = state.honba
 	_riichi_sticks = state.riichi_sticks
 	_wall_remaining = state.wall.live_wall_size()
@@ -60,11 +70,18 @@ func bind_state(state: BattleState, hand_index_arg: int) -> void:
 
 # ---- helpers ----
 
-# 局数显示 "东 N 局"
-static func round_name(hand_index: int) -> String:
-	if hand_index < 0 or hand_index >= 4:
+# 局数显示 "东 N 局" / "南 N 局"
+# M8: hands_per_round 决定一风圈几局（默认 4）；hand_index 0..hands_per_round-1
+# 是东，hands_per_round..2*hands_per_round-1 是南，超出走 fallback "局 N"
+static func round_name(hand_index: int, hands_per_round: int = 4) -> String:
+	if hand_index < 0:
 		return "局 %d" % (hand_index + 1)
-	return "东 %d 局" % (hand_index + 1)
+	var local: int = hand_index % hands_per_round
+	var round_index: int = hand_index / hands_per_round
+	match round_index:
+		0: return "东 %d 局" % (local + 1)
+		1: return "南 %d 局" % (local + 1)
+		_: return "局 %d" % (hand_index + 1)
 
 # Dora 列简短显示
 static func dora_summary(ids: Array) -> String:
@@ -98,7 +115,7 @@ func _refresh_labels() -> void:
 	if _label_round == null:
 		return
 	var honba_str := " %d 本场" % _honba if _honba > 0 else ""
-	_label_round.text = "%s%s" % [round_name(_hand_index), honba_str]
+	_label_round.text = "%s%s" % [round_name(_hand_index, _hands_per_round), honba_str]
 	_label_dora.text = dora_summary(_dora_indicators)
 	_label_wall.text = "牌墙: %d / 70" % _wall_remaining
 	_label_riichi.text = "立直棒: %d" % _riichi_sticks

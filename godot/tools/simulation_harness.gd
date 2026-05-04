@@ -156,7 +156,8 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 			# M7：fair tiebreak 用 node_seed 派生（×17 解耦于 shuffle / AI seed）
 			var tb_seed: int = node_seed * 17 if fair_tiebreak else 0
 			var ai_seed: int = node_seed * 31 if ai_seat_abilities else 0
-			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants, tb_seed, ai_seed)
+			# M8: NodeRef.session_kind 透传到 BattleNodeRunner（章 3 = "hanchan"）
+			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants, tb_seed, ai_seed, current.session_kind)
 			result = node_stats.node_result
 			# M7 实验：覆盖 hp_delta（baseline 3 假设 H 实验，rank → 0-indexed）
 			if rank_hp_delta_override.size() == 4 and result.rank >= 1 and result.rank <= 4:

@@ -29,8 +29,10 @@ var events: Array = []  # 事件 log（仅本地引用，便于断言）
 var _settled: bool = false
 var _last_event_type: StringName = &""
 
-func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false) -> void:
-	state = BattleState.for_east_round(seed, dealer_seat, 1, 0, 0)
+func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E) -> void:
+	# round_wind: M8 半庄战支持。默认东兼容 M7；GameDriver 在南场调用时
+	# 传 TileId.S_WIND 以激活场风南牌役（南、南家自风南）。
+	state = BattleState.for_east_round(seed, dealer_seat, 1, 0, 0, round_wind)
 	engine = TurnEngine.new(state)
 	registry = SkillRegistry.new()
 	scheduler = SkillScheduler.new(registry, state)

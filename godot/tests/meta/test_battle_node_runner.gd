@@ -90,3 +90,35 @@ func test_run_battle_with_boss2_completes_without_crash():
 func test_run_battle_with_boss3_completes_without_crash():
 	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"boss3_kanmon_v1")
 	assert_not_null(r)
+
+# ---- M8 半庄战 ----
+
+func test_run_battle_default_session_kind_is_east_round():
+	# 签名: (seed, boss, abilities, heuristic, tile_variants, tiebreak_seed, ai_abilities_seed, session_kind)
+	# 默认 session_kind 不传时应等同于显式传 "east_round"
+	var a: NodeResult = BattleNodeRunner.run_battle_to_node_result(42)
+	var b: NodeResult = BattleNodeRunner.run_battle_to_node_result(
+		42, &"", [], false, {}, 0, 0, "east_round"
+	)
+	assert_eq(a.rank, b.rank)
+	assert_eq(a.final_scores, b.final_scores)
+
+func test_run_battle_hanchan_runs_more_hands_than_east_round():
+	# 半庄 8 局 vs 东风 4 局
+	var stats_east: Dictionary = BattleNodeRunner.run_battle_with_stats(
+		42, &"", [], false, {}, 0, 0, "east_round"
+	)
+	var stats_han: Dictionary = BattleNodeRunner.run_battle_with_stats(
+		42, &"", [], false, {}, 0, 0, "hanchan"
+	)
+	assert_eq(int(stats_east.hand_count), 4, "东风 4 局")
+	assert_eq(int(stats_han.hand_count), 8, "半庄 8 局")
+
+func test_run_battle_hanchan_score_conservation():
+	var stats: Dictionary = BattleNodeRunner.run_battle_with_stats(
+		42, &"", [], false, {}, 0, 0, "hanchan"
+	)
+	var sum := 0
+	for s in stats.final_scores:
+		sum += int(s)
+	assert_eq(sum, 100000, "半庄战总分守恒")

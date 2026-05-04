@@ -9,8 +9,9 @@ class_name BattleNodeRunner
 #
 # v1 同步跑：调用阻塞直到东风战结束。M5/M6 想要"边跑边显示"时改 await + frame yield。
 
-const HAND_LIMIT: int = 30  # 连庄保护上限（east_round_e2e 一致）
+const HAND_LIMIT: int = 60  # M8: 半庄 8 局 × ~7.5 倍连庄余量；东风战 4 局通常远低于
 const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
+const HANDS_PER_ROUND: int = 4  # M8: 一个风圈 4 局（东 1-4 / 南 1-4）
 
 # 跑一整场东风战，返 NodeResult（已含 viewer 排名 / hp_delta / final_scores）。
 # seed 决定洗牌；node_index 通常作为 seed 偏移避免同 Run 内不同节点重复牌局。
@@ -19,8 +20,8 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0) -> NodeResult:
-	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed, ai_abilities_seed).node_result
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round") -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed, ai_abilities_seed, session_kind).node_result
 
 # M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
 # 返：
@@ -30,8 +31,11 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 #     final_scores: Array[int]（4 seats），
 #     hand_count: int（实际跑了几局）
 #   }
-static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0) -> Dictionary:
-	var driver := GameDriver.new(seed)
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round") -> Dictionary:
+	# M8: session_kind 决定本节点局数。"east_round" → 4 局；"hanchan" → 8 局。
+	# total_hands 从 BalanceConstants 查；hands_per_round 固定 4（东/南各 4 局）。
+	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
+	var driver := GameDriver.new(seed, total_hands, HANDS_PER_ROUND)
 	driver.use_heuristic_ai = use_heuristic_ai
 	var hand_count: int = 0
 	var hand_outcomes: Dictionary = {"tsumo": 0, "ron": 0, "exhaustive_draw": 0}
@@ -47,13 +51,10 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 		if not player_tile_variants.is_empty():
 			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
 		# M7（baseline 5 假设 J/M）：AI seat 1/2/3 也分配 1 张随机 ability
-		# 让 4 家更对称。ai_abilities_seed > 0 启用；==0 兼容旧行为
-		# Boss 节点排除 boss_id，玩家持的 abilities 也排除避免重复
 		if ai_abilities_seed > 0:
 			var excluded: Array = player_ability_ids.duplicate()
 			if boss_id != &"":
 				excluded.append(boss_id)
-			# 用 hand-local seed 让每局选不同 abilities，避免单调
 			BossAbilityFactory.inject_random_ai_seat_abilities(
 				bc.registry, ai_abilities_seed + hand_count, [1, 2, 3], excluded
 			)
@@ -66,17 +67,15 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 			apply_res["tenpai_array"] = _detect_tenpai_array(bc)
 		driver.advance_or_finish(apply_res)
 
-	# M7：未收的立直棒池转给庄家（v1 单 east round 节点 house rule，避免
-	# pool 在节点边界丢失破坏 sum 守恒；spec Phase 2 半庄战时 pool 跨 round 保留）
+	# M7：未收的立直棒池转给庄家
 	if driver.riichi_sticks > 0:
 		driver.cumulative_scores[driver.dealer_seat] += driver.riichi_sticks * 1000
 		driver.riichi_sticks = 0
 
-	# M7：tiebreak_seed > 0 时启用公平同分裁决（PR #75 引入）；
-	# 默认 0 保留 v1 行为（viewer 永远赢同分），UI 路径不动。
+	# M7：tiebreak_seed > 0 时启用公平同分裁决（PR #75 引入）
 	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT, tiebreak_seed)
 	return {
-		"node_result": NodeResult.new(rank, driver.cumulative_scores),
+		"node_result": NodeResult.new(rank, driver.cumulative_scores, session_kind),
 		"hand_outcomes": hand_outcomes,
 		"final_scores": driver.cumulative_scores.duplicate(),
 		"hand_count": hand_count,

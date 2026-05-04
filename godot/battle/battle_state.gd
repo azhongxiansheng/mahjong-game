@@ -47,13 +47,17 @@ var haitei_forced_seat: int = -1
 var extra_dora_count: Array[int] = [0, 0, 0, 0]
 var extra_red_dora_count: Array[int] = [0, 0, 0, 0]
 
-static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int) -> BattleState:
+static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int, round_wind_arg: int = TileId.E) -> BattleState:
+	# round_wind_arg: M8 半庄战支持。默认东（兼容 M7）；半庄战南场由 GameDriver
+	# 在 hand_index >= hands_per_round 时传 TileId.S_WIND。函数名仍叫 for_east_round
+	# 是历史命名（实际是"为某局风圈实例化 state"），保持名字避免大改 API surface。
 	var s := BattleState.new()
 	s.hand_number = hand_number_arg
 	s.honba = honba_arg
 	s.riichi_sticks = riichi_sticks_arg
 	s.dealer_seat = p_dealer
 	s.current_seat = p_dealer
+	s.round_wind = round_wind_arg
 
 	# 4 seat：自风按 dealer 旋转（dealer 是 E）
 	for i in range(4):

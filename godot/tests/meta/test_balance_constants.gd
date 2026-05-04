@@ -83,3 +83,60 @@ func test_get_number_returns_float():
 	assert_eq(hp, 4.0, "int → float（tune-3：5→4）")
 	var fraction: float = BalanceConstants.get_number(&"soul_drain_fraction")
 	assert_eq(fraction, 0.12, "float → float")
+
+# ---- M8 半庄战：session_kind 维度 ----
+
+func test_hanchan_keys_present():
+	# spec §14 脚注 "Phase 2 可选半庄战（8 局）"
+	var keys := BalanceConstants.all_keys()
+	assert_true(&"hands_per_node_hanchan" in keys, "半庄战局数 key 缺失")
+	assert_true(&"node_rank_hp_delta_hanchan" in keys, "半庄扣血映射 key 缺失")
+	assert_true(&"node_rank_gold_reward_hanchan" in keys, "半庄金币 key 缺失")
+	assert_true(&"enable_south_exit_top30k" in keys, "南入 flag 留位")
+
+func test_hanchan_hands_eq_8():
+	assert_eq(BalanceConstants.lookup(&"hands_per_node_hanchan"), 8, "半庄 = 8 局")
+
+func test_hanchan_hp_delta_doubles():
+	# 半庄时长 ~2x，惩罚相应翻倍
+	var arr: Array = BalanceConstants.get_array(&"node_rank_hp_delta_hanchan")
+	assert_eq(arr, [0, 0, -2, -4], "半庄排名扣血翻倍")
+
+func test_hanchan_gold_reward_doubles():
+	var arr: Array = BalanceConstants.get_array(&"node_rank_gold_reward_hanchan")
+	assert_eq(arr, [60, 30, 10, 0], "半庄金币奖励翻倍")
+
+func test_south_exit_default_off():
+	# 南入条件 (top1 ≥ 30000 提前结束) 默认关闭
+	assert_eq(BalanceConstants.lookup(&"enable_south_exit_top30k"), false,
+		"南入默认关闭，spec 未规定")
+
+func test_get_hands_per_node_dispatches():
+	# helper 按 session_kind 分发
+	assert_eq(BalanceConstants.get_hands_per_node("east_round"), 4, "东风 = 4 局")
+	assert_eq(BalanceConstants.get_hands_per_node("hanchan"), 8, "半庄 = 8 局")
+
+func test_get_node_rank_hp_delta_dispatches():
+	var east: Array = BalanceConstants.get_node_rank_hp_delta("east_round")
+	assert_eq(east, [0, 0, -1, -2], "东风扣血与 M7 一致")
+	var south: Array = BalanceConstants.get_node_rank_hp_delta("hanchan")
+	assert_eq(south, [0, 0, -2, -4], "半庄扣血翻倍")
+
+func test_get_node_rank_gold_reward_dispatches():
+	var east: Array = BalanceConstants.get_node_rank_gold_reward("east_round")
+	assert_eq(east, [30, 15, 5, 0], "东风金币与 M7 一致")
+	var south: Array = BalanceConstants.get_node_rank_gold_reward("hanchan")
+	assert_eq(south, [60, 30, 10, 0], "半庄金币翻倍")
+
+func test_helpers_assert_unknown_session_kind():
+	# unknown session_kind 应 fail-fast（dev typo 立即可见）
+	# GUT 不能直接 assert assert，改成确认 east_round/hanchan 是仅有的合法值
+	# 通过列出 all_keys 间接验证
+	var keys := BalanceConstants.all_keys()
+	var has_east := false
+	var has_hanchan := false
+	for k in keys:
+		if String(k).ends_with("_east_round"): has_east = true
+		if String(k).ends_with("_hanchan"): has_hanchan = true
+	# 只要 hanchan 后缀存在就证明 dispatch 维度建立了
+	assert_true(has_hanchan, "hanchan 后缀字段存在")

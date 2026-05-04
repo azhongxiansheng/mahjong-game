@@ -127,3 +127,41 @@ func test_gold_reward_matches_balance_constants():
 		var nr := NodeResult.new(r)
 		assert_eq(nr.gold_reward, int(bc_gold[r - 1]),
 			"rank %d gold_reward 与 BalanceConstants[%d] 一致" % [r, r - 1])
+
+# ---- M8 Step 6：NodeResult 按 session_kind 分流 ----
+
+func test_default_session_kind_is_east_round():
+	var nr := NodeResult.new(4)  # 默认 session_kind 不传
+	assert_eq(nr.hp_delta, -2, "rank 4 east_round 扣 2 HP（M7 行为）")
+	assert_eq(nr.gold_reward, 0, "rank 4 0 金币")
+
+func test_hanchan_rank_4_loses_4hp():
+	var nr := NodeResult.new(4, [], "hanchan")
+	assert_eq(nr.hp_delta, -4, "rank 4 半庄扣 4 HP（spec §14 翻倍）")
+
+func test_hanchan_rank_3_loses_2hp():
+	var nr := NodeResult.new(3, [], "hanchan")
+	assert_eq(nr.hp_delta, -2, "rank 3 半庄扣 2 HP")
+
+func test_hanchan_rank_1_gets_60_gold():
+	var nr := NodeResult.new(1, [], "hanchan")
+	assert_eq(nr.gold_reward, 60, "rank 1 半庄 60 金币（翻倍）")
+
+func test_hanchan_rank_2_gets_30_gold():
+	var nr := NodeResult.new(2, [], "hanchan")
+	assert_eq(nr.gold_reward, 30)
+
+func test_east_round_unchanged_from_m7():
+	# 显式传 east_round 应与默认（不传 session_kind）等同
+	for r in range(1, 5):
+		var default_nr := NodeResult.new(r)
+		var east_nr := NodeResult.new(r, [], "east_round")
+		assert_eq(default_nr.hp_delta, east_nr.hp_delta, "rank %d hp" % r)
+		assert_eq(default_nr.gold_reward, east_nr.gold_reward, "rank %d gold" % r)
+
+func test_session_kind_serialized_roundtrip():
+	var nr := NodeResult.new(3, [25000, 25000, 24000, 26000], "hanchan")
+	var d: Dictionary = nr.to_dict()
+	var nr2: NodeResult = NodeResult.from_dict(d)
+	assert_eq(nr2.session_kind, "hanchan", "session_kind roundtrip")
+	assert_eq(nr2.hp_delta, -2, "hanchan rank 3 仍 -2 HP")

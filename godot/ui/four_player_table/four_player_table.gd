@@ -33,9 +33,11 @@ func _ready() -> void:
 # ---- public setters ----
 
 # 把当前 hand 的 BattleState 喂给 4 个 seat panel + center
-func bind_battle_state(state: BattleState, hand_index: int) -> void:
+# M8: hands_per_round_arg 默认 4 兼容 M7；半庄战调用方仍传 4 但 hand_index
+# 从 0..7 表示东 1..南 4
+func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
 	if center_info:
-		center_info.bind_state(state, hand_index)
+		center_info.bind_state(state, hand_index, hands_per_round_arg)
 	for i in range(seat_panels.size()):
 		var sp: SeatPanel = seat_panels[i]
 		var seat: Seat = state.seats[i]

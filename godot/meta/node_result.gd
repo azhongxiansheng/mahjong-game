@@ -18,21 +18,24 @@ var hp_delta: int = 0
 var gold_reward: int = 0
 var card_reward: int = 0
 var final_scores: Array = []  # 4 家最终 cumulative_scores（来自 GameDriver）
+# M8: session_kind 决定 HP/Gold 数组（east_round / hanchan）。默认 east_round 兼容 M7
+var session_kind: String = "east_round"
 
-func _init(p_rank: int = 1, p_final_scores: Array = []) -> void:
+func _init(p_rank: int = 1, p_final_scores: Array = [], p_session_kind: String = "east_round") -> void:
 	rank = clampi(p_rank, 1, 4)
-	hp_delta = _hp_delta_for_rank(rank)
-	gold_reward = _gold_for_rank(rank)
+	session_kind = p_session_kind
+	hp_delta = _hp_delta_for_rank(rank, session_kind)
+	gold_reward = _gold_for_rank(rank, session_kind)
 	card_reward = CARD_REWARD_PER_NODE
 	final_scores = p_final_scores
 
-# 取 BalanceConstants 的 4 元素数组并把 rank（1..4）映射到 0..3 索引。
-static func _hp_delta_for_rank(r: int) -> int:
-	var arr: Array = BalanceConstants.get_array(&"node_rank_hp_delta")
+# 取 BalanceConstants 按 session_kind 分流的数组并把 rank（1..4）映射到 0..3 索引。
+static func _hp_delta_for_rank(r: int, p_session_kind: String = "east_round") -> int:
+	var arr: Array = BalanceConstants.get_node_rank_hp_delta(p_session_kind)
 	return int(arr[clampi(r, 1, 4) - 1])
 
-static func _gold_for_rank(r: int) -> int:
-	var arr: Array = BalanceConstants.get_array(&"node_rank_gold_reward")
+static func _gold_for_rank(r: int, p_session_kind: String = "east_round") -> int:
+	var arr: Array = BalanceConstants.get_node_rank_gold_reward(p_session_kind)
 	return int(arr[clampi(r, 1, 4) - 1])
 
 # 静态：从 4 家累计分推 viewer_seat 的排名（1=最高，4=最低）。
@@ -92,12 +95,15 @@ func to_dict() -> Dictionary:
 		"gold_reward": gold_reward,
 		"card_reward": card_reward,
 		"final_scores": final_scores.duplicate(),
+		"session_kind": session_kind,
 	}
 
 static func from_dict(d: Dictionary) -> NodeResult:
 	if d == null or d.is_empty():
 		return null
-	var r := NodeResult.new(int(d.get("rank", 1)), d.get("final_scores", []).duplicate())
+	# M8: session_kind 缺字段时默认 east_round（兼容 M7 旧档）
+	var session: String = String(d.get("session_kind", "east_round"))
+	var r := NodeResult.new(int(d.get("rank", 1)), d.get("final_scores", []).duplicate(), session)
 	# 反序列化时尊重原 hp_delta / gold_reward（rank 派生的可能与历史不一致）
 	r.hp_delta = int(d.get("hp_delta", r.hp_delta))
 	r.gold_reward = int(d.get("gold_reward", r.gold_reward))

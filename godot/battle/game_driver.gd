@@ -15,11 +15,14 @@ class_name GameDriver
 #   - 鸣牌窗口（M2 留给后续 plan）
 
 const STARTING_SCORE: int = 25000
-const NUM_HANDS_EAST_ROUND: int = 4
+const NUM_HANDS_EAST_ROUND: int = 4  # 历史默认；M8 改为 total_hands 实例字段
 const RIICHI_STICK_VALUE: int = 1000
 
 var seed: int = 0
-var hand_index: int = 0  # 0..3 表东 1..东 4
+# hand_index: 线性递增（0..total_hands-1）。半庄战不在 E4→S1 处重置；
+# round_wind 由 _compute_current_round_wind() 函数式计算（不同于
+# 重置 hand_index 的方案 — 让连庄计数不被风圈切换干扰）
+var hand_index: int = 0
 var honba: int = 0
 var riichi_sticks: int = 0
 var dealer_seat: int = 0
@@ -28,19 +31,34 @@ var battle: BattleController = null
 var finished: bool = false
 # M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
 var use_heuristic_ai: bool = false
+# M8 半庄战参数化：
+# - total_hands=4, hands_per_round=4 → 东风战（M7 默认）
+# - total_hands=8, hands_per_round=4 → 半庄战（前 4 局东、后 4 局南）
+var total_hands: int = NUM_HANDS_EAST_ROUND
+var hands_per_round: int = NUM_HANDS_EAST_ROUND
 # M7：start_hand 时拍照 battle.state.scores，apply_result 时算"in-hand skill
 # 转分增量"（由 ctx.transfer_points / steal_score 写入 state.scores），把
 # 这部分 delta 应用到 cumulative_scores 让玩家技能（如 soul_drain_hatsu）真生效
 var _pre_hand_state_scores: Array[int] = [0, 0, 0, 0]
 
-func _init(p_seed: int = 0) -> void:
+func _init(p_seed: int = 0, p_total_hands: int = NUM_HANDS_EAST_ROUND, p_hands_per_round: int = NUM_HANDS_EAST_ROUND) -> void:
 	seed = p_seed
+	total_hands = p_total_hands
+	hands_per_round = p_hands_per_round
 	cumulative_scores = [STARTING_SCORE, STARTING_SCORE, STARTING_SCORE, STARTING_SCORE]
+
+# M8: 当前局对应的场风。东风战恒东；半庄战 hand_index>=4 切到南。
+# 调用方需保证 hand_index < total_hands 时调用（连庄超出 total_hands 例外，
+# 见 advance_or_finish 终局判定）。
+func _compute_current_round_wind() -> int:
+	if hand_index < hands_per_round:
+		return TileId.E
+	return TileId.S_WIND
 
 # 创建当前 hand 的 BattleController；把累计分 + honba + riichi_sticks 注入
 # 到 battle.state，便于 ScoreFormula 在结算时引用本场起点。
 func start_hand() -> BattleController:
-	battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai)
+	battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
 	for i in range(4):
 		battle.state.scores[i] = cumulative_scores[i]
 	battle.state.honba = honba
@@ -153,7 +171,7 @@ func advance_or_finish(result: Dictionary) -> Dictionary:
 		hand_index += 1
 		dealer_seat = (dealer_seat + 1) % 4
 
-	if not renchan and hand_index >= NUM_HANDS_EAST_ROUND:
+	if not renchan and hand_index >= total_hands:
 		finished = true
 
 	battle = null

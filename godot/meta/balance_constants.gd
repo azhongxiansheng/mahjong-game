@@ -50,7 +50,14 @@ const VALUES: Dictionary = {
 	&"red_dora_per_suit": 1,
 
 	# ---- 局参数（spec §14） ----
-	&"hands_per_node": 4,            # 一节点 = 东风战 4 局
+	&"hands_per_node": 4,            # 一节点 = 东风战 4 局（east_round 默认）
+	# M8 半庄战（spec §14 脚注 "Phase 2 可选半庄战 8 局"）
+	&"hands_per_node_hanchan": 8,
+	# 半庄时长 ~2x → 排名扣血 / 金币奖励相应翻倍（拍数，等 baseline 6 调）
+	&"node_rank_hp_delta_hanchan": [0, 0, -2, -4],
+	&"node_rank_gold_reward_hanchan": [60, 30, 10, 0],
+	# 南入条件 (top1 ≥ 30000 提前结束半庄)；spec 未规定，默认关闭
+	&"enable_south_exit_top30k": false,
 
 	# ---- 技能数值（hook 引用，逐步替换魔数） ----
 	# §8.1 增番系
@@ -119,3 +126,30 @@ static func all_keys() -> Array[StringName]:
 	for k in VALUES.keys():
 		keys.append(k)
 	return keys
+
+# ---- M8 半庄战：session_kind 维度分发 ----
+# session_kind 为 "east_round" / "hanchan"。未来若加新 session 模式只需扩这里。
+
+static func get_hands_per_node(session_kind: String) -> int:
+	match session_kind:
+		"east_round": return int(lookup(&"hands_per_node"))
+		"hanchan": return int(lookup(&"hands_per_node_hanchan"))
+		_:
+			assert(false, "BalanceConstants.get_hands_per_node 未知 session_kind: %s" % session_kind)
+			return 4
+
+static func get_node_rank_hp_delta(session_kind: String) -> Array:
+	match session_kind:
+		"east_round": return get_array(&"node_rank_hp_delta")
+		"hanchan": return get_array(&"node_rank_hp_delta_hanchan")
+		_:
+			assert(false, "BalanceConstants.get_node_rank_hp_delta 未知 session_kind: %s" % session_kind)
+			return get_array(&"node_rank_hp_delta")
+
+static func get_node_rank_gold_reward(session_kind: String) -> Array:
+	match session_kind:
+		"east_round": return get_array(&"node_rank_gold_reward")
+		"hanchan": return get_array(&"node_rank_gold_reward_hanchan")
+		_:
+			assert(false, "BalanceConstants.get_node_rank_gold_reward 未知 session_kind: %s" % session_kind)
+			return get_array(&"node_rank_gold_reward")

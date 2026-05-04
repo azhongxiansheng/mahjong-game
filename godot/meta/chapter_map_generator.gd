@@ -22,6 +22,8 @@ static func generate(config: Dictionary, seed: int) -> ChapterMap:
 	var floor_count: int = int(config.get("floor_count", 7))
 	var nodes_per_floor: Vector2i = config.get("nodes_per_floor", Vector2i(1, 3))
 	var weights: Dictionary = config.get("node_weights", {NodeKind.Kind.NORMAL: 1.0})
+	# M8: 本章默认 session_kind（"east_round" / "hanchan"）；缺则回 east_round
+	var default_session: String = String(config.get("default_session_kind", "east_round"))
 
 	var nodes_by_floor: Array = []  # Array[Array[NodeRef]]
 	var idx := 0
@@ -35,7 +37,7 @@ static func generate(config: Dictionary, seed: int) -> ChapterMap:
 			layer_size = rng.randi_range(nodes_per_floor.x, nodes_per_floor.y)
 		for j in range(layer_size):
 			var kind := _pick_kind_for_floor(f, floor_count, weights, rng)
-			var ref := NodeRef.new(idx, f, kind)
+			var ref := NodeRef.new(idx, f, kind, {}, default_session)
 			m.nodes.append(ref)
 			m.edges.append([])
 			layer.append(ref)

@@ -27,6 +27,60 @@ func test_save_run_null_returns_invalid_param():
 	var r: int = _save_system().save_run(null)
 	assert_eq(r, ERR_INVALID_PARAMETER)
 
+# ---- M8 Step 5: SAVE_VERSION 2 + v1 migration ----
+
+func test_save_version_is_2():
+	# M8: 升 SAVE_VERSION 表 NodeRef.session_kind 字段加入
+	assert_eq(RunState.SAVE_VERSION, 2, "M8 SAVE_VERSION = 2")
+
+func test_load_v1_dict_migrates_to_v2_with_east_round_default():
+	# 模拟 M7 旧档（version=1, 无 session_kind 字段）
+	var v1_dict := {
+		"version": 1,
+		"hp": 4,
+		"max_hp": 5,
+		"gold": 50,
+		"chapter": 2,
+		"run_seed": 42,
+		"current_map": null,
+		"history": [
+			{"index": 0, "floor_index": 0, "kind": NodeKind.Kind.NORMAL},
+			{"index": 1, "floor_index": 1, "kind": NodeKind.Kind.ELITE},
+		],
+		"deck": {},
+		"player_deck": {},
+		"pity_state": {},
+		"consumables": [],
+		"finished": false,
+		"won": false,
+	}
+	var rs: RunState = RunState.from_dict(v1_dict)
+	assert_not_null(rs, "v1 存档应被接受（migration）")
+	assert_eq(rs.hp, 4)
+	assert_eq(rs.chapter, 2)
+	assert_eq(rs.history.size(), 2)
+	for n in rs.history:
+		assert_eq(n.session_kind, "east_round",
+			"v1 history NodeRef session_kind 默认 east_round")
+
+func test_load_v2_dict_roundtrip_preserves_session_kind():
+	var rs := RunState.new(42)
+	var n := NodeRef.new(7, 3, NodeKind.Kind.BOSS, {}, "hanchan")
+	rs.history.append(n)
+	var d: Dictionary = rs.to_dict()
+	assert_eq(int(d.version), 2, "v2 写出")
+	var rs2: RunState = RunState.from_dict(d)
+	assert_not_null(rs2)
+	assert_eq(rs2.history.size(), 1)
+	assert_eq(rs2.history[0].session_kind, "hanchan",
+		"v2 hanchan session_kind roundtrip")
+
+func test_load_unknown_future_version_returns_null():
+	# 未来版本（v3+）当前代码看不懂 → 安全返 null
+	var v99_dict := {"version": 99, "hp": 5}
+	assert_null(RunState.from_dict(v99_dict),
+		"未来版本不应误读")
+
 func test_save_run_creates_file():
 	var rs := RunState.new(42)
 	rs.gold = 100

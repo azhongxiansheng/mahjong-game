@@ -104,7 +104,10 @@ func _generate_chapter_map(chapter_index: int) -> void:
 
 # ---- 序列化（M5 SaveSystem） ----
 
-const SAVE_VERSION: int = 1
+# v1 → v2 (M8): NodeRef 加 session_kind 字段。
+# Migration: NodeRef.from_dict 缺字段时默认 "east_round"，所以 v1 无业务字段
+# 改动 — 只需 from_dict 接受 version=1。
+const SAVE_VERSION: int = 2
 
 func to_dict() -> Dictionary:
 	var history_dicts: Array = []
@@ -134,12 +137,15 @@ func _serialize_current_map() -> Variant:
 		return null
 	return current_map.to_dict()
 
-# 反序列化：调用方需自行处理 version 兼容（v1 不支持迁移；非 v1 返 null）。
+# 反序列化：M8 起接受 v1（迁移）+ v2；未来版本返 null。
+# v1 → v2 迁移：NodeRef.from_dict 自身处理缺 session_kind 字段（默认 east_round），
+# 所以这里只需放行 v1。未来 v2 → v3 时本函数加显式 _migrate_v2_to_v3 步骤。
 static func from_dict(d: Dictionary) -> RunState:
 	if d == null or d.is_empty():
 		return null
-	if int(d.get("version", 0)) != SAVE_VERSION:
-		return null  # 版本不匹配；M7 加迁移逻辑
+	var version: int = int(d.get("version", 0))
+	if version != 1 and version != SAVE_VERSION:
+		return null  # 未知版本（含未来版本）安全返 null
 	var rs := RunState.new(int(d.get("run_seed", 0)))
 	rs.hp = int(d.get("hp", BalanceConstants.lookup(&"starting_hp")))
 	rs.max_hp = int(d.get("max_hp", BalanceConstants.lookup(&"max_hp")))

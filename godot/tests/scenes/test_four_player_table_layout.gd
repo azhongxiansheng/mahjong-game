@@ -55,7 +55,8 @@ func test_round_name_east_4():
 	assert_eq(CenterInfoPanel.round_name(3), "东 4 局")
 
 func test_round_name_out_of_range_falls_back():
-	assert_eq(CenterInfoPanel.round_name(7), "局 8")
+	# M8 起 hand_index 4..7 是南场（半庄战），fallback 移到 hand_index >= 8
+	assert_eq(CenterInfoPanel.round_name(8), "局 9", "南 4 之外 fallback")
 
 # ---- CenterInfoPanel.dora_summary ----
 

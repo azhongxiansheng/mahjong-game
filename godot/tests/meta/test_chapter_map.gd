@@ -117,3 +117,59 @@ func test_get_chapter_invalid_returns_empty():
 	assert_eq(ChapterConfig.get_chapter(0), {})
 	assert_eq(ChapterConfig.get_chapter(4), {})
 	assert_eq(ChapterConfig.chapter_count(), 3)
+
+# ---- M8 Step 4: NodeRef.session_kind + ChapterConfig.default_session_kind ----
+
+func test_node_ref_default_session_kind_is_east_round():
+	var n := NodeRef.new(0, 0, NodeKind.Kind.NORMAL)
+	assert_eq(n.session_kind, "east_round", "默认东风战兼容 M7")
+
+func test_node_ref_session_kind_serialized():
+	var n := NodeRef.new(0, 0, NodeKind.Kind.BOSS)
+	n.session_kind = "hanchan"
+	var d: Dictionary = n.to_dict()
+	assert_eq(d.get("session_kind", ""), "hanchan", "session_kind 进 dict")
+	var n2: NodeRef = NodeRef.from_dict(d)
+	assert_eq(n2.session_kind, "hanchan", "session_kind roundtrip")
+
+func test_node_ref_from_dict_missing_session_kind_defaults_east_round():
+	# M7 旧档兼容：缺 session_kind 字段时回 east_round
+	var d := {"index": 0, "floor_index": 0, "kind": NodeKind.Kind.NORMAL}
+	var n: NodeRef = NodeRef.from_dict(d)
+	assert_eq(n.session_kind, "east_round", "缺字段回默认（不崩、不返 null）")
+
+func test_chapter_config_explicit_default_session_kind():
+	# 章 1/2 显式 east_round（不是默认值兜底）；章 3 显式 hanchan
+	var c1: Dictionary = ChapterConfig.chapter_1()
+	assert_eq(c1.get("default_session_kind", ""), "east_round",
+		"章 1 显式 east_round 锁定")
+	var c2: Dictionary = ChapterConfig.chapter_2()
+	assert_eq(c2.get("default_session_kind", ""), "east_round",
+		"章 2 显式 east_round 锁定")
+	var c3: Dictionary = ChapterConfig.chapter_3()
+	assert_eq(c3.get("default_session_kind", ""), "hanchan",
+		"章 3 全 hanchan")
+
+func test_chapter_1_2_all_nodes_east_round():
+	for seed in [1, 7, 42, 123]:
+		var m1 := ChapterMapGenerator.generate(ChapterConfig.chapter_1(), seed)
+		for n in m1.nodes:
+			assert_eq(n.session_kind, "east_round",
+				"章 1 节点 %d 应 east_round" % n.index)
+		var m2 := ChapterMapGenerator.generate(ChapterConfig.chapter_2(), seed)
+		for n in m2.nodes:
+			assert_eq(n.session_kind, "east_round",
+				"章 2 节点 %d 应 east_round" % n.index)
+
+func test_chapter_3_all_nodes_hanchan():
+	for seed in [1, 7, 42, 123]:
+		var m := ChapterMapGenerator.generate(ChapterConfig.chapter_3(), seed)
+		for n in m.nodes:
+			assert_eq(n.session_kind, "hanchan",
+				"章 3 节点 %d 应 hanchan（含 BOSS / CAMP / 战斗）" % n.index)
+
+func test_chapter_3_boss_node_is_hanchan():
+	var m := ChapterMapGenerator.generate(ChapterConfig.chapter_3(), 42)
+	var boss: NodeRef = m.nodes[m.boss_node]
+	assert_eq(boss.kind, NodeKind.Kind.BOSS)
+	assert_eq(boss.session_kind, "hanchan", "章 3 BOSS 必 hanchan")

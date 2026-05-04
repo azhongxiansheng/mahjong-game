@@ -23,6 +23,8 @@ static func chapter_1() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.15,
 		},
 		"boss_id": &"boss1_iron_curtain_v1",
+		# M8: 章 1 全东风战 — 学习曲线起点（spec §15 风险缓解）
+		"default_session_kind": "east_round",
 	}
 
 static func chapter_2() -> Dictionary:
@@ -37,6 +39,8 @@ static func chapter_2() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss2_fortune_runner_v1",
+		# M8: 章 2 仍东风战 — 玩家熟悉机制
+		"default_session_kind": "east_round",
 	}
 
 static func chapter_3() -> Dictionary:
@@ -51,6 +55,8 @@ static func chapter_3() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss3_kanmon_v1",
+		# M8: 章 3 全半庄战 — endgame 深度（含 BOSS / 普通 / 精英 / 营地 / 商店）
+		"default_session_kind": "hanchan",
 	}
 
 static func get_chapter(chapter_index: int) -> Dictionary:
