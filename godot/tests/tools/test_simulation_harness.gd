@@ -130,6 +130,23 @@ func test_rank_hp_delta_override_size_must_be_4_else_ignored():
 		"非 4 元素 override 应被忽略")
 	assert_eq(stats_default.avg_final_hp, stats_bad_override.avg_final_hp)
 
+func test_fair_tiebreak_default_unchanged():
+	# 默认（fair_tiebreak=false）= baseline 1-5 行为；同 seed 必出同 stats
+	var stats_a := SimulationHarness.simulate({"runs": 2, "seed": 51})
+	var stats_b := SimulationHarness.simulate({"runs": 2, "seed": 51, "fair_tiebreak": false})
+	assert_eq(stats_a.completion_rate, stats_b.completion_rate)
+	assert_eq(stats_a.avg_final_hp, stats_b.avg_final_hp)
+
+func test_fair_tiebreak_changes_outcomes():
+	# 启用 fair_tiebreak 应让"同分时 viewer 永远赢"偏置消失 → 通关率或 hp 应变化
+	var stats_default := SimulationHarness.simulate({"runs": 5, "seed": 53})
+	var stats_fair := SimulationHarness.simulate({"runs": 5, "seed": 53, "fair_tiebreak": true})
+	# 至少一个指标应不同（completion_rate 或 avg_final_hp）
+	var differs: bool = stats_default.completion_rate != stats_fair.completion_rate \
+		or stats_default.avg_final_hp != stats_fair.avg_final_hp
+	assert_true(differs,
+		"fair_tiebreak 应改变 completion_rate 或 avg_final_hp（至少一个）")
+
 func test_avg_seat_score_sum_close_to_100000():
 	# 麻将守恒：4 家点数总和 = 4 × 25000 = 100000（不计立直棒）
 	# 节点结束时立直棒收走 / 跨局保留，所以节点终局点数 sum 可能偏离少量

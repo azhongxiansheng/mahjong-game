@@ -15,6 +15,7 @@ extends SceneTree
 #   --starting-hp=N        覆盖 BalanceConstants.starting_hp（baseline 1/3 假设 C 实验）
 #   --rank-hp-delta=a,b,c,d 覆盖 node_rank_hp_delta（baseline 3 假设 H 实验）
 #   --heuristic-ai         AI 用 HeuristicAi 启发式弃牌（vs SimpleAi）
+#   --fair-tiebreak        启用公平同分裁决（PR #75；解 baseline 1-5 viewer 偏强根因）
 
 func _init() -> void:
 	var config := _parse_args()
@@ -47,6 +48,8 @@ func _parse_args() -> Dictionary:
 			config["max_nodes_per_run"] = int(arg.substr(12))
 		elif arg == "--heuristic-ai":
 			config["heuristic_ai"] = true
+		elif arg == "--fair-tiebreak":
+			config["fair_tiebreak"] = true
 		elif arg.begins_with("--starting-hp="):
 			config["starting_hp_override"] = int(arg.substr(14))
 		elif arg.begins_with("--rank-hp-delta="):

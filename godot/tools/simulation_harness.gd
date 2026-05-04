@@ -37,6 +37,9 @@ static func simulate(config: Dictionary) -> Dictionary:
 	# - rank_hp_delta_override: Array[int] 4 元素表覆盖，[] 表默认
 	var starting_hp_override: int = int(config.get("starting_hp_override", 0))
 	var rank_hp_delta_override: Array = config.get("rank_hp_delta_override", [])
+	# M7：fair tiebreak（PR #75 引入）— 让 sim 不受"viewer 永远赢同分"偏置
+	# 干扰（baseline 1-5 累积观察根因）。默认 false 兼容旧 baseline。
+	var fair_tiebreak: bool = bool(config.get("fair_tiebreak", false))
 
 	var completed: int = 0
 	var failed: int = 0
@@ -50,7 +53,7 @@ static func simulate(config: Dictionary) -> Dictionary:
 	var seat_score_samples: int = 0
 
 	for i in range(runs):
-		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy, use_heuristic_ai, starting_hp_override, rank_hp_delta_override)
+		var run_outcome := _simulate_one(base_seed + i, starter, max_nodes, pick_strategy, use_heuristic_ai, starting_hp_override, rank_hp_delta_override, fair_tiebreak)
 		if run_outcome.won:
 			completed += 1
 		elif run_outcome.failed:
@@ -107,7 +110,7 @@ static func simulate(config: Dictionary) -> Dictionary:
 
 # 跑单 Run 直到 finished 或超过 max_nodes。
 # 返 {won, failed, chapter_at_end, nodes_visited, final_hp}
-static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String, use_heuristic_ai: bool = false, starting_hp_override: int = 0, rank_hp_delta_override: Array = []) -> Dictionary:
+static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pick_strategy: String, use_heuristic_ai: bool = false, starting_hp_override: int = 0, rank_hp_delta_override: Array = [], fair_tiebreak: bool = false) -> Dictionary:
 	var rs := RunState.new(run_seed)
 	if starter != &"":
 		StarterPacks.apply_to(rs, starter)
@@ -147,7 +150,9 @@ static func _simulate_one(run_seed: int, starter: StringName, max_nodes: int, pi
 					if a != null:
 						ability_ids.append(a.id)
 				tile_variants = rs.player_deck.tile_variants
-			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants)
+			# M7：fair tiebreak 用 node_seed 派生（×17 解耦于 shuffle / AI seed）
+			var tb_seed: int = node_seed * 17 if fair_tiebreak else 0
+			var node_stats: Dictionary = BattleNodeRunner.run_battle_with_stats(node_seed, boss_id, ability_ids, use_heuristic_ai, tile_variants, tb_seed)
 			result = node_stats.node_result
 			# M7 实验：覆盖 hp_delta（baseline 3 假设 H 实验，rank → 0-indexed）
 			if rank_hp_delta_override.size() == 4 and result.rank >= 1 and result.rank <= 4:

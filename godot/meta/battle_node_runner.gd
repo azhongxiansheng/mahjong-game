@@ -19,8 +19,8 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}) -> NodeResult:
-	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants).node_result
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0) -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed).node_result
 
 # M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
 # 返：
@@ -30,7 +30,7 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 #     final_scores: Array[int]（4 seats），
 #     hand_count: int（实际跑了几局）
 #   }
-static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}) -> Dictionary:
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0) -> Dictionary:
 	var driver := GameDriver.new(seed)
 	driver.use_heuristic_ai = use_heuristic_ai
 	var hand_count: int = 0
@@ -61,7 +61,9 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 		driver.cumulative_scores[driver.dealer_seat] += driver.riichi_sticks * 1000
 		driver.riichi_sticks = 0
 
-	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT)
+	# M7：tiebreak_seed > 0 时启用公平同分裁决（PR #75 引入）；
+	# 默认 0 保留 v1 行为（viewer 永远赢同分），UI 路径不动。
+	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT, tiebreak_seed)
 	return {
 		"node_result": NodeResult.new(rank, driver.cumulative_scores),
 		"hand_outcomes": hand_outcomes,
