@@ -17,8 +17,10 @@ class_name BalanceConstants
 const VALUES: Dictionary = {
 	# ---- 经济 / 起始（spec §14） ----
 	&"starting_points": 25000,
-	&"starting_hp": 5,
-	&"max_hp": 5,
+	# tune-3: starting_hp 5→4（baseline-5 假设 K：control 70% 仍偏高，让所有
+	# pack 难度上一档；可与 soul_drain 12% 配合让 control 落到 55% 区间）
+	&"starting_hp": 4,
+	&"max_hp": 4,
 	&"riichi_stick": 1000,
 	&"honba_stick": 300,
 
@@ -61,9 +63,11 @@ const VALUES: Dictionary = {
 	# §8.3 阻胡
 	&"iron_wall_han_penalty": -1,
 	# §8.4 抓马
-	# soul_drain_fraction: M7 #66 数据显示 control pack 70% 通关偏 OP（baseline-3）；
-	# 30% → 20% 降一档，让 control 跟 aggro/fast 拉近
-	&"soul_drain_fraction": 0.20,
+	# soul_drain_fraction:
+	#   tune-1 (#67) 30→20%（控场太 OP，从 70% 降到 45%）
+	#   tune-3 (本) 20→12%（baseline-5 假设 N：control 仍 75%，目标 30-50%
+	#   设计区间；继续降 fraction 让 soul_drain 不那么单调强势）
+	&"soul_drain_fraction": 0.12,
 	&"mirror_chambo_refund_fraction": 0.50,
 	&"sou8_scapegoat_han_penalty": -1,
 	# §8.6 立直

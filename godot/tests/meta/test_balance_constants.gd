@@ -23,7 +23,7 @@ func test_spec_section_14_keys_present():
 func test_spec_section_14_values_match():
 	# 抽查 spec §14 表中的关键值
 	assert_eq(BalanceConstants.lookup(&"starting_points"), 25000, "起家点数 25000")
-	assert_eq(BalanceConstants.lookup(&"starting_hp"), 5, "玩家血量 5")
+	assert_eq(BalanceConstants.lookup(&"starting_hp"), 4, "玩家血量 4（tune-3：5→4）")
 	assert_eq(BalanceConstants.lookup(&"riichi_stick"), 1000, "立直棒 1000")
 	assert_eq(BalanceConstants.lookup(&"honba_stick"), 300, "本场棒 300")
 	assert_eq(BalanceConstants.lookup(&"max_abilities"), 5, "MAX_ABILITIES 5")
@@ -61,8 +61,8 @@ func test_node_rank_arrays_size_4():
 
 func test_skill_magic_numbers_present():
 	# hook 内魔数已抽出（M7 升级 hook 时按需取）
-	assert_true(BalanceConstants.lookup(&"soul_drain_fraction") == 0.20,
-		"soul_drain 20%（balance tune-1：30→20% 让 control 不太 OP）")
+	assert_true(BalanceConstants.lookup(&"soul_drain_fraction") == 0.12,
+		"soul_drain 12%（tune-3：20→12% 把 control 75% 降到 30-50% 区间）")
 	assert_true(BalanceConstants.lookup(&"mirror_chambo_refund_fraction") == 0.50,
 		"mirror_chambo 50%（M6 east_mirror_chambo 魔数 → BalanceConstants）")
 	assert_eq(BalanceConstants.lookup(&"iron_wall_han_penalty"), -1,
@@ -80,6 +80,6 @@ func test_get_array_type_check():
 func test_get_number_returns_float():
 	# get_number 把 int / float 都返成 float 方便算术
 	var hp: float = BalanceConstants.get_number(&"starting_hp")
-	assert_eq(hp, 5.0, "int → float")
+	assert_eq(hp, 4.0, "int → float（tune-3：5→4）")
 	var fraction: float = BalanceConstants.get_number(&"soul_drain_fraction")
-	assert_eq(fraction, 0.20, "float → float")
+	assert_eq(fraction, 0.12, "float → float")

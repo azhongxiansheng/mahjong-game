@@ -7,7 +7,6 @@ class_name RunState extends RefCounted
 #   - GameDriver 只活到节点（一场东风战）结束，由本类按需 new
 #   - RunState 跨整个 Run（章 1-章 3）；杀进程则丢失（M5 SaveSystem 实装持久化）
 
-const STARTING_HP: int = 5
 const MAX_CHAPTERS: int = 3
 
 # 三个生命周期信号
@@ -16,8 +15,10 @@ signal run_failed                            # hp ≤ 0
 signal run_won                               # 通关章 3 Boss
 
 # ---- state ----
-var hp: int = STARTING_HP
-var max_hp: int = STARTING_HP
+# M7 tune-3：从 BalanceConstants 取 starting_hp（之前 hardcode 5；类似 #69
+# 修 NodeResult 的 single source）
+var hp: int = int(BalanceConstants.lookup(&"starting_hp"))
+var max_hp: int = int(BalanceConstants.lookup(&"max_hp"))
 var gold: int = 0
 var chapter: int = 1                       # 1..MAX_CHAPTERS
 var run_seed: int = 0
@@ -140,8 +141,8 @@ static func from_dict(d: Dictionary) -> RunState:
 	if int(d.get("version", 0)) != SAVE_VERSION:
 		return null  # 版本不匹配；M7 加迁移逻辑
 	var rs := RunState.new(int(d.get("run_seed", 0)))
-	rs.hp = int(d.get("hp", STARTING_HP))
-	rs.max_hp = int(d.get("max_hp", STARTING_HP))
+	rs.hp = int(d.get("hp", BalanceConstants.lookup(&"starting_hp")))
+	rs.max_hp = int(d.get("max_hp", BalanceConstants.lookup(&"max_hp")))
 	rs.gold = int(d.get("gold", 0))
 	rs.chapter = int(d.get("chapter", 1))
 	# current_map 从 dict 恢复；不再走 _generate_chapter_map（避免覆盖 advance_to 后的状态）

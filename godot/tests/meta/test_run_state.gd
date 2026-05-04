@@ -7,8 +7,8 @@ extends GutTest
 
 func test_initial_state():
 	var rs := RunState.new(42)
-	assert_eq(rs.hp, RunState.STARTING_HP)
-	assert_eq(rs.max_hp, RunState.STARTING_HP)
+	assert_eq(rs.hp, BalanceConstants.lookup(&"starting_hp"))
+	assert_eq(rs.max_hp, BalanceConstants.lookup(&"max_hp"))
 	assert_eq(rs.gold, 0)
 	assert_eq(rs.chapter, 1, "起始 chapter = 1")
 	assert_not_null(rs.current_map)
@@ -40,7 +40,7 @@ func test_complete_node_rank_1_no_hp_loss():
 	var rs := RunState.new(42)
 	rs.choose_next_node(rs.current_map.entry_node)
 	rs.complete_node(NodeResult.new(1))
-	assert_eq(rs.hp, 5)
+	assert_eq(rs.hp, BalanceConstants.lookup(&"starting_hp"), "rank 1 不掉血，hp 同 starting")
 	assert_eq(rs.gold, 30, "rank 1 +30 金币")
 	assert_eq(rs.history.size(), 1)
 
@@ -48,7 +48,7 @@ func test_complete_node_rank_4_loses_2_hp():
 	var rs := RunState.new(42)
 	rs.choose_next_node(rs.current_map.entry_node)
 	rs.complete_node(NodeResult.new(4))
-	assert_eq(rs.hp, 3)
+	assert_eq(rs.hp, int(BalanceConstants.lookup(&"starting_hp")) - 2, "rank 4 -2 hp")
 	assert_eq(rs.gold, 0)
 
 func test_complete_node_emits_signal_with_options():
@@ -137,5 +137,5 @@ func test_placeholder_node_does_not_change_hp():
 	var rs := RunState.new(42)
 	rs.choose_next_node(rs.current_map.entry_node)
 	rs.complete_node(NodeResult.from_placeholder())
-	assert_eq(rs.hp, 5, "占位节点不掉血")
+	assert_eq(rs.hp, BalanceConstants.lookup(&"starting_hp"), "占位节点不掉血")
 	assert_eq(rs.gold, 0, "占位节点不给金币（M5 实装内部 hook）")

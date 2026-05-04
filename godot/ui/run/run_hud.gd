@@ -42,5 +42,6 @@ func _refresh_default() -> void:
 	if _label_chapter == null:
 		return
 	_label_chapter.text = format_chapter_text(1, "?")
-	_label_hp.text = format_hp_text(RunState.STARTING_HP, RunState.STARTING_HP)
+	var hp_init: int = int(BalanceConstants.lookup(&"starting_hp"))
+	_label_hp.text = format_hp_text(hp_init, hp_init)
 	_label_gold.text = format_gold_text(0)
