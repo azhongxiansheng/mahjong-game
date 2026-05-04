@@ -36,17 +36,43 @@ static func _gold_for_rank(r: int) -> int:
 	return int(arr[clampi(r, 1, 4) - 1])
 
 # 静态：从 4 家累计分推 viewer_seat 的排名（1=最高，4=最低）。
-# 同分时 viewer 优先得高排名（v1 简化；spec §14 末段提到平衡留 M7）。
-static func rank_for_seat(scores: Array, viewer_seat: int) -> int:
+#
+# 同分裁决：
+# - 默认（tiebreak_seed = 0）：viewer 永远赢同分（v1 行为，向后兼容）
+# - 公平模式（tiebreak_seed > 0）：用 seed 决定性 shuffle 同分群再分配
+#   排名。让 simulation 等批量场景不被 "viewer 永远 rank 1 in tie" 偏置干扰
+#   —— baseline 1-4 累积观察：纯流局对局 4 家恒同分 25000，旧逻辑下
+#   viewer 永远 rank 1 → 玩家几乎不可能扣血（rank 1-2 都 0 hp_delta）。
+#
+# 调用方在 simulation 应传与节点关联的 seed（如 node_seed 派生）；
+# 实际游戏 UI 路径暂用默认参数（保留 viewer 友好的 v1 行为，避免改变玩家体验）。
+static func rank_for_seat(scores: Array, viewer_seat: int, tiebreak_seed: int = 0) -> int:
 	if viewer_seat < 0 or viewer_seat >= scores.size():
 		return 4
 	var my_score: int = int(scores[viewer_seat])
 	var rank := 1
+	var ties: Array[int] = []  # 与 viewer 同分的 seat_id 列表（不含 viewer）
 	for i in range(scores.size()):
 		if i == viewer_seat:
 			continue
-		if int(scores[i]) > my_score:
+		var s: int = int(scores[i])
+		if s > my_score:
 			rank += 1
+		elif s == my_score:
+			ties.append(i)
+	if tiebreak_seed > 0 and not ties.is_empty():
+		# Fisher-Yates shuffle [viewer + ties]，viewer 在 shuffled 中的位置
+		# = 同分群里第几名（0-based 偏移加到 base rank）
+		var pool: Array[int] = ties.duplicate()
+		pool.append(viewer_seat)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = tiebreak_seed
+		for i in range(pool.size() - 1, 0, -1):
+			var j: int = rng.randi_range(0, i)
+			var tmp: int = pool[i]
+			pool[i] = pool[j]
+			pool[j] = tmp
+		rank += pool.find(viewer_seat)
 	return rank
 
 # 占位节点（CAMP / SHOP / EVENT）的"无对战"结算。

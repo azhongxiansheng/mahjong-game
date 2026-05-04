@@ -63,6 +63,45 @@ func test_rank_for_seat_invalid_seat():
 	assert_eq(NodeResult.rank_for_seat([25000, 25000, 25000, 25000], -1), 4)
 	assert_eq(NodeResult.rank_for_seat([25000, 25000, 25000, 25000], 99), 4)
 
+# ---- M7：tiebreak_seed 公平裁决（baseline 1-4 反复观察 viewer 偏强问题） ----
+
+func test_tiebreak_seed_default_unchanged():
+	# tiebreak_seed=0（默认）保持 viewer 永远赢同分（向后兼容）
+	var scores := [25000, 25000, 25000, 25000]
+	for seat in range(4):
+		assert_eq(NodeResult.rank_for_seat(scores, seat, 0), 1,
+			"seat %d 同分 default → rank 1（v1 行为）" % seat)
+
+func test_tiebreak_seed_fair_distributes_across_seeds():
+	# tiebreak_seed > 0 时跨多个 seed，viewer rank 应分散到 1-4 各档
+	# （而不是默认逻辑下 viewer 永远 rank 1）
+	var scores := [25000, 25000, 25000, 25000]
+	var rank_counts := {1: 0, 2: 0, 3: 0, 4: 0}
+	# 跑 200 个不同 seed，统计 viewer=0 的 rank 分布
+	for s in range(1, 201):
+		var r := NodeResult.rank_for_seat(scores, 0, s)
+		rank_counts[r] = int(rank_counts[r]) + 1
+	# 4 档每档应都有命中（≥ 10 次，非零）— 期望各 ~25% 即 50 次，宽容到 ≥ 10
+	for rank in range(1, 5):
+		assert_true(int(rank_counts[rank]) >= 10,
+			"rank %d 计数 ≥ 10（实际 %d）— 公平裁决应分散" % [rank, rank_counts[rank]])
+
+func test_tiebreak_seed_deterministic_same_seed():
+	# 同 seed 必出同 rank（决定性）
+	var scores := [25000, 25000, 25000, 25000]
+	var rank_a := NodeResult.rank_for_seat(scores, 0, 42)
+	var rank_b := NodeResult.rank_for_seat(scores, 0, 42)
+	assert_eq(rank_a, rank_b, "同 seed 必出同 rank")
+
+func test_tiebreak_seed_only_affects_ties():
+	# 严格高低顺序时 tiebreak_seed 不应改变 rank
+	var scores := [40000, 30000, 20000, 10000]
+	for seat in range(4):
+		var default_rank := NodeResult.rank_for_seat(scores, seat, 0)
+		var seeded_rank := NodeResult.rank_for_seat(scores, seat, 12345)
+		assert_eq(default_rank, seeded_rank,
+			"无同分时 seed 不影响 seat %d rank" % seat)
+
 # ---- from_placeholder ----
 
 func test_from_placeholder_no_hp_no_reward():
