@@ -76,6 +76,35 @@ static func inject(registry: SkillRegistry, boss_id: StringName, boss_seat: int 
 	registry.register(sk, boss_seat)
 	return true
 
+# M7（baseline 5 假设 J/M）：给 AI 座位（默认 1/2/3）随机分配一张非-Boss
+# ability，让 4 家更对称（解 simulation "玩家偏强" 根因）。
+#
+# - rng_seed: int —— 决定 ability 选择（决定性）
+# - ai_seats: Array[int] = [1, 2, 3] —— 要装备的 AI 座位
+# - excluded_ids: Array[StringName] = [] —— 跳过的 id（避免与 boss / 玩家 deck 重）
+#
+# 每 AI seat 得 1 张 ability。返成功注册的数（max=ai_seats.size()）。
+static func inject_random_ai_seat_abilities(registry: SkillRegistry, rng_seed: int, ai_seats: Array = [1, 2, 3], excluded_ids: Array = []) -> int:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = rng_seed
+	# Pool = 全部 ability id 减 Boss + excluded
+	var pool: Array[StringName] = []
+	for id_ in known_ability_ids():
+		var s_id := id_ as StringName
+		if _BOSS_IDS.has(s_id):
+			continue
+		if excluded_ids.has(s_id):
+			continue
+		pool.append(s_id)
+	if pool.is_empty():
+		return 0
+	var count: int = 0
+	for seat in ai_seats:
+		var idx: int = rng.randi_range(0, pool.size() - 1)
+		if inject(registry, pool[idx], int(seat)):
+			count += 1
+	return count
+
 # M7：把玩家 deck.abilities 数组（id 列表）批量注入到玩家座位（默认 0）。
 # 未知 / 无 hook 的 id 静默跳过；返成功注册的 id 数。
 static func inject_player_abilities(registry: SkillRegistry, ability_ids: Array, player_seat: int = 0) -> int:

@@ -50,6 +50,9 @@ func _parse_args() -> Dictionary:
 			config["heuristic_ai"] = true
 		elif arg == "--fair-tiebreak":
 			config["fair_tiebreak"] = true
+		elif arg == "--ai-seat-abilities":
+			# baseline 5 假设 J/M：让 AI seat 1/2/3 也分配随机 ability
+			config["ai_seat_abilities"] = true
 		elif arg.begins_with("--starting-hp="):
 			config["starting_hp_override"] = int(arg.substr(14))
 		elif arg.begins_with("--rank-hp-delta="):

@@ -19,8 +19,8 @@ const VIEWER_SEAT: int = 0  # 玩家固定 seat 0
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0) -> NodeResult:
-	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed).node_result
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0) -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed, ai_abilities_seed).node_result
 
 # M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
 # 返：
@@ -30,7 +30,7 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 #     final_scores: Array[int]（4 seats），
 #     hand_count: int（实际跑了几局）
 #   }
-static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0) -> Dictionary:
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0) -> Dictionary:
 	var driver := GameDriver.new(seed)
 	driver.use_heuristic_ai = use_heuristic_ai
 	var hand_count: int = 0
@@ -46,6 +46,17 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 		# M7：玩家 deck.tile_variants → registry（每局重建）
 		if not player_tile_variants.is_empty():
 			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
+		# M7（baseline 5 假设 J/M）：AI seat 1/2/3 也分配 1 张随机 ability
+		# 让 4 家更对称。ai_abilities_seed > 0 启用；==0 兼容旧行为
+		# Boss 节点排除 boss_id，玩家持的 abilities 也排除避免重复
+		if ai_abilities_seed > 0:
+			var excluded: Array = player_ability_ids.duplicate()
+			if boss_id != &"":
+				excluded.append(boss_id)
+			# 用 hand-local seed 让每局选不同 abilities，避免单调
+			BossAbilityFactory.inject_random_ai_seat_abilities(
+				bc.registry, ai_abilities_seed + hand_count, [1, 2, 3], excluded
+			)
 		var run_result: Dictionary = bc.run_to_end()
 		var apply_res: Dictionary = driver.apply_result(run_result.events)
 		var kind: String = apply_res.kind
