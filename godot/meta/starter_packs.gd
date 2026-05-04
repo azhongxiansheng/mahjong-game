@@ -39,12 +39,22 @@ static func aggro_pack() -> Dictionary:
 	return {
 		"id": &"starter_aggro",
 		"display_name": "火力型",
-		"description": "增番 + 终局加成。靠累番打高得分；点棒越低反而越强。",
+		"description": "增番 + 终局加成 + 防御兜底。靠累番打高得分；铁壁防漏 + 中·封印反制。",
+		# M8 balance（解假设 L）：aggro/fast 全是自胡 +han 桩；4 家公平随机
+		# 下玩家 win rate ≤ 25%，进攻 skill 收益不足 → baseline 0%/5%。
+		# 加 2 张被动防御让 aggro 不全靠自胡：man9_iron_wall（被荣胡 -1 番）+
+		# seal_chun（弃中导致荣胡时取消）。
 		"tile_variants": {
 			TileId.W5: &"thunder_5w_v1",
 			TileId.HAKU: &"white_haku_holy_v1",
-			TileId.HATSU: &"green_hatsu_serenity_v1",
+			# M8 v2：HATSU 上 green_hatsu_serenity (+1 番桩) → soul_drain_hatsu
+			# (12% 对手胡 → 玩家)。理由：baseline-6-hanchan aggro 0% 通关，
+			# 单纯 +han 桩在 4 家公平分布下永远不够；soul_drain 是 control 唯一
+			# 通关到 70% 的关键被动收益。aggro 失去一张 +1 番但获得稳定退分。
+			TileId.HATSU: &"soul_drain_hatsu_v1",
 			TileId.T9: &"pin9_haitei_double_v1",
+			TileId.W9: &"man9_iron_wall_v1",          # M8 新加：被荣胡 -1 番
+			TileId.CHUN: &"seal_chun_v1",             # M8 新加：cancel ron
 		},
 		"abilities": [&"shichu_kyu_katsu_v1"],
 		"available": true,
@@ -66,7 +76,12 @@ static func fast_pack() -> Dictionary:
 			TileId.S_WIND: &"south_premature_riichi_v1",  # 第 1 巡先制立直
 			TileId.T9: &"pin9_speed_v1",              # 摸到此牌 force_tsumo（速胡）
 			TileId.S3: &"sou3_skip_v1",               # 自胡 +1 番（加速主题）
-			TileId.W2: &"man2_lure_v1",               # 自胡 +1 番（伪听干扰）
+			# M8 balance（解假设 L）：fast 同 aggro 需要被动收益才能撑到章 3
+			TileId.HATSU: &"soul_drain_hatsu_v1",     # M8 新加：12% 对手胡 → 玩家
+			TileId.W9: &"man9_iron_wall_v1",          # M8 新加：被荣胡 -1 番
+			TileId.CHUN: &"seal_chun_v1",             # M8 新加：cancel ron
+			# 注：baseline-6-hanchan 显示 fast 0% 通关；保留 W2 man2_lure 在 aggro
+			# 不在 fast（避免 fast 过分臃肿）。fast 主题改为"立直 + 防御"复合。
 		},
 		"abilities": [&"riichi_kago_v1"],  # 一发期望延长（自胡 +1 番桩，立直主题）
 		"available": true,
