@@ -5,7 +5,7 @@ extends GutTest
 
 # ---- soul_drain_hatsu 跨 hand 转分 ----
 
-func _set_chiitoi_tenpai_for_seat(bc: BattleController, seat_idx: int) -> void:
+func _set_chiitoi_tenpai_for_seat(bc: IBattleController, seat_idx: int) -> void:
 	var tenpai_ids: Array = [
 		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
 		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,

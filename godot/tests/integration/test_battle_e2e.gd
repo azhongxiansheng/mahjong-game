@@ -5,7 +5,7 @@ extends GutTest
 
 const SealChunHook := preload("res://skills/hooks/seal_chun_hook.gd")
 
-var _bc: BattleController
+var _bc: IBattleController
 
 func before_each() -> void:
 	_bc = BattleController.new(42, 0)

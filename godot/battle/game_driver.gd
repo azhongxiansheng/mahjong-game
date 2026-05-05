@@ -27,7 +27,7 @@ var honba: int = 0
 var riichi_sticks: int = 0
 var dealer_seat: int = 0
 var cumulative_scores: Array[int] = []
-var battle: BattleController = null
+var battle: IBattleController = null  # M11/p2: 改用接口类型；构造时 instantiate LocalBattleController（v1）/ NetworkedBattleController（M12+）
 var finished: bool = false
 # M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
 var use_heuristic_ai: bool = false
@@ -59,7 +59,7 @@ func _compute_current_round_wind() -> int:
 
 # 创建当前 hand 的 BattleController；把累计分 + honba + riichi_sticks 注入
 # 到 battle.state，便于 ScoreFormula 在结算时引用本场起点。
-func start_hand() -> BattleController:
+func start_hand() -> IBattleController:
 	battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
 	for i in range(4):
 		battle.state.scores[i] = cumulative_scores[i]

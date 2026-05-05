@@ -22,7 +22,7 @@ class _ForcePickAi extends SimpleAi:
 					return t
 		return hand_tiles[0]
 
-var _bc: BattleController
+var _bc: IBattleController
 
 func before_each() -> void:
 	_bc = BattleController.new(42, 0)

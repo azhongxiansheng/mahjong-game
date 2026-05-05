@@ -9,7 +9,7 @@ extends GutTest
 #    走 is_haitei=true 路径，emit HAITEI，game_ctx.is_haitei = true
 # 2. apply_ron(is_houtei=true) 路径同理 emit HOUTEI
 
-var _bc: BattleController
+var _bc: IBattleController
 
 func before_each() -> void:
 	_bc = BattleController.new(42, 0)

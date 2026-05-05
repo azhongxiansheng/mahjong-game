@@ -88,7 +88,7 @@ static func placeholder_result() -> NodeResult:
 
 # ---- internal ----
 
-static func _detect_tenpai_array(bc: BattleController) -> Array:
+static func _detect_tenpai_array(bc: IBattleController) -> Array:
 	var arr: Array = []
 	for i in range(4):
 		var seat: Seat = bc.state.seats[i]
