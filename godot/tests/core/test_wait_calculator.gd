@@ -167,3 +167,65 @@ func test_waits_returned_in_ascending_order():
 	var waits := WaitCalculator.wait_tiles(h, [])
 	for i in range(waits.size() - 1):
 		assert_lt(waits[i], waits[i + 1], "升序")
+
+# ---- M10：is_tenpai 早退辅助 ----
+
+func test_is_tenpai_true_for_tanki():
+	# 单骑等中应返 true
+	var h := _hand([
+		TileId.W2, TileId.W3, TileId.W4,
+		TileId.T2, TileId.T3, TileId.T4,
+		TileId.S2, TileId.S3, TileId.S4,
+		TileId.S6, TileId.S7, TileId.S8,
+		TileId.CHUN,
+	])
+	assert_true(WaitCalculator.is_tenpai(h, []), "单骑等中应识为听牌")
+
+func test_is_tenpai_true_for_ryanmen():
+	# 234m 234p 234s 67s + W5W5 → 5s/8s 两面
+	var h := _hand([
+		TileId.W2, TileId.W3, TileId.W4,
+		TileId.T2, TileId.T3, TileId.T4,
+		TileId.S2, TileId.S3, TileId.S4,
+		TileId.S6, TileId.S7,
+		TileId.W5, TileId.W5,
+	])
+	assert_true(WaitCalculator.is_tenpai(h, []), "双面应识为听牌")
+
+func test_is_tenpai_false_for_random_hand():
+	# 13 张完全孤立的手 — 不可能听牌
+	var h := _hand([
+		TileId.W1, TileId.W4, TileId.W7,
+		TileId.T2, TileId.T5, TileId.T8,
+		TileId.S3, TileId.S6, TileId.S9,
+		TileId.E, TileId.S_WIND, TileId.HAKU, TileId.HATSU,
+	])
+	assert_false(WaitCalculator.is_tenpai(h, []), "全孤立手不应识为听牌")
+
+func test_is_tenpai_consistent_with_wait_tiles():
+	# 跨多份手牌：is_tenpai(h, m) == (wait_tiles(h, m).size() > 0)
+	var hands: Array = [
+		[TileId.W2, TileId.W3, TileId.W4, TileId.T2, TileId.T3, TileId.T4,
+		 TileId.S2, TileId.S3, TileId.S4, TileId.S6, TileId.S7, TileId.S8, TileId.CHUN],
+		[TileId.W2, TileId.W3, TileId.W4, TileId.T2, TileId.T3, TileId.T4,
+		 TileId.S2, TileId.S3, TileId.S4, TileId.S6, TileId.S7, TileId.W5, TileId.W5],
+		[TileId.W1, TileId.T5, TileId.S9, TileId.E, TileId.S_WIND, TileId.W_WIND,
+		 TileId.N, TileId.HAKU, TileId.HATSU, TileId.CHUN, TileId.W4, TileId.T7, TileId.S2],
+	]
+	for ids in hands:
+		var h := _hand(ids)
+		var has_waits: bool = WaitCalculator.wait_tiles(h, []).size() > 0
+		assert_eq(WaitCalculator.is_tenpai(h, []), has_waits,
+			"is_tenpai 与 wait_tiles 一致")
+
+func test_is_tenpai_with_called_meld():
+	# 副露 chi 234m，暗 10 张 = 234p 234s 67s W5W5 → 听 5s/8s
+	var chi := Meld.make_chi(
+		[Tile.new(TileId.W2), Tile.new(TileId.W3), Tile.new(TileId.W4)], 3)
+	var h := _hand([
+		TileId.T2, TileId.T3, TileId.T4,
+		TileId.S2, TileId.S3, TileId.S4,
+		TileId.S6, TileId.S7,
+		TileId.W5, TileId.W5,
+	])
+	assert_true(WaitCalculator.is_tenpai(h, [chi]), "副露后听牌也应识别")
