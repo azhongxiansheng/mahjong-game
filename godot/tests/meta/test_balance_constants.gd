@@ -97,10 +97,11 @@ func test_hanchan_keys_present():
 func test_hanchan_hands_eq_8():
 	assert_eq(BalanceConstants.lookup(&"hands_per_node_hanchan"), 8, "半庄 = 8 局")
 
-func test_hanchan_hp_delta_doubles():
-	# 半庄时长 ~2x，惩罚相应翻倍
+func test_hanchan_hp_delta_matches_east():
+	# tune-R2（baseline 10 假设 R）：半庄扣血回到与东风同档 [0, 0, -1, -2]
+	# 半庄难度上升靠"局数 8 vs 4"自然涌现，不依赖 punishing 数值
 	var arr: Array = BalanceConstants.get_array(&"node_rank_hp_delta_hanchan")
-	assert_eq(arr, [0, 0, -2, -4], "半庄排名扣血翻倍")
+	assert_eq(arr, [0, 0, -1, -2], "tune-R2: 与东风同 hp delta，让章 3 不被翻倍 punish")
 
 func test_hanchan_gold_reward_doubles():
 	var arr: Array = BalanceConstants.get_array(&"node_rank_gold_reward_hanchan")
@@ -120,7 +121,7 @@ func test_get_node_rank_hp_delta_dispatches():
 	var east: Array = BalanceConstants.get_node_rank_hp_delta("east_round")
 	assert_eq(east, [0, 0, -1, -2], "东风扣血与 M7 一致")
 	var south: Array = BalanceConstants.get_node_rank_hp_delta("hanchan")
-	assert_eq(south, [0, 0, -2, -4], "半庄扣血翻倍")
+	assert_eq(south, [0, 0, -1, -2], "tune-R2: 半庄扣血回到与东风同档")
 
 func test_get_node_rank_gold_reward_dispatches():
 	var east: Array = BalanceConstants.get_node_rank_gold_reward("east_round")

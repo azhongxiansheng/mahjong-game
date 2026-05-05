@@ -135,13 +135,15 @@ func test_default_session_kind_is_east_round():
 	assert_eq(nr.hp_delta, -2, "rank 4 east_round 扣 2 HP（M7 行为）")
 	assert_eq(nr.gold_reward, 0, "rank 4 0 金币")
 
-func test_hanchan_rank_4_loses_4hp():
+func test_hanchan_rank_4_loses_2hp():
+	# tune-R2（baseline 10 假设 R）：半庄扣血回到与东风同档（局数 8 vs 4
+	# 已自然延长难度，无需翻倍 punish）
 	var nr := NodeResult.new(4, [], "hanchan")
-	assert_eq(nr.hp_delta, -4, "rank 4 半庄扣 4 HP（spec §14 翻倍）")
+	assert_eq(nr.hp_delta, -2, "tune-R2: 半庄 rank 4 扣 2 HP（同东风）")
 
-func test_hanchan_rank_3_loses_2hp():
+func test_hanchan_rank_3_loses_1hp():
 	var nr := NodeResult.new(3, [], "hanchan")
-	assert_eq(nr.hp_delta, -2, "rank 3 半庄扣 2 HP")
+	assert_eq(nr.hp_delta, -1, "tune-R2: 半庄 rank 3 扣 1 HP（同东风）")
 
 func test_hanchan_rank_1_gets_60_gold():
 	var nr := NodeResult.new(1, [], "hanchan")
@@ -164,4 +166,4 @@ func test_session_kind_serialized_roundtrip():
 	var d: Dictionary = nr.to_dict()
 	var nr2: NodeResult = NodeResult.from_dict(d)
 	assert_eq(nr2.session_kind, "hanchan", "session_kind roundtrip")
-	assert_eq(nr2.hp_delta, -2, "hanchan rank 3 仍 -2 HP")
+	assert_eq(nr2.hp_delta, -1, "tune-R2: hanchan rank 3 = -1 HP（同东风）")

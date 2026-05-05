@@ -54,7 +54,11 @@ const VALUES: Dictionary = {
 	# M8 半庄战（spec §14 脚注 "Phase 2 可选半庄战 8 局"）
 	&"hands_per_node_hanchan": 8,
 	# 半庄时长 ~2x → 排名扣血 / 金币奖励相应翻倍（拍数，等 baseline 6 调）
-	&"node_rank_hp_delta_hanchan": [0, 0, -2, -4],
+	# tune-R2 (baseline 10 假设 R)：[-2, -4] → [-1, -2]（同 east_round）
+	# 半庄战 8 局比东风 4 局难 2x 已自然涌现（更多 hand 玩 = 更多机会失败）；
+	# rank 3/4 翻倍惩罚让 boss3 force_yakuman 后 seed=1000 直接 0% 通关。
+	# 让章 3 难度更平滑（不依赖 punishing 数值，依靠局数自然延长）。
+	&"node_rank_hp_delta_hanchan": [0, 0, -1, -2],
 	&"node_rank_gold_reward_hanchan": [60, 30, 10, 0],
 	# 南入条件 (top1 ≥ 30000 提前结束半庄)；spec 未规定，默认关闭
 	&"enable_south_exit_top30k": false,
