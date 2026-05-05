@@ -31,6 +31,8 @@ var battle: BattleController = null
 var finished: bool = false
 # M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
 var use_heuristic_ai: bool = false
+# M10 Path A：HeuristicAi 启用 ShantenCalculator-aware 弃牌（仅 use_heuristic_ai 时有效）
+var use_shanten_ai: bool = false
 # M8 半庄战参数化：
 # - total_hands=4, hands_per_round=4 → 东风战（M7 默认）
 # - total_hands=8, hands_per_round=4 → 半庄战（前 4 局东、后 4 局南）
@@ -68,7 +70,11 @@ func start_hand() -> BattleController:
 		_pre_hand_state_scores[i] = battle.state.scores[i]
 	# M8.5：注入 strategic context 给 HeuristicAi（终局策略：领先时不立直）
 	if use_heuristic_ai and battle.ai is HeuristicAi:
-		(battle.ai as HeuristicAi).set_strategic_context(cumulative_scores, hand_index, total_hands)
+		var hai := battle.ai as HeuristicAi
+		hai.set_strategic_context(cumulative_scores, hand_index, total_hands)
+		# M10 Path A：可选启用 shanten-aware 弃牌
+		if use_shanten_ai:
+			hai.use_shanten_aware_discard = true
 	return battle
 
 # 解析 events，把最末 WIN_DECLARED 的 payout 应用到 cumulative_scores。

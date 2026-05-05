@@ -108,16 +108,34 @@ func decide_riichi(seat: Seat, wall_live_size: int) -> bool:
 		return false
 	return true
 
+# M10 Path A：shanten-aware discard 开关。默认 false 保 M7 行为 / 旧测兼容；
+# sim CLI / 想跑 shanten AI 的调用方设 true 后启用 ShantenCalculator 选弃牌。
+var use_shanten_aware_discard: bool = false
+
 func decide_discard(seat: Seat) -> Tile:
 	var hand_tiles: Array = seat.hand._tiles
 	if hand_tiles.is_empty():
 		return null
-	# 1) 计 hand 中每个 tile_id 的出现次数（用于"同 id 重复"加分 = 不弃）
+	# M10：当开启 shanten-aware 且 hand 处于"刚抽完"等待弃牌的状态（14 张 / 暗 +
+	# 副露 = 14 等价），用 shanten 选弃牌；其他场景（hand 不饱满 / 关闭开关）走
+	# 原 retention 启发式。
+	if use_shanten_aware_discard and _is_post_draw_state(seat):
+		var shanten_pick: Tile = _decide_discard_shanten(seat)
+		if shanten_pick != null:
+			return shanten_pick
+	return _decide_discard_retention(hand_tiles)
+
+# 13 暗 - 3*melds 是均衡态；+1 = 刚抽完待弃。
+static func _is_post_draw_state(seat: Seat) -> bool:
+	var hand_size: int = seat.hand._tiles.size()
+	var meld_count: int = seat.melds.size() if seat.melds != null else 0
+	return hand_size == 14 - 3 * meld_count
+
+# M7 旧 retention 启发式（保留作 fallback / 小手测兼容）。
+static func _decide_discard_retention(hand_tiles: Array) -> Tile:
 	var counts: Dictionary = {}
 	for t in hand_tiles:
 		counts[t.id] = int(counts.get(t.id, 0)) + 1
-
-	# 2) 给每张牌算"保留分"：高分 = 越值得保留 → 不弃；低分 = 弃。
 	var best_idx: int = 0
 	var best_score: int = 999
 	for i in range(hand_tiles.size()):
@@ -127,6 +145,47 @@ func decide_discard(seat: Seat) -> Tile:
 			best_score = score
 			best_idx = i
 	return hand_tiles[best_idx]
+
+# Shanten-aware：尝试弃每张 → 计 13-暗剩手 shanten → pref 最小 shanten；
+# 同 shanten 时 tie-break 用 retention（弃孤立 / 字牌 / 单张）。
+# 注：shanten 越小越接近 tenpai；弃 = 暂从 hand 抽走 1 张算剩 13 张的 shanten。
+func _decide_discard_shanten(seat: Seat) -> Tile:
+	var hand_tiles: Array = seat.hand._tiles
+	var melds: Array = seat.melds
+	# 预算 retention 分（fallback / tie-break）
+	var counts: Dictionary = {}
+	for t in hand_tiles:
+		counts[t.id] = int(counts.get(t.id, 0)) + 1
+	# 对每个 tile_id 候选弃：移除一张后算 shanten；记最小 shanten 与 retention
+	var best_idx: int = 0
+	var best_shanten: int = 99
+	var best_retention: int = 999  # 同 shanten 时取 retention 最小（最该弃）
+	# 同 tile_id 重复出现时只算一次 shanten；选其中第一张的索引
+	var seen: Dictionary = {}
+	for i in range(hand_tiles.size()):
+		var t: Tile = hand_tiles[i]
+		if seen.has(t.id):
+			continue
+		seen[t.id] = true
+		# 构造"弃这张后"的 13 暗 hand
+		var hand_minus: Hand = _hand_minus_first(hand_tiles, t.id)
+		var s: int = ShantenCalculator.calc(hand_minus, melds)
+		var retention: int = _retention_score(t, counts)
+		if s < best_shanten or (s == best_shanten and retention < best_retention):
+			best_shanten = s
+			best_retention = retention
+			best_idx = i
+	return hand_tiles[best_idx]
+
+static func _hand_minus_first(hand_tiles: Array, tile_id: int) -> Hand:
+	var h := Hand.new()
+	var skipped: bool = false
+	for t in hand_tiles:
+		if not skipped and t.id == tile_id:
+			skipped = true
+			continue
+		h.add(Tile.new(t.id, t.is_red_dora, t.owner_seat))
+	return h
 
 # 越大 = 越值得留。tie-break：第一个最低分的丢。
 static func _retention_score(t: Tile, counts: Dictionary) -> int:
