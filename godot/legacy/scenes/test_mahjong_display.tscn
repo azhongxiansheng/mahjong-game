@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://dx5r7y68qxsv3"]
 
-[ext_resource type="Script" uid="uid://qjxqjecs4ahg" path="res://scripts/test_mahjong_display.gd" id="1"]
+[ext_resource type="Script" uid="uid://qjxqjecs4ahg" path="res://legacy/test_mahjong_display.gd" id="1"]
 
 [node name="TestMahjongDisplay" type="Control"]
 layout_mode = 3

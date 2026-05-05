@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://lresojblyp2w"]
 
-[ext_resource type="Script" path="res://scripts/enemy.gd" id="1_enemy_script"]
+[ext_resource type="Script" path="res://legacy/enemy.gd" id="1_enemy_script"]
 
 [node name="Enemy" type="Node2D"]
 script = ExtResource("1_enemy_script")

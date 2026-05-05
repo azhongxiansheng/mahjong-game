@@ -1,6 +1,6 @@
 [gd_scene load_steps=2 format=3 uid="uid://b3v0ygabt3f5u"]
 
-[ext_resource type="Script" path="res://scripts/leaderboard_ui.gd" id="1_leaderboard_ui"]
+[ext_resource type="Script" path="res://legacy/leaderboard_ui.gd" id="1_leaderboard_ui"]
 
 [node name="LeaderboardUI" type="CanvasLayer"]
 layer = 10
