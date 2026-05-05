@@ -97,10 +97,11 @@ func test_hanchan_keys_present():
 func test_hanchan_hands_eq_8():
 	assert_eq(BalanceConstants.lookup(&"hands_per_node_hanchan"), 8, "半庄 = 8 局")
 
-func test_hanchan_hp_delta_doubles():
-	# 半庄时长 ~2x，惩罚相应翻倍
+func test_hanchan_hp_delta_softened():
+	# baseline 9 (PR #91 假设 L 解后) control 20% 偏低；hanchan 翻倍惩罚
+	# [0,0,-2,-4] 让 hp=4 玩家"输 1 节点 = 直接脱靶"。M9 软化为 [0,0,-1,-3]
 	var arr: Array = BalanceConstants.get_array(&"node_rank_hp_delta_hanchan")
-	assert_eq(arr, [0, 0, -2, -4], "半庄排名扣血翻倍")
+	assert_eq(arr, [0, 0, -1, -3], "半庄排名扣血软化（rank 3 与 east 一致，rank 4 比 east 重 50%）")
 
 func test_hanchan_gold_reward_doubles():
 	var arr: Array = BalanceConstants.get_array(&"node_rank_gold_reward_hanchan")
@@ -120,7 +121,7 @@ func test_get_node_rank_hp_delta_dispatches():
 	var east: Array = BalanceConstants.get_node_rank_hp_delta("east_round")
 	assert_eq(east, [0, 0, -1, -2], "东风扣血与 M7 一致")
 	var south: Array = BalanceConstants.get_node_rank_hp_delta("hanchan")
-	assert_eq(south, [0, 0, -2, -4], "半庄扣血翻倍")
+	assert_eq(south, [0, 0, -1, -3], "半庄扣血软化（M9 baseline 9 反弹修复）")
 
 func test_get_node_rank_gold_reward_dispatches():
 	var east: Array = BalanceConstants.get_node_rank_gold_reward("east_round")

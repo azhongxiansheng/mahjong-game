@@ -53,8 +53,12 @@ const VALUES: Dictionary = {
 	&"hands_per_node": 4,            # 一节点 = 东风战 4 局（east_round 默认）
 	# M8 半庄战（spec §14 脚注 "Phase 2 可选半庄战 8 局"）
 	&"hands_per_node_hanchan": 8,
-	# 半庄时长 ~2x → 排名扣血 / 金币奖励相应翻倍（拍数，等 baseline 6 调）
-	&"node_rank_hp_delta_hanchan": [0, 0, -2, -4],
+	# 半庄时长 ~2x → 排名扣血翻倍（拍数）。
+	# baseline 9 (PR #91 假设 L 解后) 显示 control 跌到 20%，aggro/fast 33%；
+	# 假设 Q 残留：hanchan rank 3-4 一发 -2/-4 HP 让 hp=4 玩家"输 1 节点 = 直接脱靶"。
+	# M9 软化：rank 3 -2 → -1（与 east 一致），rank 4 -4 → -3（仍比 east 重 50%）。
+	# 期望：3 包通关率从 20/33/33% → 30-45% 落入 D6 中段。
+	&"node_rank_hp_delta_hanchan": [0, 0, -1, -3],
 	&"node_rank_gold_reward_hanchan": [60, 30, 10, 0],
 	# 南入条件 (top1 ≥ 30000 提前结束半庄)；spec 未规定，默认关闭
 	&"enable_south_exit_top30k": false,
