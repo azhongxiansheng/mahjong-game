@@ -12,8 +12,10 @@ const TousotsuHook := preload("res://skills/hooks/tousotsu_hook.gd")
 const RiichiKagoHook := preload("res://skills/hooks/riichi_kago_hook.gd")
 
 func _setup() -> Array:
+	# M10：reveal_*_to_seat 系列 ctx API 需要真 wall + seats（用 for_east_round
+	# 构造完整 BattleState）
 	var reg := SkillRegistry.new()
-	var st := BattleState.new()
+	var st := BattleState.for_east_round(42, 0, 1, 0, 0)
 	var sched := SkillScheduler.new(reg, st)
 	return [reg, st, sched]
 
@@ -87,6 +89,8 @@ func test_isshun_senken_no_reveal_on_other_seat_draw():
 # ---- yamagan ----
 
 func test_yamagan_reveals_on_game_begin():
+	# M10 升级：spec 原效果是 "GAME_BEGIN 时看牌墙顶 10 张顺序"，hook 现在
+	# reveal 真牌墙顶 10 张（之前是 1 张占位）。
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var st: BattleState = ctx[1]
@@ -94,8 +98,9 @@ func test_yamagan_reveals_on_game_begin():
 	var ab := _make_ability(&"yamagan_v1", YamaganHook, [&"GAME_BEGIN"], Rarity.Kind.EPIC)
 	reg.register(ab, 0)
 	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
-	assert_eq(st.revealed_tiles.size(), 1)
-	assert_eq(int(st.revealed_tiles[0].visible_to[0]), 0)
+	assert_eq(st.revealed_tiles.size(), 10, "M10：reveal 真牌墙顶 10 张")
+	for entry in st.revealed_tiles:
+		assert_eq(int(entry.visible_to[0]), 0, "全部 reveal 给 owner seat 0")
 
 # ---- tenpai_seethru ----
 

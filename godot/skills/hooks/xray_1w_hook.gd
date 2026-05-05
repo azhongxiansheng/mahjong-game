@@ -1,12 +1,11 @@
 # 1万·透视 — §8.5 透明牌系
-# owner 摸到此牌时,强制将下家手牌 1 张设为对 owner 可见
+# owner 摸到此牌时，从下家手牌随机 reveal 1 张给自己。
+# M10 升级：用真 ctx.reveal_random_from_seat（拉下家真实手牌），不再
+# 创建占位 W2 stub。
 extends SkillHook
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	# milestone 1 stub:合成一张代表"下家手牌 1 张"的占位 TileInstance
-	var next_seat := (ctx.beneficiary_seat + 1) % 4
-	var stub_tile := TileInstance.make(Tile.new(TileId.W2), next_seat)
-	stub_tile.holder_seat = next_seat
-	ctx.reveal_tile_to(stub_tile, ctx.beneficiary_seat)
+	var next_seat: int = (ctx.beneficiary_seat + 1) % 4
+	ctx.reveal_random_from_seat(next_seat, ctx.beneficiary_seat)

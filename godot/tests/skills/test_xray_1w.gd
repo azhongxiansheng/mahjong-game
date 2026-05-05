@@ -13,8 +13,10 @@ func _make_skill() -> SkillResource:
 	return s
 
 func _setup() -> Array:
+	# M10：reveal_random_from_seat 需要真 seat.hand，用 for_east_round 构造
+	# 完整的 BattleState（4 seats，每家 13 张起始手牌）
 	var reg := SkillRegistry.new()
-	var st := BattleState.new()
+	var st := BattleState.for_east_round(42, 0, 1, 0, 0)
 	var sched := SkillScheduler.new(reg, st)
 	return [reg, st, sched]
 
@@ -29,6 +31,9 @@ func test_xray_reveals_to_owner_when_owner_draws():
 	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
 	assert_eq(st.revealed_tiles.size(), 1)
 	assert_true(st.revealed_tiles[0]["visible_to"].has(0))
+	# M10 升级验证：reveal 的 tile 来自下家（seat 1）真手牌，holder_seat=1
+	var revealed_ti: TileInstance = st.revealed_tiles[0]["tile"]
+	assert_eq(revealed_ti.holder_seat, 1, "tile 来自下家手牌")
 
 func test_xray_does_not_fire_for_other_seats_draw():
 	var arr := _setup()

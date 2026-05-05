@@ -84,3 +84,22 @@ func peek_uradora_indicator(n: int) -> Tile:
 	if n < 0 or n >= 5:
 		return null
 	return _tiles[_tiles.size() - 6 - 2 * n]
+
+# ---- M10: 信息系 ctx 用 peek API（不推进 _draw_index） ----
+
+# 下次摸牌：返将被 draw() 取的牌；牌墙空返 null。
+func peek_next_draw() -> Tile:
+	if size() == 0:
+		return null
+	return _tiles[_draw_index]
+
+# 牌墙顶 n 张（按 draw 顺序）；牌墙剩余不足时返实际剩余张。
+# 不修改 _draw_index — 仅 peek，调用者拿到的是 Tile 引用快照。
+func peek_top_n(n: int) -> Array[Tile]:
+	var result: Array[Tile] = []
+	if n <= 0:
+		return result
+	var avail: int = mini(n, size())
+	for i in range(avail):
+		result.append(_tiles[_draw_index + i])
+	return result

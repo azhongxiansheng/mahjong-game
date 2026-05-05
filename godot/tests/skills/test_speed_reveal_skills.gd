@@ -10,8 +10,9 @@ const WhiteOracleHook := preload("res://skills/hooks/white_oracle_hook.gd")
 const Pin2BluffHook := preload("res://skills/hooks/pin2_bluff_hook.gd")
 
 func _setup() -> Array:
+	# M10：white_oracle 用 reveal_dora_indicator_to 需真 wall（含 dora indicator）
 	var reg := SkillRegistry.new()
-	var st := BattleState.new()
+	var st := BattleState.for_east_round(42, 0, 1, 0, 0)
 	var sched := SkillScheduler.new(reg, st)
 	return [reg, st, sched]
 

@@ -41,6 +41,76 @@ func transfer_points(from_seat: int, to_seat: int, amount: int) -> void:
 func reveal_tile_to(tile: TileInstance, target_seat: int) -> void:
 	_state.revealed_tiles.append({"tile": tile, "visible_to": [target_seat]})
 
+# ---- M10 信息系：真 reveal API（替代 5 个 hook 的占位 stub） ----
+#
+# 历史背景：M6 batch 的 §8.5 透明牌 / §8.10 信息系角色能力（xray_1w /
+# tenpai_seethru / white_oracle / isshun_senken / yamagan）实现时 ctx 没有
+# 真 reveal API，每个 hook 都创建假 TileInstance 占位 reveal。本 PR 加 3
+# 个真 API，让 hook 直接拉真牌 reveal，spec 原效果首次成立。
+
+# 从 target_seat 手牌随机抽 1 张，标记为对 viewer_seat 可见。
+# 用 _state 的 RNG 决定（保证决定性 sim）。target 手牌空时返 false。
+# 用途：xray_1w（看下家手牌 1 张）等。
+func reveal_random_from_seat(target_seat: int, viewer_seat: int) -> bool:
+	if target_seat < 0 or target_seat >= _state.seats.size():
+		return false
+	var seat: Seat = _state.seats[target_seat]
+	if seat == null or seat.hand == null or seat.hand.size() == 0:
+		return false
+	# 用 event_chain_depth + 既有 turn_count 作 deterministic seed —— 不引入新
+	# RNG state，保证 sim 决定性
+	var rng := RandomNumberGenerator.new()
+	rng.seed = _state.turn_count * 17 + _state.event_chain_depth * 31 + target_seat
+	var idx: int = rng.randi_range(0, seat.hand.size() - 1)
+	var picked: Tile = seat.hand._tiles[idx]
+	var ti: TileInstance = TileInstance.make(picked, target_seat)
+	ti.holder_seat = target_seat
+	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
+	return true
+
+# 牌墙顶 n 张 reveal 给 viewer_seat。
+# 用途：yamagan（GAME_BEGIN reveal 顶 10 张顺序）。
+# 牌墙剩余不足时 reveal 实际剩余，返 reveal 张数。
+func reveal_wall_top_to(viewer_seat: int, n: int) -> int:
+	if _state.wall == null or n <= 0:
+		return 0
+	var tiles: Array[Tile] = _state.wall.peek_top_n(n)
+	for t in tiles:
+		var ti: TileInstance = TileInstance.make(t, -1)
+		ti.holder_seat = -1
+		_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
+	return tiles.size()
+
+# 第 n 张未翻 dora 指示牌 reveal 给 viewer_seat（n=0..4）。
+# 用途：white_oracle（每巡看 1 张未翻 dora）。
+# n 超界返 false。
+func reveal_dora_indicator_to(viewer_seat: int, n: int) -> bool:
+	if _state.wall == null or n < 0 or n >= 5:
+		return false
+	var t: Tile = _state.wall.peek_dora_indicator(n)
+	if t == null:
+		return false
+	var ti: TileInstance = TileInstance.make(t, -1)
+	ti.holder_seat = -1
+	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
+	return true
+
+# target_seat 下次摸的牌 reveal 给 viewer_seat。
+# 用途：isshun_senken（看下次摸牌）。target 下个摸的就是牌墙顶 next_draw —
+# 因为 turn engine 在每个 seat 摸前都从 wall.draw() 取。语义上"下次摸"=
+# 当前 _draw_index 处的牌。返是否 reveal 成功（牌墙空返 false）。
+# 注：v1 简化 — 不区分 target 下次摸 vs 任意人下次摸；都是同一个 next_draw。
+func reveal_next_draw_for_seat(target_seat: int, viewer_seat: int) -> bool:
+	if _state.wall == null:
+		return false
+	var t: Tile = _state.wall.peek_next_draw()
+	if t == null:
+		return false
+	var ti: TileInstance = TileInstance.make(t, -1)
+	ti.holder_seat = -1
+	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
+	return true
+
 func clear_furiten(seat: int) -> void:
 	_state.furiten_flags[seat] = false
 
