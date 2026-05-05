@@ -50,29 +50,29 @@ NetworkedBattleController  ←  WebSocket / WebRTC  →  NetworkedBattleControll
 
 ## 二、Phase 2 阶段拆解
 
-### M11：BattleController 接口抽象（~3 PR）
+### M11：BattleController 接口抽象（实际 2 PR ship；3rd 部分推迟到 M12）
 
-**目标**：把 `BattleController` 拆成 `IBattleController`（abstract）+ `LocalBattleController`（v1 单机），让外部代码（GameDriver / RunFlow / tests）只依赖接口而非具体类。
+**目标**：把 `BattleController` 拆成 `IBattleController`（abstract）+ 具体类（v1 BattleController = 单机权威），让外部代码（GameDriver / RunFlow / tests）只依赖接口而非具体类。
 
-**改动面**：
-- `battle/i_battle_controller.gd` — 抽象基类（`run_to_end()` / `apply_ron()` / `apply_tsumo()` / `state` getter / `events` getter）
-- `battle/local_battle_controller.gd` ← 把现有 `battle_controller.gd` 改名 + extends IBattleController
-- `battle_controller.gd` ← 保留为兼容 alias：`class_name BattleController` 改 typedef-only 或加 deprecation note
-- callers 改用 IBattleController 类型签名
+**已 ship**（2026-05-05）：
 
-**风险**：
-- `class_name BattleController` 全局唯一约束（CLAUDE.md 提醒）— 改名涉及 ~20 个 file 的 typed reference 更新
-- `battle.ai is HeuristicAi` 这种 type narrow 仍可用（HeuristicAi 不变）
+| PR | 内容 | 状态 |
+|---|---|---|
+| **#121** | `feat(m11): IBattleController 接口抽象` — 新基类 + BattleController extends 它 + 5 测 IS-A 验证 | ✅ merged |
+| **#123** | `refactor(m11): caller 类型签名 BattleController → IBattleController` — 7 处签名迁移；`.new()` 实例化保持具体类 | ✅ merged |
 
-**验收**：
-- GUT 全套 PASS
-- sim 跑通（确保 abstract 没漏方法）
-- 现有 tests 全部用 LocalBattleController 实例化
+**未做**（推迟到 M12 起步时）：
+- 旧文件 `battle_controller.gd` 改名为 `local_battle_controller.gd`，class_name 同步改 `LocalBattleController`
+  - **推迟原因**：14 .gd 文件 + ~30+ 静态方法调用点（`BattleController._has_yakuman_force` / `._apply_mangan_floor` / `._apply_han_multiplier` 等）需要 mass-rename；纯 cosmetic 改动，待 M12 引入 `NetworkedBattleController` 时与改名一起做更有意义（因为那时 "Local" 与 "Networked" 才形成实质对比）
 
-**预期 PR**：3
-1. `feat(m11): IBattleController 接口抽象 + LocalBattleController rename`
-2. `refactor(m11): callers 改用 IBattleController 类型签名`
-3. `docs(m11): IBattleController 接口规范 + 方法清单`
+**风险**（已验证）：
+- ✅ `class_name BattleController` 全局唯一约束 — `extends IBattleController` 不破坏唯一性
+- ✅ `battle.ai is HeuristicAi` 类型 narrow — 经接口字段访问仍正确
+
+**验收**（实测）：
+- ✅ GUT 1173/1173 PASS
+- ✅ 现有 tests 不动 `BattleController.new(...)` 实例化继续工作
+- ✅ `var bc: IBattleController = BattleController.new(...)` 类型签名工作正常
 
 ### M12：Server 权威骨架（~5-8 PR）
 
