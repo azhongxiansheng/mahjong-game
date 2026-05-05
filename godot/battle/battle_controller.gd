@@ -1,14 +1,19 @@
-class_name BattleController
+class_name BattleController extends IBattleController
 
 const RIICHI_STICK_COST: int = 1000
 
-# 里程碑 2 — 端到端编排器。
+# 里程碑 2 — 端到端编排器（v1 单机权威实现）。
 # 职责：
 #   1. 自建 BattleState / TurnEngine / SkillRegistry / SkillScheduler / SimpleAi
 #   2. 编排「摸→弃→（鸣牌窗口暂略）→下家」整局循环
 #   3. 在 TurnEngine apply_xxx 调用前后向 SkillScheduler emit BattleEvent
 #   4. 流局 / 自摸 / 荣胡时退出循环
 # spec §13 第 2 项 — 不接 UI、不接交互、4 家全 AI。
+#
+# M11 Path C：本类已 extends IBattleController，作为 v1 单机实现；M12 加 server
+# 权威 NetworkedBattleController 时也走 IBattleController 抽象。
+# 后续 M11 第 2 步会把外部 caller 的类型签名从 BattleController 改 IBattleController；
+# 本 PR 只建立 extends 关系，不强制 caller migrate（向后兼容）。
 
 # 里程碑 2 完成 YakuEvaluator → ScoreCalc 串接：YakuEvaluator 用 yaku/yaku_list.gd
 # （class_name YakuEntries，含 entries: Array[YakuEntry] / apply_exclusions / is_yakuman()），
@@ -19,13 +24,8 @@ const RIICHI_STICK_COST: int = 1000
 
 const MAX_LOOP_STEPS := 2000  # 一局上限，防死循环；正常一局 < 200 步
 
-var state: BattleState
-var engine: TurnEngine
-var registry: SkillRegistry
-var scheduler: SkillScheduler
-var ai: SimpleAi
-
-var events: Array = []  # 事件 log（仅本地引用，便于断言）
+# state / engine / registry / scheduler / ai / events 字段已在 IBattleController 声明；
+# 本类继承得到。构造函数初始化这些字段。
 var _settled: bool = false
 var _last_event_type: StringName = &""
 
