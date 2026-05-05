@@ -31,19 +31,37 @@ CLAUDE.md "Repository shape" 也明确：`scripts/` 下的 `win_pattern.gd / hu_
 - **数据库 / 表单**：`database_manager / form_validator / login_ui / register_ui`
 - **基础 UI / 工具**：`screen_base / ui_manager / ui_theme / rank_calculator / object_pool / operation_queue / performance_monitor / logger / user`
 
-## 仍留在 `scripts/` 的非活跃文件
+### 2026-05-05（M9 第 3 批）— 27 个零引用占位 / 测试 helper
 
-未归档但仍非活跃路径（有 .tscn 引用 或 间接依赖未拆）：
+零引用 helper / 占位 UI / M0-era 测试场景驱动文件：
 
-- `scripts/card_tile.gd` — `scenes/card_tile.tscn` ext_resource
-- `scripts/win_pattern.gd` — class_name 已移除避免冲突；lookup 工具
-- `scripts/leaderboard_*.gd` — `scenes/leaderboard.tscn` 直接引用
-- `scripts/ai_player.gd / enemy.gd / player.gd` — 中麻 era 占位
-- `scripts/main.gd / main_simple.gd / wechat_login.gd / loading_screen.gd / hand_display.gd / game_ui.gd` — 主入口 / 渲染（活跃路径，不动）
-- `scripts/game_manager.gd / texture_extractor.gd` — 仍在 autoloads（activeloads，必须留）
-- `scripts/animated_title / bin_*` 等少量纯 helper
+- **AI / 卡片占位**：`ai_player / card_animation / card_animator / card_ui / special_card`
+- **游戏状态机占位**：`game_config / game_controller / game_debug / game_flow / game_integration / game_state / game_tester / hand_display_manager`
+- **UI / 网络 helper**：`animated_title / main_menu_ui / message_protocol / network_manager / config_manager / ui_diagnostics`
+- **诊断 / 解密工具**：`bin_analyzer / bin_dump`（FairyGUI 资源逆向工具，已不需要）
+- **M0-era 测试**：`test_achievement / test_friend / test_leaderboard / test_leaderboard_integration / unit_tests`（全是 scene-driven 手测，非 GUT；新引擎用 `tests/` 全部 GUT）
+- **小尾巴**：`win_result`
 
-后续 `scripts/` 第 3 批清理（拆 .tscn 依赖 / leaderboard_* / ai_player）留 Phase 2。
+`scripts/` 文件数 96 → 46 (#103) → **17**（减少 82%）。
+
+## 仍留在 `scripts/` 的活跃 / 半活跃文件（17 个 .gd）
+
+**autoloads（项目硬依赖）**：
+- `game_manager.gd / texture_extractor.gd`
+
+**主入口 / 主场景活跃路径**：
+- `main.gd / wechat_login.gd / loading_screen.gd`
+- `main_simple.gd`（`scenes/main_simple_new.tscn` ext_resource）
+- `game_ui.gd / hand_display.gd`（`scenes/game_ui.tscn` 等）
+
+**.tscn 引用但无 game flow 路径**（待拆 .tscn 后归档）：
+- `card_tile.gd` — `scenes/card_tile.tscn` ext_resource（hand_display 间接复用）
+- `enemy.gd` / `player.gd` — `scenes/enemy.tscn / player.tscn` ext_resource（中麻 era 占位）
+- `leaderboard_entry / leaderboard_system / leaderboard_ui` — `scenes/leaderboard.tscn` ext_resource（"leaderboard"功能从未真接入）
+- `win_pattern.gd` — class_name 已移除；保留作 helper lookup
+- `test_mahjong_display / test_texture_extractor` — `scenes/test_*.tscn` 手测
+
+后续 Phase 2 第 4 批：连同对应 .tscn 一起搬走 leaderboard_*、enemy/player 占位、test_* 手测。
 
 ## 反向迁移规则
 
