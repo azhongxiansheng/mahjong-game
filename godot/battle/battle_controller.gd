@@ -87,7 +87,7 @@ func _step_draw() -> void:
 	var is_haitei: bool = (state.wall.live_wall_size() == 0)
 	# 自摸检测（无役不胡；本里程碑 SimpleAi 不会主动宣告，这里 BC 自动判定）
 	var win := _check_tsumo(t, is_haitei)
-	if win.is_winning:
+	if win.is_winning and _should_accept_tsumo(state.current_seat, t, win):
 		_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
 
 func _step_discard() -> void:
@@ -103,7 +103,7 @@ func _step_discard() -> void:
 				to_discard = t
 				break
 	else:
-		to_discard = ai.decide_discard(seat)
+		to_discard = _get_discard_decision(seat, actor)
 	if to_discard == null:
 		_settled = true
 		return
@@ -128,9 +128,8 @@ func _step_discard() -> void:
 	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
 	if not riichi_replayed.is_empty():
 		should_riichi = true
-	elif _replay_decisions.is_empty() and ai.has_method("decide_riichi"):
-		var seat_after: Seat = state.seats[actor]
-		should_riichi = ai.decide_riichi(seat_after, state.wall.live_wall_size())
+	elif _replay_decisions.is_empty():
+		should_riichi = _get_riichi_decision(actor)
 	if should_riichi:
 		# M11: 立直决策同样包成 PlayerAction
 		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
@@ -238,9 +237,141 @@ func _try_auto_ron(discarded: Tile, discarder: int) -> void:
 		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
 		if not ron_check.is_winning:
 			continue
-		# 3) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
+		# 3) 是否接受 ron 由钩子决定（默认子类不重写则总是接受；玩家子类可弹按钮等待选择）
+		if not _should_accept_ron(candidate, discarded, discarder, ron_check, is_houtei):
+			continue
+		# 4) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
 		if apply_ron(candidate, discarded, discarder, is_houtei):
 			return  # 已 settle
+
+# ---- 决策钩子（subclass 覆写以接入玩家输入或网络权威） ----
+#
+# 这些钩子是同步默认实现：返当前 AI / RiichiValidator 计算的决策，与原来直
+# 接 inline 调用 ai.decide_* 的行为完全一致。PlayableBattleController 子类
+# 覆写这些钩子改成 await PlayerActionPanel signal，配合 run_to_end_async()。
+# 默认 sync 路径下 await 一个非 coroutine 值是 no-op，所以两条路径可共用。
+
+# 决定 actor 切哪张牌；默认 = ai.decide_discard(seat)。
+func _get_discard_decision(seat: Seat, _actor: int) -> Tile:
+	return ai.decide_discard(seat)
+
+# 决定 actor 是否立直；默认 = HeuristicAi.decide_riichi（如有），否则 false。
+func _get_riichi_decision(actor: int) -> bool:
+	if ai.has_method("decide_riichi"):
+		var seat_after: Seat = state.seats[actor]
+		return ai.decide_riichi(seat_after, state.wall.live_wall_size())
+	return false
+
+# 决定 candidate 是否接受这次荣和；默认 = 总是接受（auto ron）。
+# PlayableBattleController 子类覆写：candidate==0 时弹"荣和/见逃" 按钮 await 玩家选择。
+func _should_accept_ron(_candidate: int, _discarded: Tile, _discarder: int, _ron_check: Dictionary, _is_houtei: bool) -> bool:
+	return true
+
+# 决定 actor 是否接受这次自摸；默认 = 总是接受（auto tsumo）。
+# PlayableBattleController 子类覆写：actor==0 时弹"自摸"按钮 await 玩家选择。
+func _should_accept_tsumo(_actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
+	return true
+
+# ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
+#
+# 跟 run_to_end() 行为完全一样，只是把 _step_draw / _step_discard / _try_auto_ron
+# 路径上的决策钩子调用都包成 await，让 PlayableBattleController 可以在那 3 个钩子
+# 里 await 玩家 signal。默认 sync 钩子被 await 时是 no-op（GDScript 4 规则：
+# await 一个非 Signal/coroutine 值 → 立刻返回该值），所以 sync 默认行为下 async
+# 路径与 sync 路径输出一致。
+#
+# 现存 GUT 测试继续走 run_to_end()（sync）；新写 PlayableTable + RunFlow 走
+# run_to_end_async()。两路径共享 _settle_tsumo / _settle_ron / 状态机。
+func run_to_end_async() -> Dictionary:
+	_emit(&"GAME_BEGIN", state.dealer_seat, null, {})
+
+	var steps := 0
+	while not _settled and steps < MAX_LOOP_STEPS:
+		steps += 1
+		if state.phase == BattlePhase.Kind.DRAW:
+			await _step_draw_async()
+		elif state.phase == BattlePhase.Kind.DISCARD:
+			await _step_discard_async()
+		elif state.phase == BattlePhase.Kind.CLAIM:
+			engine.advance_to_next_seat()
+		elif state.phase == BattlePhase.Kind.SETTLE:
+			break
+
+	return {
+		"last_event": _last_event_type,
+		"events": events,
+	}
+
+func _step_draw_async() -> void:
+	var t: Tile = engine.draw_for_current()
+	if t == null:
+		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		_settled = true
+		return
+	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
+	var is_haitei: bool = (state.wall.live_wall_size() == 0)
+	var win := _check_tsumo(t, is_haitei)
+	if win.is_winning:
+		var accept: bool = await _should_accept_tsumo(state.current_seat, t, win)
+		if accept:
+			_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
+
+func _step_discard_async() -> void:
+	var seat: Seat = state.seats[state.current_seat]
+	var actor: int = state.current_seat
+	var to_discard: Tile = null
+	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
+	if not replayed.is_empty():
+		var tid: int = int(replayed.get("tile_id", -1))
+		for t in seat.hand._tiles:
+			if t.id == tid:
+				to_discard = t
+				break
+	else:
+		to_discard = await _get_discard_decision(seat, actor)
+	if to_discard == null:
+		_settled = true
+		return
+	_emit(&"PLAYER_ACTION", actor, null, {
+		"kind": "discard",
+		"tile_id": to_discard.id,
+	})
+	var ok: bool = engine.discard(to_discard.id)
+	if not ok:
+		_settled = true
+		return
+	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
+	# 立直决策（discard 后 hand=13）
+	var should_riichi: bool = false
+	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
+	if not riichi_replayed.is_empty():
+		should_riichi = true
+	elif _replay_decisions.is_empty():
+		should_riichi = await _get_riichi_decision(actor)
+	if should_riichi:
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
+		if engine.declare_riichi(actor):
+			state.scores[actor] -= RIICHI_STICK_COST
+			_emit(&"RIICHI_DECLARED", actor, null, {})
+	# 鸣牌响应（v1 仅 ron）
+	if not _settled:
+		await _try_ron_async(to_discard, actor)
+
+func _try_ron_async(discarded: Tile, discarder: int) -> void:
+	var is_houtei: bool = (state.wall.live_wall_size() == 0)
+	for offset in range(1, 4):
+		var candidate: int = (discarder + offset) % 4
+		var candidate_seat: Seat = state.seats[candidate]
+		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
+			continue
+		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
+		if not ron_check.is_winning:
+			continue
+		var accept: bool = await _should_accept_ron(candidate, discarded, discarder, ron_check, is_houtei)
+		if not accept:
+			continue
+		if apply_ron(candidate, discarded, discarder, is_houtei):
+			return
 
 # 公共入口：荣胡（外部 driver 调用，不走 run_to_end 主循环）。
 # discarder_seat: 弃牌人座（决定 ron_tile 的 owner_seat 与 score_ctx.loser_seat）。

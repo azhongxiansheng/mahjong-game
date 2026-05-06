@@ -1,145 +1,51 @@
-## 智能纹理提取器
-## 从FairyGUI贵州麻将素材中提取并优化麻将牌纹理
-## 🔧 作为 AutoLoad 单例使用,移除 class_name 避免冲突
+## 麻将牌纹理加载（autoload）
+##
+## v2: 改用 lietxia/mahjong_graphic 的标准日麻矢量牌（272×389 透明 PNG，34 张 + 红宝 3 张 + 牌背）。
+## 旧 v1 从 mahjong_atlas0.png 切 80×120 网格的方案被废弃 — 那张图实际是 FairyGUI 的整包 UI 截图，
+## 牌不在网格位置，切出来全是空白。
+##
+## 命名约定（标准日麻 riichi notation，与素材包 1m..9m/1p..9p/1s..9s/1z..7z 文件名匹配）：
+##   m 万子 (Manzu)：1m..9m + 0m=赤五万
+##   p 筒子 (Pinzu)：1p..9p + 0p=赤五筒
+##   s 索子 (Souzu)：1s..9s + 0s=赤五索
+##   z 字牌 (Jihai)：1z=东 / 2z=南 / 3z=西 / 4z=北 / 5z=白 / 6z=发 / 7z=中
 extends Node
 
-## 配置 - 根据反编译的Python脚本修正
-const ATLAS_DIR = "user://mahjong_atlases"
-const OUTPUT_DIR = "user://mahjong_tiles"
-## 🔑 关键修正:麻将牌真实尺寸是 80x120,不是 85x85!
-const TILE_WIDTH = 80
-const TILE_HEIGHT = 120
-const PADDING = 0 # 没有间距
+const TILES_DIR: String = "res://assets/mahjong_tiles_riichi/"
 
-## NEAREST 滤波由 project.godot `rendering/textures/canvas_textures/default_texture_filter=1`
-## 在工程级别设置；AtlasTexture 本身没有 filter_mode 属性，无法在此处设置。
-
-## 贵州弈乐麻将原始资源位置
-const SOURCE_ATLASES = {
-	0: "res://assets/mahjong_tiles/mahjong_atlas0.png",
-	1: "res://assets/mahjong_tiles/mahjong_atlas0_1.png",
-	2: "res://assets/mahjong_tiles/mahjong_atlas0_2.png"
-}
-
-## 麻将牌定义
-var tile_names = []
-var extracted_tiles = {}
+# 内部图集：key（1m..9m, 1p..9p, 1s..9s, 1z..7z, 0m, 0p, 0s, back）→ Texture2D
+var extracted_tiles: Dictionary = {}
 
 func _ready() -> void:
-	print("\n   准备提取 34 种麻将牌 (w1-w9, t1-t9, s1-s9, E, S, W, N, Z, F, B)")
-	_init_tile_names()
+	_load_tiles()
+	print("✅ TextureExtractor initialized (riichi vector tiles, %d 张)" % extracted_tiles.size())
 
-	# 🔧 使用已验证的精确坐标提取
-	_extract_from_source()
+func _load_tiles() -> void:
+	# 数牌 1-9
+	for n in range(1, 10):
+		_load_one("%dm" % n)
+		_load_one("%dp" % n)
+		_load_one("%ds" % n)
+	# 字牌 1z-7z
+	for z in range(1, 8):
+		_load_one("%dz" % z)
+	# 红宝 0m/0p/0s（5 万/5 筒/5 索 的红色版本）
+	_load_one("0m")
+	_load_one("0p")
+	_load_one("0s")
+	# 牌背
+	_load_one("back")
 
-	print("✅ TextureExtractor initialized")
-
-func _init_tile_names() -> void:
-	tile_names.clear()
-
-	for i in range(1, 10):
-		tile_names.append("w%d" % i)
-
-	for i in range(1, 10):
-		tile_names.append("t%d" % i)
-
-	for i in range(1, 10):
-		tile_names.append("s%d" % i)
-
-	tile_names.append_array(["E", "S", "W", "N", "Z", "F", "B"])
-
-func _extract_from_source() -> void:
-	print("\n🎨 从 atlas 提取麻将牌纹理...")
-
-	var extracted_count = 0
-	var atlas_path = SOURCE_ATLASES[0]
-
-	if not ResourceLoader.exists(atlas_path):
-		print("⚠️  Atlas not found: %s" % atlas_path)
+func _load_one(key: String) -> void:
+	var path: String = TILES_DIR + key + ".png"
+	if not ResourceLoader.exists(path):
+		push_warning("[TextureExtractor] missing tile: %s" % path)
 		return
+	var tex: Texture2D = load(path) as Texture2D
+	if tex != null:
+		extracted_tiles[key] = tex
 
-	print("📦 Loading atlas: %s" % atlas_path)
-
-	var atlas_texture = load(atlas_path) as Texture2D
-	if not atlas_texture:
-		print("❌ Failed to load atlas")
-		return
-
-	var img_width = atlas_texture.get_width()
-	var img_height = atlas_texture.get_height()
-	print("   Atlas size: %dx%d" % [img_width, img_height])
-
-	# 🔑 关键修复:使用 AtlasTexture 而不是 get_region!
-	# AtlasTexture 是 Godot官方推荐的图集提取方式
-	var tile_coords = []
-	
-	# 万牌 (y=0)
-	for i in range(9):
-		tile_coords.append(["w%d" % (i+1), i * TILE_WIDTH, 0, TILE_WIDTH, TILE_HEIGHT])
-	
-	# 筒牌 (y=120)
-	for i in range(9):
-		tile_coords.append(["t%d" % (i+1), i * TILE_WIDTH, 120, TILE_WIDTH, TILE_HEIGHT])
-	
-	# 条牌 (y=240)
-	for i in range(9):
-		tile_coords.append(["s%d" % (i+1), i * TILE_WIDTH, 240, TILE_WIDTH, TILE_HEIGHT])
-	
-	# 字牌 (y=360)
-	var zi_tiles = ["E", "S", "W", "N", "Z", "F", "B"]
-	for i in range(zi_tiles.size()):
-		tile_coords.append([zi_tiles[i], i * TILE_WIDTH, 360, TILE_WIDTH, TILE_HEIGHT])
-
-	print("   准备提取 %d 个麻将牌 (80x120 像素)" % tile_coords.size())
-
-	for coord in tile_coords:
-		var tile_name = coord[0]
-		var x = coord[1]
-		var y = coord[2]
-		var w = coord[3]
-		var h = coord[4]
-
-		# 🔑 使用 AtlasTexture 而不是 ImageTexture.create_from_image!
-		var atlas_tex = AtlasTexture.new()
-		atlas_tex.atlas = atlas_texture
-		atlas_tex.region = Rect2(x, y, w, h)
-		# NEAREST 滤波在 project.godot 工程级别已设置（见文件顶部常量注释）。
-
-		extracted_tiles[tile_name] = atlas_tex
-		extracted_count += 1
-		print("✅ [%s] %dx%d" % [tile_name, w, h])
-
-	print("✅ 成功提取 %d 个麻将牌纹理" % extracted_count)
-
-func _is_empty_image(img: Image) -> bool:
-	if not img:
-		return true
-
-	var width = img.get_width()
-	var height = img.get_height()
-
-	if width <= 0 or height <= 0:
-		return true
-
-	# 检查 9 个采样点
-	var sample_points = [
-		img.get_pixel(0, 0),
-		img.get_pixel(width - 1, 0),
-		img.get_pixel(0, height - 1),
-		img.get_pixel(width - 1, height - 1),
-		img.get_pixel(int(width / 2.0), int(height / 2.0)),
-		img.get_pixel(int(width / 2.0), 0),
-		img.get_pixel(int(width / 2.0), height - 1),
-		img.get_pixel(0, int(height / 2.0)),
-		img.get_pixel(width - 1, int(height / 2.0)),
-	]
-
-	for pixel in sample_points:
-		if pixel.a > 0.3:
-			return false
-
-	return true
-
+# CardTileBack 等消费方调；缺牌时返 null（让 caller fall-back 到 Label）。
 func get_tile_texture(tile_name: String) -> Texture2D:
 	if tile_name in extracted_tiles:
 		return extracted_tiles[tile_name]

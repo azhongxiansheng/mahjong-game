@@ -21,6 +21,8 @@ const PACK_OPEN_VIEW := preload("res://ui/run/pack_open_view.tscn")
 const SHOP_VIEW := preload("res://ui/run/shop_view.tscn")
 # M5 第 4 步新增：存档恢复
 const CONTINUE_PROMPT := preload("res://ui/run/continue_prompt.tscn")
+# 战斗节点真实可玩：玩家 vs 3 AI
+const PLAYABLE_TABLE := preload("res://ui/four_player_table/playable_table.tscn")
 
 var _run_state: RunState = null
 var _hud: RunHud = null
@@ -151,25 +153,27 @@ func _on_run_won() -> void:
 
 # ---- node execution ----
 
-# 战斗节点：v1 直接同步跑 BattleNodeRunner，不显示 4 人桌（M5/M6 视觉化时
-# 改成 await 模式 + 显示 four_player_table.tscn）。
+# 战斗节点：玩家完整可玩。每局用 PlayableTable + PlayableBattleController；
+# 跑完 4 局东风战（或半庄）后算 NodeResult。
 func _run_battle_node(node_ref: NodeRef) -> void:
-	# 显示一个简单"战斗中..."Label 占位（v1 不卡顿，跑完毕就进结算）
-	var battle_label := _make_loading_label(_loading_text_for_battle(node_ref))
-	_swap_panel(battle_label)
+	var table: PlayableTable = PLAYABLE_TABLE.instantiate()
+	_swap_panel(table)
+	# 让玩家先看到空桌一眼再开局
+	await get_tree().create_timer(0.4).timeout
 	# 用节点 index 做 seed 偏移，避免同 Run 重复牌局
 	var node_seed: int = _run_state.run_seed * 100 + node_ref.index
-	# M6 收尾：BOSS 节点把当前章节 Boss inject 到对战 registry
 	var boss_id: StringName = &""
 	if node_ref.kind == NodeKind.Kind.BOSS:
 		boss_id = ChapterConfig.get_boss_id(_run_state.chapter)
-	# M7：玩家 deck.abilities + tile_variants → BattleController.registry，
-	# 让玩家角色能力 + 牌技能在真实战斗中 fire
 	var player_ability_ids: Array = _player_ability_ids()
 	var player_tile_variants: Dictionary = _player_tile_variants()
-	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(
-		node_seed, boss_id, player_ability_ids, false, player_tile_variants
+	var session_kind: String = "east_round"  # M8 半庄留作后续
+	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
+		table, get_tree(), node_seed, boss_id, player_ability_ids,
+		player_tile_variants, session_kind
 	)
+	if not is_instance_valid(table) or not table.is_inside_tree():
+		return
 	_last_result = result
 	_run_state.complete_node(result)
 

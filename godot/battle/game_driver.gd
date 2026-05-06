@@ -57,10 +57,18 @@ func _compute_current_round_wind() -> int:
 		return TileId.E
 	return TileId.S_WIND
 
+# 自定义 BC 工厂；玩家可玩路径用它注入 PlayableBattleController。
+# 默认 = BattleController（v1 AI vs AI 行为）。
+# 签名：(seed: int, dealer_seat: int, use_heuristic_ai: bool, round_wind: int) -> IBattleController
+var bc_factory: Callable = Callable()
+
 # 创建当前 hand 的 BattleController；把累计分 + honba + riichi_sticks 注入
 # 到 battle.state，便于 ScoreFormula 在结算时引用本场起点。
 func start_hand() -> IBattleController:
-	battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
+	if bc_factory.is_valid():
+		battle = bc_factory.call(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
+	else:
+		battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
 	for i in range(4):
 		battle.state.scores[i] = cumulative_scores[i]
 	battle.state.honba = honba

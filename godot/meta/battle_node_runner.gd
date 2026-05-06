@@ -82,6 +82,116 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 		"hand_count": hand_count,
 	}
 
+# M5 视觉化：带 per-hand observer 的异步版本。
+#
+# 每局 (hand) 跑完后调用 on_hand_complete(driver, hand_count) 给 UI 一次刷新机会，
+# 然后 await tree.process_frame 让 Godot 真正绘制一帧。on_hand_complete 拿
+# driver 引用以读 cumulative_scores / battle.state / hand_index / dealer_seat。
+#
+# 调用方负责：(1) tree 引用要活到调用结束；(2) callable 不抛异常。
+# 异步代价：一场 4 局东风战会 yield 4 帧；普通节点 < 100ms 视觉延迟。
+static func run_battle_to_node_result_async(
+	tree: SceneTree,
+	on_hand_complete: Callable,
+	seed: int,
+	boss_id: StringName = &"",
+	player_ability_ids: Array = [],
+	use_heuristic_ai: bool = false,
+	player_tile_variants: Dictionary = {},
+	tiebreak_seed: int = 0,
+	ai_abilities_seed: int = 0,
+	session_kind: String = "east_round",
+	use_shanten_ai: bool = false
+) -> NodeResult:
+	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
+	var driver := GameDriver.new(seed, total_hands, HANDS_PER_ROUND)
+	driver.use_heuristic_ai = use_heuristic_ai
+	driver.use_shanten_ai = use_shanten_ai
+	var hand_count: int = 0
+	while not driver.finished and hand_count < HAND_LIMIT:
+		hand_count += 1
+		var bc := driver.start_hand()
+		if boss_id != &"":
+			BossAbilityFactory.inject(bc.registry, boss_id)
+		if not player_ability_ids.is_empty():
+			BossAbilityFactory.inject_player_abilities(bc.registry, player_ability_ids, VIEWER_SEAT)
+		if not player_tile_variants.is_empty():
+			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
+		if ai_abilities_seed > 0:
+			var excluded: Array = player_ability_ids.duplicate()
+			if boss_id != &"":
+				excluded.append(boss_id)
+			BossAbilityFactory.inject_random_ai_seat_abilities(
+				bc.registry, ai_abilities_seed + hand_count, [1, 2, 3], excluded
+			)
+		var run_result: Dictionary = bc.run_to_end()
+		var apply_res: Dictionary = driver.apply_result(run_result.events)
+		if apply_res.kind == "exhaustive_draw":
+			apply_res["tenpai_array"] = _detect_tenpai_array(bc)
+		driver.advance_or_finish(apply_res)
+		# 通知 UI 刷新；callback 自身可 await（如延时让玩家看清状态）。
+		# 用 await 保证 callback 返回的 coroutine 完成后才推进下一局。
+		if on_hand_complete.is_valid():
+			await on_hand_complete.call(driver, hand_count)
+		if tree:
+			await tree.process_frame
+	if driver.riichi_sticks > 0:
+		driver.cumulative_scores[driver.dealer_seat] += driver.riichi_sticks * 1000
+		driver.riichi_sticks = 0
+	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT, tiebreak_seed)
+	return NodeResult.new(rank, driver.cumulative_scores, session_kind)
+
+# 战斗节点真实可玩入口（plan: Step 8）。
+#
+# 跟 run_battle_to_node_result_async 行为一致（4 局东风战 → NodeResult），
+# 不同点：
+#   - 用 PlayableBattleController 替代 BattleController（GameDriver.bc_factory 注入）
+#   - 调 bc.run_to_end_async() 让玩家输入接入；await PlayableTable.play_hand_async
+#     把 BC ←→ UI 牵线
+#   - 局间 await tree.process_frame 给 UI 喘息
+#
+# table 必须是已 _ready 的 PlayableTable 实例（RunFlow 把它 _swap_panel 进来）。
+static func run_with_player_input_async(
+	table,  # PlayableTable（无强类型避免循环依赖）
+	tree: SceneTree,
+	seed: int,
+	boss_id: StringName = &"",
+	player_ability_ids: Array = [],
+	player_tile_variants: Dictionary = {},
+	session_kind: String = "east_round",
+	tiebreak_seed: int = 0
+) -> NodeResult:
+	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
+	var driver := GameDriver.new(seed, total_hands, HANDS_PER_ROUND)
+	driver.use_heuristic_ai = false  # 玩家路径下 AI 用 SimpleAi 即可（v1）
+	# 让 GameDriver 用 PlayableBattleController（玩家可玩）
+	driver.bc_factory = func(s: int, dealer: int, useh: bool, wind: int):
+		return PlayableBattleController.new(s, dealer, useh, wind)
+	var hand_count: int = 0
+	while not driver.finished and hand_count < HAND_LIMIT:
+		hand_count += 1
+		var bc: PlayableBattleController = driver.start_hand() as PlayableBattleController
+		if boss_id != &"":
+			BossAbilityFactory.inject(bc.registry, boss_id)
+		if not player_ability_ids.is_empty():
+			BossAbilityFactory.inject_player_abilities(bc.registry, player_ability_ids, VIEWER_SEAT)
+		if not player_tile_variants.is_empty():
+			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
+		# 跑这一局 — UI 接入由 PlayableTable.play_hand_async 完成
+		var run_result: Dictionary = await table.play_hand_async(bc)
+		var apply_res: Dictionary = driver.apply_result(run_result.events)
+		if apply_res.kind == "exhaustive_draw":
+			apply_res["tenpai_array"] = _detect_tenpai_array(bc)
+		driver.advance_or_finish(apply_res)
+		# 局间小停顿让玩家看清结算后再开下一局
+		await tree.create_timer(0.5).timeout
+	# 立直棒池转交（如有）
+	if driver.riichi_sticks > 0:
+		driver.cumulative_scores[driver.dealer_seat] += driver.riichi_sticks * 1000
+		driver.riichi_sticks = 0
+	var rank: int = NodeResult.rank_for_seat(driver.cumulative_scores, VIEWER_SEAT, tiebreak_seed)
+	return NodeResult.new(rank, driver.cumulative_scores, session_kind)
+
 # 占位节点（CAMP / SHOP / EVENT）的快捷桥接。
 static func placeholder_result() -> NodeResult:
 	return NodeResult.from_placeholder()

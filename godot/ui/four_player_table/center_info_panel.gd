@@ -10,6 +10,12 @@ class_name CenterInfoPanel extends Node2D
 @onready var _label_wall: Label = $VBox/Wall
 @onready var _label_riichi: Label = $VBox/RiichiSticks
 
+# Dora 指示牌真实牌图区（在 Dora 文字 Label 旁画 32x48 小牌图）
+const DORA_TILE_W: float = 32.0
+const DORA_TILE_H: float = 48.0
+const DORA_TILE_GAP: float = 2.0
+var _dora_row: Node2D = null
+
 var _hand_index: int = 0  # 0..3 表东 1..东 4；M8 半庄战 4..7 表南 1..南 4
 var _hands_per_round: int = 4  # M8: 一风圈局数（东/南各 4）
 var _honba: int = 0
@@ -18,7 +24,12 @@ var _wall_remaining: int = 70  # 一局起手 70 张 live wall
 var _riichi_sticks: int = 0
 
 func _ready() -> void:
+	_dora_row = Node2D.new()
+	# 放在 panel 中心稍下，让"Dora:"label 上面，牌图在下面
+	_dora_row.position = Vector2(-60, 30)
+	add_child(_dora_row)
 	_refresh_labels()
+	_rebuild_dora_tiles()
 
 # ---- public setters ----
 
@@ -42,6 +53,7 @@ func set_dora_indicators(ids: Array) -> void:
 	_dora_indicators = ids
 	if is_inside_tree():
 		_refresh_labels()
+		_rebuild_dora_tiles()
 
 func set_wall_remaining(n: int) -> void:
 	_wall_remaining = n
@@ -116,6 +128,23 @@ func _refresh_labels() -> void:
 		return
 	var honba_str := " %d 本场" % _honba if _honba > 0 else ""
 	_label_round.text = "%s%s" % [round_name(_hand_index, _hands_per_round), honba_str]
-	_label_dora.text = dora_summary(_dora_indicators)
+	_label_dora.text = "Dora 指示牌:"
 	_label_wall.text = "牌墙: %d / 70" % _wall_remaining
 	_label_riichi.text = "立直棒: %d" % _riichi_sticks
+
+# 重建 Dora 指示牌真实图（每张 32x48 小尺寸 face_up CardTileBack）。
+func _rebuild_dora_tiles() -> void:
+	if _dora_row == null:
+		return
+	for child in _dora_row.get_children():
+		child.queue_free()
+	var sx: float = DORA_TILE_W / float(CardTileBack.TILE_WIDTH)
+	var sy: float = DORA_TILE_H / float(CardTileBack.TILE_HEIGHT)
+	var x := 0.0
+	for tid in _dora_indicators:
+		var card := CardTileBack.new()
+		card.position = Vector2(x, 0)
+		card.scale = Vector2(sx, sy)
+		_dora_row.add_child(card)
+		card.set_face_up(int(tid))
+		x += DORA_TILE_W + DORA_TILE_GAP

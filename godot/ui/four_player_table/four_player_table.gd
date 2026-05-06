@@ -25,6 +25,8 @@ const ABILITY_PANEL_SCENE := preload("res://ui/four_player_table/ability_panel.t
 var seat_panels: Array[SeatPanel] = []
 var center_info: CenterInfoPanel = null
 var ability_panel: AbilityPanel = null
+# 4 个 DiscardRiver（索引 = seat_id），按日麻习惯朝桌中心方向显示弃牌
+var discard_rivers: Array = []
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(TABLE_WIDTH + ABILITY_PANEL_WIDTH, TABLE_HEIGHT)
@@ -32,9 +34,7 @@ func _ready() -> void:
 
 # ---- public setters ----
 
-# 把当前 hand 的 BattleState 喂给 4 个 seat panel + center
-# M8: hands_per_round_arg 默认 4 兼容 M7；半庄战调用方仍传 4 但 hand_index
-# 从 0..7 表示东 1..南 4
+# 把当前 hand 的 BattleState 喂给 4 个 seat panel + center + discard rivers
 func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
@@ -43,6 +43,9 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.bind_seat(seat)
 		sp.set_discards_count(state.discards_per_seat[i].size())
+	for i in range(discard_rivers.size()):
+		var dr: DiscardRiver = discard_rivers[i]
+		dr.set_tiles(state.discards_per_seat[i])
 
 # 整场累计分（来自 GameDriver.cumulative_scores）
 func bind_cumulative_scores(scores: Array) -> void:
@@ -88,12 +91,59 @@ func _build_layout() -> void:
 		table.add_child(sp)
 		seat_panels.append(sp)
 
+	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
+	for i in range(4):
+		var dr := DiscardRiver.new()
+		var p := _discard_river_layout(i)
+		dr.position = p.position
+		dr.rotation_degrees = p.rotation_degrees
+		table.add_child(dr)
+		discard_rivers.append(dr)
+
 	# CenterInfoPanel
 	center_info = CENTER_INFO_SCENE.instantiate()
 	center_info.position = Vector2(TABLE_WIDTH / 2.0, TABLE_HEIGHT / 2.0)
 	table.add_child(center_info)
 
-	# AbilityPanel（右侧外延）
+	# AbilityPanel：v1 简化为隐藏（spec §14 角色能力 v1 不可见消化干扰）
 	ability_panel = ABILITY_PANEL_SCENE.instantiate()
 	ability_panel.position = Vector2(TABLE_WIDTH, 0)
+	ability_panel.visible = false
 	add_child(ability_panel)
+
+# DiscardRiver 4 边布局（日麻标准）：
+# 每家弃牌从自己面前桌心方向展开，旋转 0/-90/180/+90 度让 face 朝桌中心。
+# DiscardRiver 内部 local 坐标系：(0,0) 是 left-top 原点，6 张横向 +X，行向 +Y 累积。
+# 6×34-2=202 宽，3×50-2=148 高。
+# Node2D rotation 把这套坐标转到 4 边方向。
+# 中央留 280×280（位置 (500..780, 220..500)）给 CenterInfoPanel + Dora 显示。
+const RIVER_W: float = 202.0
+const RIVER_H: float = 148.0
+static func _discard_river_layout(seat_id: int) -> Dictionary:
+	var cx := TABLE_WIDTH / 2.0
+	var cy := TABLE_HEIGHT / 2.0
+	# inner = 河"内沿"到桌心的距离；让 4 河之间留中央 280×280
+	var inner := 140.0
+	match seat_id:
+		0:
+			# 玩家：rotation=0；local (0,0) 在 visual 左上，6 张牌正面朝玩家。
+			# 让河顶部贴在 cy + inner（桌心下方一点开始）
+			return {"position": Vector2(cx - RIVER_W / 2.0, cy + inner), "rotation_degrees": 0.0}
+		1:
+			# 右家：rotation=-90（顺时针）。local +X 在 screen 上变 -Y（向上），
+			# local +Y 变 +X（向右）。所以 local (0,0) 在 visual 的 (position.x, position.y)，
+			# 6 张牌从该点向上排列。让河"内沿"（local Y=0 那条）贴在 cx + inner，
+			# 河"开始"贴在 cy + RIVER_W/2（visual 下方）。
+			return {"position": Vector2(cx + inner, cy + RIVER_W / 2.0), "rotation_degrees": -90.0}
+		2:
+			# 对家：rotation=180。local +X 在 screen 上变 -X（向左）；+Y 变 -Y（向上）。
+			# local (0,0) 在 visual 右下角；牌从右往左排列（玩家视角是从左到右读）。
+			# 让河"内沿"（local Y=0 那条）贴在 cy - inner（桌心上方一点开始），
+			# visual 横向 right edge 在 cx + RIVER_W/2。
+			return {"position": Vector2(cx + RIVER_W / 2.0, cy - inner), "rotation_degrees": 180.0}
+		3:
+			# 左家：rotation=+90（逆时针）。local +X 在 screen 上变 +Y（向下），
+			# local +Y 变 -X（向左）。让河"内沿" 贴在 cx - inner，
+			# 河"开始" 贴在 cy - RIVER_W/2（visual 上方）。
+			return {"position": Vector2(cx - inner, cy - RIVER_W / 2.0), "rotation_degrees": 90.0}
+	return {"position": Vector2(cx, cy), "rotation_degrees": 0.0}

@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/four_player_table/playable_table.gd" id="1"]
+
+[node name="PlayableTable" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+custom_minimum_size = Vector2(1280, 800)
+script = ExtResource("1")

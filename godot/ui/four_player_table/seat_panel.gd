@@ -1,5 +1,9 @@
 class_name SeatPanel extends Node2D
 
+# seat 0 (玩家) 自家手牌被点击时转发给上层（PlayerActionPanel / PlayableTable）。
+# 其它 seat 永不 emit（手牌色块本身不 clickable）。
+signal player_card_clicked(tile_id: int)
+
 # 麻将王 — 里程碑 3 第 2 步：单 seat 面板（plan-3 D4）
 #
 # 职责（v1，第 2 步占位版）：
@@ -27,7 +31,14 @@ const HAND_TILE_H: float = 45.0
 const HAND_TILE_GAP: float = 3.0
 const HAND_ROW_OFFSET_X: float = -220.0  # 相对 panel 中心
 const HAND_ROW_OFFSET_Y: float = 30.0
+# 玩家自己 (seat 0) 手牌用真实 atlas 牌面，需要稍大尺寸才看清
+const PLAYER_HAND_TILE_W: float = 40.0
+const PLAYER_HAND_TILE_H: float = 60.0
+const PLAYER_HAND_ROW_OFFSET_X: float = -240.0
 var _hand_tile_row: Node2D = null
+
+# 玩家手牌当前是否接受点击（轮到玩家出牌时切 true）
+var _hand_clickable: bool = false
 
 var _seat_id: int = 0
 var _seat_wind: int = TileId.E
@@ -40,9 +51,20 @@ var _furiten: bool = false
 
 func _ready() -> void:
 	_hand_tile_row = Node2D.new()
+	# 偏移在 _rebuild_*_row 之前会按 seat_id 调整（seat 0 用更宽的偏移给真实牌面留位）
 	_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 	add_child(_hand_tile_row)
 	_refresh_labels()
+
+# 切换 seat 0 / 其它 seat 时切换 hand_tile_row 的水平偏移。
+# seat 0 用真实 atlas 牌面（40x60）需要更宽 ~560 px；其它 seat 用色块（30x45）~450 px。
+func _apply_hand_row_offset() -> void:
+	if _hand_tile_row == null:
+		return
+	if _seat_id == 0:
+		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+	else:
+		_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 
 # ---- public setters ----
 
@@ -97,6 +119,8 @@ func set_hand_tile_owners(owners: Array) -> void:
 		_refresh_labels()
 
 # 一次注入 Seat 全部状态（含手牌色块归属）
+# seat 0 时若传入 hand 则同时渲染真实 atlas 牌面（玩家自家可见），
+# 其它 seat 仍用 owner 着色色块（对手牌不可见，符合规则）。
 func bind_seat(seat: Seat) -> void:
 	_seat_wind = seat.seat_wind
 	_score = seat.points
@@ -106,7 +130,10 @@ func bind_seat(seat: Seat) -> void:
 	_furiten = seat.furiten.is_furiten() if seat.furiten else false
 	# discards 数量需外部传入（Seat 自身不持，BattleState.discards_per_seat[i] 持）
 	if is_inside_tree():
-		_rebuild_hand_tile_row(seat.hand.to_owner_array())
+		if _seat_id == 0:
+			_rebuild_player_hand_row(seat.hand.to_id_array())
+		else:
+			_rebuild_hand_tile_row(seat.hand.to_owner_array())
 		_refresh_labels()
 
 # ---- helpers ----
@@ -150,18 +177,75 @@ func _refresh_labels() -> void:
 	_label_hand.text = "手牌: %d 张" % _hand_size
 	_label_discards.text = "弃牌河: [●×%d]" % _discards_count
 
-# 重建手牌色块行：清空旧子节点，按 owners 数组逐个生成 ColorRect。
-# 颜色复用 CardTileBack.tile_back_color 静态 helper 避免重复定义。
+# 重建非玩家 seat 的手牌行：按 owners 数组生成 TextureRect 显示 back.png，
+# 用 owner_seat 颜色作 modulate 保留归属可视化（plan-3 D2/D5）。
+# 比纯 ColorRect 更接近真实牌背视觉，玩家立刻能识别"这是牌背"。
 func _rebuild_hand_tile_row(owners: Array) -> void:
 	if _hand_tile_row == null:
 		return
+	_apply_hand_row_offset()
 	for child in _hand_tile_row.get_children():
 		child.queue_free()
+	var back_tex: Texture2D = _resolve_back_texture()
 	var x := 0.0
 	for owner_seat in owners:
-		var rect := ColorRect.new()
+		var rect := TextureRect.new()
 		rect.position = Vector2(x, 0)
 		rect.size = Vector2(HAND_TILE_W, HAND_TILE_H)
-		rect.color = CardTileBack.tile_back_color(int(owner_seat))
+		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		rect.stretch_mode = TextureRect.STRETCH_SCALE
+		if back_tex != null:
+			rect.texture = back_tex
+			# 用 seat 颜色 modulate 保留归属（淡化 seat 颜色避免完全盖住牌背图案）
+			rect.modulate = CardTileBack.tile_back_color(int(owner_seat)).lerp(Color.WHITE, 0.3)
+		else:
+			# back.png 缺失 fall-back：仍用纯色块
+			rect.modulate = CardTileBack.tile_back_color(int(owner_seat))
 		_hand_tile_row.add_child(rect)
 		x += HAND_TILE_W + HAND_TILE_GAP
+
+# 取牌背图（autoload TextureExtractor）。autoload 不在或缺图时返 null。
+func _resolve_back_texture() -> Texture2D:
+	if not is_inside_tree():
+		return null
+	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
+	if extractor == null or not extractor.has_method("get_tile_texture"):
+		return null
+	return extractor.get_tile_texture("back")
+
+# 玩家手牌（seat 0）真实 atlas 渲染：CardTileBack.set_face_up + 缩放到 40x60。
+# 复用 CardTileBack 是为了一致样式（边框、modulate=WHITE、tile_id_to_atlas_key
+# 映射），不用为玩家手牌再造一个 TextureRect 包装。
+func _rebuild_player_hand_row(tile_ids: Array) -> void:
+	if _hand_tile_row == null:
+		return
+	_apply_hand_row_offset()
+	for child in _hand_tile_row.get_children():
+		child.queue_free()
+	var scale_x: float = PLAYER_HAND_TILE_W / float(CardTileBack.TILE_WIDTH)
+	var scale_y: float = PLAYER_HAND_TILE_H / float(CardTileBack.TILE_HEIGHT)
+	var x := 0.0
+	for tid in tile_ids:
+		var tile := CardTileBack.new()
+		tile.position = Vector2(x, 0)
+		tile.scale = Vector2(scale_x, scale_y)
+		_hand_tile_row.add_child(tile)
+		tile.set_face_up(int(tid))
+		tile.set_clickable(_hand_clickable)
+		tile.card_clicked.connect(_on_player_tile_clicked)
+		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
+
+# 切换玩家手牌点击响应。轮到玩家出牌时调 true，AI 回合或鸣牌响应窗口外调 false。
+# 仅 seat==0 有效；其它 seat 调用本方法无效（手牌行只有色块不 emit click）。
+func set_hand_clickable(b: bool) -> void:
+	_hand_clickable = b
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack:
+			child.set_clickable(b)
+
+func _on_player_tile_clicked(tile_id: int) -> void:
+	if _seat_id != 0:
+		return  # 防御：只有玩家自家手牌行 emit
+	player_card_clicked.emit(tile_id)
