@@ -81,3 +81,69 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 			s.seats[seat_id].add_to_hand(s.wall.draw())
 
 	return s
+
+# ---- M11 net foundation: 状态快照 hash ----
+#
+# 用途：spec §4.3 联机 replay 收敛验证 + desync detect。配合同事 PR #124
+# IBattleController + #127 NetworkedEvent 协议，server 在关键点（GAME_BEGIN /
+# WIN_DECLARED）emit hash，client 比对 → 不一致立即 disconnect + dump。
+#
+# 覆盖：分数 / 手牌 ID（升序 = 顺序无关）/ 副露 / 弃牌 / 振听 / phase / turn / dora。
+# **不覆盖**：wall 内部 _draw_index（不可观测，与决策路径同源派生），
+# revealed_tiles 顺序（reveal 可能不同时序但同等价类）。
+func snapshot_hash() -> int:
+	var snap: Dictionary = snapshot_dict()
+	return JSON.stringify(snap).hash()
+
+# 暴露 dict 形式便于调试时人读 + 在 desync 时 dump 对比。
+func snapshot_dict() -> Dictionary:
+	var seats_data: Array = []
+	for seat in seats:
+		var hand_ids: Array = []
+		for t in seat.hand._tiles:
+			hand_ids.append(t.id)
+		hand_ids.sort()  # 顺序无关
+		var meld_data: Array = []
+		for m in seat.melds:
+			var meld_ids: Array = []
+			for t in m.tiles:
+				meld_ids.append(t.id)
+			meld_ids.sort()
+			meld_data.append({"kind": m.kind, "ids": meld_ids})
+		seats_data.append({
+			"seat_id": seat.seat_id,
+			"seat_wind": seat.seat_wind,
+			"hand_ids": hand_ids,
+			"melds": meld_data,
+			# RiichiState / FuritenState 是对象 → 序列化关键 bool 字段
+			"riichi_declared": seat.riichi.declared if seat.riichi != null else false,
+			"riichi_double": seat.riichi.double_riichi if seat.riichi != null else false,
+			"furiten_perm": seat.furiten.permanent if seat.furiten != null else false,
+			"furiten_temp": seat.furiten.temporary if seat.furiten != null else false,
+			"points": seat.points,
+		})
+	var discards_data: Array = []
+	for d in discards_per_seat:
+		var ids: Array = []
+		for t in d:
+			ids.append(t.id)
+		discards_data.append(ids)  # 顺序保留 — 弃牌历史本身有序
+	return {
+		"scores": scores.duplicate(),
+		"furiten_flags": furiten_flags.duplicate(),
+		"ron_cancelled": ron_cancelled.duplicate(),
+		"dealer_seat": dealer_seat,
+		"current_seat": current_seat,
+		"round_wind": round_wind,
+		"hand_number": hand_number,
+		"honba": honba,
+		"riichi_sticks": riichi_sticks,
+		"phase": phase,
+		"turn_count": turn_count,
+		"first_round_active": first_round_active,
+		"haitei_forced_seat": haitei_forced_seat,
+		"extra_dora_count": extra_dora_count.duplicate(),
+		"extra_red_dora_count": extra_red_dora_count.duplicate(),
+		"seats": seats_data,
+		"discards": discards_data,
+	}

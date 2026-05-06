@@ -28,6 +28,12 @@ const MAX_LOOP_STEPS := 2000  # 一局上限，防死循环；正常一局 < 200
 # 本类继承得到。构造函数初始化这些字段。
 var _settled: bool = false
 var _last_event_type: StringName = &""
+# M11 replay (net foundation): 决策回放队列（来自 extract_player_actions）。
+# 非空时 BC 用回放决策替代 ai.decide_*；为空（默认）走 v1 AI 决策路径。
+# 配合同事 PR #124 IBattleController + #127 NetworkedEvent 协议，server
+# 推 NetworkedEvent[Action] → client BC 用本字段重放。
+var _replay_decisions: Array = []
+var _replay_idx: int = 0
 
 func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E) -> void:
 	# round_wind: M8 半庄战支持。默认东兼容 M7；GameDriver 在南场调用时
@@ -86,12 +92,29 @@ func _step_draw() -> void:
 
 func _step_discard() -> void:
 	var seat: Seat = state.seats[state.current_seat]
-	var to_discard: Tile = ai.decide_discard(seat)
+	var actor: int = state.current_seat
+	# M11 net foundation: 优先回放决策；否则走 AI 决策路径
+	var to_discard: Tile = null
+	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
+	if not replayed.is_empty():
+		var tid: int = int(replayed.get("tile_id", -1))
+		for t in seat.hand._tiles:
+			if t.id == tid:
+				to_discard = t
+				break
+	else:
+		to_discard = ai.decide_discard(seat)
 	if to_discard == null:
-		# 异常：手牌空（不应发生），强制退出
 		_settled = true
 		return
-	var actor: int = state.current_seat
+	# M11 net foundation: emit PLAYER_ACTION 让事件日志自包含决策。
+	# 这是 spec §4.3 联机权威化的前置：未来 server 会把 player click 包成
+	# 同样的 PlayerAction event 推给 client。本 emit 在 engine.discard 之前
+	# 让 cause-effect 顺序明确：决策 → 引擎应用 → TILE_DISCARDED 事件
+	_emit(&"PLAYER_ACTION", actor, null, {
+		"kind": "discard",
+		"tile_id": to_discard.id,
+	})
 	var ok: bool = engine.discard(to_discard.id)
 	if not ok:
 		_settled = true
@@ -100,12 +123,20 @@ func _step_discard() -> void:
 	# M7：discard 后 hand=13 张，AI 可决定立直（HeuristicAi.decide_riichi 走
 	# RiichiValidator）。declare_riichi 成功 → state.scores[seat] -= 1000 让
 	# GameDriver._apply_in_hand_skill_deltas 同步到 cumulative，避免守恒被破。
-	if ai.has_method("decide_riichi"):
+	# M11 replay: 立直决策也支持回放
+	var should_riichi: bool = false
+	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
+	if not riichi_replayed.is_empty():
+		should_riichi = true
+	elif _replay_decisions.is_empty() and ai.has_method("decide_riichi"):
 		var seat_after: Seat = state.seats[actor]
-		if ai.decide_riichi(seat_after, state.wall.live_wall_size()):
-			if engine.declare_riichi(actor):
-				state.scores[actor] -= RIICHI_STICK_COST
-				_emit(&"RIICHI_DECLARED", actor, null, {})
+		should_riichi = ai.decide_riichi(seat_after, state.wall.live_wall_size())
+	if should_riichi:
+		# M11: 立直决策同样包成 PlayerAction
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
+		if engine.declare_riichi(actor):
+			state.scores[actor] -= RIICHI_STICK_COST
+			_emit(&"RIICHI_DECLARED", actor, null, {})
 	# M7：自动 RON 检测。在每次 TILE_DISCARDED 后按 atama-hane 顺序遍历对家。
 	# v1：任一对家若可胡（非振听 + 听牌 + 有役）→ 自动 apply_ron。
 	# 真实玩家 UI 路径下（M8+）会替换为玩家选择窗口；当前 SimpleAi-only 阶段
@@ -220,6 +251,13 @@ func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei:
 	# 旧值粘连（例：先 seat 1 的 ron 被 cancel；再 seat 2 试 ron 时 ron_cancelled[2]
 	# 默认 false，但若上次 emit 不小心也触发了 seat 2 的 cancel 就会粘连）
 	state.ron_cancelled[winner_seat] = false
+	# M11 net foundation: ron 接受决策（v1 自动接受 — Phase 2 玩家可"放弃和牌"
+	# 等情景需要日志化）。本 emit 在 RON_DECLARED 之前以记录"决定 → 引擎应用"顺序
+	_emit(&"PLAYER_ACTION", winner_seat, null, {
+		"kind": "ron_accept",
+		"tile_id": ron_tile.id,
+		"discarder_seat": discarder_seat,
+	})
 	# 先 emit RON_DECLARED 让技能（如「中·封印」）有机会取消
 	_emit(&"RON_DECLARED", winner_seat, ron_ti, {"discarder_seat": discarder_seat})
 	if state.ron_cancelled[winner_seat]:
@@ -282,6 +320,12 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = false) -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var ti := _wrap_tile(drawn)
+	# M11 net foundation: tsumo 接受是隐含决策（v1 自动接受）。本 emit 让事件
+	# 流自包含 — 未来玩家"放弃自摸"或网络重放都能用
+	_emit(&"PLAYER_ACTION", state.current_seat, null, {
+		"kind": "tsumo_accept",
+		"tile_id": drawn.id,
+	})
 	_emit(&"TSUMO_DECLARED", state.current_seat, ti, {})
 
 	var score_ctx := ScoreContext.new()
@@ -465,3 +509,43 @@ func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_hou
 	ctx.is_houtei = is_houtei
 	ctx.dora_count = state.dora_indicators.visible.size()
 	return ctx
+
+# ---- M11 net foundation: replay API ----
+
+# 注入决策回放队列。来自 extract_player_actions(prev_events)。
+# 调用顺序：BC.new() → set_replay_decisions(actions) → run_to_end()。
+# decisions 期间 BC 用 actions 替代 ai.decide_*，事件流应与原录制一致。
+func set_replay_decisions(p_decisions: Array) -> void:
+	_replay_decisions = p_decisions
+	_replay_idx = 0
+
+# 内部：若下一条决策匹配 (seat, kind)，pop 并返回；否则返 {}。
+# 不匹配时不 advance _replay_idx — 下次调用还能 peek 同一条。
+func _consume_replay_decision_if_match(p_seat: int, p_kind: String) -> Dictionary:
+	if _replay_idx >= _replay_decisions.size():
+		return {}
+	var dec: Dictionary = _replay_decisions[_replay_idx]
+	if int(dec.get("seat", -1)) == p_seat and String(dec.get("kind", "")) == p_kind:
+		_replay_idx += 1
+		return dec
+	return {}
+
+# 从 events 中抽 PlayerAction 序列。
+# 用途：录回放 → 重放时把这些 action 注入 BC 替代 AI 决策路径。
+# 返：[{seat, kind: "discard"|"riichi"|"tsumo_accept"|"ron_accept",
+#       tile_id?: int, discarder_seat?: int}, ...]
+static func extract_player_actions(p_events: Array) -> Array:
+	var result: Array = []
+	for ev in p_events:
+		if ev.type != &"PLAYER_ACTION":
+			continue
+		var entry: Dictionary = {
+			"seat": ev.actor_seat,
+			"kind": String(ev.extra.get("kind", "")),
+		}
+		if entry.kind == "discard" or entry.kind == "tsumo_accept" or entry.kind == "ron_accept":
+			entry["tile_id"] = int(ev.extra.get("tile_id", -1))
+		if entry.kind == "ron_accept":
+			entry["discarder_seat"] = int(ev.extra.get("discarder_seat", -1))
+		result.append(entry)
+	return result
