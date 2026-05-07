@@ -14,6 +14,7 @@ class_name RunFlow extends Control
 const STARTER_PACK_PICKER := preload("res://ui/run/starter_pack_picker.tscn")
 const CHAPTER_MAP_VIEW := preload("res://ui/run/chapter_map_view.tscn")
 const PLACEHOLDER_NODE := preload("res://ui/run/placeholder_node.tscn")
+const CAMP_NODE := preload("res://ui/run/camp_node.tscn")
 const RUN_SUMMARY := preload("res://ui/run/run_summary.tscn")
 const RUN_HUD := preload("res://ui/run/run_hud.tscn")
 # M5 第 3 步新增：抽卡 / 商店 UI
@@ -197,10 +198,23 @@ func _player_tile_variants() -> Dictionary:
 	return _run_state.player_deck.tile_variants
 
 func _show_placeholder(node_ref: NodeRef) -> void:
+	# US-005：CAMP 节点用真实 UI（恢复 HP）。其他类型仍用通用占位。
+	if node_ref.kind == NodeKind.Kind.CAMP:
+		_show_camp(node_ref)
+		return
 	var p: PlaceholderNode = PLACEHOLDER_NODE.instantiate()
 	_swap_panel(p)
 	p.set_node_kind(node_ref.kind)
 	p.done.connect(func():
+		_last_result = BattleNodeRunner.placeholder_result()
+		_run_state.complete_node(_last_result)
+	)
+
+func _show_camp(_node_ref: NodeRef) -> void:
+	var camp: CampNode = CAMP_NODE.instantiate()
+	_swap_panel(camp)
+	camp.bind_run_state(_run_state)
+	camp.done.connect(func():
 		_last_result = BattleNodeRunner.placeholder_result()
 		_run_state.complete_node(_last_result)
 	)
