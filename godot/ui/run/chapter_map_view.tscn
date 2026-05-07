@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://ui/run/chapter_map_view.gd" id="1"]
 
 [node name="ChapterMapView" type="Control"]
-custom_minimum_size = Vector2(800, 600)
+custom_minimum_size = Vector2(1000, 600)
 script = ExtResource("1")
 
 [node name="Bg" type="ColorRect" parent="."]
@@ -13,18 +13,25 @@ color = Color(0.06, 0.10, 0.06, 1.0)
 
 [node name="VBox" type="VBoxContainer" parent="."]
 offset_left = 40.0
-offset_top = 40.0
-offset_right = 760.0
-offset_bottom = 560.0
-theme_override_constants/separation = 24
+offset_top = 16.0
+offset_right = 960.0
+offset_bottom = 80.0
+theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="VBox"]
-text = "下一节点选项"
+text = "章节地图 — 点击下层可选节点推进"
 theme_override_font_sizes/font_size = 22
 
 [node name="LastResult" type="Label" parent="VBox"]
 text = "（尚未推进）"
 theme_override_font_sizes/font_size = 14
+
+[node name="MapView" type="Control"]
+parent = "."
+offset_left = 0.0
+offset_top = 90.0
+offset_right = 1000.0
+offset_bottom = 540.0
 
 [node name="OptionsBox" type="VBoxContainer" parent="VBox"]
 theme_override_constants/separation = 8

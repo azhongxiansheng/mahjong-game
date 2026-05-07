@@ -83,6 +83,9 @@ func _show_chapter_map() -> void:
 	var view: ChapterMapView = CHAPTER_MAP_VIEW.instantiate()
 	_swap_panel(view)
 	view.set_options(_run_state.next_node_options())
+	# US-004：传入完整 ChapterMap 启用视觉地图渲染（fallback 文本按钮）
+	if _run_state and _run_state.current_map:
+		view.set_chapter_map(_run_state.current_map)
 	if _last_node_ref and _last_result:
 		view.set_last_result_text(
 			ChapterMapView.format_last_result(_last_node_ref, _last_result)
