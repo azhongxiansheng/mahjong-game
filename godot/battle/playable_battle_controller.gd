@@ -94,7 +94,8 @@ func _get_riichi_decision(actor: int) -> bool:
 func _should_accept_ron(candidate: int, _discarded: Tile, discarder: int, _ron_check: Dictionary, _is_houtei: bool) -> bool:
 	if candidate != PLAYER_SEAT or _action_panel == null:
 		return true
-	_action_panel.enter_waiting_claim(true, discarder)
+	# v1：仅 ron 单选；吃/碰/杠 在 _try_player_claim_async 二段窗口处理
+	_action_panel.enter_waiting_claim(true, false, false, false, discarder)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
 		var action: String = String(choice.get("action", ""))
@@ -105,6 +106,59 @@ func _should_accept_ron(candidate: int, _discarded: Tile, discarder: int, _ron_c
 			_action_panel.enter_idle("AI 出牌中…")
 			return false
 	return true  # unreachable
+
+# v1 玩家鸣牌（吃/碰/杠）窗口 — 在 _try_ron_async 之后调用，玩家可吃/碰/杠
+# 时弹按钮，玩家选 → 直接调 engine.apply_*；玩家 skip → BC 主循环 advance。
+# 注意：玩家选 chi 时 v1 自动选第一组合法 companion（不让玩家手选）。
+func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
+	if _action_panel == null or _seat_panel_player == null:
+		return
+	if discarder == PLAYER_SEAT:
+		return  # 自己刚切的，不可鸣自己
+	var hand: Hand = state.seats[PLAYER_SEAT].hand
+	var can_chi := ClaimValidator.can_chi(PLAYER_SEAT, discarder, hand, discarded.id)
+	var can_pon := ClaimValidator.can_pon(PLAYER_SEAT, discarder, hand, discarded.id)
+	var can_minkan := ClaimValidator.can_minkan(PLAYER_SEAT, discarder, hand, discarded.id)
+	if not (can_chi or can_pon or can_minkan):
+		return
+	_action_panel.enter_waiting_claim(false, can_chi, can_pon, can_minkan, discarder)
+	while true:
+		var choice: Dictionary = await _action_panel.player_action_chosen
+		var action: String = String(choice.get("action", ""))
+		match action:
+			"pon":
+				if engine.apply_pon(PLAYER_SEAT, discarded):
+					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "pon", "tile_id": discarded.id})
+					_action_panel.enter_idle("碰！")
+				return
+			"minkan":
+				if engine.apply_minkan(PLAYER_SEAT, discarded):
+					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "minkan", "tile_id": discarded.id})
+					_action_panel.enter_idle("杠！")
+				return
+			"chi":
+				# v1 自动选第一个合法 companion 组合
+				var companions: Array = _pick_chi_companions(hand, discarded.id)
+				if companions.size() == 2 and engine.apply_chi(PLAYER_SEAT, discarded, companions):
+					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "chi", "tile_id": discarded.id})
+					_action_panel.enter_idle("吃！")
+				return
+			"skip", "":
+				_action_panel.enter_idle("AI 出牌中…")
+				return
+			_:
+				continue
+
+# 选第一组合法 chi companion（[d-2,d-1] / [d-1,d+1] / [d+1,d+2]）
+static func _pick_chi_companions(hand: Hand, discarded_id: int) -> Array:
+	var n := TileId.number(discarded_id)
+	if n >= 3 and hand.count_of(discarded_id - 2) > 0 and hand.count_of(discarded_id - 1) > 0:
+		return [discarded_id - 2, discarded_id - 1]
+	if n >= 2 and n <= 8 and hand.count_of(discarded_id - 1) > 0 and hand.count_of(discarded_id + 1) > 0:
+		return [discarded_id - 1, discarded_id + 1]
+	if n <= 7 and hand.count_of(discarded_id + 1) > 0 and hand.count_of(discarded_id + 2) > 0:
+		return [discarded_id + 1, discarded_id + 2]
+	return []
 
 func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:

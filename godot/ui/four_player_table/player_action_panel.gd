@@ -17,6 +17,9 @@ signal player_action_chosen(choice: Dictionary)
 #   {"action": "riichi_yes"}                     — 立直确认（BC 调 declare_riichi）
 #   {"action": "riichi_no"}                      — 立直跳过
 #   {"action": "ron", "discarder_seat": int}     — 荣和宣告
+#   {"action": "pon", "discarder_seat": int}     — 碰
+#   {"action": "minkan", "discarder_seat": int}  — 明杠
+#   {"action": "chi", "discarder_seat": int}     — 吃（仅下家）
 #   {"action": "skip"}                           — 见逃响应窗口
 
 enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM }
@@ -28,9 +31,12 @@ var _label_status: Label = null
 var _btn_riichi: Button = null     # WAITING_RIICHI_CONFIRM 用 — "立直"
 var _btn_tsumo: Button = null      # WAITING_DISCARD 用 — "自摸"
 var _btn_ron: Button = null        # WAITING_CLAIM 用 — "荣和"
+var _btn_chi: Button = null        # WAITING_CLAIM 用 — "吃"（仅下家）
+var _btn_pon: Button = null        # WAITING_CLAIM 用 — "碰"
+var _btn_minkan: Button = null     # WAITING_CLAIM 用 — "杠"
 var _btn_skip: Button = null       # WAITING_CLAIM/WAITING_RIICHI_CONFIRM 用 — "跳过"
 
-const PANEL_W: float = 280.0
+const PANEL_W: float = 480.0  # 容纳 7 个按钮（立直/自摸/荣/吃/碰/杠/跳过）
 const PANEL_H: float = 110.0
 
 func _ready() -> void:
@@ -54,22 +60,28 @@ func _build_ui() -> void:
 	_label_status.text = "等待 AI..."
 	add_child(_label_status)
 
-	# 4 个按钮排成 2×2
+	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过
 	_btn_riichi = _make_btn("立直", 12, 36)
-	_btn_tsumo = _make_btn("自摸", 12 + 70, 36)
-	_btn_ron = _make_btn("荣和", 12 + 140, 36)
-	_btn_skip = _make_btn("跳过", 12 + 210, 36)
+	_btn_tsumo = _make_btn("自摸", 12 + 66, 36)
+	_btn_ron = _make_btn("荣和", 12 + 132, 36)
+	_btn_chi = _make_btn("吃", 12 + 198, 36)
+	_btn_pon = _make_btn("碰", 12 + 264, 36)
+	_btn_minkan = _make_btn("杠", 12 + 330, 36)
+	_btn_skip = _make_btn("跳过", 12 + 396, 36)
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
 	_btn_ron.pressed.connect(_on_btn_ron)
+	_btn_chi.pressed.connect(_on_btn_chi)
+	_btn_pon.pressed.connect(_on_btn_pon)
+	_btn_minkan.pressed.connect(_on_btn_minkan)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
 func _make_btn(text: String, x: float, y: float = 20.0) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.position = Vector2(x, y)
-	btn.size = Vector2(64, 60)
+	btn.size = Vector2(60, 60)
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.disabled = true
 	btn.visible = false  # 雀魂式：只在触发时才显示
@@ -98,6 +110,9 @@ func enter_waiting_discard(can_tsumo: bool) -> void:
 	else:
 		_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
+	_hide_btn(_btn_chi)
+	_hide_btn(_btn_pon)
+	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_skip)
 
 # 进入"立直确认"状态：玩家刚切完牌，BC 算出可立直，弹按钮。
@@ -107,20 +122,47 @@ func enter_waiting_riichi_confirm() -> void:
 	_show_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
+	_hide_btn(_btn_chi)
+	_hide_btn(_btn_pon)
+	_hide_btn(_btn_minkan)
 	_show_btn(_btn_skip)  # = "不立直"
 
-# 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和或见逃。
-# v1 仅支持 ron + skip。
-func enter_waiting_claim(can_ron: bool, discarder_seat: int) -> void:
+# 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和/吃/碰/杠或见逃。
+# 4 个 can_* 标志由 PlayableBattleController 算出（ClaimValidator）。
+func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan: bool, discarder_seat: int) -> void:
 	_state = State.WAITING_CLAIM
 	_claim_discarder_seat = discarder_seat
-	_label_status.text = "可荣和 — 是否宣告？" if can_ron else "等待响应窗口…"
+	var hints: Array[String] = []
+	if can_ron:
+		hints.append("荣和")
+	if can_chi:
+		hints.append("吃")
+	if can_pon:
+		hints.append("碰")
+	if can_minkan:
+		hints.append("杠")
+	if hints.size() > 0:
+		_label_status.text = "可 %s — 选择" % "/".join(hints)
+	else:
+		_label_status.text = "等待响应窗口…"
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	if can_ron:
 		_show_btn(_btn_ron)
 	else:
 		_hide_btn(_btn_ron)
+	if can_chi:
+		_show_btn(_btn_chi)
+	else:
+		_hide_btn(_btn_chi)
+	if can_pon:
+		_show_btn(_btn_pon)
+	else:
+		_hide_btn(_btn_pon)
+	if can_minkan:
+		_show_btn(_btn_minkan)
+	else:
+		_hide_btn(_btn_minkan)
 	_show_btn(_btn_skip)
 
 func enter_idle(status_text: String = "等待 AI...") -> void:
@@ -129,6 +171,9 @@ func enter_idle(status_text: String = "等待 AI...") -> void:
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
+	_hide_btn(_btn_chi)
+	_hide_btn(_btn_pon)
+	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_skip)
 
 func _apply_state(s: State) -> void:
@@ -154,6 +199,18 @@ func _on_btn_tsumo() -> void:
 func _on_btn_ron() -> void:
 	if _state == State.WAITING_CLAIM:
 		player_action_chosen.emit({"action": "ron", "discarder_seat": _claim_discarder_seat})
+
+func _on_btn_chi() -> void:
+	if _state == State.WAITING_CLAIM:
+		player_action_chosen.emit({"action": "chi", "discarder_seat": _claim_discarder_seat})
+
+func _on_btn_pon() -> void:
+	if _state == State.WAITING_CLAIM:
+		player_action_chosen.emit({"action": "pon", "discarder_seat": _claim_discarder_seat})
+
+func _on_btn_minkan() -> void:
+	if _state == State.WAITING_CLAIM:
+		player_action_chosen.emit({"action": "minkan", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_skip() -> void:
 	if _state == State.WAITING_RIICHI_CONFIRM:

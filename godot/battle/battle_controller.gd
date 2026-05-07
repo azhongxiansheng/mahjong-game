@@ -272,6 +272,12 @@ func _should_accept_ron(_candidate: int, _discarded: Tile, _discarder: int, _ron
 func _should_accept_tsumo(_actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
 	return true
 
+# 玩家鸣牌响应（吃/碰/杠）窗口；默认 no-op（v1 AI 不主动鸣牌）。
+# PlayableBattleController 覆写：玩家可吃/碰/杠时弹按钮 await 玩家选择。
+# 选 → 直接调 engine.apply_chi/pon/minkan；选 skip → 不操作（BC 主循环 advance_to_next_seat）
+func _try_player_claim_async(_discarded: Tile, _discarder: int) -> void:
+	pass
+
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
 # 跟 run_to_end() 行为完全一样，只是把 _step_draw / _step_discard / _try_auto_ron
@@ -356,6 +362,9 @@ func _step_discard_async() -> void:
 	# 鸣牌响应（v1 仅 ron）
 	if not _settled:
 		await _try_ron_async(to_discard, actor)
+	# 玩家鸣牌窗口（吃/碰/杠）— 默认 no-op；PlayableBattleController 覆写
+	if not _settled:
+		await _try_player_claim_async(to_discard, actor)
 
 func _try_ron_async(discarded: Tile, discarder: int) -> void:
 	var is_houtei: bool = (state.wall.live_wall_size() == 0)
