@@ -14,6 +14,7 @@ class_name RunFlow extends Control
 const STARTER_PACK_PICKER := preload("res://ui/run/starter_pack_picker.tscn")
 const CHAPTER_MAP_VIEW := preload("res://ui/run/chapter_map_view.tscn")
 const PLACEHOLDER_NODE := preload("res://ui/run/placeholder_node.tscn")
+const EVENT_NODE := preload("res://ui/run/event_node.tscn")
 const CAMP_NODE := preload("res://ui/run/camp_node.tscn")
 const RUN_SUMMARY := preload("res://ui/run/run_summary.tscn")
 const RUN_HUD := preload("res://ui/run/run_hud.tscn")
@@ -198,6 +199,10 @@ func _player_tile_variants() -> Dictionary:
 	return _run_state.player_deck.tile_variants
 
 func _show_placeholder(node_ref: NodeRef) -> void:
+	# US-007：EVENT 节点用真实 UI（硬编码事件 + 选项 + 副作用）。
+	if node_ref.kind == NodeKind.Kind.EVENT:
+		_show_event(node_ref)
+		return
 	# US-005：CAMP 节点用真实 UI（恢复 HP）。其他类型仍用通用占位。
 	if node_ref.kind == NodeKind.Kind.CAMP:
 		_show_camp(node_ref)
@@ -206,6 +211,18 @@ func _show_placeholder(node_ref: NodeRef) -> void:
 	_swap_panel(p)
 	p.set_node_kind(node_ref.kind)
 	p.done.connect(func():
+		_last_result = BattleNodeRunner.placeholder_result()
+		_run_state.complete_node(_last_result)
+	)
+
+func _show_event(node_ref: NodeRef) -> void:
+	var ev: EventNode = EVENT_NODE.instantiate()
+	_swap_panel(ev)
+	ev.bind_run_state(_run_state)
+	# 用 run_seed * 7 + node.index 决定本节点抽哪个事件，保证存档恢复可复现
+	var ev_seed: int = _run_state.run_seed * 7 + node_ref.index
+	ev.set_event_seed(ev_seed)
+	ev.done.connect(func():
 		_last_result = BattleNodeRunner.placeholder_result()
 		_run_state.complete_node(_last_result)
 	)
