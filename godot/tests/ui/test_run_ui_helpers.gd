@@ -7,17 +7,20 @@ extends GutTest
 # ---- RunHud ----
 
 func test_run_hud_format_chapter_text():
-	assert_eq(RunHud.format_chapter_text(1, "3"), "Chapter 1 / Floor 3")
-	assert_eq(RunHud.format_chapter_text(3, "?"), "Chapter 3 / Floor ?")
+	# US-008：HUD 视觉化升级，章/层徽章 + emoji
+	assert_eq(RunHud.format_chapter_text(1, "3"), "📍 章 1 · 层 3")
+	assert_eq(RunHud.format_chapter_text(3, "?"), "📍 章 3 · 层 ?")
 
 func test_run_hud_format_hp_text():
-	assert_eq(RunHud.format_hp_text(5, 5), "HP: 5 / 5")
-	assert_eq(RunHud.format_hp_text(0, 5), "HP: 0 / 5")
-	assert_eq(RunHud.format_hp_text(2, 5), "HP: 2 / 5")
+	# US-008：HP 用 ♥ 简化（数字仍带 a/b）
+	assert_eq(RunHud.format_hp_text(5, 5), "♥ 5 / 5")
+	assert_eq(RunHud.format_hp_text(0, 5), "♥ 0 / 5")
+	assert_eq(RunHud.format_hp_text(2, 5), "♥ 2 / 5")
 
 func test_run_hud_format_gold_text():
-	assert_eq(RunHud.format_gold_text(0), "金币: 0")
-	assert_eq(RunHud.format_gold_text(80), "金币: 80")
+	# US-008：金币 emoji 替代"金币:"汉字前缀
+	assert_eq(RunHud.format_gold_text(0), "🪙 0")
+	assert_eq(RunHud.format_gold_text(80), "🪙 80")
 
 # ---- PlaceholderNode ----
 
