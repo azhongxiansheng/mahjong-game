@@ -27,6 +27,7 @@ enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM }
 var _state: State = State.IDLE
 var _claim_discarder_seat: int = -1
 
+var _bg: ColorRect = null  # 仅在有按钮 visible 时才显示，避免遮挡桌面
 var _label_status: Label = null
 var _btn_riichi: Button = null     # WAITING_RIICHI_CONFIRM 用 — "立直"
 var _btn_tsumo: Button = null      # WAITING_DISCARD 用 — "自摸"
@@ -37,7 +38,7 @@ var _btn_minkan: Button = null     # WAITING_CLAIM 用 — "杠"
 var _btn_skip: Button = null       # WAITING_CLAIM/WAITING_RIICHI_CONFIRM 用 — "跳过"
 
 const PANEL_W: float = 480.0  # 容纳 7 个按钮（立直/自摸/荣/吃/碰/杠/跳过）
-const PANEL_H: float = 110.0
+const PANEL_H: float = 80.0   # 紧凑：status 8-28 + buttons 32-72
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
@@ -45,29 +46,35 @@ func _ready() -> void:
 	_apply_state(State.IDLE)
 
 func _build_ui() -> void:
-	# 雀魂式：右下角悬浮 280×110 紧凑面板（不再底部全宽长条）
-	var bg := ColorRect.new()
-	bg.color = Color(0.08, 0.08, 0.10, 0.85)
-	bg.size = Vector2(PANEL_W, PANEL_H)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	# Bg 半透明仅在有按钮时显示，避免空状态遮挡桌面
+	_bg = ColorRect.new()
+	_bg.color = Color(0.08, 0.08, 0.10, 0.85)
+	_bg.size = Vector2(PANEL_W, PANEL_H)
+	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bg.visible = false  # IDLE/WAITING_DISCARD 默认隐藏
+	add_child(_bg)
 
+	# Status 文字浮在桌面（无 bg），所有状态都可见
 	_label_status = Label.new()
 	_label_status.position = Vector2(12, 8)
 	_label_status.size = Vector2(PANEL_W - 24, 24)
 	_label_status.add_theme_font_size_override("font_size", 14)
 	_label_status.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+	# 加文字阴影让浮在桌面上更易读
+	_label_status.add_theme_constant_override("shadow_offset_x", 1)
+	_label_status.add_theme_constant_override("shadow_offset_y", 1)
+	_label_status.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	_label_status.text = "等待 AI..."
 	add_child(_label_status)
 
-	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过
-	_btn_riichi = _make_btn("立直", 12, 36)
-	_btn_tsumo = _make_btn("自摸", 12 + 66, 36)
-	_btn_ron = _make_btn("荣和", 12 + 132, 36)
-	_btn_chi = _make_btn("吃", 12 + 198, 36)
-	_btn_pon = _make_btn("碰", 12 + 264, 36)
-	_btn_minkan = _make_btn("杠", 12 + 330, 36)
-	_btn_skip = _make_btn("跳过", 12 + 396, 36)
+	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过（PANEL_H 80 紧凑版）
+	_btn_riichi = _make_btn("立直", 12, 32)
+	_btn_tsumo = _make_btn("自摸", 12 + 66, 32)
+	_btn_ron = _make_btn("荣和", 12 + 132, 32)
+	_btn_chi = _make_btn("吃", 12 + 198, 32)
+	_btn_pon = _make_btn("碰", 12 + 264, 32)
+	_btn_minkan = _make_btn("杠", 12 + 330, 32)
+	_btn_skip = _make_btn("跳过", 12 + 396, 32)
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -81,7 +88,7 @@ func _make_btn(text: String, x: float, y: float = 20.0) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.position = Vector2(x, y)
-	btn.size = Vector2(60, 60)
+	btn.size = Vector2(60, 40)  # 紧凑：高 40 适配 PANEL_H 80
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.disabled = true
 	btn.visible = false  # 雀魂式：只在触发时才显示
@@ -92,10 +99,23 @@ func _make_btn(text: String, x: float, y: float = 20.0) -> Button:
 func _show_btn(btn: Button) -> void:
 	btn.disabled = false
 	btn.visible = true
+	_refresh_bg()
 
 func _hide_btn(btn: Button) -> void:
 	btn.disabled = true
 	btn.visible = false
+	_refresh_bg()
+
+# 任意按钮 visible 时显示 bg，全 invisible 时隐藏避免遮挡桌面
+func _refresh_bg() -> void:
+	if _bg == null:
+		return
+	var any_btn_visible := false
+	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_skip]:
+		if btn != null and btn.visible:
+			any_btn_visible = true
+			break
+	_bg.visible = any_btn_visible
 
 # ---- 公开 API（PlayableTable / PlayableBattleController 调） ----
 

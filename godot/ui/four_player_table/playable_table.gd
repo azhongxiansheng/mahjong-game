@@ -25,13 +25,20 @@ func _ready() -> void:
 	_build_layout()
 
 func _build_layout() -> void:
+	# Bg 覆盖整个 800 高度，让桌底 ActionPanel 区跟桌面同色，避免桌外白色背景
+	var bg := ColorRect.new()
+	bg.size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	bg.color = Color(0.06, 0.12, 0.20, 1.0)  # 跟 four_player_table TableBg 同系
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(bg)
+
 	_table = FOUR_PLAYER_TABLE.instantiate()
 	_table.position = Vector2(0, 0)
 	add_child(_table)
 
 	_action_panel = PLAYER_ACTION_PANEL.instantiate()
-	# ActionPanel 居中放在桌底（不超出 800 窗口）
-	_action_panel.position = Vector2((_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, 670.0)
+	# ActionPanel 在桌底 y=TABLE_HEIGHT 起 80 px（独立区域不跟玩家手牌 y=640-700 重叠）
+	_action_panel.position = Vector2((_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, TABLE_HEIGHT)
 	add_child(_action_panel)
 
 func play_hand_async(bc: PlayableBattleController) -> Dictionary:
