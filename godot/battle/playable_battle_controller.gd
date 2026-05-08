@@ -170,16 +170,7 @@ func _should_accept_ron(candidate: int, _discarded: Tile, discarder: int, _ron_c
 # v1 玩家鸣牌（吃/碰/杠）窗口 — 在 _try_ron_async 之后调用，玩家可吃/碰/杠
 # 时弹按钮，玩家选 → 直接调 engine.apply_*；玩家 skip → BC 主循环 advance。
 # 注意：玩家选 chi 时 v1 自动选第一组合法 companion（不让玩家手选）。
-func _try_player_claim_async(discarded: Tile, discarder: int):
-	# DEBUG: 入口 print 到 stdout（命令行启动可见）+ emit ENTRY event
-	print("[PlayableBC] _try_player_claim_async called: discarder=%d events_size=%d action_null=%s" % [
-		discarder, events.size(), str(_action_panel == null)])
-	_emit(&"PLAYER_CLAIM_ENTRY", PLAYER_SEAT, null, {
-		"discarder_seat": discarder,
-		"action_panel_null": _action_panel == null,
-		"seat_panel_null": _seat_panel_player == null,
-		"is_self_discard": discarder == PLAYER_SEAT,
-	})
+func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 	if _action_panel == null or _seat_panel_player == null:
 		return
 	if discarder == PLAYER_SEAT:
@@ -188,16 +179,6 @@ func _try_player_claim_async(discarded: Tile, discarder: int):
 	var can_chi := ClaimValidator.can_chi(PLAYER_SEAT, discarder, hand, discarded.id)
 	var can_pon := ClaimValidator.can_pon(PLAYER_SEAT, discarder, hand, discarded.id)
 	var can_minkan := ClaimValidator.can_minkan(PLAYER_SEAT, discarder, hand, discarded.id)
-	# 把判定结果通过 _emit 写进 events log，让 smoke 场景可见。
-	# extra dict 含 trace 信息：玩家手牌中该 tile_id 的张数 + 3 个 can_* 标志
-	_emit(&"PLAYER_CLAIM_PROBE", PLAYER_SEAT, null, {
-		"discarder_seat": discarder,
-		"tile_id": discarded.id,
-		"player_count": hand.count_of(discarded.id),
-		"can_chi": can_chi,
-		"can_pon": can_pon,
-		"can_minkan": can_minkan,
-	})
 	if not (can_chi or can_pon or can_minkan):
 		return
 	_action_panel.enter_waiting_claim(false, can_chi, can_pon, can_minkan, discarder)

@@ -165,23 +165,22 @@ static func wind_name(wind_id: int) -> String:
 func _refresh_labels() -> void:
 	if _label_seat_info == null:
 		return
-	var status_parts: Array[String] = []
+	# 雀魂式简洁：仅 名字·风（+立直/振听 状态后缀）+ 分数
+	var status: String = ""
 	if _riichi:
-		status_parts.append("立直")
-	if _furiten:
-		status_parts.append("振听")
-	var status_str: String = " | ".join(status_parts) if status_parts.size() > 0 else "—"
-
-	_label_seat_info.text = "Seat %d (%s) | 风: %s | %s" % [
-		_seat_id, seat_display_name(_seat_id), wind_name(_seat_wind), status_str
-	]
-	_label_score.text = "点数: %d" % _score
-	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label。
-	# 保留 _label_melds 节点防 callers break；隐藏其显示。
+		status = " · 立直"
+	elif _furiten:
+		status = " · 振"
+	_label_seat_info.text = "%s · %s%s" % [seat_display_name(_seat_id), wind_name(_seat_wind), status]
+	_label_score.text = "%d" % _score
+	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label
+	# 手牌张数 / 弃牌河张数也弃用：MeldArea + DiscardRiver 视觉自身已传达
 	_label_melds.text = ""
 	_label_melds.visible = false
-	_label_hand.text = "手牌: %d 张" % _hand_size
-	_label_discards.text = "弃牌河: [●×%d]" % _discards_count
+	_label_hand.text = ""
+	_label_hand.visible = false
+	_label_discards.text = ""
+	_label_discards.visible = false
 
 # 重建非玩家 seat 的手牌行：按 owners 数组生成 TextureRect 显示 back.png，
 # 用 owner_seat 颜色作 modulate 保留归属可视化（plan-3 D2/D5）。
