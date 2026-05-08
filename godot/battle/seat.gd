@@ -13,6 +13,14 @@ var melds: Array = []
 var points: int
 var riichi: RiichiState
 var furiten: FuritenState
+# 刚摸到的牌 id（含正常摸牌 + 杠后岭上摸）。-1 = 当前不在 post-draw 状态（弃牌后 / 鸣牌后）。
+# 日麻 UI 用于：(a) 立直后自动 tsumogiri 弃刚摸的牌；(b) 手牌渲染时把刚摸的牌单独显示
+# 在最右（让玩家看清楚摸到了什么）。状态由 TurnEngine 维护：
+#   - draw_for_current()         → 设为摸到的 id
+#   - apply_minkan/ankan/added_kan + _take_rinshan_to → 设为岭上的 id
+#   - discard()                  → 设回 -1
+#   - apply_chi/pon              → 设回 -1（claimant 没真摸牌，是吃/碰别人的）
+var last_drawn_tile_id: int = -1
 
 func _init(p_seat_id: int, p_seat_wind: int, p_points: int = DEFAULT_STARTING_POINTS) -> void:
 	seat_id = p_seat_id

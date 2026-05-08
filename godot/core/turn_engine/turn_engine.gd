@@ -15,7 +15,10 @@ func draw_for_current() -> Tile:
 	var t := state.wall.draw()
 	if t == null:
 		return null
-	state.seats[state.current_seat].add_to_hand(t)
+	var seat: Seat = state.seats[state.current_seat]
+	seat.add_to_hand(t)
+	# 标记刚摸的牌：UI 用于"摸切"显示与立直后强制 tsumogiri（spec 2026-05-08 bug fix）
+	seat.last_drawn_tile_id = t.id
 	state.phase = BattlePhase.Kind.DISCARD
 	return t
 
@@ -33,6 +36,8 @@ func discard(tile_id: int) -> bool:
 		return false
 	seat.hand.remove_by_id(tile_id)
 	state.discards_per_seat[state.current_seat].append(found_tile)
+	# 弃牌后清掉"刚摸的牌"标记（不再 post-draw）
+	seat.last_drawn_tile_id = -1
 	state.phase = BattlePhase.Kind.CLAIM
 	return true
 
@@ -178,6 +183,8 @@ func _after_claim(claimant_seat: int) -> void:
 	state.current_seat = claimant_seat
 	state.phase = BattlePhase.Kind.DISCARD
 	state.first_round_active = false
+	# chi/pon 后 claimant 没真摸牌，不显示"刚摸"分隔
+	state.seats[claimant_seat].last_drawn_tile_id = -1
 
 func _reveal_new_dora() -> void:
 	var n: int = state.dora_indicators.visible.size()
@@ -189,3 +196,5 @@ func _take_rinshan_to(seat: Seat) -> void:
 	var t: Tile = state.wall.take_rinshan()
 	if t != null:
 		seat.add_to_hand(t)
+		# 杠后岭上摸 = 新的"刚摸的牌"
+		seat.last_drawn_tile_id = t.id

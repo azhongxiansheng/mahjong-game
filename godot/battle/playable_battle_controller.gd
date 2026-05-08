@@ -94,6 +94,18 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:
 		await _ai_think_pause()
 		return ai.decide_discard(seat)
+	# 立直后强制 tsumogiri（弃刚摸的牌；spec 2026-05-08 bug 1 fix）。
+	# 注意：本判断在自摸窗口（_should_accept_tsumo）之后执行；若玩家已点了
+	# 自摸，不会进到这里。落到这里说明玩家选了"切牌"或者根本没自摸窗口。
+	# 立直锁定后只能 tsumogiri，跳过 UI 直接返出刚摸的牌。
+	if should_auto_tsumogiri(seat):
+		var auto_discard: Tile = _find_tile_by_id(seat, seat.last_drawn_tile_id)
+		if auto_discard != null:
+			_pending_discard_tile_id = -1  # 清缓存防意外复用
+			_action_panel.enter_idle("立直中（自动切刚摸的牌）")
+			await _ai_think_pause()  # 给玩家视觉延迟看清楚摸了什么
+			return auto_discard
+		# 异常 fallback：last_drawn 找不到则落到正常流程（不应到达）
 	# 缓存命中：玩家在 _should_accept_tsumo 阶段已经点了切牌，直接用
 	if _pending_discard_tile_id >= 0:
 		var picked_cached: Tile = _find_tile_by_id(seat, _pending_discard_tile_id)
@@ -215,6 +227,16 @@ func _try_player_claim_async(discarded: Tile, discarder: int):
 				return
 			_:
 				continue
+
+# 立直后是否强制 tsumogiri（弃刚摸的牌）。spec 2026-05-08 bug 1 fix。
+# 日麻规则：立直锁定手牌；玩家不能选切别的牌。条件：
+#   (a) seat.riichi.declared = true
+#   (b) seat.last_drawn_tile_id >= 0（处于 post-draw / post-rinshan 状态）
+# 提取为静态 predicate 方便 GUT 单测（不依赖 UI / async）。
+static func should_auto_tsumogiri(seat: Seat) -> bool:
+	if not seat.riichi.declared:
+		return false
+	return seat.last_drawn_tile_id >= 0
 
 # 选第一组合法 chi companion（[d-2,d-1] / [d-1,d+1] / [d+1,d+2]）。
 # v1 自动取首组；当玩家 companion 选择 UI 落地后改成传 picked 参数。

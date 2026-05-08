@@ -235,3 +235,89 @@ func test_apply_tsumo_advances_to_settle():
 	var ok := e.apply_tsumo(0, Tile.new(TileId.W5))
 	assert_true(ok)
 	assert_eq(e.state.phase, BattlePhase.Kind.SETTLE)
+
+# ---- last_drawn_tile_id 跟踪（spec 2026-05-08 bug fix） ----
+
+func test_last_drawn_tile_id_initial_is_minus_one():
+	var e := _new_engine()
+	for i in range(4):
+		assert_eq(e.state.seats[i].last_drawn_tile_id, -1, "seat %d 初始 last_drawn = -1" % i)
+
+func test_draw_for_current_sets_last_drawn():
+	var e := _new_engine()
+	var t := e.draw_for_current()
+	assert_eq(e.state.seats[0].last_drawn_tile_id, t.id, "摸完后 last_drawn = 摸到的 id")
+
+func test_discard_clears_last_drawn():
+	var e := _new_engine()
+	var t := e.draw_for_current()
+	assert_eq(e.state.seats[0].last_drawn_tile_id, t.id)
+	e.discard(t.id)
+	assert_eq(e.state.seats[0].last_drawn_tile_id, -1, "弃牌后 last_drawn 清回 -1")
+
+func test_advance_to_next_seat_does_not_touch_last_drawn():
+	# advance 后 next seat 摸牌前 last_drawn 应仍 -1
+	var e := _new_engine()
+	var t := e.draw_for_current()
+	e.discard(t.id)
+	e.advance_to_next_seat()
+	# 此时 seat 0 的 last_drawn 已在 discard 清掉，seat 1 还没摸
+	assert_eq(e.state.seats[0].last_drawn_tile_id, -1)
+	assert_eq(e.state.seats[1].last_drawn_tile_id, -1)
+
+# helper：替换 seat 的 hand 为新 Hand 含给定 ids；避免直接改 typed Array[Tile]
+static func _set_seat_hand(seat: Seat, ids: Array) -> void:
+	seat.hand = Hand.new()
+	for tid in ids:
+		seat.hand.add(Tile.new(tid))
+
+func test_apply_chi_clears_claimant_last_drawn():
+	# 设置：seat 0 弃 W3，seat 1 (下家) 手中有 W2 + W4 → chi 合法
+	var e := _new_engine()
+	e.state.current_seat = 0
+	_set_seat_hand(e.state.seats[1], [TileId.W2, TileId.W4])
+	# Pretend 之前 seat 1 摸过（虽然不应在弃牌阶段，但测 chi 后 reset）
+	e.state.seats[1].last_drawn_tile_id = TileId.S5
+	# seat 0 弃 W3
+	_set_seat_hand(e.state.seats[0], [TileId.W3])
+	e.discard(TileId.W3)
+	# seat 1 chi
+	var ok := e.apply_chi(1, Tile.new(TileId.W3), [TileId.W2, TileId.W4])
+	assert_true(ok)
+	assert_eq(e.state.seats[1].last_drawn_tile_id, -1, "chi 后 claimant last_drawn 清 -1")
+
+func test_apply_pon_clears_claimant_last_drawn():
+	# seat 0 弃 W5，seat 2 手中有 2 张 W5 → pon 合法
+	var e := _new_engine()
+	e.state.current_seat = 0
+	_set_seat_hand(e.state.seats[2], [TileId.W5, TileId.W5])
+	e.state.seats[2].last_drawn_tile_id = TileId.S5
+	_set_seat_hand(e.state.seats[0], [TileId.W5])
+	e.discard(TileId.W5)
+	var ok := e.apply_pon(2, Tile.new(TileId.W5))
+	assert_true(ok)
+	assert_eq(e.state.seats[2].last_drawn_tile_id, -1, "pon 后 claimant last_drawn 清 -1")
+
+func test_apply_minkan_sets_last_drawn_to_rinshan():
+	# seat 0 弃 W5，seat 2 手中 3 张 W5 → minkan + 摸岭上
+	var e := _new_engine()
+	e.state.current_seat = 0
+	_set_seat_hand(e.state.seats[2], [TileId.W5, TileId.W5, TileId.W5])
+	_set_seat_hand(e.state.seats[0], [TileId.W5])
+	e.discard(TileId.W5)
+	var ok := e.apply_minkan(2, Tile.new(TileId.W5))
+	assert_true(ok)
+	# 岭上摸了 1 张；last_drawn 应是该张的 id（具体值由洗牌决定，这里只验 != -1）
+	assert_ne(e.state.seats[2].last_drawn_tile_id, -1, "minkan 后 last_drawn = rinshan id")
+
+func test_apply_ankan_sets_last_drawn_to_rinshan():
+	# seat 0 自家 hand 有 4 张 W5 → ankan + 摸岭上
+	var e := _new_engine()
+	e.state.current_seat = 0
+	_set_seat_hand(e.state.seats[0], [TileId.W5, TileId.W5, TileId.W5, TileId.W5])
+	# 假装之前刚摸了 W5（其中 1 张），但 ankan 后会被 rinshan 覆盖
+	e.state.seats[0].last_drawn_tile_id = TileId.W5
+	var ok := e.apply_ankan(0, TileId.W5)
+	assert_true(ok)
+	# rinshan 摸到的具体 id 不可控；但 last_drawn 必非 -1
+	assert_ne(e.state.seats[0].last_drawn_tile_id, -1, "ankan 后 last_drawn = rinshan id")
