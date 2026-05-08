@@ -27,6 +27,9 @@ var center_info: CenterInfoPanel = null
 var ability_panel: AbilityPanel = null
 # 4 个 DiscardRiver（索引 = seat_id），按日麻习惯朝桌中心方向显示弃牌
 var discard_rivers: Array = []
+# 4 个 MeldArea（索引 = seat_id），每家副露日麻风格视觉化
+# spec docs/superpowers/specs/2026-05-08-meld-area-japanese-style-design.md
+var meld_areas: Array = []
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(TABLE_WIDTH + ABILITY_PANEL_WIDTH, TABLE_HEIGHT)
@@ -46,6 +49,10 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 	for i in range(discard_rivers.size()):
 		var dr: DiscardRiver = discard_rivers[i]
 		dr.set_tiles(state.discards_per_seat[i])
+	# spec 2026-05-08：每家副露视觉化（chi/pon/minkan/ankan/added_kan）
+	for i in range(meld_areas.size()):
+		var ma: MeldArea = meld_areas[i]
+		ma.set_melds(state.seats[i].melds, i)
 
 # 整场累计分（来自 GameDriver.cumulative_scores）
 func bind_cumulative_scores(scores: Array) -> void:
@@ -100,6 +107,16 @@ func _build_layout() -> void:
 		table.add_child(dr)
 		discard_rivers.append(dr)
 
+	# 4 个 MeldArea — 日麻"副露摆在自己面前右侧"风格
+	# spec 2026-05-08-meld-area-japanese-style-design.md
+	for i in range(4):
+		var ma := MeldArea.new()
+		var mp := _meld_area_layout(i)
+		ma.position = mp.position
+		ma.rotation_degrees = mp.rotation_degrees
+		table.add_child(ma)
+		meld_areas.append(ma)
+
 	# CenterInfoPanel
 	center_info = CENTER_INFO_SCENE.instantiate()
 	center_info.position = Vector2(TABLE_WIDTH / 2.0, TABLE_HEIGHT / 2.0)
@@ -147,3 +164,25 @@ static func _discard_river_layout(seat_id: int) -> Dictionary:
 			# 河"开始" 贴在 cy - RIVER_W/2（visual 上方）。
 			return {"position": Vector2(cx - inner, cy - RIVER_W / 2.0), "rotation_degrees": 90.0}
 	return {"position": Vector2(cx, cy), "rotation_degrees": 0.0}
+
+# MeldArea 4 边布局（日麻"副露摆在自己面前右侧"风格）：
+# - MeldArea 内坐标：x=0 是组的最右侧（首组 meld 起点），从右往左累积
+# - 4 个角各放 1 个 MeldArea，rotation 让 face 朝桌中心
+# - 玩家（seat 0）的 MeldArea 在 桌面 右下角；melds 向左展开
+# - 视觉位置略低于 seat_panel 高度，避免与 score / hand 显示重叠
+const MELD_MARGIN: float = 30.0  # 距桌边
+static func _meld_area_layout(seat_id: int) -> Dictionary:
+	match seat_id:
+		0:
+			# 玩家：rotation=0；x=0 在 visual 桌面右下角；melds 向左 (-X) 展开
+			return {"position": Vector2(TABLE_WIDTH - MELD_MARGIN, TABLE_HEIGHT - MELD_MARGIN), "rotation_degrees": 0.0}
+		1:
+			# 右家：rotation=-90（顺时针）；视觉上 melds 从右上角向下展开
+			return {"position": Vector2(TABLE_WIDTH - MELD_MARGIN, MELD_MARGIN), "rotation_degrees": -90.0}
+		2:
+			# 对家：rotation=180；melds 从左上角向右展开（视觉为对家视角的左下）
+			return {"position": Vector2(MELD_MARGIN, MELD_MARGIN), "rotation_degrees": 180.0}
+		3:
+			# 左家：rotation=+90；melds 从左下角向上展开
+			return {"position": Vector2(MELD_MARGIN, TABLE_HEIGHT - MELD_MARGIN), "rotation_degrees": 90.0}
+	return {"position": Vector2(0, 0), "rotation_degrees": 0.0}

@@ -173,7 +173,10 @@ func _refresh_labels() -> void:
 		_seat_id, seat_display_name(_seat_id), wind_name(_seat_wind), status_str
 	]
 	_label_score.text = "点数: %d" % _score
-	_label_melds.text = "副露: [m×%d]" % _meld_count
+	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label。
+	# 保留 _label_melds 节点防 callers break；隐藏其显示。
+	_label_melds.text = ""
+	_label_melds.visible = false
 	_label_hand.text = "手牌: %d 张" % _hand_size
 	_label_discards.text = "弃牌河: [●×%d]" % _discards_count
 
