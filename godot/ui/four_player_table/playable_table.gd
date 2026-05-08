@@ -54,7 +54,94 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	var result: Dictionary = await bc.run_to_end_async()
 	_action_panel.enter_idle("本局结束")
 	_table.bind_battle_state(bc.state, 0, 4)
+	# 胡牌或流局后弹结算 overlay：玩家点继续才推进下一局
+	await _show_hand_result_overlay(result)
 	return result
+
+# 本局结束后弹结算 panel：胡牌显示 役/番/符/点数；流局显示听牌情况
+func _show_hand_result_overlay(result: Dictionary) -> void:
+	var last_event: String = String(result.get("last_event", ""))
+	var win_event: BattleEvent = null
+	# events 倒序找 WIN_DECLARED（最末的胡牌结算）
+	for i in range(_bc.events.size() - 1, -1, -1):
+		var ev: BattleEvent = _bc.events[i]
+		if ev.type == &"WIN_DECLARED":
+			win_event = ev
+			break
+	var overlay := Control.new()
+	overlay.size = Vector2(1280, 800)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	var bg := ColorRect.new()
+	bg.size = Vector2(1280, 800)
+	bg.color = Color(0, 0, 0, 0.78)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(bg)
+	var panel := ColorRect.new()
+	panel.position = Vector2(340, 200)
+	panel.size = Vector2(600, 400)
+	panel.color = Color(0.08, 0.12, 0.20, 0.98)
+	overlay.add_child(panel)
+
+	var title := Label.new()
+	title.position = Vector2(0, 24)
+	title.size = Vector2(600, 44)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	if win_event != null:
+		var winner_seat: int = win_event.actor_seat
+		var winner_name: String = "你" if winner_seat == 0 else "AI %d" % winner_seat
+		var win_kind: String = "自摸" if last_event == "TSUMO_DECLARED" or win_event.extra.get("discarder_seat", -1) < 0 else "荣和"
+		title.text = "%s · %s 胡牌" % [winner_name, win_kind]
+	elif last_event == "EXHAUSTIVE_DRAW":
+		title.text = "流局"
+	else:
+		title.text = "本局结束"
+	panel.add_child(title)
+
+	var detail := Label.new()
+	detail.position = Vector2(40, 90)
+	detail.size = Vector2(520, 220)
+	detail.add_theme_font_size_override("font_size", 18)
+	detail.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if win_event != null:
+		var fu: int = int(win_event.extra.get("fu", 0))
+		var han: int = int(win_event.extra.get("han", 0))
+		var winner_total: int = int(win_event.extra.get("winner_total", 0))
+		var payout: Dictionary = win_event.extra.get("payout", {})
+		var lines: Array[String] = []
+		lines.append("番数：%d 番 · 符：%d" % [han, fu])
+		lines.append("胜利者得分：%d" % winner_total)
+		lines.append("")
+		lines.append("点数转移：")
+		for seat in payout.keys():
+			var seat_int: int = int(seat)
+			var amount: int = int(payout[seat])
+			var name: String = "你" if seat_int == 0 else "AI %d" % seat_int
+			lines.append("  %s -%d" % [name, amount])
+		detail.text = "\n".join(lines)
+	else:
+		detail.text = "无人胡牌（流局）"
+	panel.add_child(detail)
+
+	var hint := Label.new()
+	hint.position = Vector2(0, 350)
+	hint.size = Vector2(600, 24)
+	hint.text = "(点击任意处继续)"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.add_theme_font_size_override("font_size", 14)
+	hint.add_theme_color_override("font_color", Color(0.65, 0.65, 0.6))
+	panel.add_child(hint)
+
+	# 等玩家点击关闭
+	overlay.gui_input.connect(func(ev: InputEvent):
+		if ev is InputEventMouseButton and ev.pressed:
+			overlay.queue_free())
+	# await 直到 overlay 被 free
+	while is_instance_valid(overlay):
+		await get_tree().process_frame
 
 var _last_event_count: int = 0
 var _polling_active: bool = false
