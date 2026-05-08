@@ -35,6 +35,8 @@ const HAND_ROW_OFFSET_Y: float = 30.0
 const PLAYER_HAND_TILE_W: float = 40.0
 const PLAYER_HAND_TILE_H: float = 60.0
 const PLAYER_HAND_ROW_OFFSET_X: float = -240.0
+# 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
+const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null
 
 # 玩家手牌当前是否接受点击（轮到玩家出牌时切 true）
@@ -131,7 +133,8 @@ func bind_seat(seat: Seat) -> void:
 	# discards 数量需外部传入（Seat 自身不持，BattleState.discards_per_seat[i] 持）
 	if is_inside_tree():
 		if _seat_id == 0:
-			_rebuild_player_hand_row(seat.hand.to_id_array())
+			# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右
+			_rebuild_player_hand_row_with_drawn(seat.hand, seat.last_drawn_tile_id)
 		else:
 			_rebuild_hand_tile_row(seat.hand.to_owner_array())
 		_refresh_labels()
@@ -220,6 +223,46 @@ func _resolve_back_texture() -> Texture2D:
 # 复用 CardTileBack 是为了一致样式（边框、modulate=WHITE、tile_id_to_atlas_key
 # 映射），不用为玩家手牌再造一个 TextureRect 包装。
 func _rebuild_player_hand_row(tile_ids: Array) -> void:
+	# 兼容旧 caller（无 drawn 信息）：全部按一行渲染，无分隔
+	_rebuild_player_hand_row_internal(tile_ids, [])
+
+# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右（与其他 13 张间留 PLAYER_HAND_DRAWN_GAP 间距）
+# hand：当前手牌 Hand；drawn_tile_id：刚摸的牌 id（-1 = 不在 post-draw 状态，全 sorted 渲染）
+# 算法：
+#   - drawn_tile_id < 0：全部 sorted 渲染（同 _rebuild_player_hand_row 旧行为）
+#   - drawn_tile_id >= 0：从 hand 中 pop 1 张匹配 id 的牌作"刚摸"；剩下 sorted；
+#     渲染顺序 = sorted 13 张 + 间距 + 1 张刚摸的牌（最右）
+func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_tile_id: int) -> void:
+	var split: Dictionary = split_hand_for_display(hand, drawn_tile_id)
+	_rebuild_player_hand_row_internal(split.sorted_ids, split.drawn_ids)
+
+# spec 2026-05-08 bug 2 fix：把"hand + 刚摸的牌 id"拆成 sorted + drawn 两部分。
+# 提为 static func 便于 GUT 单测（不依赖 SceneTree / TextureExtractor）。
+# 算法：
+#   drawn_tile_id < 0 / 不在手牌内 → 全 sorted（13 张），drawn_ids = []
+#   drawn_tile_id 在手牌内 → 从手牌弹 1 张匹配 drawn 的；剩下升序 sort；
+#     返 {sorted_ids: [13 张升序], drawn_ids: [drawn_id]}
+# 注意：手牌中可能含多张同 drawn id（如刚摸的牌恰好凑成 pair/triplet）；本函数
+# 仅 pop 第 1 张，保留其余按 sorted 渲染。这与日麻 UI 实现一致：刚摸的牌物理
+# 上是末尾插入的那张，UI 显示在右侧。
+static func split_hand_for_display(hand: Hand, drawn_tile_id: int) -> Dictionary:
+	var all_ids: Array = []
+	for t in hand._tiles:
+		all_ids.append(t.id)
+	if drawn_tile_id < 0:
+		all_ids.sort()
+		return {"sorted_ids": all_ids, "drawn_ids": []}
+	var drawn_idx: int = all_ids.find(drawn_tile_id)
+	if drawn_idx < 0:
+		# 异常 fallback：drawn id 在 hand 中找不到（如刚 chi/pon 后未及时清 -1）
+		all_ids.sort()
+		return {"sorted_ids": all_ids, "drawn_ids": []}
+	all_ids.remove_at(drawn_idx)
+	all_ids.sort()
+	return {"sorted_ids": all_ids, "drawn_ids": [drawn_tile_id]}
+
+# 内部统一渲染：sorted_ids 在左，drawn_ids 在右（与 sorted 之间留 PLAYER_HAND_DRAWN_GAP 间距）
+func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array) -> void:
 	if _hand_tile_row == null:
 		return
 	_apply_hand_row_offset()
@@ -228,15 +271,24 @@ func _rebuild_player_hand_row(tile_ids: Array) -> void:
 	var scale_x: float = PLAYER_HAND_TILE_W / float(CardTileBack.TILE_WIDTH)
 	var scale_y: float = PLAYER_HAND_TILE_H / float(CardTileBack.TILE_HEIGHT)
 	var x := 0.0
-	for tid in tile_ids:
-		var tile := CardTileBack.new()
-		tile.position = Vector2(x, 0)
-		tile.scale = Vector2(scale_x, scale_y)
-		_hand_tile_row.add_child(tile)
-		tile.set_face_up(int(tid))
-		tile.set_clickable(_hand_clickable)
-		tile.card_clicked.connect(_on_player_tile_clicked)
+	for tid in sorted_ids:
+		_spawn_player_tile(tid, x, scale_x, scale_y)
 		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
+	if not drawn_ids.is_empty():
+		# 让间距更明显：把现在的 x 上加 DRAWN_GAP - HAND_TILE_GAP
+		x += PLAYER_HAND_DRAWN_GAP - HAND_TILE_GAP
+		for tid in drawn_ids:
+			_spawn_player_tile(tid, x, scale_x, scale_y)
+			x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
+
+func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float) -> void:
+	var tile := CardTileBack.new()
+	tile.position = Vector2(x, 0)
+	tile.scale = Vector2(scale_x, scale_y)
+	_hand_tile_row.add_child(tile)
+	tile.set_face_up(int(tile_id))
+	tile.set_clickable(_hand_clickable)
+	tile.card_clicked.connect(_on_player_tile_clicked)
 
 # 切换玩家手牌点击响应。轮到玩家出牌时调 true，AI 回合或鸣牌响应窗口外调 false。
 # 仅 seat==0 有效；其它 seat 调用本方法无效（手牌行只有色块不 emit click）。
