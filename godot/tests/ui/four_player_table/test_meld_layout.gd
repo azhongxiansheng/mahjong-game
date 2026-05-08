@@ -150,3 +150,57 @@ func test_tile_ids_preserved_in_order():
 	assert_eq(int(layout[0]["tile_id"]), TileId.W2)
 	assert_eq(int(layout[1]["tile_id"]), TileId.W3)
 	assert_eq(int(layout[2]["tile_id"]), TileId.W4)
+
+# ---- 红 dora 标识 ----
+
+func test_red_dora_propagates_in_chi():
+	# CHI 234m 含红 5m 的同 mid，红 5 设 is_red_dora=true
+	var tiles: Array[Tile] = [
+		Tile.new(TileId.W3),
+		Tile.new(TileId.W4),
+		Tile.new(TileId.W5, true),  # 红 5m
+	]
+	var meld := Meld.make_chi(tiles, 3)
+	var layout: Array = MeldLayout.compute(meld, 0)
+	assert_false(bool(layout[0]["is_red_dora"]))
+	assert_false(bool(layout[1]["is_red_dora"]))
+	assert_true(bool(layout[2]["is_red_dora"]), "W5 红 dora 标识透传")
+
+func test_red_dora_default_false_when_not_set():
+	# 普通 CHI 无红 dora — 所有 slot is_red_dora 应 false
+	var tiles: Array[Tile] = [
+		Tile.new(TileId.W2),
+		Tile.new(TileId.W3),
+		Tile.new(TileId.W4),
+	]
+	var meld := Meld.make_chi(tiles, 3)
+	var layout: Array = MeldLayout.compute(meld, 0)
+	for s in layout:
+		assert_false(bool(s["is_red_dora"]), "默认 is_red_dora=false")
+
+func test_red_dora_propagates_in_pon():
+	# PON W5 同 id 三张，其中 1 张红 5m
+	var tiles: Array[Tile] = [
+		Tile.new(TileId.W5, false),
+		Tile.new(TileId.W5, true),  # 红 5
+		Tile.new(TileId.W5, false),
+	]
+	var meld := Meld.make_pon(tiles, 3)
+	var layout: Array = MeldLayout.compute(meld, 0)
+	assert_false(bool(layout[0]["is_red_dora"]))
+	assert_true(bool(layout[1]["is_red_dora"]), "PON 内红 5 标识透传")
+	assert_false(bool(layout[2]["is_red_dora"]))
+
+func test_red_dora_propagates_in_added_kan_4th_slot():
+	# 加杠：原 pon 3 张 + 第 4 张是红 5
+	var tiles: Array[Tile] = [
+		Tile.new(TileId.W5, false),
+		Tile.new(TileId.W5, false),
+		Tile.new(TileId.W5, false),
+		Tile.new(TileId.W5, true),  # 第 4 张是红 5（加杠抓上来）
+	]
+	var meld := Meld.make_added_kan(tiles, 3)
+	var layout: Array = MeldLayout.compute(meld, 0)
+	assert_eq(layout.size(), 4)
+	assert_true(bool(layout[3]["is_red_dora"]), "加杠第 4 张红 dora 透传")
+	assert_true(bool(layout[3]["stacked_above"]))

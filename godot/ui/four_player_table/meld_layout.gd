@@ -40,6 +40,7 @@ static func _compute_chi(meld: Meld) -> Array:
 			"rotated": i == 0,
 			"face_down": false,
 			"stacked_above": false,
+			"is_red_dora": meld.tiles[i].is_red_dora,
 		})
 	return slots
 
@@ -53,6 +54,7 @@ static func _compute_pon_or_minkan(meld: Meld, claimant_seat: int, count: int) -
 			"rotated": i == rotated_idx,
 			"face_down": false,
 			"stacked_above": false,
+			"is_red_dora": meld.tiles[i].is_red_dora,
 		})
 	return slots
 
@@ -76,6 +78,7 @@ static func _compute_ankan(meld: Meld) -> Array:
 			"rotated": false,
 			"face_down": (i == 0 or i == 3),
 			"stacked_above": false,
+			"is_red_dora": meld.tiles[i].is_red_dora,
 		})
 	return slots
 
@@ -90,6 +93,7 @@ static func _compute_added_kan(meld: Meld, claimant_seat: int) -> Array:
 			"rotated": i == rotated_idx,
 			"face_down": false,
 			"stacked_above": false,
+			"is_red_dora": meld.tiles[i].is_red_dora,
 		})
 	# 第 4 张：叠在原 rotated 位置上方
 	slots.append({
@@ -97,5 +101,6 @@ static func _compute_added_kan(meld: Meld, claimant_seat: int) -> Array:
 		"rotated": true,
 		"face_down": false,
 		"stacked_above": true,
+		"is_red_dora": meld.tiles[3].is_red_dora,
 	})
 	return slots
