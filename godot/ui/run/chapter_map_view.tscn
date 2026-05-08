@@ -26,8 +26,7 @@ theme_override_font_sizes/font_size = 22
 text = "（尚未推进）"
 theme_override_font_sizes/font_size = 14
 
-[node name="MapView" type="Control"]
-parent = "."
+[node name="MapView" type="Control" parent="."]
 offset_left = 0.0
 offset_top = 90.0
 offset_right = 1000.0
