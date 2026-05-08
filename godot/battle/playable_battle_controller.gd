@@ -40,6 +40,54 @@ func bind_ui(action_panel: PlayerActionPanel, seat_panel_player: SeatPanel, tree
 func set_ai_think_delay(seconds: float) -> void:
 	_ai_think_delay_sec = max(0.0, seconds)
 
+# ---- 覆写 _step_discard_async（GDScript 4 quirk workaround） ----
+#
+# BC 父类 _step_discard_async 末尾调 `await _try_player_claim_async(...)`，
+# 但直接 await self.method() 在 GDScript 4 + method override 链路上 dispatch
+# 不可靠（首次正确分派到子类，后续静默 cache 父类 — 见 commit f86b375 debug log）。
+# Workaround：子类覆写整个 _step_discard_async，复制父类逻辑，最末尾的 claim 钩子
+# 调用在子类内部完成 — 子类 self.method() dispatch 一直正确。
+func _step_discard_async() -> void:
+	var seat: Seat = state.seats[state.current_seat]
+	var actor: int = state.current_seat
+	var to_discard: Tile = null
+	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
+	if not replayed.is_empty():
+		var tid: int = int(replayed.get("tile_id", -1))
+		for t in seat.hand._tiles:
+			if t.id == tid:
+				to_discard = t
+				break
+	else:
+		to_discard = await _get_discard_decision(seat, actor)
+	if to_discard == null:
+		_settled = true
+		return
+	_emit(&"PLAYER_ACTION", actor, null, {"kind": "discard", "tile_id": to_discard.id})
+	var ok: bool = engine.discard(to_discard.id)
+	if not ok:
+		_settled = true
+		return
+	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
+	# 立直决策（discard 后 hand=13）
+	var should_riichi: bool = false
+	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
+	if not riichi_replayed.is_empty():
+		should_riichi = true
+	elif _replay_decisions.is_empty():
+		should_riichi = await _get_riichi_decision(actor)
+	if should_riichi:
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
+		if engine.declare_riichi(actor):
+			state.scores[actor] -= RIICHI_STICK_COST
+			_emit(&"RIICHI_DECLARED", actor, null, {})
+	# 鸣牌响应（v1 仅 ron）— 父类版本，子类不重写 ron 决策（_should_accept_ron 钩子里覆写）
+	if not _settled:
+		await _try_ron_async(to_discard, actor)
+	# 玩家鸣牌窗口（吃/碰/杠）— 子类调用子类版本（dispatch 正常）
+	if not _settled:
+		await _try_player_claim_async(to_discard, actor)
+
 # ---- 钩子覆写 ----
 
 func _get_discard_decision(seat: Seat, actor: int) -> Tile:
@@ -110,7 +158,16 @@ func _should_accept_ron(candidate: int, _discarded: Tile, discarder: int, _ron_c
 # v1 玩家鸣牌（吃/碰/杠）窗口 — 在 _try_ron_async 之后调用，玩家可吃/碰/杠
 # 时弹按钮，玩家选 → 直接调 engine.apply_*；玩家 skip → BC 主循环 advance。
 # 注意：玩家选 chi 时 v1 自动选第一组合法 companion（不让玩家手选）。
-func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
+func _try_player_claim_async(discarded: Tile, discarder: int):
+	# DEBUG: 入口 print 到 stdout（命令行启动可见）+ emit ENTRY event
+	print("[PlayableBC] _try_player_claim_async called: discarder=%d events_size=%d action_null=%s" % [
+		discarder, events.size(), str(_action_panel == null)])
+	_emit(&"PLAYER_CLAIM_ENTRY", PLAYER_SEAT, null, {
+		"discarder_seat": discarder,
+		"action_panel_null": _action_panel == null,
+		"seat_panel_null": _seat_panel_player == null,
+		"is_self_discard": discarder == PLAYER_SEAT,
+	})
 	if _action_panel == null or _seat_panel_player == null:
 		return
 	if discarder == PLAYER_SEAT:
@@ -119,6 +176,16 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 	var can_chi := ClaimValidator.can_chi(PLAYER_SEAT, discarder, hand, discarded.id)
 	var can_pon := ClaimValidator.can_pon(PLAYER_SEAT, discarder, hand, discarded.id)
 	var can_minkan := ClaimValidator.can_minkan(PLAYER_SEAT, discarder, hand, discarded.id)
+	# 把判定结果通过 _emit 写进 events log，让 smoke 场景可见。
+	# extra dict 含 trace 信息：玩家手牌中该 tile_id 的张数 + 3 个 can_* 标志
+	_emit(&"PLAYER_CLAIM_PROBE", PLAYER_SEAT, null, {
+		"discarder_seat": discarder,
+		"tile_id": discarded.id,
+		"player_count": hand.count_of(discarded.id),
+		"can_chi": can_chi,
+		"can_pon": can_pon,
+		"can_minkan": can_minkan,
+	})
 	if not (can_chi or can_pon or can_minkan):
 		return
 	_action_panel.enter_waiting_claim(false, can_chi, can_pon, can_minkan, discarder)

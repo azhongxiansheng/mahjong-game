@@ -9,6 +9,8 @@ const PLAYABLE_TABLE := preload("res://ui/four_player_table/playable_table.tscn"
 var _table: PlayableTable = null
 var _result_label: Label = null
 var _toast_label: Label = null
+var _debug_log: Label = null
+var _debug_lines: Array[String] = []
 
 func _ready() -> void:
 	_table = PLAYABLE_TABLE.instantiate()
@@ -34,7 +36,23 @@ func _ready() -> void:
 	_toast_label.visible = false
 	add_child(_toast_label)
 
+	# Debug 日志框：左上角显示最近 10 条 _try_player_claim_async 判定 trace
+	_debug_log = Label.new()
+	_debug_log.position = Vector2(20, 28)
+	_debug_log.size = Vector2(560, 200)
+	_debug_log.add_theme_font_size_override("font_size", 11)
+	_debug_log.add_theme_color_override("font_color", Color(0.7, 0.85, 0.55))
+	_debug_log.text = "[claim trace 等待事件...]"
+	add_child(_debug_log)
+
 	_run_full_match()
+
+func _append_debug_log(line: String) -> void:
+	_debug_lines.append(line)
+	if _debug_lines.size() > 10:
+		_debug_lines.pop_front()
+	if _debug_log != null:
+		_debug_log.text = "\n".join(_debug_lines)
 
 func _run_full_match() -> void:
 	# 用 BattleNodeRunner.run_with_player_input_async 走完整 GameDriver 4 局循环
@@ -149,6 +167,19 @@ func _event_listener_loop() -> void:
 
 func _handle_event(ev: BattleEvent) -> void:
 	match ev.type:
+		&"PLAYER_CLAIM_PROBE":
+			# debug：每次 AI 切牌后玩家鸣牌判定 trace
+			var c_chi: bool = bool(ev.extra.get("can_chi", false))
+			var c_pon: bool = bool(ev.extra.get("can_pon", false))
+			var c_kan: bool = bool(ev.extra.get("can_minkan", false))
+			var pc: int = int(ev.extra.get("player_count", 0))
+			var tid: int = int(ev.extra.get("tile_id", -1))
+			var ds: int = int(ev.extra.get("discarder_seat", -1))
+			_append_debug_log("AI%d 切 %s | 你 ×%d | chi=%s pon=%s kan=%s" % [
+				ds, CardTileBack.tile_short_name(tid), pc,
+				"✓" if c_chi else "x", "✓" if c_pon else "x", "✓" if c_kan else "x"])
+			if c_chi or c_pon or c_kan:
+				_show_toast("可鸣牌！选择按钮", 1.0)
 		&"RIICHI_DECLARED":
 			_show_toast("立直！seat %d" % ev.actor_seat, 1.5)
 		&"WIN_DECLARED":

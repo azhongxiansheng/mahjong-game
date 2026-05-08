@@ -274,9 +274,13 @@ func _should_accept_tsumo(_actor: int, _drawn: Tile, _win_check: Dictionary) -> 
 
 # 玩家鸣牌响应（吃/碰/杠）窗口；默认 no-op（v1 AI 不主动鸣牌）。
 # PlayableBattleController 覆写：玩家可吃/碰/杠时弹按钮 await 玩家选择。
-# 选 → 直接调 engine.apply_chi/pon/minkan；选 skip → 不操作（BC 主循环 advance_to_next_seat）
-func _try_player_claim_async(_discarded: Tile, _discarder: int) -> void:
-	pass
+# 注意：return 类型不声明 — 让子类返 coroutine（GDScriptFunctionState）让调用方
+# 用 `if result is GDScriptFunctionState: await result` idiom 正确等待玩家输入。
+func _try_player_claim_async(_discarded: Tile, _discarder: int):
+	# DEBUG: emit DEFAULT_HOOK 让 polling 能区分 "走父类默认" vs "走子类 override"
+	print("[BC.parent_default _try_player_claim_async] discarder=%d self_type=%s" % [
+		_discarder, get_script().resource_path])
+	_emit(&"DEFAULT_HOOK_CALLED", -1, null, {})
 
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
@@ -363,6 +367,9 @@ func _step_discard_async() -> void:
 	if not _settled:
 		await _try_ron_async(to_discard, actor)
 	# 玩家鸣牌窗口（吃/碰/杠）— 默认 no-op；PlayableBattleController 覆写
+	# 注意：直接 await self._try_player_claim_async() 在 GDScript 4 中 dispatch
+	# 不可靠（首次后 cache 父类版本）。子类应覆写 _step_discard_async 自己调，
+	# 不要在父类调用 self.method() 期望子类版本生效。
 	if not _settled:
 		await _try_player_claim_async(to_discard, actor)
 
