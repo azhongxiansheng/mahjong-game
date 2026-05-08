@@ -36,6 +36,27 @@ static func can_minkan(claimant_seat: int, discarder_seat: int, hand: Hand, disc
 		return false
 	return hand.count_of(discarded_id) >= 3
 
+# 吃 companion 候选：返所有合法的 [伴1, 伴2] tile_id 对（不含 discarded_id 自身）
+# 规则同 can_chi（仅下家可吃 + 数牌 + 三种顺子组合），但本函数 caller 已确认
+# can_chi=true，所以不再校验 seat / 颜色，只算 tile_id 组合。
+# 用途：玩家 chi 时从多组合法 companion 中手动挑选；UI 弹候选让玩家选。
+# 返：Array[Array]，每元素 [tid1, tid2]（不一定升序，按"低-中-高"位置顺序）。
+static func chi_companion_options(hand: Hand, discarded_id: int) -> Array:
+	if TileId.is_honor(discarded_id):
+		return []
+	var n: int = TileId.number(discarded_id)
+	var options: Array = []
+	# [d-2, d-1, d]：要求 n >= 3，且手中含 d-2, d-1
+	if n >= 3 and hand.count_of(discarded_id - 2) > 0 and hand.count_of(discarded_id - 1) > 0:
+		options.append([discarded_id - 2, discarded_id - 1])
+	# [d-1, d, d+1]：要求 2 <= n <= 8
+	if n >= 2 and n <= 8 and hand.count_of(discarded_id - 1) > 0 and hand.count_of(discarded_id + 1) > 0:
+		options.append([discarded_id - 1, discarded_id + 1])
+	# [d, d+1, d+2]：要求 n <= 7
+	if n <= 7 and hand.count_of(discarded_id + 1) > 0 and hand.count_of(discarded_id + 2) > 0:
+		options.append([discarded_id + 1, discarded_id + 2])
+	return options
+
 # 暗杠候选：手中有 4 张同 id 的 id 列表
 static func ankan_candidates(hand: Hand) -> Array:
 	var candidates: Array = []

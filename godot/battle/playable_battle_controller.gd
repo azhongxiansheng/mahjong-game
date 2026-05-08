@@ -216,16 +216,14 @@ func _try_player_claim_async(discarded: Tile, discarder: int):
 			_:
 				continue
 
-# 选第一组合法 chi companion（[d-2,d-1] / [d-1,d+1] / [d+1,d+2]）
+# 选第一组合法 chi companion（[d-2,d-1] / [d-1,d+1] / [d+1,d+2]）。
+# v1 自动取首组；当玩家 companion 选择 UI 落地后改成传 picked 参数。
+# 算法委托给 ClaimValidator.chi_companion_options，避免重复实现。
 static func _pick_chi_companions(hand: Hand, discarded_id: int) -> Array:
-	var n := TileId.number(discarded_id)
-	if n >= 3 and hand.count_of(discarded_id - 2) > 0 and hand.count_of(discarded_id - 1) > 0:
-		return [discarded_id - 2, discarded_id - 1]
-	if n >= 2 and n <= 8 and hand.count_of(discarded_id - 1) > 0 and hand.count_of(discarded_id + 1) > 0:
-		return [discarded_id - 1, discarded_id + 1]
-	if n <= 7 and hand.count_of(discarded_id + 1) > 0 and hand.count_of(discarded_id + 2) > 0:
-		return [discarded_id + 1, discarded_id + 2]
-	return []
+	var options: Array = ClaimValidator.chi_companion_options(hand, discarded_id)
+	if options.is_empty():
+		return []
+	return options[0]
 
 func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:

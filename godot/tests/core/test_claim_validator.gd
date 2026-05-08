@@ -163,3 +163,59 @@ func test_can_tsumo_not_winning():
 		TileId.S5, TileId.S5,
 	])
 	assert_false(ClaimValidator.can_tsumo(h, [], Tile.new(TileId.HAKU)))
+
+# ---- chi_companion_options（v1 玩家 chi UI 候选） ----
+
+func test_chi_companion_options_low_only():
+	# 弃 W4，手中有 W2 W3 → 仅 [W2,W3] 一组
+	var h := _hand([TileId.W2, TileId.W3])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W4)
+	assert_eq(opts.size(), 1, "1 组合法")
+	assert_eq(opts[0], [TileId.W2, TileId.W3])
+
+func test_chi_companion_options_middle_only():
+	# 弃 W4，手中有 W3 W5 → 仅 [W3, W5] 嵌张
+	var h := _hand([TileId.W3, TileId.W5])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W4)
+	assert_eq(opts.size(), 1)
+	assert_eq(opts[0], [TileId.W3, TileId.W5])
+
+func test_chi_companion_options_high_only():
+	# 弃 W4，手中有 W5 W6 → 仅 [W5, W6]
+	var h := _hand([TileId.W5, TileId.W6])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W4)
+	assert_eq(opts.size(), 1)
+	assert_eq(opts[0], [TileId.W5, TileId.W6])
+
+func test_chi_companion_options_three_combos():
+	# 弃 W4，手中有 W2 W3 W5 W6 → 3 组合法 [W2,W3] / [W3,W5] / [W5,W6]
+	var h := _hand([TileId.W2, TileId.W3, TileId.W5, TileId.W6])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W4)
+	assert_eq(opts.size(), 3, "3 组合法 companion")
+	assert_eq(opts[0], [TileId.W2, TileId.W3])
+	assert_eq(opts[1], [TileId.W3, TileId.W5])
+	assert_eq(opts[2], [TileId.W5, TileId.W6])
+
+func test_chi_companion_options_honor_returns_empty():
+	# 字牌 (CHUN) 不能吃
+	var h := _hand([TileId.W2, TileId.W3])
+	assert_eq(ClaimValidator.chi_companion_options(h, TileId.CHUN), [])
+
+func test_chi_companion_options_no_match_returns_empty():
+	# 弃 W4 但手中无任何相邻数牌
+	var h := _hand([TileId.T1, TileId.S9])
+	assert_eq(ClaimValidator.chi_companion_options(h, TileId.W4), [])
+
+func test_chi_companion_options_edge_w1():
+	# 弃 W1，仅 [W2, W3] 一种（无 W-1 / W0）
+	var h := _hand([TileId.W2, TileId.W3])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W1)
+	assert_eq(opts.size(), 1)
+	assert_eq(opts[0], [TileId.W2, TileId.W3])
+
+func test_chi_companion_options_edge_w9():
+	# 弃 W9，仅 [W7, W8] 一种
+	var h := _hand([TileId.W7, TileId.W8])
+	var opts := ClaimValidator.chi_companion_options(h, TileId.W9)
+	assert_eq(opts.size(), 1)
+	assert_eq(opts[0], [TileId.W7, TileId.W8])
