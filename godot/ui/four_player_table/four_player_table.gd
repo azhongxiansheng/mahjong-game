@@ -48,9 +48,25 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		sp.set_discards_count(state.discards_per_seat[i].size())
 		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
 		sp.set_active(i == state.current_seat)
+		# 玩家自家(seat 0)post-discard 听牌时显示"听"金徽章。
+		# 跑 WaitCalculator 仅 13 张时才算(post-draw 14 张走 _check_tsumo 路径,
+		# 不在这里跳)。对家不曝光听牌状态(只在玩家自家显示)。
+		if i == 0:
+			var is_tenpai := false
+			if seat.hand.size() == 13:
+				var typed_melds: Array[Meld] = []
+				for m in seat.melds:
+					typed_melds.append(m)
+				is_tenpai = WaitCalculator.is_tenpai(seat.hand, typed_melds)
+			sp.set_tenpai(is_tenpai)
+		# 一发窗口(刚立直未轮一圈)— 所有 seat 都显(玩家算对家一发风险)。
+		sp.set_ippatsu(seat.riichi.declared and seat.riichi.ippatsu_window)
 	for i in range(discard_rivers.size()):
 		var dr: DiscardRiver = discard_rivers[i]
-		dr.set_tiles(state.discards_per_seat[i])
+		# 立直宣告时该 seat 的 riichi.riichi_discard_index 标出"这张牌弹出时
+		# 同时声了立直" → DiscardRiver 渲染时把它旋 90° (日麻标志记号)。
+		var riichi_idx: int = state.seats[i].riichi.riichi_discard_index
+		dr.set_tiles(state.discards_per_seat[i], riichi_idx)
 	# spec 2026-05-08：每家副露视觉化（chi/pon/minkan/ankan/added_kan）
 	for i in range(meld_areas.size()):
 		var ma: MeldArea = meld_areas[i]

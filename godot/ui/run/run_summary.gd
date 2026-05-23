@@ -23,6 +23,15 @@ func bind_run_state(rs: RunState) -> void:
 	if _title == null:
 		return
 	_title.text = format_outcome_title(rs.won)
+	# 商业级:通关 → 金大字、失败 → 猩红大字,把胜负情绪放在标题。
+	_title.add_theme_font_size_override("font_size", 64)
+	if rs.won:
+		_title.add_theme_color_override("font_color", Color(1, 0.82, 0.28))
+	else:
+		_title.add_theme_color_override("font_color", Color(0.95, 0.30, 0.30))
+	_title.add_theme_constant_override("shadow_offset_x", 2)
+	_title.add_theme_constant_override("shadow_offset_y", 2)
+	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
 	_summary_label.text = format_summary(rs)
 	# M5 第 3 步：尝试从 MetaProgress autoload 取真声望；若不存在 fallback 占位
 	var mp := get_tree().root.get_node_or_null("MetaProgress") if is_inside_tree() else null

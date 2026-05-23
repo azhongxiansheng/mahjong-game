@@ -74,6 +74,13 @@ func set_seat_id(id: int) -> void:
 	assert(id >= 0 and id <= 3, "seat_id 必须 ∈ [0,3]")
 	_seat_id = id
 	rotation_degrees = SEAT_ROTATION_DEGREES[id]
+	# 按 seat 微调 Bg 色调:玩家(0)金/AI 1 红/AI 2 绿/AI 3 蓝,与 CardTileBack
+	# .tile_back_color 同色系。混入主题暗底 85% 让标识弱可见而不过艳。
+	var bg := get_node_or_null("Bg") as ColorRect
+	if bg:
+		var seat_color: Color = CardTileBack.tile_back_color(id)
+		var base: Color = Color(0.08, 0.10, 0.16, 1.0)
+		bg.color = base.lerp(seat_color, 0.18)
 	if is_inside_tree():
 		_refresh_labels()
 
@@ -83,9 +90,95 @@ func set_seat_wind(wind_id: int) -> void:
 		_refresh_labels()
 
 func set_score(s: int) -> void:
+	var prev := _score
 	_score = s
 	if is_inside_tree():
 		_refresh_labels()
+		# 分数变化 → 0.55s 脉冲反馈:涨绿、跌红。第一次 bind 时 prev=0 不闪。
+		if prev > 0 and s != prev and _label_score != null:
+			_pulse_score(s > prev)
+
+
+func _pulse_score(positive: bool) -> void:
+	if _score_pulse_tween and _score_pulse_tween.is_valid():
+		_score_pulse_tween.kill()
+	var flash: Color = Color(0.45, 0.95, 0.50) if positive else Color(1.0, 0.45, 0.45)
+	var base: Color = Color(0.91, 0.88, 0.81)
+	_label_score.add_theme_color_override("font_color", flash)
+	_score_pulse_tween = create_tween()
+	_score_pulse_tween.tween_property(_label_score, "theme_override_colors/font_color",
+		base, 0.55).set_ease(Tween.EASE_OUT)
+
+
+var _score_pulse_tween: Tween = null
+
+# 状态徽章:振听=红、听牌=金,小色块 + 单字 Label。挂在 seat 名旁。
+# 这些走视觉(而非文字后缀)让玩家从 4 家快速扫描状态。
+var _tenpai: bool = false
+var _ippatsu: bool = false
+var _badge_furiten: Control = null
+var _badge_tenpai: Control = null
+var _badge_ippatsu: Control = null
+
+func set_tenpai(b: bool) -> void:
+	_tenpai = b
+	if is_inside_tree():
+		_apply_status_badges()
+
+
+func set_ippatsu(b: bool) -> void:
+	_ippatsu = b
+	if is_inside_tree():
+		_apply_status_badges()
+
+
+func _apply_status_badges() -> void:
+	# Bg 240×100,offset(-120..120, -50..50)。徽章在 Bg 顶右角并排,
+	# 顺序:振(红) → 听(金) → 一発(青),各 28×20。
+	# 振听 — 仅 _furiten=true 时显示。
+	_badge_furiten = _set_badge(_badge_furiten, _furiten, "振",
+		Color(0.85, 0.18, 0.18), Vector2(30, -46))
+	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
+	var show_tenpai: bool = _tenpai and _seat_id == 0 and not _riichi
+	_badge_tenpai = _set_badge(_badge_tenpai, show_tenpai, "听",
+		Color(1.0, 0.78, 0.22), Vector2(60, -46))
+	# 一発(刚立直未轮回一圈)— 青底,所有 seat 都显(玩家需要算别家一发风险)。
+	_badge_ippatsu = _set_badge(_badge_ippatsu, _ippatsu, "発",
+		Color(0.30, 0.70, 0.90), Vector2(90, -46))
+
+
+# 创建/销毁徽章。返回当前 badge node 实例(下次 _apply 复用判断)。
+func _set_badge(existing: Control, visible_: bool, text: String, color: Color,
+		pos: Vector2) -> Control:
+	if not visible_:
+		if existing != null and is_instance_valid(existing):
+			existing.queue_free()
+		return null
+	if existing != null and is_instance_valid(existing):
+		return existing
+	var p := Panel.new()
+	p.size = Vector2(28, 20)
+	# 节点本地坐标(seat panel Node2D 已按 seat_id 旋转,徽章随旋转走)。
+	p.position = pos
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = color
+	sb.corner_radius_top_left = 3
+	sb.corner_radius_top_right = 3
+	sb.corner_radius_bottom_left = 3
+	sb.corner_radius_bottom_right = 3
+	p.add_theme_stylebox_override("panel", sb)
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.size = Vector2(28, 20)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 13)
+	lbl.add_theme_color_override("font_color", Color(0.05, 0.05, 0.05))
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	p.add_child(lbl)
+	add_child(p)
+	return p
 
 func set_hand_size(n: int) -> void:
 	_hand_size = n
@@ -216,17 +309,16 @@ static func wind_name(wind_id: int) -> String:
 func _refresh_labels() -> void:
 	if _label_seat_info == null:
 		return
-	# 雀魂式简洁：名字·风(·庄 if dealer)·状态。
-	# 庄家用 seat_wind=东 判定(日麻规则:庄永远是东家)。
+	# 雀魂式简洁:名字·风(·庄 if dealer)·立直状态。
+	# 振听 / 听牌 走单独彩色徽章(_apply_status_badges),不挤进 seat_info 文本。
 	var status: String = ""
 	if _seat_wind == TileId.E:
 		status += " · 庄"
 	if _riichi:
 		status += " · 立直"
-	elif _furiten:
-		status += " · 振"
 	_label_seat_info.text = "%s · %s%s" % [seat_display_name(_seat_id), wind_name(_seat_wind), status]
 	_label_score.text = "%d" % _score
+	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label
 	# 手牌张数 / 弃牌河张数也弃用：MeldArea + DiscardRiver 视觉自身已传达
 	_label_melds.text = ""

@@ -21,6 +21,10 @@ const STICK_W: float = 24.0
 const STICK_H: float = 6.0
 const STICK_MAX_SHOW: int = 5
 var _riichi_sticks_row: HBoxContainer = null
+# 本场棒视觉:每棒 20x5 红底(真实 100-pt 棒比 1000-pt 立直棒略短)
+const HONBA_STICK_W: float = 20.0
+const HONBA_STICK_H: float = 5.0
+var _honba_sticks_row: HBoxContainer = null
 
 var _hand_index: int = 0  # 0..3 表东 1..东 4；M8 半庄战 4..7 表南 1..南 4
 var _hands_per_round: int = 4  # M8: 一风圈局数（东/南各 4）
@@ -34,16 +38,21 @@ func _ready() -> void:
 	# 放在 panel 中心稍下，让"Dora:"label 上面，牌图在下面
 	_dora_row.position = Vector2(-60, 30)
 	add_child(_dora_row)
-	# 立直棒视觉行(VBox 末追加,与 RiichiSticks 标签呼应)
+	# 立直棒 / 本场棒 视觉行(VBox 末追加,与文字 label 呼应)
 	var vbox: VBoxContainer = $VBox
 	if vbox:
 		_riichi_sticks_row = HBoxContainer.new()
 		_riichi_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		_riichi_sticks_row.add_theme_constant_override("separation", 3)
 		vbox.add_child(_riichi_sticks_row)
+		_honba_sticks_row = HBoxContainer.new()
+		_honba_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
+		_honba_sticks_row.add_theme_constant_override("separation", 3)
+		vbox.add_child(_honba_sticks_row)
 	_refresh_labels()
 	_rebuild_dora_tiles()
 	_rebuild_riichi_sticks()
+	_rebuild_honba_sticks()
 
 # ---- public setters ----
 
@@ -62,6 +71,7 @@ func set_honba(n: int) -> void:
 	_honba = n
 	if is_inside_tree():
 		_refresh_labels()
+		_rebuild_honba_sticks()
 
 func set_dora_indicators(ids: Array) -> void:
 	_dora_indicators = ids
@@ -180,6 +190,34 @@ static func _make_riichi_stick() -> Control:
 	dot.position = Vector2((STICK_W - 8) / 2, 0)
 	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stick.add_child(dot)
+	return stick
+
+
+# 重建本场棒行:连庄棒(100-pt 棒,日麻视觉上比立直棒略短的红色棒)。
+# 每局 dealer 连庄 / 流局都 +1,N=0 时整行不渲染。
+func _rebuild_honba_sticks() -> void:
+	if _honba_sticks_row == null:
+		return
+	for child in _honba_sticks_row.get_children():
+		child.queue_free()
+	var shown: int = mini(_honba, STICK_MAX_SHOW)
+	for i in range(shown):
+		_honba_sticks_row.add_child(_make_honba_stick())
+	if _honba > STICK_MAX_SHOW:
+		var extra := Label.new()
+		extra.text = "+%d" % (_honba - STICK_MAX_SHOW)
+		extra.add_theme_font_size_override("font_size", 11)
+		extra.add_theme_color_override("font_color", Color(1, 0.55, 0.45))
+		_honba_sticks_row.add_child(extra)
+
+
+# 1 根迷你本场棒:20x5 全红(无白色识别条,与立直棒区分)。
+static func _make_honba_stick() -> Control:
+	var stick := ColorRect.new()
+	stick.color = Color(0.85, 0.20, 0.20)
+	stick.custom_minimum_size = Vector2(HONBA_STICK_W, HONBA_STICK_H)
+	stick.size = Vector2(HONBA_STICK_W, HONBA_STICK_H)
+	stick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return stick
 
 

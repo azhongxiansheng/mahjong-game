@@ -63,9 +63,41 @@ func _ready() -> void:
 	# Label 不挡 click
 	_face_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_face_label)
-	# 接 gui_input 实现 click 检测
+	# 接 gui_input 实现 click 检测;mouse_entered/exited 做 hover lift
 	gui_input.connect(_on_gui_input)
+	mouse_entered.connect(_on_mouse_enter)
+	mouse_exited.connect(_on_mouse_exit)
 	_refresh()
+
+
+# Hover lift:可点击牌(玩家自家手牌)鼠标 hover 时上抬,提供"可选"反馈。
+# 玩家手牌在 SeatPanel 内 scale=0.5,所以 local 16 px ≈ 视觉 8 px lift。
+# Tween 60ms 缓动比硬切自然得多。不可点击时跳过(AI 牌背不响应)。
+const HOVER_LIFT_PX: float = 16.0
+const HOVER_TWEEN_S: float = 0.06
+var _hover_base_y: float = 0.0
+var _hover_tween: Tween = null
+var _hover_active: bool = false
+
+func _on_mouse_enter() -> void:
+	if not _is_clickable or _hover_active:
+		return
+	_hover_active = true
+	_hover_base_y = position.y
+	if _hover_tween and _hover_tween.is_valid():
+		_hover_tween.kill()
+	_hover_tween = create_tween()
+	_hover_tween.tween_property(self, "position:y", _hover_base_y - HOVER_LIFT_PX, HOVER_TWEEN_S)
+
+
+func _on_mouse_exit() -> void:
+	if not _hover_active:
+		return
+	_hover_active = false
+	if _hover_tween and _hover_tween.is_valid():
+		_hover_tween.kill()
+	_hover_tween = create_tween()
+	_hover_tween.tween_property(self, "position:y", _hover_base_y, HOVER_TWEEN_S)
 
 # 直接 draw_texture_rect 画 atlas，避免 TextureRect 嵌套渲染的诡异问题。
 # Panel.draw_style_box 在 NOTIFICATION_DRAW 已画了 stylebox；这里在子 _draw

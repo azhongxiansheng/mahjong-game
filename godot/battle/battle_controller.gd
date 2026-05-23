@@ -239,6 +239,11 @@ func _try_auto_ron(discarded: Tile, discarder: int) -> void:
 			continue
 		# 3) 是否接受 ron 由钩子决定（默认子类不重写则总是接受；玩家子类可弹按钮等待选择）
 		if not _should_accept_ron(candidate, discarded, discarder, ron_check, is_houtei):
+			# 见逃 — 日麻 §5:同巡振听 temporary;立直见逃 → 永久振听
+			# (立直锁牌后只能 tsumogiri,不能再调整待牌,所以一次见逃就锁死)
+			candidate_seat.furiten.temporary = true
+			if candidate_seat.riichi.declared:
+				candidate_seat.furiten.permanent = true
 			continue
 		# 4) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
 		if apply_ron(candidate, discarded, discarder, is_houtei):
@@ -427,7 +432,13 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	var melds_arr: Array = []
 	for m in winner.melds:
 		melds_arr.append(m)
-	var score_yaku_list := _adapt_yaku_list(yaku_list)
+	# Ron 路径:winner.hand 是 13 张,胡牌手需含 ron_tile → 拼 14 张 Hand
+	var win_hand_ron := Hand.new()
+	for t in winner.hand._tiles:
+		win_hand_ron.add(t)
+	win_hand_ron.add(ron_tile)
+	var score_yaku_list := _adapt_yaku_list(
+		yaku_list, win_hand_ron, melds_arr, winner.riichi.declared)
 
 	# M7：在 ScoreCalc 之前 emit pre-score 事件（HOUTEI? + WIN_DECLARED_PRE），
 	# hooks 此时可通过 ctx.add_han / mark_extra_dora / multiply_han_for_seat
@@ -487,7 +498,10 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	for m in seat.melds:
 		melds_arr.append(m)
 
-	var score_yaku_list := _adapt_yaku_list(yaku_list)
+	# Tsumo 路径:engine.draw_for_current 已把摸的牌加进 seat.hand,所以
+	# seat.hand 此时就是 14 张胡牌手,直接传给 _adapt_yaku_list 数 dora。
+	var score_yaku_list := _adapt_yaku_list(
+		yaku_list, seat.hand, melds_arr, seat.riichi.declared)
 
 	# M7：HAITEI? + WIN_DECLARED_PRE，accumulate hook 影响（han_deltas / dora /
 	# multiplier）。pre_ctxs 持所有 pre-score ctx 引用。
@@ -532,11 +546,20 @@ static func _extract_yaku_names(eval_list) -> Array:
 	return out
 
 # 把 YakuEntries（YakuEvaluator 出口）转成 YakuList（ScoreCalc 入口）。
-func _adapt_yaku_list(eval_list: YakuEntries) -> YakuList:
+# dora_count 修正(2026):原来用 visible_indicator_count 是 bug —— 实际 dora 数
+# 应数胡牌手 14 张 + 副露里有几张匹配 dora 指示牌翻出来的那张 +1 牌(以及
+# 赤宝牌 0m/0p/0s,立直胡时还要加裏 dora)。
+# 调用方负责构造完整 14 张胡牌手(_settle_tsumo 已 14 / _settle_ron 在外
+# 拼上 ron_tile),并传 include_uradora=seat.riichi.declared。
+func _adapt_yaku_list(eval_list: YakuEntries, win_hand: Hand = null, win_melds: Array = [], include_uradora: bool = false) -> YakuList:
 	var sc := YakuList.new()
 	sc.is_yakuman = eval_list.is_yakuman()
 	sc.yakuman_multiplier = eval_list.yakuman_total_multiplier()
-	sc.dora_count = state.dora_indicators.visible.size()
+	if win_hand != null:
+		sc.dora_count = state.dora_indicators.count_total_dora(win_hand, win_melds, include_uradora)
+	else:
+		# 旧 API 兼容(其它 caller 临时):仍按 indicator 张数估,虽然不准。
+		sc.dora_count = state.dora_indicators.visible.size()
 	# YakuEntry.yaku_id 是 int (YakuId 常量)，但 YakuList.is_pinfu / is_chiitoi
 	# 走 has_yaku(&"pinfu") / has_yaku(&"chiitoitsu") StringName 比较。
 	# 这里把 PINFU / CHIITOITSU 转 StringName 让 FuCalculator 特殊符识别正确（M4

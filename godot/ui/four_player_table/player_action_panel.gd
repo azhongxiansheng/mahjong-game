@@ -68,13 +68,15 @@ func _build_ui() -> void:
 	add_child(_label_status)
 
 	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过（PANEL_H 80 紧凑版）
-	_btn_riichi = _make_btn("立直", 12, 32)
-	_btn_tsumo = _make_btn("自摸", 12 + 66, 32)
-	_btn_ron = _make_btn("荣和", 12 + 132, 32)
-	_btn_chi = _make_btn("吃", 12 + 198, 32)
-	_btn_pon = _make_btn("碰", 12 + 264, 32)
-	_btn_minkan = _make_btn("杠", 12 + 330, 32)
-	_btn_skip = _make_btn("跳过", 12 + 396, 32)
+	# 按动作类型染色,玩家从一组按钮中第一眼分辨"什么动作":
+	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、灰=跳过(中性)
+	_btn_riichi = _make_btn("立直", 12, 32, Color(0.30, 0.55, 0.85))
+	_btn_tsumo = _make_btn("自摸", 12 + 66, 32, Color(1.0, 0.80, 0.25))
+	_btn_ron = _make_btn("荣和", 12 + 132, 32, Color(1.0, 0.80, 0.25))
+	_btn_chi = _make_btn("吃", 12 + 198, 32, Color(0.85, 0.25, 0.25))
+	_btn_pon = _make_btn("碰", 12 + 264, 32, Color(0.85, 0.25, 0.25))
+	_btn_minkan = _make_btn("杠", 12 + 330, 32, Color(0.85, 0.25, 0.25))
+	_btn_skip = _make_btn("跳过", 12 + 396, 32, Color(0.55, 0.55, 0.55))
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -84,7 +86,7 @@ func _build_ui() -> void:
 	_btn_minkan.pressed.connect(_on_btn_minkan)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
-func _make_btn(text: String, x: float, y: float = 20.0) -> Button:
+func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.position = Vector2(x, y)
@@ -92,6 +94,16 @@ func _make_btn(text: String, x: float, y: float = 20.0) -> Button:
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.disabled = true
 	btn.visible = false  # 雀魂式：只在触发时才显示
+	# 用动作色覆盖 4 态 stylebox border,让玩家一眼分辨动作类型。
+	for state in ["normal", "hover", "pressed", "focus"]:
+		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
+		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
+		sb.border_color = accent
+		sb.border_width_left = 3
+		sb.border_width_right = 3
+		sb.border_width_top = 3
+		sb.border_width_bottom = 3
+		btn.add_theme_stylebox_override(state, sb)
 	add_child(btn)
 	return btn
 

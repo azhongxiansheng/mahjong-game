@@ -19,6 +19,8 @@ func draw_for_current() -> Tile:
 	seat.add_to_hand(t)
 	# 标记刚摸的牌：UI 用于"摸切"显示与立直后强制 tsumogiri（spec 2026-05-08 bug fix）
 	seat.last_drawn_tile_id = t.id
+	# 日麻 §5 同巡振听清除:当事人下一次自摸时,temporary 振听解除。
+	seat.furiten.clear_temporary()
 	state.phase = BattlePhase.Kind.DISCARD
 	return t
 
@@ -38,8 +40,30 @@ func discard(tile_id: int) -> bool:
 	state.discards_per_seat[state.current_seat].append(found_tile)
 	# 弃牌后清掉"刚摸的牌"标记（不再 post-draw）
 	seat.last_drawn_tile_id = -1
+	# 日麻 §5 振听规则:每次自家弃牌后,(1)重算 waits;(2)若任一 wait tile
+	# 已在自家弃牌堆 → permanent furiten(不能荣胡)。立直振听同样走这条
+	# (立直锁牌后听张固定,只要打过 wait 自动落入永久振听)。
+	# temporary 振听(同巡见逃)由 BattleController._try_auto_ron 维护。
+	_recompute_self_furiten(seat)
 	state.phase = BattlePhase.Kind.CLAIM
 	return true
+
+
+# 自家振听检查:13 张听牌张里有任何一张已落进自家弃牌堆 → 永久振听。
+# 鸣牌(seat.melds 非空)同样适用,只是 closed-hand 条件由别处控制。
+func _recompute_self_furiten(seat: Seat) -> void:
+	if seat.hand.size() != 13:
+		return
+	var waits: Array = WaitCalculator.wait_tiles(seat.hand, seat.melds)
+	seat.furiten.update_waits(waits)
+	# 判断自家弃牌中是否含任一 wait
+	var hit: bool = false
+	if not waits.is_empty():
+		for tile in state.discards_per_seat[seat.seat_id]:
+			if tile != null and waits.has(tile.id):
+				hit = true
+				break
+	seat.furiten.permanent = hit
 
 # 推 current_seat 到下家；phase → DRAW；维护 turn_count + first_round_active。
 # 仅在 CLAIM 窗口无人鸣牌时调用；鸣牌成立时由 apply_xxx 自行设 current_seat。
@@ -59,6 +83,9 @@ func declare_riichi(seat_id: int) -> bool:
 		return false
 	var is_double: bool = state.first_round_active and state.turn_count == 0
 	seat.riichi.declare(state.turn_count, is_double)
+	# 立直在 discard 之后调用 → 该 seat 的 discards 末尾就是立直牌。
+	# DiscardRiver 渲染时按此索引把那一张旋转 90°(日麻标志记号)。
+	seat.riichi.riichi_discard_index = state.discards_per_seat[seat_id].size() - 1
 	seat.adjust_points(-1000)
 	seat.riichi.pay_stick()
 	state.riichi_sticks += 1
