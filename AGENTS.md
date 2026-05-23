@@ -143,5 +143,8 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 - **不要相信根目录的 200+ 状态/进度 markdown** —— 它们大多互相矛盾且陈旧。"先思考再编码"在这里意味着先看代码，再看 `CLAUDE.md`，最后才（谨慎地）参考根目录的历史 markdown。
 - **不要扩张 `main.go` 的职责** —— 它只是 Railway 健康检查桩；新增后端逻辑不属于"外科手术式修改"，应先与用户对齐再动。
 - **不要新增根目录 markdown 状态报告** —— 任何"完成总结 / 进度 / 阶段报告"都属于在已经爆炸的目录上再加噪音。需要总结的写进 commit message 或 `docs/`。
-- **Godot autoload 顺序与纹理不变量是隐式契约**（详见 `CLAUDE.md`）—— 修改 `TextureExtractor`、tile 尺寸、`AtlasTexture` / `WHITE` 调制 / `NEAREST` 滤波之前，先看最近几个相关 commit。
+- **Godot autoload 顺序与纹理不变量是隐式契约**（详见 `CLAUDE.md`）—— 修改 `TextureExtractor`、tile 尺寸、`WHITE` 调制 / `NEAREST` 滤波之前，先看最近几个相关 commit。
 - **网络相关改动不能在本仓库端到端验证** —— 客户端期望的 WebSocket 服务器不在本仓库。完成网络代码改动时必须**显式声明"未端到端验证"**，不要假装"测试通过"。
+- **生成 / 替换游戏资产前先 smoke test** —— `godot/tools/asset_gen/` 是 gpt-image-2 资产管线(详见 `CLAUDE.md` 的"资产生成 (gpt-image-2)"段)。gateway 偶尔忽略 `size` 参数 + 整排 sheet 可能粘连切不开,**新接入时先用 `generate_tiles.py --smoke` 4 张样品锁风格 + 验证 b64_json 管线通**,再批量;凭证只读 `~/.zshrc` 环境变量,不入仓库。
+- **资产替换或新增 `class_name` 后必须 `godot --headless --path godot --import`** —— Godot 4 的 `.godot/imported/*.ctex` 纹理缓存 + GDScript 全局类索引都不会自动跟同名 PNG / 新 `class_name` 走。缺这一步,下次启动会拍出"Parse Error: Identifier X not declared" / "Unable to open file ctex"一连串错且**界面全黑**(autoload `TextureExtractor.get_tile_texture` 全返 null)。`CLAUDE.md` 也提到这条,但坑大,在这里再钉一遍。
+- **资产中间产物不入库** —— `godot/tools/asset_gen/{_raw_*,_staging*,_samples,__pycache__}/` 已 `.gitignore`(本目录内 `.gitignore`);只入库 `*.py` 脚本和最终落到 `godot/assets/` 的 PNG。生成过程产生的几十/上百 MB 原图请勿 `git add`。

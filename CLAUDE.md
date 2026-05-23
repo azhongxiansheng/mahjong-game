@@ -69,17 +69,67 @@ docker build -t mahjong . # uses Dockerfile (golang:1.20)
 ```
 `go test ./...` will report "no test files" — there are none.
 
+### 资产生成 (gpt-image-2)
+
+通过 OpenAI 兼容 API 调用 `gpt-image-2` 生成游戏资产(Akagi/斗牌传说风),管线在 **`godot/tools/asset_gen/`**。
+
+**凭证 / 网关**
+- 从 `~/.zshrc` 读 `OPENAI_BASE_URL` + `OPENAI_API_KEY`(脚本 `gen_client._gateways()` 自动取两组配置 fallback)。**凭证不入仓库**。
+- 两个 gateway 都提供 `gpt-image-2`,但 `size` 参数会被偶尔忽略(请求 `1536x1024` 实际返回 `1024x768`)。脚本对此有 retry 兜底。
+
+**工具**
+| 脚本 | 作用 |
+|------|-----|
+| `tile_specs.py` | Akagi 风格 prompt 前后缀 + 38 张牌(34 标准 + 0m/0p/0s 赤宝 + back)逐张 prompt builder |
+| `gen_client.py` | `POST /v1/images/generations` 调用 gpt-image-2,b64_json 解码,3 重试 × 2 gateway fallback |
+| `postprocess.py` | Pillow 裁透明边 + 缩放到 `TILE_SIZE` 272×389;`slice_row(png, expected)` 按列 alpha>60 切水平整排,粘连时返回不足张数触发上游重试 |
+| `generate_tiles.py` | **逐张生成**(单牌精度最稳,style 略漂),`--workers N` 并行;失败可 `--only 8s,1z` 重做 |
+| `generate_sheets.py` | **按花色整排生成 + alpha 间隙切片**(同花色内 style 最一致);每 sheet 最多 4 次 retry 直到切到 expected;honor 牌总粘连切不开 → 现状用逐张 fallback |
+| `generate_misc.py` | 桌面背景 / run 背景 / 节点图标 / HUD 图标 / logo 等非牌资产,并行 |
+
+**约定路径**
+- 麻将牌:`godot/assets/mahjong_tiles_riichi/{1m..9m,1p..9p,1s..9s,1z..7z,0m,0p,0s,back}.png` —— 文件名严格不变(`TextureExtractor` 按名加载),统一 272×389 透明。
+- 节点 / HUD 图标:`godot/assets/run_icons/{node_normal,node_elite,node_camp,node_shop,node_event,node_boss,icon_hp,icon_gold}.png` 透明 128–256 px。
+- 背景:`godot/assets/{run_bg,mahjong_table_bg}.png` 不透明 1536×1024。
+- Logo:`godot/assets/feifan_logo_transparent.png` 透明 512×512。
+
+**工作流**
+```bash
+# 1) smoke test 锁风格(4 张)
+python3 godot/tools/asset_gen/generate_tiles.py --smoke
+
+# 2a) 按花色整排(推荐;同花色内 style 一致)
+python3 godot/tools/asset_gen/generate_sheets.py --all
+# 切到 _staging_sheets/,人工 QA 后 cp 到 godot/assets/mahjong_tiles_riichi/
+
+# 2b) 逐张兜底(整排切不开 / 单牌坏)
+python3 godot/tools/asset_gen/generate_tiles.py --only 8s,1z --out _staging
+
+# 3) 其余资产
+python3 godot/tools/asset_gen/generate_misc.py --all
+
+# 4) 必须刷缓存,否则下次启动报 "Unable to open file ctex"
+godot --headless --path godot --import
+```
+
+**输入产物(.gitignore)**:`_raw_*/`、`_staging*/`、`_samples/`、`__pycache__/`。**只入库**:`*.py` 脚本和最终 PNG。
+
+**视觉核对**:`godot --path godot -s tools/capture_screens.gd` 渲染主要场景到 `/tmp/shot_*.png`(macOS CLI 启动的 Godot 窗口会被 compositor 截屏过滤,这条工具直接走视口 `get_texture().get_image().save_png()` 规避此问题)。
+
 ## Godot architecture
 
 ### Autoloads (singletons)
 Defined in `godot/project.godot` `[autoload]`:
 - **`GameManager`** (`scripts/game_manager.gd`) — holds user session (`user_data`, `is_logged_in`). Set after WeChat-style login.
-- **`TextureExtractor`** (`scripts/texture_extractor.gd`) — runs at `_ready` of every scene. Loads the three FairyGUI atlas PNGs (`assets/mahjong_tiles/mahjong_atlas0{,_1,_2}.png`) and slices 34 mahjong tiles (`w1`-`w9`, `t1`-`t9`, `s1`-`s9`, plus `E S W N Z F B`) at **80×120 px** with **0 padding** using `AtlasTexture`. Tile size and atlas layout are reverse-engineered from the original 贵州弈乐麻将 FairyGUI bundle (see `mahjong.bin` and `extract_tiles.py` in that folder); changing `TILE_WIDTH`/`TILE_HEIGHT` will misalign every tile.
+- **`TextureExtractor`** (`scripts/texture_extractor.gd`, v2) — runs at `_ready` of every scene. **不再走 FairyGUI atlas 切片**;改为按 riichi 标准命名(`1m..9m / 1p..9p / 1s..9s / 1z..7z / 0m / 0p / 0s / back`)直接 `load("res://assets/mahjong_tiles_riichi/<key>.png")`,共 **38 张 272×389 透明 PNG**,目前是 gpt-image-2 用 Akagi 风格重新生成的(详见上节"资产生成 (gpt-image-2)")。`get_tile_texture(key)` 是渲染层(`CardTileBack` / `SeatPanel` / `DiscardRiver` / `MeldArea`)的入口,缺图 fall-back 到 `null` 让调用方走 Label。
+- **`SaveSystem`** (`meta/save_system.gd`) — autoload,`save_run(rs)` / `load_run()` / `clear_run()` 走 `user://savegame.json`。
+- **`MetaProgress`** (`meta/meta_progress.gd`) — autoload,跨 Run 声望累计 + 战绩。
 
 Tile-rendering invariants worth knowing:
-- AtlasTexture is preferred over manual `get_region` (see commit `364db08`).
+- `assets/mahjong_tiles_riichi/<key>.png` **文件名严格不变** —— TextureExtractor 按名加载;重生成资产时 `--out` 到 staging 目录人工 QA 后再 `cp` 覆盖,不要换文件名。
+- 资产改完必须 `godot --headless --path godot --import` 刷 `.godot/imported/*.ctex`,否则启动报"Unable to open file ctex"一连串错。
 - Sprites must be modulated `WHITE` — anything else (including default theme tints) makes tiles render as solid color (commit `6090d26`).
-- Texture filter is `TEXTURE_FILTER_NEAREST` for pixel-perfect rendering. **Set via project setting** `rendering/textures/canvas_textures/default_texture_filter=1` in `project.godot` —— `AtlasTexture` 自身没有 `filter_mode` 属性（旧代码曾误用，已修，参见 `texture_extractor.gd` 头部常量注释）。
+- Texture filter is `TEXTURE_FILTER_NEAREST` for pixel-perfect rendering. **Set via project setting** `rendering/textures/canvas_textures/default_texture_filter=1` in `project.godot`。
 
 ### 日麻引擎与技能框架（active development）
 
