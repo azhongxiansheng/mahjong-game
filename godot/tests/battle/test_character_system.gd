@@ -33,42 +33,54 @@ func test_character_serialization():
 	assert_eq(restored.starting_hp, 4)
 	assert_eq(restored.starting_gold, 50)
 
-func test_akagi_passive_adds_1_han():
-	var reg := SkillRegistry.new()
-	var st := BattleState.new()
-	var sched := SkillScheduler.new(reg, st)
-	BossAbilityFactory.inject(reg, &"char_akagi_passive_v1", 0)
-	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(int(ctx.han_deltas.get(0, 0)), 1, "赤木被动应 +1 番")
-
-func test_kaiji_passive_cancels_ron_sometimes():
-	var reg := SkillRegistry.new()
-	var st := BattleState.new()
-	var sched := SkillScheduler.new(reg, st)
-	BossAbilityFactory.inject(reg, &"char_kaiji_passive_v1", 0)
-	var cancelled_count := 0
-	for seed_val in range(20):
-		st.ron_cancelled[1] = false
-		var ev := BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0})
-		ev.chain_id = seed_val
-		sched.emit_event(ev)
-		if st.ron_cancelled[1]:
-			cancelled_count += 1
-	assert_gt(cancelled_count, 0, "开司被动应偶尔取消 ron")
-	assert_lt(cancelled_count, 20, "开司被动不应总是取消")
-
-func test_washizu_passive_reveals_wall():
+func test_akagi_passive_reveals_opponent_hand():
 	var reg := SkillRegistry.new()
 	var st := BattleState.new()
 	st.wall = Wall.new_full_set()
 	st.wall.shuffle(42)
 	st.wall.reserve_dead_wall(14)
 	for i in range(4):
-		st.seats.append(Seat.new(i, TileId.E))
+		var seat := Seat.new(i, TileId.E)
+		for _j in range(13):
+			seat.add_to_hand(st.wall.draw())
+		st.seats.append(seat)
+	var sched := SkillScheduler.new(reg, st)
+	BossAbilityFactory.inject(reg, &"char_akagi_passive_v1", 0)
+	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+	assert_gt(st.revealed_tiles.size(), 0, "赤木鬼読み应 reveal 对手手牌")
+
+func test_kaiji_passive_adds_han_when_low_score():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	st.scores[0] = 10000
+	var sched := SkillScheduler.new(reg, st)
+	BossAbilityFactory.inject(reg, &"char_kaiji_passive_v1", 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 2, "开司低分时应 +2 番")
+
+func test_kaiji_passive_no_han_when_high_score():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	BossAbilityFactory.inject(reg, &"char_kaiji_passive_v1", 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 0, "开司高分时不增番")
+
+func test_washizu_passive_reveals_all_opponents():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	st.wall = Wall.new_full_set()
+	st.wall.shuffle(42)
+	st.wall.reserve_dead_wall(14)
+	for i in range(4):
+		var seat := Seat.new(i, TileId.E)
+		for _j in range(13):
+			seat.add_to_hand(st.wall.draw())
+		st.seats.append(seat)
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_washizu_passive_v1", 0)
 	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
-	assert_eq(st.revealed_tiles.size(), 3, "鹲巣被动应 reveal 3 张")
+	assert_eq(st.revealed_tiles.size(), 6, "鹲巣应 reveal 3 对手各 2 张 = 6 张")
 
 func test_run_state_character_applied():
 	var rs := RunState.new(42)

@@ -1,13 +1,13 @@
-# 开司 — 角色被动
-# 被荣胡时 50% 概率取消（防御型角色核心增益）
-# 用 event chain depth + turn_count 做确定性随机
+# 开司 — 角色被动「逆境覚醒」
+# 原著：伊藤开司在极端逆境下才能爆发，靠拼命和直觉逆转。
+# 效果：分数 < 15000 时胡牌 +2 番（逆境反击）。
 extends SkillHook
 
+const THRESHOLD: int = 15000
+const BONUS_HAN: int = 2
+
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
-	var discarder: int = int(event.extra.get("discarder_seat", -1))
-	if discarder != ctx.beneficiary_seat:
+	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	var rng := RandomNumberGenerator.new()
-	rng.seed = ctx.get_event().chain_id * 37 + discarder * 13
-	if rng.randf() < 0.5:
-		ctx.cancel_ron(event.actor_seat)
+	if ctx.get_score(ctx.beneficiary_seat) < THRESHOLD:
+		ctx.add_han(ctx.beneficiary_seat, BONUS_HAN)

@@ -7,7 +7,7 @@ static func all() -> Array:
 
 	var akagi := Character.new(&"akagi")
 	akagi.display_name = "赤木"
-	akagi.description = "攻击型。每次胡牌额外 +1 番。起始 HP 较低但起始金币多。"
+	akagi.description = "鬼読み。每次摸牌后透视下家 1 张手牌。起始 HP 低但金币多。"
 	akagi.ability_id = &"char_akagi_passive_v1"
 	akagi.starting_hp = 4
 	akagi.starting_gold = 50
@@ -17,7 +17,7 @@ static func all() -> Array:
 
 	var kaiji := Character.new(&"kaiji")
 	kaiji.display_name = "开司"
-	kaiji.description = "防御型。被荣胡时 50% 概率取消（每局最多 1 次）。标准起始。"
+	kaiji.description = "逆境覚醒。分数低于 15000 时胡牌 +2 番。标准起始。"
 	kaiji.ability_id = &"char_kaiji_passive_v1"
 	kaiji.starting_hp = 5
 	kaiji.starting_gold = 0
@@ -27,7 +27,7 @@ static func all() -> Array:
 
 	var washizu := Character.new(&"washizu")
 	washizu.display_name = "鹲巣"
-	washizu.description = "信息型。每局开始看牌墙顶 3 张。起始 HP 高但无金币。"
+	washizu.description = "鷲巣麻雀。开局透视所有对手各 2 张手牌。起始 HP 高。"
 	washizu.ability_id = &"char_washizu_passive_v1"
 	washizu.starting_hp = 6
 	washizu.starting_gold = 0

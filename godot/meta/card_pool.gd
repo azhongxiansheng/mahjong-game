@@ -175,14 +175,14 @@ static func all_abilities() -> Array:
 		Rarity.Kind.EPIC, "res://skills/hooks/riichi_kago_hook.gd"))
 
 	# 角色被动能力
-	pool.append(_mk_ability(&"char_akagi_passive_v1", "赤木·闘志",
-		"每次胡牌额外 +1 番（角色被动）",
+	pool.append(_mk_ability(&"char_akagi_passive_v1", "赤木·鬼読み",
+		"每次摸牌后透视下家 1 张手牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_akagi_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_kaiji_passive_v1", "开司·逆境",
-		"被荣胡时 50% 概率取消（角色被动）",
+	pool.append(_mk_ability(&"char_kaiji_passive_v1", "开司·逆境覚醒",
+		"分数 < 15000 时胡牌 +2 番（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kaiji_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_washizu_passive_v1", "鹲巣·透视",
-		"每局开始看牌墙顶 3 张（角色被动）",
+	pool.append(_mk_ability(&"char_washizu_passive_v1", "鹲巣·鷲巣麻雀",
+		"开局透视所有对手各 2 张手牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_washizu_passive_hook.gd"))
 
 	# M7 收尾：M6 唯一 holdout（plan-6 §8.10 #12）

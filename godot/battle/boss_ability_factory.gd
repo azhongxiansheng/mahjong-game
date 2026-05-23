@@ -37,8 +37,8 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	# M7 收尾：tougenkyo_v1（M6 holdout）
 	&"tougenkyo_v1": [&"WIN_DECLARED_PRE"],
 	# 角色被动
-	&"char_akagi_passive_v1": [&"WIN_DECLARED_PRE"],
-	&"char_kaiji_passive_v1": [&"RON_DECLARED"],
+	&"char_akagi_passive_v1": [&"TILE_DRAWN"],
+	&"char_kaiji_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_washizu_passive_v1": [&"GAME_BEGIN"],
 }
 
