@@ -22,7 +22,7 @@ signal player_action_chosen(choice: Dictionary)
 #   {"action": "chi", "discarder_seat": int}     — 吃（仅下家）
 #   {"action": "skip"}                           — 见逃响应窗口
 
-enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM }
+enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM, WAITING_KYUUSYU }
 
 var _state: State = State.IDLE
 var _claim_discarder_seat: int = -1
@@ -36,8 +36,9 @@ var _btn_chi: Button = null        # WAITING_CLAIM 用 — "吃"（仅下家）
 var _btn_pon: Button = null        # WAITING_CLAIM 用 — "碰"
 var _btn_minkan: Button = null     # WAITING_CLAIM 用 — "杠"
 var _btn_skip: Button = null       # WAITING_CLAIM/WAITING_RIICHI_CONFIRM 用 — "跳过"
+var _btn_kyuusyu: Button = null    # WAITING_KYUUSYU 用 — "九種九牌"(途中流局)
 
-const PANEL_W: float = 480.0  # 容纳 7 个按钮（立直/自摸/荣/吃/碰/杠/跳过）
+const PANEL_W: float = 540.0  # 容纳 8 个按钮(原 7 + 九種九牌)
 const PANEL_H: float = 80.0   # 紧凑：status 8-28 + buttons 32-72
 
 func _ready() -> void:
@@ -69,14 +70,15 @@ func _build_ui() -> void:
 
 	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过（PANEL_H 80 紧凑版）
 	# 按动作类型染色,玩家从一组按钮中第一眼分辨"什么动作":
-	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、灰=跳过(中性)
+	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、紫=途中流局(规则牌)、灰=跳过(中性)
 	_btn_riichi = _make_btn("立直", 12, 32, Color(0.30, 0.55, 0.85))
 	_btn_tsumo = _make_btn("自摸", 12 + 66, 32, Color(1.0, 0.80, 0.25))
 	_btn_ron = _make_btn("荣和", 12 + 132, 32, Color(1.0, 0.80, 0.25))
 	_btn_chi = _make_btn("吃", 12 + 198, 32, Color(0.85, 0.25, 0.25))
 	_btn_pon = _make_btn("碰", 12 + 264, 32, Color(0.85, 0.25, 0.25))
 	_btn_minkan = _make_btn("杠", 12 + 330, 32, Color(0.85, 0.25, 0.25))
-	_btn_skip = _make_btn("跳过", 12 + 396, 32, Color(0.55, 0.55, 0.55))
+	_btn_kyuusyu = _make_btn("九種", 12 + 396, 32, Color(0.65, 0.30, 0.85))
+	_btn_skip = _make_btn("跳过", 12 + 462, 32, Color(0.55, 0.55, 0.55))
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -84,6 +86,7 @@ func _build_ui() -> void:
 	_btn_chi.pressed.connect(_on_btn_chi)
 	_btn_pon.pressed.connect(_on_btn_pon)
 	_btn_minkan.pressed.connect(_on_btn_minkan)
+	_btn_kyuusyu.pressed.connect(_on_btn_kyuusyu)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
 func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
@@ -123,7 +126,7 @@ func _refresh_bg() -> void:
 	if _bg == null:
 		return
 	var any_btn_visible := false
-	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_skip]:
+	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_kyuusyu, _btn_skip]:
 		if btn != null and btn.visible:
 			any_btn_visible = true
 			break
@@ -197,6 +200,20 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 		_hide_btn(_btn_minkan)
 	_show_btn(_btn_skip)
 
+# 进入"九種九牌"宣告状态:第一巡摸完后 14 张含 ≥ 9 种幺九,玩家可选途中流局。
+func enter_waiting_kyuusyu() -> void:
+	_state = State.WAITING_KYUUSYU
+	_label_status.text = "可宣告九種九牌(途中流局)— 选择"
+	_hide_btn(_btn_riichi)
+	_hide_btn(_btn_tsumo)
+	_hide_btn(_btn_ron)
+	_hide_btn(_btn_chi)
+	_hide_btn(_btn_pon)
+	_hide_btn(_btn_minkan)
+	_show_btn(_btn_kyuusyu)
+	_show_btn(_btn_skip)
+
+
 func enter_idle(status_text: String = "等待 AI...") -> void:
 	_state = State.IDLE
 	_label_status.text = status_text
@@ -206,6 +223,7 @@ func enter_idle(status_text: String = "等待 AI...") -> void:
 	_hide_btn(_btn_chi)
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
+	_hide_btn(_btn_kyuusyu)
 	_hide_btn(_btn_skip)
 
 func _apply_state(s: State) -> void:
@@ -249,3 +267,10 @@ func _on_btn_skip() -> void:
 		player_action_chosen.emit({"action": "riichi_no"})
 	elif _state == State.WAITING_CLAIM:
 		player_action_chosen.emit({"action": "skip"})
+	elif _state == State.WAITING_KYUUSYU:
+		player_action_chosen.emit({"action": "kyuusyu_no"})
+
+
+func _on_btn_kyuusyu() -> void:
+	if _state == State.WAITING_KYUUSYU:
+		player_action_chosen.emit({"action": "kyuusyu_yes"})

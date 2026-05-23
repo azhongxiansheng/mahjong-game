@@ -132,6 +132,16 @@ func apply_result(events: Array) -> Dictionary:
 				"winner_total": winner_total,
 			}
 
+	# 找途中流局事件(九種九牌等);途中流局优先于"普通流局"。
+	for i in range(events.size() - 1, -1, -1):
+		var ev2: BattleEvent = events[i]
+		if ev2.type == &"ABORTIVE_DRAW":
+			_apply_in_hand_skill_deltas()
+			if battle != null:
+				riichi_sticks = battle.state.riichi_sticks
+			return {"kind": "abortive_draw",
+				"reason": String(ev2.extra.get("reason", ""))}
+
 	# 没找到 WIN_DECLARED → 流局
 	# 流局也要应用 in-hand skill 转分（流局期间也可能 transfer_points）
 	_apply_in_hand_skill_deltas()
@@ -180,6 +190,11 @@ func advance_or_finish(result: Dictionary) -> Dictionary:
 			for s in deltas:
 				cumulative_scores[s] += int(deltas[s])
 			# 流局立直棒留台到下局；这里不动 riichi_sticks
+		"abortive_draw":
+			# 日麻 §3.2 途中流局(九種九牌 / 四风连打 / 四杠散了 / 四家立直
+			# / 三家和了):无人胡 → dealer 留任(renchan) + 本场 +1,无点数转移
+			# 罚符,立直棒在场上不变。
+			renchan = true
 
 	if renchan:
 		honba += 1

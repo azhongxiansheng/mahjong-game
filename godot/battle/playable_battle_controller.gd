@@ -130,6 +130,24 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 		# 其它 action 在此状态被忽略，继续等
 	return null  # unreachable
 
+# 九種九牌覆写:玩家(seat 0)摸完牌触发条件时,弹按钮等选择;其它 seat AI 不主动 abort。
+func _should_declare_kyuusyu_kyuuhai(actor: int) -> bool:
+	if actor != PLAYER_SEAT or _action_panel == null:
+		return false
+	_action_panel.enter_waiting_kyuusyu()
+	while true:
+		var choice: Dictionary = await _action_panel.player_action_chosen
+		var action: String = String(choice.get("action", ""))
+		match action:
+			"kyuusyu_yes":
+				_action_panel.enter_idle("九種九牌！本局流局")
+				return true
+			"kyuusyu_no":
+				_action_panel.enter_idle("AI 出牌中…")
+				return false
+	return false
+
+
 func _get_riichi_decision(actor: int) -> bool:
 	if actor != PLAYER_SEAT or _action_panel == null:
 		await _ai_think_pause()

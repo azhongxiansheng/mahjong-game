@@ -282,6 +282,13 @@ func _should_accept_tsumo(_actor: int, _drawn: Tile, _win_check: Dictionary) -> 
 func _try_player_claim_async(_discarded: Tile, _discarder: int) -> void:
 	pass
 
+
+# 九種九牌(日麻 §3.2):第一巡 14 张含 ≥9 种幺九 → 玩家可宣告途中流局。
+# 默认:AI 永不主动宣告(continue playing)。PlayableBattleController 在
+# seat==0 时覆写 → 弹按钮等玩家选。
+func _should_declare_kyuusyu_kyuuhai(_actor: int) -> bool:
+	return false
+
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
 # 跟 run_to_end() 行为完全一样，只是把 _step_draw / _step_discard / _try_auto_ron
@@ -319,6 +326,19 @@ func _step_draw_async() -> void:
 		_settled = true
 		return
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
+	# 日麻 §3.2 九種九牌:第一巡(state.first_round_active + turn_count == 0)
+	# 摸完牌后,若本家 14 张含 ≥ 9 种 distinct 幺九 → 玩家可选途中流局。
+	# 默认 hook 返 false(AI 永不主动 abort);PlayableBattleController 覆写
+	# 让 seat 0 弹按钮等玩家决定。
+	if state.first_round_active and state.turn_count == 0:
+		var seat: Seat = state.seats[state.current_seat]
+		if AbortiveDraw.is_kyuusyu_kyuuhai(seat.hand.to_id_array()):
+			var declare_kyuusyu: bool = await _should_declare_kyuusyu_kyuuhai(state.current_seat)
+			if declare_kyuusyu:
+				_emit(&"ABORTIVE_DRAW", state.current_seat, null,
+					{"reason": "kyuusyu_kyuuhai"})
+				_settled = true
+				return
 	var is_haitei: bool = (state.wall.live_wall_size() == 0)
 	var win := _check_tsumo(t, is_haitei)
 	if win.is_winning:

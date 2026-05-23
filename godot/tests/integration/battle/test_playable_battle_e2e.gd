@@ -46,6 +46,9 @@ func _respond(panel: PlayerActionPanel, bc: PlayableBattleController, st: int) -
 			panel.player_action_chosen.emit({"action": "riichi_no"})
 		PlayerActionPanel.State.WAITING_CLAIM:
 			panel.player_action_chosen.emit({"action": "skip"})
+		PlayerActionPanel.State.WAITING_KYUUSYU:
+			# 默认不申请九種九牌(让测试跑到自然终局,而非途中流局)
+			panel.player_action_chosen.emit({"action": "kyuusyu_no"})
 
 
 func _play_one_hand(seed: int) -> PlayableBattleController:
