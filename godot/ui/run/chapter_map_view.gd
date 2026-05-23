@@ -44,7 +44,26 @@ static func node_glyph(kind: int) -> String:
 		NodeKind.Kind.BOSS:   return "王"
 	return "?"
 
+# 节点种类 → run_icons 资源名。缺图时（资产未生成）返回 null，
+# 调用方 fall-back 到 node_glyph 文字。
+static func node_icon(kind: int) -> Texture2D:
+	var name := ""
+	match kind:
+		NodeKind.Kind.NORMAL: name = "node_normal"
+		NodeKind.Kind.ELITE:  name = "node_elite"
+		NodeKind.Kind.CAMP:   name = "node_camp"
+		NodeKind.Kind.SHOP:   name = "node_shop"
+		NodeKind.Kind.EVENT:  name = "node_event"
+		NodeKind.Kind.BOSS:   name = "node_boss"
+	if name == "":
+		return null
+	var path := "res://assets/run_icons/%s.png" % name
+	if not ResourceLoader.exists(path):
+		return null
+	return load(path) as Texture2D
+
 func _ready() -> void:
+	RunUi.attach_background(self)
 	_rebuild()
 
 # ---- public setters ----
@@ -204,10 +223,16 @@ func _render_visual_map() -> void:
 
 func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_available: bool, is_visited: bool) -> void:
 	var btn := Button.new()
-	btn.text = node_glyph(node_ref.kind)
 	btn.custom_minimum_size = Vector2(NODE_RADIUS * 2.0, NODE_RADIUS * 2.0)
 	btn.position = pos - Vector2(NODE_RADIUS, NODE_RADIUS)
-	btn.add_theme_font_size_override("font_size", 22)
+	# 有节点图标资产时用图标，否则 fall-back 到文字字形。
+	var icon: Texture2D = node_icon(node_ref.kind)
+	if icon != null:
+		btn.icon = icon
+		btn.expand_icon = true
+	else:
+		btn.text = node_glyph(node_ref.kind)
+		btn.add_theme_font_size_override("font_size", 22)
 	# 配色：当前节点亮金边，可选节点正常色，已访问灰显
 	var base: Color = node_color(node_ref.kind)
 	if is_visited:

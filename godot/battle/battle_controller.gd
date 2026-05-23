@@ -274,13 +274,8 @@ func _should_accept_tsumo(_actor: int, _drawn: Tile, _win_check: Dictionary) -> 
 
 # 玩家鸣牌响应（吃/碰/杠）窗口；默认 no-op（v1 AI 不主动鸣牌）。
 # PlayableBattleController 覆写：玩家可吃/碰/杠时弹按钮 await 玩家选择。
-# 注意：return 类型不声明 — 让子类返 coroutine（GDScriptFunctionState）让调用方
-# 用 `if result is GDScriptFunctionState: await result` idiom 正确等待玩家输入。
-func _try_player_claim_async(_discarded: Tile, _discarder: int):
-	# DEBUG: emit DEFAULT_HOOK 让 polling 能区分 "走父类默认" vs "走子类 override"
-	print("[BC.parent_default _try_player_claim_async] discarder=%d self_type=%s" % [
-		_discarder, get_script().resource_path])
-	_emit(&"DEFAULT_HOOK_CALLED", -1, null, {})
+func _try_player_claim_async(_discarded: Tile, _discarder: int) -> void:
+	pass
 
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
@@ -459,6 +454,9 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	# hooks（soul_drain_hatsu / east_mirror_chambo 等用 transfer_points）能读到
 	result["discarder_seat"] = discarder_seat
 	result["points_won"] = int(result.get("winner_total", 0))
+	# 给 UI 结算 overlay 用：抽出本次胡牌命中的役名 + han（已含 evaluator
+	# 的役満/普通飜判定;skill_han/extra_dora 等修正不在此列表内）。
+	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
 	engine.apply_ron(winner_seat, ron_tile)
 	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
@@ -511,10 +509,27 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 
 	# M7：tsumo 无 discarder_seat（自摸无放铳人），仅设 points_won
 	result["points_won"] = int(result.get("winner_total", 0))
+	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
 	engine.apply_tsumo(state.current_seat, drawn)
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)
 	_settled = true
+
+
+# 把 YakuEntries 转成 UI 结算 overlay 用的 [{name, han}] 数组。
+# 役満条目 han=0 → 显示为 "役満 (Nx)"。
+static func _extract_yaku_names(eval_list) -> Array:
+	var out: Array = []
+	if eval_list == null:
+		return out
+	for entry in eval_list.entries:
+		var meta: Dictionary = YakuId.metadata(int(entry.yaku_id))
+		var name_zh: String = String(meta.get("name_zh", "?"))
+		var item: Dictionary = {"name": name_zh, "han": int(entry.han)}
+		if bool(entry.is_yakuman):
+			item["yakuman_multiplier"] = int(entry.yakuman_multiplier)
+		out.append(item)
+	return out
 
 # 把 YakuEntries（YakuEvaluator 出口）转成 YakuList（ScoreCalc 入口）。
 func _adapt_yaku_list(eval_list: YakuEntries) -> YakuList:

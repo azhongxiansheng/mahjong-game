@@ -15,6 +15,7 @@ signal done
 var _kind: int = NodeKind.Kind.CAMP
 
 func _ready() -> void:
+	RunUi.attach_background(self)
 	if _next_btn:
 		_next_btn.pressed.connect(_on_next_pressed)
 	_refresh()

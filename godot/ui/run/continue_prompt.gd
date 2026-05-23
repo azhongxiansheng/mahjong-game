@@ -15,6 +15,7 @@ signal new_run
 var _save_summary_text: String = "（无存档摘要）"
 
 func _ready() -> void:
+	RunUi.attach_background(self)
 	if _continue_btn:
 		_continue_btn.pressed.connect(func(): emit_signal("continue_run"))
 	if _new_btn:

@@ -3,16 +3,16 @@ extends GutTest
 # US-008 RunHud 排版升级单测：HP bar 颜色 + format helpers
 
 func test_format_chapter_text():
-	assert_eq(RunHud.format_chapter_text(1, "3"), "📍 章 1 · 层 3")
+	assert_eq(RunHud.format_chapter_text(1, "3"), "章 1 · 层 3")
 
 func test_format_hp_text():
-	assert_eq(RunHud.format_hp_text(3, 5), "♥ 3 / 5")
+	assert_eq(RunHud.format_hp_text(3, 5), "3 / 5")
 
 func test_format_gold_text():
-	assert_eq(RunHud.format_gold_text(120), "🪙 120")
+	assert_eq(RunHud.format_gold_text(120), "120")
 
 func test_format_deck_text():
-	assert_eq(RunHud.format_deck_text(7), "🃏 卡组 7")
+	assert_eq(RunHud.format_deck_text(7), "卡组 7")
 
 func test_hp_bar_color_full_health_green():
 	# > 50%

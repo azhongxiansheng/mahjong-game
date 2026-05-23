@@ -21,8 +21,8 @@ const EVENT_POOL: Array = [
 		"title": "🪙 路边拾遗",
 		"description": "你在路边发现一袋遗失的金币，旁边没有失主。",
 		"options": [
-			{"label": "拾起（+30 金币）", "hp_delta": 0, "gold_delta": 30},
-			{"label": "归还原主（+0）", "hp_delta": 0, "gold_delta": 0},
+			{"label": "拾起", "hp_delta": 0, "gold_delta": 30},
+			{"label": "归还原主", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
 	{
@@ -30,8 +30,8 @@ const EVENT_POOL: Array = [
 		"title": "🥺 街边乞讨者",
 		"description": "一位老者站在路边，向你伸出手。",
 		"options": [
-			{"label": "施舍 30 金币（+1 HP，命运庇佑）", "hp_delta": 1, "gold_delta": -30, "require_gold": 30},
-			{"label": "拒绝（-1 HP，怨念缠身）", "hp_delta": -1, "gold_delta": 0},
+			{"label": "施舍（命运庇佑）", "hp_delta": 1, "gold_delta": -30, "require_gold": 30},
+			{"label": "拒绝（怨念缠身）", "hp_delta": -1, "gold_delta": 0},
 			{"label": "悄悄走开", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
@@ -40,8 +40,8 @@ const EVENT_POOL: Array = [
 		"title": "⛩️ 麻将之祠",
 		"description": "你看到一座古老的祠堂，灯火摇曳。香火供着一只九莲宝灯纹的木雕。",
 		"options": [
-			{"label": "祈祷（恢复全部 HP）", "hp_delta": 999, "gold_delta": 0},
-			{"label": "供奉 50 金币（+2 HP）", "hp_delta": 2, "gold_delta": -50, "require_gold": 50},
+			{"label": "祈祷", "hp_delta": 999, "gold_delta": 0},
+			{"label": "供奉", "hp_delta": 2, "gold_delta": -50, "require_gold": 50},
 			{"label": "走过去", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
@@ -50,7 +50,7 @@ const EVENT_POOL: Array = [
 		"title": "💰 行商兜售",
 		"description": "一名行商凑近你低声说：「想要快速致富吗？」",
 		"options": [
-			{"label": "用 1 HP 换 60 金币", "hp_delta": -1, "gold_delta": 60},
+			{"label": "卖血换金", "hp_delta": -1, "gold_delta": 60},
 			{"label": "婉拒", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
@@ -59,13 +59,15 @@ const EVENT_POOL: Array = [
 		"title": "🀄 风之牌的低语",
 		"description": "桌上散落着几张被风吹乱的牌，其中一张闪着金光。",
 		"options": [
-			{"label": "拾起（+15 金币）", "hp_delta": 0, "gold_delta": 15},
+			{"label": "拾起", "hp_delta": 0, "gold_delta": 15},
 			{"label": "无视", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
 ]
 
 func _ready() -> void:
+	RunUi.attach_background(self)
+	RunUi.attach_panel_icon($VBox, "res://assets/run_icons/node_event.png")
 	_refresh()
 
 # ---- public setters ----
@@ -136,12 +138,40 @@ func _refresh() -> void:
 	for i in range(options.size()):
 		var opt: Dictionary = options[i]
 		var btn := Button.new()
-		btn.text = opt.get("label", "选项 %d" % (i + 1))
-		btn.custom_minimum_size = Vector2(0, 50)
+		# 标题 + 自动生成的 delta 预览(2 行按钮):玩家不用从中文括号里猜
+		# 数值,直接读"+30 金币 · HP -1 · 需 30 金币"一眼可比较选项。
+		var delta_line: String = format_option_delta(opt)
+		if delta_line == "":
+			btn.text = opt.get("label", "选项 %d" % (i + 1))
+		else:
+			btn.text = "%s\n[%s]" % [opt.get("label", "选项 %d" % (i + 1)), delta_line]
+		btn.custom_minimum_size = Vector2(0, 64)
 		btn.disabled = not can_apply(opt, _run_state)
 		var captured_opt: Dictionary = opt
 		btn.pressed.connect(func(): _on_option_chosen(captured_opt))
 		_options_box.add_child(btn)
+
+
+# 从 option dict 拼"HP +1 · -30 金币 · 需 30 金币"风格预览串(纯派生字段,
+# 不读 label)。无任何 delta/require 时返回 ""。
+static func format_option_delta(opt: Dictionary) -> String:
+	var parts: Array[String] = []
+	var hp_delta: int = int(opt.get("hp_delta", 0))
+	if hp_delta == 999:
+		parts.append("HP 全满")
+	elif hp_delta > 0:
+		parts.append("HP +%d" % hp_delta)
+	elif hp_delta < 0:
+		parts.append("HP %d" % hp_delta)
+	var gold_delta: int = int(opt.get("gold_delta", 0))
+	if gold_delta > 0:
+		parts.append("+%d 金币" % gold_delta)
+	elif gold_delta < 0:
+		parts.append("%d 金币" % gold_delta)
+	var require_gold: int = int(opt.get("require_gold", 0))
+	if require_gold > 0:
+		parts.append("需 %d 金币" % require_gold)
+	return " · ".join(parts)
 
 func _on_option_chosen(option: Dictionary) -> void:
 	apply_option(option, _run_state)

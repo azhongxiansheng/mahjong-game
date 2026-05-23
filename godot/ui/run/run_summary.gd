@@ -13,6 +13,7 @@ signal back_to_menu
 @onready var _back_btn: Button = $VBox/BackBtn
 
 func _ready() -> void:
+	RunUi.attach_background(self)
 	if _back_btn:
 		_back_btn.pressed.connect(func(): emit_signal("back_to_menu"))
 
@@ -34,8 +35,8 @@ func bind_run_state(rs: RunState) -> void:
 
 static func format_outcome_title(won: bool) -> String:
 	if won:
-		return "🎉 通关！"
-	return "💀 Run 失败"
+		return "通关"
+	return "Run 失败"
 
 static func format_summary(rs: RunState) -> String:
 	var lines: Array[String] = []
@@ -49,8 +50,8 @@ static func format_summary(rs: RunState) -> String:
 # 实装真元进度）。format_renown_with_meta 用真数据；本函数仅作 fallback。
 static func format_renown_placeholder(won: bool) -> String:
 	if won:
-		return "声望 +50（占位）"
-	return "声望 +5（占位）"
+		return "声望 +50"
+	return "声望 +5"
 
 # M5 第 3 步：MetaProgress 已存在时显示真声望增量 + 累计 + 跨 Run 战绩
 static func format_renown_with_meta(won: bool, total_renown: int, runs_completed: int, runs_won: int) -> String:

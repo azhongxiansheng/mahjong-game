@@ -23,6 +23,8 @@ var _current_gold: int = 0
 var _slot_buttons: Array[Button] = []
 
 func _ready() -> void:
+	RunUi.attach_background(self)
+	RunUi.attach_panel_icon($VBox, "res://assets/run_icons/node_shop.png")
 	if _next_btn:
 		_next_btn.pressed.connect(func(): emit_signal("done"))
 
@@ -85,10 +87,30 @@ func _rebuild() -> void:
 		btn.text = format_slot_text(r)
 		btn.custom_minimum_size = Vector2(220, 200)
 		btn.disabled = _current_gold < price_for(r)
+		# 稀有度边框:从主题 Button StyleBox 派生,把 border_color 换成稀有度色
+		# (灰/蓝/紫/金),让玩家一眼看出 slot 价值。normal/hover/pressed/disabled
+		# 都覆盖,避免 hover 时退回主题红边。
+		_apply_rarity_border(btn, r.rarity if r else -1)
 		var captured_index: int = i
 		btn.pressed.connect(func(): _on_slot_pressed(captured_index))
 		_slots_box.add_child(btn)
 		_slot_buttons.append(btn)
+
+
+# 用稀有度色覆盖按钮 4 态 StyleBox 的描边。
+static func _apply_rarity_border(btn: Button, rarity: int) -> void:
+	if rarity < 0:
+		return
+	var col: Color = Rarity.color(rarity)
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
+		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
+		sb.border_color = col
+		sb.border_width_left = 3
+		sb.border_width_top = 3
+		sb.border_width_right = 3
+		sb.border_width_bottom = 3
+		btn.add_theme_stylebox_override(state, sb)
 
 func _on_slot_pressed(index: int) -> void:
 	if _bought[index]:

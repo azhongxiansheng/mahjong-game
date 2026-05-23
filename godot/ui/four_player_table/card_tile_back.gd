@@ -159,7 +159,7 @@ static func tile_back_color(owner_seat: int) -> Color:
 		return UNKNOWN_OWNER_COLOR
 	return SEAT_TILE_BACK_COLORS[owner_seat]
 
-# 牌简短名（与 CenterInfoPanel._tile_short_name 保持一致；这里独立避免跨模块依赖）
+# 牌简短名（共用入口，CenterInfoPanel.dora_summary 路由到此,避免重复）
 static func tile_short_name(tile_id: int) -> String:
 	if tile_id < 0:
 		return "?"

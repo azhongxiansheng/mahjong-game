@@ -8,10 +8,10 @@ class_name PackOpenView extends Control
 signal done
 
 const RARITY_BG: Array[Color] = [
-	Color(0.55, 0.55, 0.55, 0.85),  # 普通 灰
-	Color(0.30, 0.55, 0.85, 0.85),  # 精良 蓝
-	Color(0.65, 0.30, 0.85, 0.85),  # 史诗 紫
-	Color(1.00, 0.80, 0.20, 0.85),  # 神话 金
+	Color(0.55, 0.55, 0.55, 1.0),  # 普通 灰(alpha 1.0,run_bg 不透出来)
+	Color(0.30, 0.55, 0.85, 1.0),  # 精良 蓝
+	Color(0.65, 0.30, 0.85, 1.0),  # 史诗 紫
+	Color(1.00, 0.80, 0.20, 1.0),  # 神话 金
 ]
 
 @onready var _title: Label = $VBox/Title
@@ -22,6 +22,7 @@ var _results: Array = []  # Array[GachaResult]
 var _title_text: String = "节点抽卡奖励"
 
 func _ready() -> void:
+	RunUi.attach_background(self)
 	if _confirm_btn:
 		_confirm_btn.pressed.connect(_on_confirm)
 	_rebuild()
@@ -61,7 +62,7 @@ static func format_card_text(r: GachaResult) -> String:
 
 static func bg_color_for_rarity(rarity: int) -> Color:
 	if rarity < 0 or rarity >= RARITY_BG.size():
-		return Color(0.3, 0.3, 0.3, 0.85)
+		return Color(0.3, 0.3, 0.3, 1.0)
 	return RARITY_BG[rarity]
 
 # ---- internal ----
@@ -77,19 +78,25 @@ func _rebuild() -> void:
 		var card := Panel.new()
 		card.custom_minimum_size = Vector2(180, 240)
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = bg_color_for_rarity(r.rarity)
-		sb.border_width_top = 2
-		sb.border_width_bottom = 2
-		sb.border_width_left = 2
-		sb.border_width_right = 2
-		sb.border_color = Color.BLACK
+		# 卡底压暗,描边换成稀有度色让等级一眼可读(与 ShopView 风格一致)。
+		sb.bg_color = bg_color_for_rarity(r.rarity).darkened(0.35)
+		sb.border_width_top = 3
+		sb.border_width_bottom = 3
+		sb.border_width_left = 3
+		sb.border_width_right = 3
+		sb.border_color = Rarity.color(r.rarity if r else 0)
+		sb.corner_radius_top_left = 4
+		sb.corner_radius_top_right = 4
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
 		card.add_theme_stylebox_override("panel", sb)
 		var lbl := Label.new()
 		lbl.text = format_card_text(r)
 		lbl.size = Vector2(170, 230)
 		lbl.position = Vector2(5, 5)
 		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.add_theme_color_override("font_color", Color(0.05, 0.05, 0.05))
+		# 卡底变暗后字色用 bone-white 保证对比度;稀有度信息靠描边色传达。
+		lbl.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85))
 		card.add_child(lbl)
 		_hbox.add_child(card)
 

@@ -59,10 +59,10 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	return result
 
 # 本局结束后弹结算 panel：胡牌显示 役/番/符/点数；流局显示听牌情况
+# 主题化 + tier 大字（役満/倍満/跳満/満貫/N 飜 N 符）+ 玩家胡 / 失点配色。
 func _show_hand_result_overlay(result: Dictionary) -> void:
 	var last_event: String = String(result.get("last_event", ""))
 	var win_event: BattleEvent = null
-	# events 倒序找 WIN_DECLARED（最末的胡牌结算）
 	for i in range(_bc.events.size() - 1, -1, -1):
 		var ev: BattleEvent = _bc.events[i]
 		if ev.type == &"WIN_DECLARED":
@@ -77,74 +77,157 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	bg.color = Color(0, 0, 0, 0.78)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
-	var panel := ColorRect.new()
-	panel.position = Vector2(340, 200)
-	panel.size = Vector2(600, 400)
-	panel.color = Color(0.08, 0.12, 0.20, 0.98)
+
+	# 主题化 Panel（StyleBox 由 run_theme.tres 提供 — 暗底 + 猩红描边）
+	var panel := Panel.new()
+	panel.position = Vector2(280, 140)
+	panel.custom_minimum_size = Vector2(720, 520)
+	panel.size = Vector2(720, 520)
 	overlay.add_child(panel)
 
-	var title := Label.new()
-	title.position = Vector2(0, 24)
-	title.size = Vector2(600, 44)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	# tier 大字：役満 / 倍満 / 跳満 / 満貫 / N 飜 N 符
+	var tier := Label.new()
+	tier.position = Vector2(0, 28)
+	tier.size = Vector2(720, 80)
+	tier.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tier.add_theme_font_size_override("font_size", 56)
+	tier.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	tier.add_theme_constant_override("shadow_offset_x", 2)
+	tier.add_theme_constant_override("shadow_offset_y", 2)
+	tier.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
+	panel.add_child(tier)
+
+	# 副标题：谁 · 自摸/荣和
+	var subtitle := Label.new()
+	subtitle.position = Vector2(0, 118)
+	subtitle.size = Vector2(720, 32)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	subtitle.add_theme_font_size_override("font_size", 22)
+	subtitle.add_theme_color_override("font_color", Color(0.93, 0.9, 0.78))
+	panel.add_child(subtitle)
+
 	if win_event != null:
 		var winner_seat: int = win_event.actor_seat
 		var winner_name: String = "你" if winner_seat == 0 else "AI %d" % winner_seat
-		var win_kind: String = "自摸" if last_event == "TSUMO_DECLARED" or win_event.extra.get("discarder_seat", -1) < 0 else "荣和"
-		title.text = "%s · %s 胡牌" % [winner_name, win_kind]
+		var is_tsumo: bool = (last_event == "TSUMO_DECLARED"
+			or int(win_event.extra.get("discarder_seat", -1)) < 0)
+		var win_kind: String = "自摸" if is_tsumo else "荣和"
+		var fu: int = int(win_event.extra.get("fu", 0))
+		var han: int = int(win_event.extra.get("han", 0))
+		var yakuman_mul: int = int(win_event.extra.get("yakuman_multiplier", 0))
+		tier.text = _score_tier_label(han, fu, yakuman_mul)
+		# 玩家胡=金；失点=猩红；AI 自摸（非玩家放铳）=暗黄
+		if winner_seat == 0:
+			tier.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+		elif not is_tsumo and int(win_event.extra.get("discarder_seat", -1)) == 0:
+			tier.add_theme_color_override("font_color", Color(1, 0.32, 0.32))
+		else:
+			tier.add_theme_color_override("font_color", Color(0.82, 0.78, 0.55))
+		subtitle.text = "%s · %s" % [winner_name, win_kind]
 	elif last_event == "EXHAUSTIVE_DRAW":
-		title.text = "流局"
+		tier.text = "流局"
+		tier.add_theme_color_override("font_color", Color(0.7, 0.78, 0.85))
+		subtitle.text = "本局无人胡牌"
 	else:
-		title.text = "本局结束"
-	panel.add_child(title)
+		tier.text = "本局结束"
+		subtitle.text = ""
 
+	# 役名列表（命中的役 + 各自飜数,空格分隔）
+	var yaku_lbl := Label.new()
+	yaku_lbl.position = Vector2(40, 160)
+	yaku_lbl.size = Vector2(640, 60)
+	yaku_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	yaku_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	yaku_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	yaku_lbl.add_theme_font_size_override("font_size", 18)
+	yaku_lbl.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
+	if win_event != null:
+		yaku_lbl.text = _format_yaku_list(win_event.extra.get("yaku_names", []))
+	panel.add_child(yaku_lbl)
+
+	# 明细：番·符 + 得失分
 	var detail := Label.new()
-	detail.position = Vector2(40, 90)
-	detail.size = Vector2(520, 220)
+	detail.position = Vector2(48, 230)
+	detail.size = Vector2(624, 200)
 	detail.add_theme_font_size_override("font_size", 18)
 	detail.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	if win_event != null:
-		var fu: int = int(win_event.extra.get("fu", 0))
-		var han: int = int(win_event.extra.get("han", 0))
+		var fu2: int = int(win_event.extra.get("fu", 0))
+		var han2: int = int(win_event.extra.get("han", 0))
 		var winner_total: int = int(win_event.extra.get("winner_total", 0))
 		var payout: Dictionary = win_event.extra.get("payout", {})
 		var lines: Array[String] = []
-		lines.append("番数：%d 番 · 符：%d" % [han, fu])
-		lines.append("胜利者得分：%d" % winner_total)
+		if int(win_event.extra.get("yakuman_multiplier", 0)) > 0:
+			lines.append("番数：—   符：—")
+		else:
+			lines.append("番数：%d 飜    符：%d" % [han2, fu2])
+		lines.append("胜利者得分：%d 点" % winner_total)
 		lines.append("")
 		lines.append("点数转移：")
 		for seat in payout.keys():
 			var seat_int: int = int(seat)
 			var amount: int = int(payout[seat])
 			var name: String = "你" if seat_int == 0 else "AI %d" % seat_int
-			lines.append("  %s -%d" % [name, amount])
+			lines.append("  %s  -%d" % [name, amount])
 		detail.text = "\n".join(lines)
 	else:
 		detail.text = "无人胡牌（流局）"
 	panel.add_child(detail)
 
-	var hint := Label.new()
-	hint.position = Vector2(0, 350)
-	hint.size = Vector2(600, 24)
-	hint.text = "(点击任意处继续)"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 14)
-	hint.add_theme_color_override("font_color", Color(0.65, 0.65, 0.6))
-	panel.add_child(hint)
+	# 继续按钮(主题化)
+	var btn := Button.new()
+	btn.text = "继续 →"
+	btn.position = Vector2(280, 456)
+	btn.custom_minimum_size = Vector2(160, 44)
+	btn.pressed.connect(func(): overlay.queue_free())
+	panel.add_child(btn)
 
-	# 等玩家点击关闭
+	# 点击空白处也能继续(保留旧的快速关闭)
 	overlay.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed:
 			overlay.queue_free())
-	# await 直到 overlay 被 free
 	while is_instance_valid(overlay):
 		await get_tree().process_frame
 
+
+# Yaku 名 + han 列表 → "立直 1飜 · 自摸 1飜 · 平和 1飜" 风格中点分隔串。
+# 役満条目省略 han(为 0),代之以 "(N 倍)"。
+static func _format_yaku_list(yaku_names: Array) -> String:
+	if yaku_names.is_empty():
+		return "（无役）"
+	var parts: Array[String] = []
+	for item in yaku_names:
+		if not (item is Dictionary):
+			continue
+		var nm: String = String(item.get("name", ""))
+		var mul: int = int(item.get("yakuman_multiplier", 0))
+		if mul > 0:
+			parts.append("%s (%d 倍)" % [nm, mul] if mul > 1 else nm)
+		else:
+			parts.append("%s %d飜" % [nm, int(item.get("han", 0))])
+	return " · ".join(parts)
+
+
+# 番/符/役満倍数 → 中文 tier 名。
+# 役満倍数 ≥ 1 → "X 倍役満"/"役満";否则按番符算満貫层级近似(忽略具体符算细节)。
+static func _score_tier_label(han: int, _fu: int, yakuman_mul: int) -> String:
+	if yakuman_mul >= 2:
+		return "%d 倍役満" % yakuman_mul
+	if yakuman_mul == 1:
+		return "役満"
+	if han >= 13: return "数え役満"
+	if han >= 11: return "三倍満"
+	if han >= 8:  return "倍満"
+	if han >= 6:  return "跳満"
+	if han >= 5:  return "満貫"
+	# 4 飜 40 符以上 / 3 飜 70 符以上 也是満貫,简化忽略
+	return "%d 飜 胡牌" % han
+
 var _last_event_count: int = 0
 var _polling_active: bool = false
+var _toast_label: Label = null
+var _toast_tween: Tween = null
 
 func _attach_event_polling() -> void:
 	if _polling_active:
@@ -159,11 +242,78 @@ func _polling_loop() -> void:
 			return
 		var n: int = _bc.events.size()
 		if n != _last_event_count:
+			# Diff: 新 emit 的事件全过一遍 toast handler;再 rebind 桌面视觉
+			for i in range(_last_event_count, n):
+				_handle_event_toast(_bc.events[i])
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
 		if n < _last_event_count:
 			_last_event_count = 0
+
+
+# 关键事件 → 顶部金色 toast,玩家不用盯 events 也能感知发生了什么。
+# 立直/自摸/荣和/流局/海底/河底 出现就闪 1.5 秒。
+func _handle_event_toast(ev: BattleEvent) -> void:
+	if ev == null:
+		return
+	var text: String = _format_toast_text(ev)
+	if text == "":
+		return
+	if _toast_label == null:
+		_toast_label = Label.new()
+		_toast_label.position = Vector2(420, 12)
+		_toast_label.size = Vector2(440, 44)
+		_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		_toast_label.add_theme_font_size_override("font_size", 26)
+		_toast_label.add_theme_color_override("font_color", Color(1, 0.88, 0.32))
+		_toast_label.add_theme_constant_override("shadow_offset_x", 2)
+		_toast_label.add_theme_constant_override("shadow_offset_y", 2)
+		_toast_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+		_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(_toast_label)
+	_toast_label.text = text
+	_toast_label.visible = true
+	# 淡入 0.18s,显示 1.4s,再淡出 0.35s — 比硬切更有质感,新事件压旧时立刻覆盖。
+	if _toast_tween and _toast_tween.is_valid():
+		_toast_tween.kill()
+	_toast_label.modulate = Color(1, 1, 1, 0)
+	_toast_tween = get_tree().create_tween()
+	_toast_tween.tween_property(_toast_label, "modulate:a", 1.0, 0.18)
+	_toast_tween.tween_interval(1.4)
+	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.35)
+	var captured := _toast_tween
+	_toast_tween.finished.connect(func():
+		if _toast_tween == captured and _toast_label:
+			_toast_label.visible = false)
+
+
+static func _seat_short(actor_seat: int) -> String:
+	if actor_seat == 0:
+		return "你"
+	if actor_seat >= 1 and actor_seat <= 3:
+		return "AI %d" % actor_seat
+	return "?"
+
+
+static func _format_toast_text(ev: BattleEvent) -> String:
+	match ev.type:
+		&"RIICHI_DECLARED":
+			return "立直! %s" % _seat_short(ev.actor_seat)
+		&"TSUMO_DECLARED":
+			return "自摸! %s" % _seat_short(ev.actor_seat)
+		&"RON_DECLARED":
+			return "荣和! %s" % _seat_short(ev.actor_seat)
+		&"EXHAUSTIVE_DRAW":
+			return "流局"
+		&"HAITEI":
+			return "海底捞月!"
+		&"HOUTEI":
+			return "河底捞鱼!"
+		&"GAME_BEGIN":
+			return "开局"
+	return ""
 
 func _exit_tree() -> void:
 	_polling_active = false

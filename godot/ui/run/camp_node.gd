@@ -21,6 +21,8 @@ var _heal_used: bool = false
 const HEAL_AMOUNT: int = 1
 
 func _ready() -> void:
+	RunUi.attach_background(self)
+	RunUi.attach_panel_icon($VBox, "res://assets/run_icons/node_camp.png")
 	if _heal_btn:
 		_heal_btn.pressed.connect(_on_heal_pressed)
 	if _leave_btn:

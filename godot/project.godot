@@ -23,9 +23,24 @@ TextureExtractor="*res://scripts/texture_extractor.gd"
 SaveSystem="*res://meta/save_system.gd"
 MetaProgress="*res://meta/meta_progress.gd"
 
+[display]
+
+; UI 全部按 1280×800 设计;主窗口默认 1280×800 + canvas_items 拉伸,
+; 高 DPI / 全屏时按比例放大,避免默认 1152×648 把 UI 挤成一团。
+window/size/viewport_width=1280
+window/size/viewport_height=800
+window/size/window_width_override=1280
+window/size/window_height_override=800
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
 [editor_plugins]
 
 enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+
+[gui]
+
+theme/custom="res://ui/run_theme.tres"
 
 [debug]
 

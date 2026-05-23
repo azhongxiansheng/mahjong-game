@@ -32,7 +32,7 @@ theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(1, 0.95, 0.7, 1)
 
 [node name="Hint" type="Label" parent="VBox"]
-text = "v1 仅 控场型 可选；其余 2 张为 M6 内容生产占位。"
+text = "选一套打法启程。途中可在抽卡 / 商店 / 事件中继续构筑你的牌组与角色能力。"
 horizontal_alignment = 1
 theme_override_font_sizes/font_size = 14
 theme_override_colors/font_color = Color(0.7, 0.7, 0.7, 1)

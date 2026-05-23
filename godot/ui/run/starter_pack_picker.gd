@@ -12,21 +12,79 @@ signal pack_chosen(pack_id: StringName)
 
 var _packs: Array = []  # Array[Dictionary]，从 StarterPacks.all() 拿
 
+const LOGO_PATH := "res://assets/feifan_logo_transparent.png"
+
 func _ready() -> void:
+	RunUi.attach_background(self)
+	_attach_logo()
 	_packs = StarterPacks.all()
 	_rebuild()
 
+# 顶部插品牌 logo,放在 Title 上方。资产缺失时跳过。
+func _attach_logo() -> void:
+	if not ResourceLoader.exists(LOGO_PATH):
+		return
+	var vbox := $VBox as VBoxContainer
+	if vbox == null:
+		return
+	var logo := TextureRect.new()
+	logo.texture = load(LOGO_PATH)
+	logo.custom_minimum_size = Vector2(192, 192)
+	logo.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	logo.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(logo)
+	vbox.move_child(logo, 0)
+
 # ---- helpers (static) ----
+
+# starter pack id → 打法字头(守/攻/速),让玩家一眼看出三张卡的取向。
+# 控场=守(防御/封印/抓马)、火力=攻(增番/铁壁)、速胡=速(立直/加速)。
+static func archetype_glyph(pack_id) -> String:
+	match StringName(pack_id):
+		&"starter_control": return "守"
+		&"starter_aggro":   return "攻"
+		&"starter_fast":    return "速"
+	return ""
+
+
+# 打法色(用在 pack 卡描边):蓝守/红攻/金速,与 Rarity 色板独立避免歧义。
+static func archetype_color(pack_id) -> Color:
+	match StringName(pack_id):
+		&"starter_control": return Color(0.30, 0.55, 0.85)  # 蓝 守
+		&"starter_aggro":   return Color(0.85, 0.25, 0.25)  # 红 攻
+		&"starter_fast":    return Color(1.0,  0.80, 0.25)  # 金 速
+	return Color(0.5, 0.5, 0.5)
+
 
 static func format_card_text(pack: Dictionary) -> String:
 	var lines: Array[String] = []
-	lines.append(pack.display_name)
+	var glyph := archetype_glyph(pack.get("id", &""))
+	if glyph != "":
+		lines.append("【%s】 %s" % [glyph, pack.display_name])
+	else:
+		lines.append(pack.display_name)
 	lines.append("")
 	if not pack.get("available", false):
-		lines.append("（M6 实装）")
+		lines.append("（敬请期待）")
 		lines.append("")
 	lines.append(pack.description)
 	return "\n".join(lines)
+
+
+# 给 pack 按钮 4 态 stylebox 套打法色描边。disabled 也染色,玩家仍能看出取向。
+static func _apply_archetype_border(btn: Button, pack_id) -> void:
+	var col := archetype_color(pack_id)
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
+		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
+		sb.border_color = col
+		sb.border_width_left = 3
+		sb.border_width_top = 3
+		sb.border_width_right = 3
+		sb.border_width_bottom = 3
+		btn.add_theme_stylebox_override(state, sb)
+
 
 # ---- internal ----
 
@@ -40,6 +98,7 @@ func _rebuild() -> void:
 		btn.text = format_card_text(pack)
 		btn.custom_minimum_size = Vector2(220, 280)
 		btn.disabled = not pack.get("available", false)
+		_apply_archetype_border(btn, pack.get("id", &""))
 		var pack_id_capture: StringName = pack.id
 		btn.pressed.connect(func(): emit_signal("pack_chosen", pack_id_capture))
 		_hbox.add_child(btn)

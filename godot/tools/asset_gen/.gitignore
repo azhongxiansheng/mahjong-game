@@ -1,0 +1,9 @@
+# gpt-image-2 生成的中间产物（原图 / 切片暂存 / 样品）—— 不入库。
+# 入库的是最终资产（godot/assets/ 下）与生成脚本（本目录 *.py）。
+_raw/
+_raw_sheets/
+_raw_misc/
+_staging/
+_staging_sheets/
+_samples/
+__pycache__/

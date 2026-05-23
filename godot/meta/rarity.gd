@@ -27,6 +27,16 @@ static func display_name(rarity: int) -> String:
 		Kind.LEGENDARY: return "神话"
 	return "?"
 
+# 稀有度色(卡框/印章 共用,spec §9.1):灰/蓝/紫/金。
+# UI(TileStamp / ShopView / PackOpenView 等)统一调此入口避免颜色漂移。
+static func color(rarity: int) -> Color:
+	match rarity:
+		Kind.COMMON:    return Color(0.55, 0.55, 0.55)
+		Kind.UNCOMMON:  return Color(0.30, 0.55, 0.85)
+		Kind.EPIC:      return Color(0.65, 0.30, 0.85)
+		Kind.LEGENDARY: return Color(1.00, 0.80, 0.20)
+	return Color(0.40, 0.40, 0.40)
+
 static func is_epic_or_above(rarity: int) -> bool:
 	return rarity >= Kind.EPIC
 

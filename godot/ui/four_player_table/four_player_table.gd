@@ -46,6 +46,8 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.bind_seat(seat)
 		sp.set_discards_count(state.discards_per_seat[i].size())
+		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
+		sp.set_active(i == state.current_seat)
 	for i in range(discard_rivers.size()):
 		var dr: DiscardRiver = discard_rivers[i]
 		dr.set_tiles(state.discards_per_seat[i])
@@ -83,8 +85,21 @@ static func seat_position(seat_id: int) -> Vector2:
 
 # ---- internal ----
 
+const TABLE_BG_PATH := "res://assets/mahjong_table_bg.png"
+
 func _build_layout() -> void:
-	# Bg 已在 .tscn 中；此处只放子节点。
+	# Bg 纯色块已在 .tscn；有桌布贴图资产时盖一张 TextureRect 上去。
+	if ResourceLoader.exists(TABLE_BG_PATH):
+		var felt := TextureRect.new()
+		felt.name = "TableFelt"
+		felt.texture = load(TABLE_BG_PATH)
+		felt.position = Vector2(0, 0)
+		felt.size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
+		felt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		felt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(felt)
+
 	var table := Node2D.new()
 	table.name = "Table"
 	table.position = Vector2(0, 0)

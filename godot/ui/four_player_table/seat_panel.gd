@@ -20,9 +20,9 @@ const SEAT_ROTATION_DEGREES := [0.0, -90.0, 180.0, 90.0]
 
 @onready var _label_seat_info: Label = $VBox/SeatInfo
 @onready var _label_score: Label = $VBox/Score
-@onready var _label_melds: Label = $VBox/Melds
-@onready var _label_hand: Label = $VBox/Hand
-@onready var _label_discards: Label = $VBox/Discards
+@onready var _label_melds: Label = $Melds
+@onready var _label_hand: Label = $Hand
+@onready var _label_discards: Label = $Discards
 
 # 手牌色块行：M3 收尾 — 13 个 (或 ≤13) 小 ColorRect 显示 owner_seat 着色，
 # 实现 plan-3 D2/D5 归属可视化（看一家手牌区的"色块拼盘"知道牌从哪 4 家来）。
@@ -112,6 +112,57 @@ func set_furiten(b: bool) -> void:
 	if is_inside_tree():
 		_refresh_labels()
 
+
+# 当前回合高亮:把 Bg ColorRect 包一个金色描边,玩家从 4 家中立刻识别出
+# "现在该谁出牌"。false 时清除 override 回到主题。
+func set_active(b: bool) -> void:
+	if _active == b:
+		return
+	_active = b
+	if is_inside_tree():
+		_apply_active_visual()
+
+
+var _active: bool = false
+
+func _apply_active_visual() -> void:
+	var bg := get_node_or_null("Bg") as ColorRect
+	if bg == null:
+		return
+	if _active:
+		# 金色描边浮出来,Bg 本身保留底色,不破坏既有视觉
+		var glow := StyleBoxFlat.new()
+		glow.bg_color = bg.color  # 保持原底色
+		glow.border_color = Color(1, 0.85, 0.25)
+		glow.border_width_left = 3
+		glow.border_width_top = 3
+		glow.border_width_right = 3
+		glow.border_width_bottom = 3
+		glow.corner_radius_top_left = 4
+		glow.corner_radius_top_right = 4
+		glow.corner_radius_bottom_left = 4
+		glow.corner_radius_bottom_right = 4
+		# ColorRect 没有 stylebox,改用 Panel 覆盖:在 Bg 旁加金边 Panel 仅做边框
+		if get_node_or_null("ActiveGlow") == null:
+			var glow_panel := Panel.new()
+			glow_panel.name = "ActiveGlow"
+			glow_panel.position = bg.position
+			glow_panel.size = bg.size
+			glow_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var sb := StyleBoxFlat.new()
+			sb.bg_color = Color(0, 0, 0, 0)  # 透明,仅显边
+			sb.border_color = Color(1, 0.85, 0.25)
+			sb.border_width_left = 3
+			sb.border_width_top = 3
+			sb.border_width_right = 3
+			sb.border_width_bottom = 3
+			glow_panel.add_theme_stylebox_override("panel", sb)
+			add_child(glow_panel)
+	else:
+		var existing := get_node_or_null("ActiveGlow")
+		if existing:
+			existing.queue_free()
+
 # 手牌色块归属可视化（M3 收尾）：传入 owners 数组（每张牌的 owner_seat），
 # 重建 _hand_tile_row 子节点。owners.size() 也作为 hand_size 同步更新文字 Label。
 func set_hand_tile_owners(owners: Array) -> void:
@@ -165,12 +216,15 @@ static func wind_name(wind_id: int) -> String:
 func _refresh_labels() -> void:
 	if _label_seat_info == null:
 		return
-	# 雀魂式简洁：仅 名字·风（+立直/振听 状态后缀）+ 分数
+	# 雀魂式简洁：名字·风(·庄 if dealer)·状态。
+	# 庄家用 seat_wind=东 判定(日麻规则:庄永远是东家)。
 	var status: String = ""
+	if _seat_wind == TileId.E:
+		status += " · 庄"
 	if _riichi:
-		status = " · 立直"
+		status += " · 立直"
 	elif _furiten:
-		status = " · 振"
+		status += " · 振"
 	_label_seat_info.text = "%s · %s%s" % [seat_display_name(_seat_id), wind_name(_seat_wind), status]
 	_label_score.text = "%d" % _score
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label

@@ -10,7 +10,7 @@ offset_left = -120.0
 offset_top = -80.0
 offset_right = 120.0
 offset_bottom = 80.0
-color = Color(0.05, 0.08, 0.05, 0.9)
+color = Color(0.05, 0.08, 0.05, 1)
 
 [node name="VBox" type="VBoxContainer" parent="."]
 offset_left = -110.0
