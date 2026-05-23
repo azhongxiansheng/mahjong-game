@@ -4,10 +4,12 @@ class_name GachaResult extends RefCounted
 
 const KIND_TILE: StringName = &"tile"
 const KIND_ABILITY: StringName = &"ability"
+const KIND_CONSUMABLE: StringName = &"consumable"
 
 var kind: StringName = KIND_TILE
 var tile_variant: TileVariant = null
 var ability: AbilityCard = null
+var consumable: ConsumableItem = null
 var rarity: int = Rarity.Kind.COMMON
 
 static func make_tile(variant: TileVariant) -> GachaResult:
@@ -24,9 +26,18 @@ static func make_ability(card: AbilityCard) -> GachaResult:
 	r.rarity = card.rarity if card else Rarity.Kind.COMMON
 	return r
 
+static func make_consumable(item: ConsumableItem) -> GachaResult:
+	var r := GachaResult.new()
+	r.kind = KIND_CONSUMABLE
+	r.consumable = item
+	r.rarity = item.rarity if item else Rarity.Kind.COMMON
+	return r
+
 func summary() -> String:
 	if kind == KIND_TILE and tile_variant:
 		return tile_variant.summary()
 	if kind == KIND_ABILITY and ability:
 		return ability.summary()
+	if kind == KIND_CONSUMABLE and consumable:
+		return consumable.summary()
 	return "(空 GachaResult)"

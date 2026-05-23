@@ -11,9 +11,10 @@ class_name Gacha
 #   refresh_shop(seed) → Array[GachaResult] (size = SHOP_SLOT_COUNT)
 #     商店刷新：4 槽明牌；3 张牌 + 1 张 ability（v1 简化）；无保底。
 
-const SHOP_SLOT_COUNT: int = 4
+const SHOP_SLOT_COUNT: int = 5
 const NODE_SINGLE_ABILITY_PROBABILITY: float = 0.10
 const SHOP_ABILITY_SLOT_COUNT: int = 1
+const SHOP_CONSUMABLE_SLOT_COUNT: int = 1
 
 # ---- 节点单抽 ----
 
@@ -63,13 +64,15 @@ static func refresh_shop(seed: int) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var results: Array = []
-	# 3 张牌 + 1 张 ability（v1 简化；spec §9.2 商店还含"消耗品"槽，留 M6）
-	for i in range(SHOP_SLOT_COUNT - SHOP_ABILITY_SLOT_COUNT):
+	var tile_slots: int = SHOP_SLOT_COUNT - SHOP_ABILITY_SLOT_COUNT - SHOP_CONSUMABLE_SLOT_COUNT
+	for i in range(tile_slots):
 		var rarity: int = Rarity.pick_weighted(Rarity.NODE_SINGLE_WEIGHTS, rng)
 		results.append(_draw_tile(rarity, rng))
 	for i in range(SHOP_ABILITY_SLOT_COUNT):
 		var rarity_a: int = Rarity.pick_weighted(Rarity.NODE_SINGLE_WEIGHTS, rng)
 		results.append(_draw_ability(rarity_a, rng))
+	for i in range(SHOP_CONSUMABLE_SLOT_COUNT):
+		results.append(_draw_consumable(rng))
 	return results
 
 # ---- internal helpers ----
@@ -91,6 +94,13 @@ static func _draw_tile(rarity: int, rng: RandomNumberGenerator) -> GachaResult:
 		return GachaResult.new()
 	var idx: int = rng.randi_range(0, pool.size() - 1)
 	return GachaResult.make_tile(pool[idx])
+
+static func _draw_consumable(rng: RandomNumberGenerator) -> GachaResult:
+	var pool: Array = CardPool.all_consumables()
+	if pool.size() == 0:
+		return GachaResult.new()
+	var idx: int = rng.randi_range(0, pool.size() - 1)
+	return GachaResult.make_consumable(pool[idx])
 
 static func _draw_ability(rarity: int, rng: RandomNumberGenerator) -> GachaResult:
 	var pool: Array = CardPool.abilities_by_rarity(rarity)

@@ -18,7 +18,7 @@ const PRICE_BY_RARITY: Array[int] = [10, 25, 60, 150]
 @onready var _next_btn: Button = $VBox/NextBtn
 
 var _results: Array = []  # Array[GachaResult]
-var _bought: Array[bool] = [false, false, false, false]
+var _bought: Array[bool] = []
 var _current_gold: int = 0
 var _slot_buttons: Array[Button] = []
 
@@ -34,7 +34,9 @@ func _ready() -> void:
 func set_seed_and_gold(seed: int, gold: int) -> void:
 	_current_gold = gold
 	_results = Gacha.refresh_shop(seed)
-	_bought = [false, false, false, false]
+	_bought = []
+	for i in range(_results.size()):
+		_bought.append(false)
 	if is_inside_tree():
 		_rebuild()
 
@@ -63,13 +65,22 @@ static func format_slot_text(result: GachaResult) -> String:
 	if result == null:
 		return "(空)"
 	var name_str: String = ""
+	var desc_str: String = ""
 	if result.kind == GachaResult.KIND_TILE and result.tile_variant:
 		name_str = result.tile_variant.display_name if result.tile_variant.display_name != "" else String(result.tile_variant.id)
+		desc_str = result.tile_variant.description
 	elif result.kind == GachaResult.KIND_ABILITY and result.ability:
 		name_str = result.ability.display_name if result.ability.display_name != "" else String(result.ability.id)
+		desc_str = result.ability.description
+	elif result.kind == GachaResult.KIND_CONSUMABLE and result.consumable:
+		name_str = result.consumable.display_name if result.consumable.display_name != "" else String(result.consumable.id)
+		desc_str = result.consumable.description
 	var rarity_label := Rarity.display_name(result.rarity)
 	var price := price_for(result)
-	return "%s\n[%s]\n💰 %d" % [name_str, rarity_label, price]
+	var text := "%s\n[%s]\n💰 %d" % [name_str, rarity_label, price]
+	if desc_str != "":
+		text += "\n%s" % desc_str
+	return text
 
 # ---- internal ----
 

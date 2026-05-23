@@ -280,12 +280,16 @@ func _show_shop(node_ref: NodeRef) -> void:
 
 # 把 GachaResult 加进玩家 deck
 func _apply_gacha_to_deck(result: GachaResult) -> void:
-	if result == null or _run_state == null or _run_state.player_deck == null:
+	if result == null or _run_state == null:
 		return
 	if result.kind == GachaResult.KIND_TILE and result.tile_variant:
-		_run_state.player_deck.add_tile_variant(result.tile_variant)
+		if _run_state.player_deck:
+			_run_state.player_deck.add_tile_variant(result.tile_variant)
 	elif result.kind == GachaResult.KIND_ABILITY and result.ability:
-		_run_state.player_deck.add_ability(result.ability)
+		if _run_state.player_deck:
+			_run_state.player_deck.add_ability(result.ability)
+	elif result.kind == GachaResult.KIND_CONSUMABLE and result.consumable:
+		_run_state.add_consumable(result.consumable)
 
 # ---- helpers ----
 

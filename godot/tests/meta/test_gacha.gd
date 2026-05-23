@@ -86,22 +86,26 @@ func test_aggro_theme_higher_avg_rarity_than_control():
 
 # ---- refresh_shop ----
 
-func test_refresh_shop_returns_4_slots():
+func test_refresh_shop_returns_5_slots():
 	var slots: Array = Gacha.refresh_shop(42)
 	assert_eq(slots.size(), Gacha.SHOP_SLOT_COUNT)
-	assert_eq(Gacha.SHOP_SLOT_COUNT, 4)
+	assert_eq(Gacha.SHOP_SLOT_COUNT, 5)
 
-func test_refresh_shop_has_3_tiles_and_1_ability():
+func test_refresh_shop_has_tiles_ability_and_consumable():
 	var slots: Array = Gacha.refresh_shop(42)
 	var tile_count := 0
 	var ab_count := 0
+	var con_count := 0
 	for r in slots:
 		if r.kind == GachaResult.KIND_TILE:
 			tile_count += 1
-		else:
+		elif r.kind == GachaResult.KIND_ABILITY:
 			ab_count += 1
+		elif r.kind == GachaResult.KIND_CONSUMABLE:
+			con_count += 1
 	assert_eq(tile_count, 3)
 	assert_eq(ab_count, 1)
+	assert_eq(con_count, 1)
 
 func test_refresh_shop_seed_determinism():
 	var s1: Array = Gacha.refresh_shop(42)
