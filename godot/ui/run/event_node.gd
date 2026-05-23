@@ -63,6 +63,94 @@ const EVENT_POOL: Array = [
 			{"label": "无视", "hp_delta": 0, "gold_delta": 0},
 		],
 	},
+	{
+		"id": "hot_spring",
+		"title": "♨️ 温泉休憩",
+		"description": "你发现一处隐秘的温泉。热气氤氲中，疲惫感逐渐消散。",
+		"options": [
+			{"label": "泡汤放松（恢复 2 HP）", "hp_delta": 2, "gold_delta": 0},
+			{"label": "温泉赌局（赌 HP 换金币）", "hp_delta": -1, "gold_delta": 80},
+			{"label": "路过不停", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "yakuza_threat",
+		"title": "🔪 暗巷威胁",
+		"description": "三个黑衣人挡在你面前：「留下买路钱，或者……」",
+		"options": [
+			{"label": "付钱打发", "hp_delta": 0, "gold_delta": -40, "require_gold": 40},
+			{"label": "以牌技抵债", "hp_delta": 0, "gold_delta": 20},
+			{"label": "硬闯（受伤）", "hp_delta": -2, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "mysterious_dealer",
+		"title": "🃏 神秘牌师",
+		"description": "一位蒙面人坐在路边摆着牌阵。「想知道你的命运吗？代价是一点生命力。」",
+		"options": [
+			{"label": "占卜未来（损 HP 换大量金币）", "hp_delta": -2, "gold_delta": 120},
+			{"label": "礼貌拒绝", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "abandoned_dojo",
+		"title": "🏯 废弃雀庄",
+		"description": "推开破旧的门，里面竟然有人在打牌。一位老者看向你：「想试试手气吗？」",
+		"options": [
+			{"label": "对局（大赢或大输）", "hp_delta": -1, "gold_delta": 100},
+			{"label": "观战学习（小收获）", "hp_delta": 0, "gold_delta": 25},
+			{"label": "离开", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "lucky_cat_statue",
+		"title": "🐱 招财猫石像",
+		"description": "路旁有一尊金色招财猫石像，底座刻着：「付出越多，回报越丰」。",
+		"options": [
+			{"label": "投入大量金币", "hp_delta": 2, "gold_delta": -60, "require_gold": 60},
+			{"label": "投入少量金币", "hp_delta": 1, "gold_delta": -20, "require_gold": 20},
+			{"label": "摸摸猫头离开", "hp_delta": 0, "gold_delta": 5},
+		],
+	},
+	{
+		"id": "storm_shelter",
+		"title": "⛈️ 暴风雨避难",
+		"description": "突然暴风雨来袭。你在一间破屋中避雨，发现地板下藏着什么。",
+		"options": [
+			{"label": "翻开地板（风险探索）", "hp_delta": -1, "gold_delta": 70},
+			{"label": "安静等雨停", "hp_delta": 1, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "rival_challenge",
+		"title": "⚔️ 宿敌挑衅",
+		"description": "一位过去的对手拦住你的去路：「上次是你赢了，这次不会再让你走。」",
+		"options": [
+			{"label": "接受挑战", "hp_delta": -1, "gold_delta": 50},
+			{"label": "以退为进（损失金币换安全）", "hp_delta": 0, "gold_delta": -30, "require_gold": 30},
+			{"label": "绕道而行", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "sake_house",
+		"title": "🍶 居酒屋",
+		"description": "一间温暖的居酒屋飘出诱人的酒香。老板娘热情招呼：「进来坐坐吧？」",
+		"options": [
+			{"label": "喝一杯（恢复精力）", "hp_delta": 1, "gold_delta": -15, "require_gold": 15},
+			{"label": "畅饮一番（醉酒状态）", "hp_delta": 2, "gold_delta": -40, "require_gold": 40},
+			{"label": "赶路不停", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
+	{
+		"id": "fallen_player",
+		"title": "💀 倒下的雀士",
+		"description": "你看到一位雀士倒在路边，衣衫褴褛，手里还握着几张牌。",
+		"options": [
+			{"label": "救助（获得感恩）", "hp_delta": 0, "gold_delta": 40},
+			{"label": "搜刮遗物（罪恶感）", "hp_delta": -1, "gold_delta": 80},
+			{"label": "默默走过", "hp_delta": 0, "gold_delta": 0},
+		],
+	},
 ]
 
 func _ready() -> void:
