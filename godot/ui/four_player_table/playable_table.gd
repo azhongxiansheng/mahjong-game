@@ -79,10 +79,11 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	overlay.add_child(bg)
 
 	# 主题化 Panel（StyleBox 由 run_theme.tres 提供 — 暗底 + 猩红描边）
+	# 加大到 560 高,给胡牌 14 张展示行(_render_winning_hand_strip)留位置。
 	var panel := Panel.new()
-	panel.position = Vector2(280, 140)
-	panel.custom_minimum_size = Vector2(720, 520)
-	panel.size = Vector2(720, 520)
+	panel.position = Vector2(280, 120)
+	panel.custom_minimum_size = Vector2(720, 560)
+	panel.size = Vector2(720, 560)
 	overlay.add_child(panel)
 
 	# tier 大字：役満 / 倍満 / 跳満 / 満貫 / N 飜 N 符
@@ -135,7 +136,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	# 役名列表（命中的役 + 各自飜数,空格分隔）
 	var yaku_lbl := Label.new()
 	yaku_lbl.position = Vector2(40, 160)
-	yaku_lbl.size = Vector2(640, 60)
+	yaku_lbl.size = Vector2(640, 50)
 	yaku_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	yaku_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	yaku_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -145,10 +146,17 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		yaku_lbl.text = _format_yaku_list(win_event.extra.get("yaku_names", []))
 	panel.add_child(yaku_lbl)
 
+	# 胡牌 14 张展示行(winning tile 单独右侧 + 金色调突出)
+	if win_event != null and win_event.tile_instance != null and win_event.tile_instance.tile != null:
+		var is_tsumo: bool = (last_event == "TSUMO_DECLARED"
+			or int(win_event.extra.get("discarder_seat", -1)) < 0)
+		_render_winning_hand_strip(panel, win_event.actor_seat,
+			win_event.tile_instance.tile.id, is_tsumo, 220)
+
 	# 明细：番·符 + 得失分
 	var detail := Label.new()
-	detail.position = Vector2(48, 230)
-	detail.size = Vector2(624, 200)
+	detail.position = Vector2(48, 290)
+	detail.size = Vector2(624, 160)
 	detail.add_theme_font_size_override("font_size", 18)
 	detail.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -178,7 +186,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	# 继续按钮(主题化)
 	var btn := Button.new()
 	btn.text = "继续 →"
-	btn.position = Vector2(280, 456)
+	btn.position = Vector2(280, 490)
 	btn.custom_minimum_size = Vector2(160, 44)
 	btn.pressed.connect(func(): overlay.queue_free())
 	panel.add_child(btn)
@@ -189,6 +197,78 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 			overlay.queue_free())
 	while is_instance_valid(overlay):
 		await get_tree().process_frame
+
+
+# 在 overlay panel 内画胡牌 14 张:13 张暗手升序 + 间隔 + winning tile(金调高亮)。
+# 副露不画(简化;副露已经在桌面 MeldArea 上看过)。
+# 自摸:seat.hand 14 张含 winning_tile → pop 到右侧;荣和:seat.hand 13 张,
+# winning tile 来自他家,只需 append。
+func _render_winning_hand_strip(parent: Control, winner_seat: int,
+		winning_tile_id: int, is_tsumo: bool, y_offset: float) -> void:
+	if _bc == null or _bc.state == null:
+		return
+	var winner: Seat = _bc.state.seats[winner_seat]
+	if winner == null:
+		return
+	var concealed_ids: Array = winner.hand.to_id_array()
+	if is_tsumo:
+		var idx: int = concealed_ids.find(winning_tile_id)
+		if idx >= 0:
+			concealed_ids.remove_at(idx)
+	concealed_ids.sort()
+	# HBox 居中,1 px 牌间隙
+	var strip := HBoxContainer.new()
+	strip.position = Vector2(0, y_offset)
+	strip.size = Vector2(720, 56)
+	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	strip.add_theme_constant_override("separation", 1)
+	parent.add_child(strip)
+	for tid in concealed_ids:
+		strip.add_child(_make_overlay_tile(int(tid), false))
+	# 牌组与 winning tile 之间留 10 px gap
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(10, 56)
+	strip.add_child(spacer)
+	strip.add_child(_make_overlay_tile(winning_tile_id, true))
+
+
+# 单张小牌(28×40),winning=true 给金色描边 Panel 包装突出。
+func _make_overlay_tile(tile_id: int, is_winning: bool) -> Control:
+	const TW := 28
+	const TH := 40
+	var key: String = CardTileBack.tile_id_to_atlas_key(tile_id)
+	var tr := TextureRect.new()
+	tr.custom_minimum_size = Vector2(TW, TH)
+	tr.size = Vector2(TW, TH)
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_SCALE
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if key != "":
+		var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
+		if extractor and extractor.has_method("get_tile_texture"):
+			tr.texture = extractor.get_tile_texture(key)
+	if not is_winning:
+		return tr
+	# winning tile:套一层 Panel 加金边突出
+	var wrap := Panel.new()
+	wrap.custom_minimum_size = Vector2(TW + 4, TH + 4)
+	wrap.size = Vector2(TW + 4, TH + 4)
+	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.border_color = Color(1, 0.85, 0.28)
+	sb.border_width_left = 2
+	sb.border_width_top = 2
+	sb.border_width_right = 2
+	sb.border_width_bottom = 2
+	sb.corner_radius_top_left = 3
+	sb.corner_radius_top_right = 3
+	sb.corner_radius_bottom_left = 3
+	sb.corner_radius_bottom_right = 3
+	wrap.add_theme_stylebox_override("panel", sb)
+	tr.position = Vector2(2, 2)
+	wrap.add_child(tr)
+	return wrap
 
 
 # Yaku 名 + han 列表 → "立直 1飜 · 自摸 1飜 · 平和 1飜" 风格中点分隔串。

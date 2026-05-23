@@ -115,7 +115,17 @@ func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and not mb.canceled:
+			_play_click_pulse()
 			card_clicked.emit(_tile_id)
+
+
+# 点击瞬间反馈:缩到 0.94 倍再弹回,告知玩家"点已生效"。
+# 60ms 总长不阻塞 emit;视觉反馈与逻辑解耦。
+func _play_click_pulse() -> void:
+	var orig: Vector2 = scale
+	var t := create_tween()
+	t.tween_property(self, "scale", orig * 0.94, 0.04)
+	t.tween_property(self, "scale", orig, 0.06)
 
 func set_clickable(b: bool) -> void:
 	_is_clickable = b
