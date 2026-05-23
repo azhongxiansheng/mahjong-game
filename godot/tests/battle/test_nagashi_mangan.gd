@@ -33,7 +33,7 @@ func test_nagashi_seat_detected_when_all_yaochu_and_uncalled() -> void:
 		TileId.W1, TileId.W9, TileId.T1, TileId.T9, TileId.S1, TileId.S9,
 		TileId.E, TileId.S_WIND, TileId.HAKU
 	])
-	var s: int = driver._detect_nagashi_mangan_seat()
+	var s: int = NagashiMangan.detect_winner_seat(driver.battle.state)
 	assert_eq(s, 0, "seat 0 全幺九 + 无人鸣 → 应命中")
 
 
@@ -44,7 +44,7 @@ func test_nagashi_seat_not_detected_when_has_non_yaochu() -> void:
 		TileId.W1, TileId.W9, TileId.T1, TileId.T9, TileId.S1, TileId.S9,
 		TileId.E, TileId.W5
 	])
-	var s: int = driver._detect_nagashi_mangan_seat()
+	var s: int = NagashiMangan.detect_winner_seat(driver.battle.state)
 	assert_eq(s, -1, "含 W5 数中 → 不命中")
 
 
@@ -55,14 +55,14 @@ func test_nagashi_seat_not_detected_when_called() -> void:
 	var meld := Meld.make_pon(
 		[Tile.new(TileId.T5), Tile.new(TileId.T5), Tile.new(TileId.T5)], 0)
 	driver.battle.state.seats[1].melds.append(meld)
-	var s: int = driver._detect_nagashi_mangan_seat()
+	var s: int = NagashiMangan.detect_winner_seat(driver.battle.state)
 	assert_eq(s, -1, "被鸣过 → 不命中")
 
 
 func test_nagashi_seat_returns_neg1_when_empty_discards() -> void:
 	var driver := _make_driver_with_battle()
 	# 4 家 discards 都空
-	var s: int = driver._detect_nagashi_mangan_seat()
+	var s: int = NagashiMangan.detect_winner_seat(driver.battle.state)
 	assert_eq(s, -1, "无任何弃牌 → 不命中")
 
 
@@ -70,7 +70,7 @@ func test_nagashi_seat_returns_neg1_when_empty_discards() -> void:
 
 func test_payout_dealer_nagashi() -> void:
 	var driver := _make_driver_with_battle(0)
-	var deltas: Dictionary = driver._compute_nagashi_payout(0)
+	var deltas: Dictionary = NagashiMangan.payout(0, driver.dealer_seat)
 	# 庄家流し:每家 -4000,庄 +12000
 	assert_eq(int(deltas[0]), 12000, "dealer +12000")
 	assert_eq(int(deltas[1]), -4000, "seat 1 -4000")
@@ -84,7 +84,7 @@ func test_payout_dealer_nagashi() -> void:
 func test_payout_non_dealer_nagashi() -> void:
 	var driver := _make_driver_with_battle(0)  # dealer = 0
 	# winner_seat = 2(闲家)
-	var deltas: Dictionary = driver._compute_nagashi_payout(2)
+	var deltas: Dictionary = NagashiMangan.payout(2, driver.dealer_seat)
 	# 闲家流し:dealer -4000, 其它闲 -2000,自 +8000
 	assert_eq(int(deltas[0]), -4000, "dealer -4000")
 	assert_eq(int(deltas[1]), -2000, "seat 1 -2000")

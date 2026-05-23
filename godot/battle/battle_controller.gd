@@ -80,6 +80,11 @@ func _step_draw() -> void:
 	if t == null:
 		# 牌墙耗尽 — 流局
 		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		# 流し満貫(nagashi mangan)检测:命中则额外 emit NAGASHI_MANGAN 让 UI 反馈
+		var nm_winner: int = NagashiMangan.detect_winner_seat(state)
+		if nm_winner >= 0:
+			_emit(&"NAGASHI_MANGAN", nm_winner, null,
+				{"winner_seat": nm_winner})
 		_settled = true
 		return
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
@@ -440,6 +445,11 @@ func _step_draw_async() -> void:
 	var t: Tile = engine.draw_for_current()
 	if t == null:
 		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		# 流し満貫 检测(同 sync 路径)
+		var nm_winner: int = NagashiMangan.detect_winner_seat(state)
+		if nm_winner >= 0:
+			_emit(&"NAGASHI_MANGAN", nm_winner, null,
+				{"winner_seat": nm_winner})
 		_settled = true
 		return
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})

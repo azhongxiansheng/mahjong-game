@@ -151,11 +151,26 @@ func apply_result(events: Array) -> Dictionary:
 		riichi_sticks = battle.state.riichi_sticks
 
 	# 流し満貫(nagashi mangan):流局时若某座所有弃牌都是幺九且无人鸣过他的牌,
-	# 该座按满贯计算(自摸式支付)。检测优先于普通流局返回。
+	# 该座按满贯计算(自摸式支付)。BC.run_to_end 可能已 emit NAGASHI_MANGAN 事件;
+	# 即使没有,这里也兜底自检 — 保持 GameDriver 独立工作。
 	if battle != null:
-		var nagashi_seat: int = _detect_nagashi_mangan_seat()
+		# 优先看 BC events 里的 NAGASHI_MANGAN 事件(BC 用 UI 信号)
+		for i in range(events.size() - 1, -1, -1):
+			var nm_ev: BattleEvent = events[i]
+			if nm_ev.type == &"NAGASHI_MANGAN":
+				var nm_winner: int = int(nm_ev.actor_seat)
+				var nm_payout: Dictionary = NagashiMangan.payout(nm_winner, dealer_seat)
+				for seat_id in nm_payout:
+					cumulative_scores[seat_id] += int(nm_payout[seat_id])
+				return {
+					"kind": "nagashi_mangan",
+					"winner_seat": nm_winner,
+					"payout": nm_payout,
+				}
+		# 没有 BC 事件兜底:GameDriver 自检
+		var nagashi_seat: int = NagashiMangan.detect_winner_seat(battle.state)
 		if nagashi_seat >= 0:
-			var nagashi_payout: Dictionary = _compute_nagashi_payout(nagashi_seat)
+			var nagashi_payout: Dictionary = NagashiMangan.payout(nagashi_seat, dealer_seat)
 			for seat_id in nagashi_payout:
 				cumulative_scores[seat_id] += int(nagashi_payout[seat_id])
 			return {
@@ -165,63 +180,6 @@ func apply_result(events: Array) -> Dictionary:
 			}
 
 	return {"kind": "exhaustive_draw"}
-
-
-# 流し満貫 检测:扫 4 座位,首个满足条件的返回 seat_id;无则 -1。
-# 条件:(a) discards_per_seat[s] 非空 (b) 所有 discards 都是 yaochu
-# (c) 全 4 座位的 melds.from_seat 都 != s(无人鸣过我的牌)。
-# 多家同时满足时规则上多家都领;v1 简化返第一个(后续若需多家可改返 Array)。
-func _detect_nagashi_mangan_seat() -> int:
-	if battle == null:
-		return -1
-	for s in range(4):
-		var discards: Array = battle.state.discards_per_seat[s]
-		if discards.is_empty():
-			continue
-		var all_yaochu: bool = true
-		for t in discards:
-			if t == null or not TileId.is_yaochu(t.id):
-				all_yaochu = false
-				break
-		if not all_yaochu:
-			continue
-		# 检无人鸣过 seat s 的弃牌
-		var called: bool = false
-		for other_seat in battle.state.seats:
-			for m in other_seat.melds:
-				if m != null and int(m.from_seat) == s:
-					called = true
-					break
-			if called:
-				break
-		if called:
-			continue
-		return s
-	return -1
-
-
-# 流し満貫 支付:庄家流し → 12000 from each(4000+4000+4000)
-# 闲家流し → 8000 from dealer + 2000+2000 from non-dealer(满贯 tsumo 式)
-func _compute_nagashi_payout(winner_seat: int) -> Dictionary:
-	var deltas: Dictionary = {0: 0, 1: 0, 2: 0, 3: 0}
-	if winner_seat == dealer_seat:
-		# 庄家流し満貫:每家 -4000,庄收 12000
-		for s in range(4):
-			if s != winner_seat:
-				deltas[s] = -4000
-				deltas[winner_seat] = int(deltas[winner_seat]) + 4000
-	else:
-		# 闲家流し満貫:庄 -4000,闲(非庄非自) -2000,自 +8000
-		for s in range(4):
-			if s == winner_seat:
-				continue
-			if s == dealer_seat:
-				deltas[s] = -4000
-				deltas[winner_seat] = int(deltas[winner_seat]) + 4000
-			else:
-				deltas[s] = -2000
-				deltas[winner_seat] = int(deltas[winner_seat]) + 2000
-	return deltas
 
 # M7：把 battle.state.scores 与 _pre_hand_state_scores 之间的 delta 应用到
 # cumulative_scores。这部分 delta 来自 skill ctx.transfer_points / steal_score

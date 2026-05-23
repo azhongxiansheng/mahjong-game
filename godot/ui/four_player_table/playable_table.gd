@@ -125,6 +125,14 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		else:
 			tier.add_theme_color_override("font_color", Color(0.82, 0.78, 0.55))
 		subtitle.text = "%s · %s" % [winner_name, win_kind]
+	elif last_event == "NAGASHI_MANGAN":
+		# 日麻 §6.5 流し満貫:流局时弃牌全幺九且无被鸣 → 满贯支付
+		tier.text = "流し満貫"
+		tier.add_theme_color_override("font_color", Color(1, 0.78, 0.4))
+		var nm_extra: Dictionary = _find_last_event_extra("NAGASHI_MANGAN")
+		var nm_seat: int = int(nm_extra.get("winner_seat", -1))
+		var nm_name: String = "你" if nm_seat == 0 else "AI %d" % nm_seat
+		subtitle.text = "%s · 全幺九弃 + 无被鸣" % nm_name
 	elif last_event == "EXHAUSTIVE_DRAW":
 		tier.text = "流局"
 		tier.add_theme_color_override("font_color", Color(0.7, 0.78, 0.85))
@@ -441,6 +449,8 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 			return "荣和! %s" % _seat_short(ev.actor_seat)
 		&"EXHAUSTIVE_DRAW":
 			return "流局"
+		&"NAGASHI_MANGAN":
+			return "流し満貫! %s" % _seat_short(ev.actor_seat)
 		&"ABORTIVE_DRAW":
 			var reason: String = String(ev.extra.get("reason", ""))
 			match reason:
