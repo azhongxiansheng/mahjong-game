@@ -90,8 +90,17 @@ func _step_draw() -> void:
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
 	# M7：摸到此牌后牌墙是否空 → 海底捞月（自摸路径）
 	var is_haitei: bool = (state.wall.live_wall_size() == 0)
-	# 自摸检测（无役不胡；本里程碑 SimpleAi 不会主动宣告，这里 BC 自动判定）
-	var win := _check_tsumo(t, is_haitei)
+	# 天和/地和(tenhou/chiihou):第一巡每家首摸,前提 first_round_active +
+	# 该 seat 还没弃过牌。Yaku evaluator 通过 GameContext.is_dealer_first_hand /
+	# is_non_dealer_first_draw 检测;修复前这两 dead code,役満永不命中。
+	var first_draw: bool = state.first_round_active \
+		and state.discards_per_seat[state.current_seat].is_empty()
+	var is_tenhou: bool = first_draw \
+		and state.current_seat == state.dealer_seat
+	var is_chiihou: bool = first_draw \
+		and state.current_seat != state.dealer_seat
+	# 自摸检测（无役不胡;本里程碑 SimpleAi 不会主动宣告，这里 BC 自动判定）
+	var win := _check_tsumo(t, is_haitei, false, is_tenhou, is_chiihou)
 	if win.is_winning and _should_accept_tsumo(state.current_seat, t, win):
 		_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
 
@@ -196,7 +205,7 @@ func _wrap_tile(t: Tile) -> TileInstance:
 # is_rinshan: 是否岭上开花 tsumo(杠后岭上摸到的牌胡)。修复前 dead code,所有岭上摸胡
 # 都丢了 +1 han 役。BC._step_discard 在 seat.last_draw_is_rinshan=true 时传 true。
 # 返 {is_winning: bool, wp?: Dict, yaku_list?: YakuList, hand_13?: Hand, melds?: Array}
-func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false) -> Dictionary:
+func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false, is_tenhou: bool = false, is_chiihou: bool = false) -> Dictionary:
 	var seat: Seat = state.seats[state.current_seat]
 	var hand_13 := _hand_minus_first(seat.hand, drawn.id)
 	if hand_13 == null:
@@ -208,7 +217,7 @@ func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false
 	var wp: Dictionary = WinPattern.detect(hand_13, typed_melds, drawn)
 	if not wp.is_winning:
 		return {"is_winning": false}
-	var game_ctx := _build_game_ctx(seat, true, is_haitei, false, is_rinshan)
+	var game_ctx := _build_game_ctx(seat, true, is_haitei, false, is_rinshan, is_tenhou, is_chiihou)
 	var yaku_wc := WinContext.new(hand_13, typed_melds, drawn, wp, game_ctx)
 	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
 	# 无役不能胡（dora 不构成役）；yaku/yaku_list.gd 的 is_yakuman 是函数
@@ -307,7 +316,13 @@ func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> 
 # 默认 sync 路径下 await 一个非 coroutine 值是 no-op，所以两条路径可共用。
 
 # 决定 actor 切哪张牌；默认 = ai.decide_discard(seat)。
+# 日麻 §5 立直锁牌:已立直 + 有刚摸的牌 → 强制 tsumogiri,不再让 AI 决策
+# (AI 决策不知 riichi 状态,会非法换牌)。
 func _get_discard_decision(seat: Seat, _actor: int) -> Tile:
+	if seat.riichi.declared and seat.last_drawn_tile_id >= 0:
+		var forced: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
+		if forced != null:
+			return forced
 	return ai.decide_discard(seat)
 
 # 决定 actor 是否立直；默认 = HeuristicAi.decide_riichi（如有），否则 false。
@@ -467,7 +482,14 @@ func _step_draw_async() -> void:
 				_settled = true
 				return
 	var is_haitei: bool = (state.wall.live_wall_size() == 0)
-	var win := _check_tsumo(t, is_haitei)
+	# 天和/地和(同 sync 路径)
+	var first_draw: bool = state.first_round_active \
+		and state.discards_per_seat[state.current_seat].is_empty()
+	var is_tenhou: bool = first_draw \
+		and state.current_seat == state.dealer_seat
+	var is_chiihou: bool = first_draw \
+		and state.current_seat != state.dealer_seat
+	var win := _check_tsumo(t, is_haitei, false, is_tenhou, is_chiihou)
 	if win.is_winning:
 		var accept: bool = await _should_accept_tsumo(state.current_seat, t, win)
 		if accept:
@@ -842,7 +864,7 @@ func _hand_minus_first(hand: Hand, tile_id: int) -> Hand:
 # 用当前 BattleState + seat 构造 yaku/GameContext。
 # is_haitei / is_houtei 由 _check_tsumo / _check_ron 根据牌墙状态传入；
 # 之前一直是 false，导致海底捞月 / 河底捞鱼役在真战斗永不被检测。
-func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_houtei: bool = false, is_rinshan: bool = false) -> GameContext:
+func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_houtei: bool = false, is_rinshan: bool = false, is_tenhou: bool = false, is_chiihou: bool = false) -> GameContext:
 	var ctx := GameContext.new()
 	ctx.bakaze = state.round_wind
 	ctx.jikaze = seat.seat_wind
@@ -854,6 +876,9 @@ func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_hou
 	ctx.is_houtei = is_houtei
 	# 岭上开花(rinshan kaihou)只在 tsumo 路径有意义,荣胡时永 false
 	ctx.is_rinshan = is_rinshan and is_tsumo
+	# 天和/地和:tenhou 仅庄家配牌即和;chiihou 仅闲家首摸即和。两者都要求 tsumo。
+	ctx.is_dealer_first_hand = is_tenhou and is_tsumo
+	ctx.is_non_dealer_first_draw = is_chiihou and is_tsumo
 	ctx.dora_count = state.dora_indicators.visible.size()
 	return ctx
 

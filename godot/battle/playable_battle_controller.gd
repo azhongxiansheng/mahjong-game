@@ -93,6 +93,12 @@ func _step_discard_async() -> void:
 func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:
 		await _ai_think_pause()
+		# AI 立直后强制 tsumogiri(日麻 §5 立直锁牌规则);
+		# AI 本体 decide_discard 不知 riichi 状态,在此前置 force。
+		if should_auto_tsumogiri(seat):
+			var forced: Tile = _find_tile_by_id(seat, seat.last_drawn_tile_id)
+			if forced != null:
+				return forced
 		return ai.decide_discard(seat)
 	# 立直后强制 tsumogiri（弃刚摸的牌；spec 2026-05-08 bug 1 fix）。
 	# 注意：本判断在自摸窗口（_should_accept_tsumo）之后执行；若玩家已点了
