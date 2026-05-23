@@ -171,6 +171,24 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		else:
 			lines.append("番数：%d 飜    符：%d" % [han2, fu2])
 		lines.append("胜利者得分：%d 点" % winner_total)
+		# 显式列出 dora 指示牌让玩家核对算番:visible + 立直胡时 hidden uradora。
+		if _bc != null and _bc.state != null:
+			var di = _bc.state.dora_indicators
+			var dora_names: Array[String] = []
+			for tile in di.visible:
+				if tile != null:
+					dora_names.append(CardTileBack.tile_short_name(tile.id))
+			if not dora_names.is_empty():
+				lines.append("Dora 指示: " + ", ".join(dora_names))
+			# 立直胡 → 显式裏 dora 指示
+			var winner_seat: int = int(win_event.actor_seat)
+			if winner_seat >= 0 and _bc.state.seats[winner_seat].riichi.declared:
+				var ura_names: Array[String] = []
+				for tile in di.hidden_uradora:
+					if tile != null:
+						ura_names.append(CardTileBack.tile_short_name(tile.id))
+				if not ura_names.is_empty():
+					lines.append("裏 Dora 指示: " + ", ".join(ura_names))
 		lines.append("")
 		lines.append("点数转移：")
 		for seat in payout.keys():
@@ -225,11 +243,19 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	parent.add_child(strip)
 	for tid in concealed_ids:
 		strip.add_child(_make_overlay_tile(int(tid), false))
-	# 牌组与 winning tile 之间留 10 px gap
+	# 暗手与 winning tile 之间留 10 px gap
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(10, 56)
 	strip.add_child(spacer)
 	strip.add_child(_make_overlay_tile(winning_tile_id, true))
+	# 副露(吃/碰/杠)展示在最右,每个 meld 内 1 px 间隔、meld 间 8 px gap
+	for meld in winner.melds:
+		var meld_gap := Control.new()
+		meld_gap.custom_minimum_size = Vector2(8, 56)
+		strip.add_child(meld_gap)
+		for t in meld.tiles:
+			if t != null:
+				strip.add_child(_make_overlay_tile(t.id, false))
 
 
 # 单张小牌(28×40),winning=true 给金色描边 Panel 包装突出。
