@@ -114,6 +114,7 @@ func apply_chi(claimant_seat: int, claimed_tile: Tile, companion_ids: Array) -> 
 	claimant.melds.append(Meld.make_chi(meld_tiles, discarder_seat))
 	state.discards_per_seat[discarder_seat].pop_back()
 	_after_claim(claimant_seat)
+	_clear_all_ippatsu_windows()  # 日麻 §6.4 一発:任何鸣牌(含暗杠)立刻关窗
 	return true
 
 # 碰：claimant_seat 接管弃牌，hand 出 2 张同 id
@@ -128,6 +129,7 @@ func apply_pon(claimant_seat: int, claimed_tile: Tile) -> bool:
 	claimant.melds.append(Meld.make_pon(meld_tiles, discarder_seat))
 	state.discards_per_seat[discarder_seat].pop_back()
 	_after_claim(claimant_seat)
+	_clear_all_ippatsu_windows()
 	return true
 
 # 明杠：hand 出 3 张同 id；翻新 dora；摸岭上
@@ -146,6 +148,7 @@ func apply_minkan(claimant_seat: int, claimed_tile: Tile) -> bool:
 	state.current_seat = claimant_seat
 	state.phase = BattlePhase.Kind.DISCARD
 	state.first_round_active = false
+	_clear_all_ippatsu_windows()
 	return true
 
 # 暗杠（自家回合）：hand 出 4 张同 id；翻新 dora；摸岭上
@@ -161,6 +164,7 @@ func apply_ankan(seat_id: int, tile_id: int) -> bool:
 	_take_rinshan_to(seat)
 	state.phase = BattlePhase.Kind.DISCARD
 	state.first_round_active = false
+	_clear_all_ippatsu_windows()  # 暗杠也关一発窗(国际标准日麻 §6.4)
 	return true
 
 # 加杠：hand 出 1 张匹配 PON 的 id；替换 PON → ADDED_KAN；翻 dora；摸岭上
@@ -183,6 +187,7 @@ func apply_added_kan(seat_id: int, tile_id: int) -> bool:
 	_take_rinshan_to(seat)
 	state.phase = BattlePhase.Kind.DISCARD
 	state.first_round_active = false
+	_clear_all_ippatsu_windows()
 	return true
 
 # 荣胡：进入结算 phase（实际分数计算由 ScoreCalc 在 SETTLE 期完成）
@@ -230,3 +235,12 @@ func _take_rinshan_to(seat: Seat) -> void:
 		seat.add_to_hand(t)
 		# 杠后岭上摸 = 新的"刚摸的牌"
 		seat.last_drawn_tile_id = t.id
+
+
+# 日麻 §6.4 一発:任何鸣牌(吃/碰/明杠/暗杠/加杠)都立刻关闭所有座位
+# 一発窗。BattleController._step_discard 在 riichi 玩家下一巡自家弃牌前
+# 也会自己关窗 — 两层 cover 保险。
+func _clear_all_ippatsu_windows() -> void:
+	for seat in state.seats:
+		if seat.riichi.ippatsu_window:
+			seat.riichi.consume_ippatsu()

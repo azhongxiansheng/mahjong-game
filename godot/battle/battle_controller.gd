@@ -93,6 +93,9 @@ func _step_draw() -> void:
 func _step_discard() -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var actor: int = state.current_seat
+	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
+	# (此时距离 declared_turn 已过 ≥1 巡且未鸣牌 — 一発自然过期)
+	_close_ippatsu_if_lap_passed(seat)
 	# M11 net foundation: 优先回放决策；否则走 AI 决策路径
 	var to_discard: Tile = null
 	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
@@ -297,6 +300,20 @@ func _try_player_claim_async(_discarded: Tile, _discarder: int) -> void:
 func _should_declare_kyuusyu_kyuuhai(_actor: int) -> bool:
 	return false
 
+
+# 日麻 §6.4 一発:玩家立直后,若再轮到自家弃牌(=已过了 ≥1 巡且无人鸣牌)
+# 则一発过期。注意 declare 当巡的弃牌不该关 — 此时 declared_turn==turn_count
+# 直接 return。鸣牌打断由 TurnEngine.apply_xxx 自己 cover(关所有 seats 窗)。
+func _close_ippatsu_if_lap_passed(seat: Seat) -> void:
+	if not seat.riichi.declared:
+		return
+	if not seat.riichi.ippatsu_window:
+		return
+	# 同一巡 declare 后的本家弃牌还在 declared_turn,不关窗
+	if seat.riichi.declared_turn == state.turn_count:
+		return
+	seat.riichi.consume_ippatsu()
+
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
 # 跟 run_to_end() 行为完全一样，只是把 _step_draw / _step_discard / _try_auto_ron
@@ -378,6 +395,8 @@ func _step_draw_async() -> void:
 func _step_discard_async() -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var actor: int = state.current_seat
+	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
+	_close_ippatsu_if_lap_passed(seat)
 	var to_discard: Tile = null
 	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
 	if not replayed.is_empty():
