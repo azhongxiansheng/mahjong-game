@@ -67,6 +67,28 @@ func _load_meta() -> void:
 	runs_completed = int(parsed.get("runs_completed", 0))
 	runs_won = int(parsed.get("runs_won", 0))
 
+func get_renown() -> int:
+	return renown
+
+func is_unlocked(unlock_key: StringName) -> bool:
+	return renown >= unlock_threshold(unlock_key)
+
+static func unlock_threshold(key: StringName) -> int:
+	match key:
+		&"starter_aggro", &"starter_fast", &"starter_control":
+			return 0
+		&"akagi", &"kaiji", &"washizu":
+			return 0
+		&"relic_lucky_cat_v1":
+			return 0
+		&"relic_iron_will_v1":
+			return 30
+		&"relic_soul_mirror_v1":
+			return 100
+		&"relic_wall_eye_v1":
+			return 200
+	return 0
+
 func reset() -> void:
 	# 用于测试或玩家主动清档
 	renown = 0
