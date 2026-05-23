@@ -21,6 +21,11 @@ var furiten: FuritenState
 #   - discard()                  → 设回 -1
 #   - apply_chi/pon              → 设回 -1（claimant 没真摸牌，是吃/碰别人的）
 var last_drawn_tile_id: int = -1
+# 刚摸的那张牌是否来自岭上(杠后岭上摸)。true 时 BattleController 在 _step_discard
+# 开头检 tsumo,允许岭上开花(rinshan kaihou,+1 han 役)。draw_for_current 摸正常
+# 牌时回 false;_take_rinshan_to 摸岭上时设 true。修复前:is_rinshan dead code,
+# 玩家明杠后即使胡也不算岭上开花。
+var last_draw_is_rinshan: bool = false
 
 func _init(p_seat_id: int, p_seat_wind: int, p_points: int = DEFAULT_STARTING_POINTS) -> void:
 	seat_id = p_seat_id

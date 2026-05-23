@@ -96,6 +96,14 @@ func _step_discard() -> void:
 	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
 	# (此时距离 declared_turn 已过 ≥1 巡且未鸣牌 — 一発自然过期)
 	_close_ippatsu_if_lap_passed(seat)
+	# 岭上开花(rinshan kaihou):杠后岭上摸到的牌若胡 → +1 han 役。
+	# 仅在 _step_discard 入口检 — 因为杠后 phase=DISCARD 直接进这里,
+	# 而 _step_draw 是正常摸牌的入口(那条路 last_draw_is_rinshan=false)。
+	if seat.last_draw_is_rinshan and seat.last_drawn_tile_id >= 0:
+		if _try_rinshan_tsumo(seat):
+			return
+		# 不胡 → 清掉岭上标记让本回合走正常切牌
+		seat.last_draw_is_rinshan = false
 	# M11 net foundation: 优先回放决策；否则走 AI 决策路径
 	var to_discard: Tile = null
 	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
@@ -180,8 +188,10 @@ func _wrap_tile(t: Tile) -> TileInstance:
 #   → 无役校验 → ScoreCalc.calculate → emit WIN_DECLARED
 
 # 把 14 张手（含刚摸到的 drawn）拆成 13 张暗牌 + 和牌张，然后跑 WinPattern + YakuEvaluator。
+# is_rinshan: 是否岭上开花 tsumo(杠后岭上摸到的牌胡)。修复前 dead code,所有岭上摸胡
+# 都丢了 +1 han 役。BC._step_discard 在 seat.last_draw_is_rinshan=true 时传 true。
 # 返 {is_winning: bool, wp?: Dict, yaku_list?: YakuList, hand_13?: Hand, melds?: Array}
-func _check_tsumo(drawn: Tile, is_haitei: bool = false) -> Dictionary:
+func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false) -> Dictionary:
 	var seat: Seat = state.seats[state.current_seat]
 	var hand_13 := _hand_minus_first(seat.hand, drawn.id)
 	if hand_13 == null:
@@ -193,7 +203,7 @@ func _check_tsumo(drawn: Tile, is_haitei: bool = false) -> Dictionary:
 	var wp: Dictionary = WinPattern.detect(hand_13, typed_melds, drawn)
 	if not wp.is_winning:
 		return {"is_winning": false}
-	var game_ctx := _build_game_ctx(seat, true, is_haitei, false)
+	var game_ctx := _build_game_ctx(seat, true, is_haitei, false, is_rinshan)
 	var yaku_wc := WinContext.new(hand_13, typed_melds, drawn, wp, game_ctx)
 	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
 	# 无役不能胡（dora 不构成役）；yaku/yaku_list.gd 的 is_yakuman 是函数
@@ -236,8 +246,16 @@ func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false) -> Di
 # （v1 简化：spec 严格 atama-hane 是"被取消即不再考虑"；本 v1 让其它候选
 # 也有机会 fire 以让 sim 看到更多 RON 数据点）。
 # is_houtei = (wall.live_wall_size() == 0) — 当前 discard 来自最后一张 live 牌。
+#
+# 日麻 §3.2 三家和了(sancha houra):若 3 家同时可荣胡此弃牌 → 途中流局
+# (而非首个 atama-hane 收胡)。本函数先扫一遍 candidates 计数,≥3 → abort。
 func _try_auto_ron(discarded: Tile, discarder: int) -> void:
 	var is_houtei: bool = (state.wall.live_wall_size() == 0)
+	# 三家和了 pre-check:计可胡候选数,≥3 → abortive draw
+	if _count_ron_candidates(discarded, discarder, is_houtei) >= 3:
+		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
+		_settled = true
+		return
 	for offset in range(1, 4):
 		var candidate: int = (discarder + offset) % 4
 		var candidate_seat: Seat = state.seats[candidate]
@@ -259,6 +277,22 @@ func _try_auto_ron(discarded: Tile, discarder: int) -> void:
 		# 4) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
 		if apply_ron(candidate, discarded, discarder, is_houtei):
 			return  # 已 settle
+
+
+# 计算给定 discarded 牌的可荣胡候选数(只看规则可行性 + 有役,不调
+# _should_accept_ron 避免 async 路径污染)。
+func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> int:
+	var count: int = 0
+	for offset in range(1, 4):
+		var candidate: int = (discarder + offset) % 4
+		var candidate_seat: Seat = state.seats[candidate]
+		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
+			continue
+		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
+		if not ron_check.is_winning:
+			continue
+		count += 1
+	return count
 
 # ---- 决策钩子（subclass 覆写以接入玩家输入或网络权威） ----
 #
@@ -313,6 +347,43 @@ func _close_ippatsu_if_lap_passed(seat: Seat) -> void:
 	if seat.riichi.declared_turn == state.turn_count:
 		return
 	seat.riichi.consume_ippatsu()
+
+# 岭上开花 sync 路径:检 tsumo;胡且默认 accept → settle 并返 true。
+# is_rinshan=true 被透传到 _build_game_ctx → Yaku 评 +1 han 役。
+func _try_rinshan_tsumo(seat: Seat) -> bool:
+	var rinshan_tile: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
+	if rinshan_tile == null:
+		return false
+	var win: Dictionary = _check_tsumo(rinshan_tile, false, true)  # is_rinshan=true
+	if not win.is_winning:
+		return false
+	if not _should_accept_tsumo(state.current_seat, rinshan_tile, win):
+		return false
+	_settle_tsumo(rinshan_tile, win.wp, win.yaku_list, false, true)
+	return true
+
+
+# 岭上开花 async 路径:_should_accept_tsumo 在 PlayableBC 是 coroutine,要 await
+func _try_rinshan_tsumo_async(seat: Seat) -> bool:
+	var rinshan_tile: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
+	if rinshan_tile == null:
+		return false
+	var win: Dictionary = _check_tsumo(rinshan_tile, false, true)
+	if not win.is_winning:
+		return false
+	var accept = await _should_accept_tsumo(state.current_seat, rinshan_tile, win)
+	if not accept:
+		return false
+	_settle_tsumo(rinshan_tile, win.wp, win.yaku_list, false, true)
+	return true
+
+
+# 按 id 找手牌中的实际 Tile 引用(保留 owner_seat / is_red_dora 等)
+func _find_tile_in_hand(hand: Hand, tile_id: int) -> Tile:
+	for t in hand._tiles:
+		if t.id == tile_id:
+			return t
+	return null
 
 # ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
 #
@@ -397,6 +468,12 @@ func _step_discard_async() -> void:
 	var actor: int = state.current_seat
 	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
 	_close_ippatsu_if_lap_passed(seat)
+	# 岭上开花(rinshan kaihou)tsumo 检测 — 杠后岭上摸 + 胡 → +1 han 役
+	if seat.last_draw_is_rinshan and seat.last_drawn_tile_id >= 0:
+		var rinshan_settled: bool = await _try_rinshan_tsumo_async(seat)
+		if rinshan_settled:
+			return
+		seat.last_draw_is_rinshan = false
 	var to_discard: Tile = null
 	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
 	if not replayed.is_empty():
@@ -443,6 +520,11 @@ func _step_discard_async() -> void:
 
 func _try_ron_async(discarded: Tile, discarder: int) -> void:
 	var is_houtei: bool = (state.wall.live_wall_size() == 0)
+	# 三家和了 pre-check
+	if _count_ron_candidates(discarded, discarder, is_houtei) >= 3:
+		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
+		_settled = true
+		return
 	for offset in range(1, 4):
 		var candidate: int = (discarder + offset) % 4
 		var candidate_seat: Seat = state.seats[candidate]
@@ -541,7 +623,7 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
 	_settled = true
 
-func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = false) -> void:
+func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = false, _is_rinshan: bool = false) -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var ti := _wrap_tile(drawn)
 	# M11 net foundation: tsumo 接受是隐含决策（v1 自动接受）。本 emit 让事件
@@ -750,7 +832,7 @@ func _hand_minus_first(hand: Hand, tile_id: int) -> Hand:
 # 用当前 BattleState + seat 构造 yaku/GameContext。
 # is_haitei / is_houtei 由 _check_tsumo / _check_ron 根据牌墙状态传入；
 # 之前一直是 false，导致海底捞月 / 河底捞鱼役在真战斗永不被检测。
-func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_houtei: bool = false) -> GameContext:
+func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_houtei: bool = false, is_rinshan: bool = false) -> GameContext:
 	var ctx := GameContext.new()
 	ctx.bakaze = state.round_wind
 	ctx.jikaze = seat.seat_wind
@@ -760,6 +842,8 @@ func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_hou
 	ctx.is_ippatsu = seat.riichi.ippatsu_window
 	ctx.is_haitei = is_haitei
 	ctx.is_houtei = is_houtei
+	# 岭上开花(rinshan kaihou)只在 tsumo 路径有意义,荣胡时永 false
+	ctx.is_rinshan = is_rinshan and is_tsumo
 	ctx.dora_count = state.dora_indicators.visible.size()
 	return ctx
 

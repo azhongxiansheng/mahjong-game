@@ -19,6 +19,9 @@ func draw_for_current() -> Tile:
 	seat.add_to_hand(t)
 	# 标记刚摸的牌：UI 用于"摸切"显示与立直后强制 tsumogiri（spec 2026-05-08 bug fix）
 	seat.last_drawn_tile_id = t.id
+	# 普通摸:清岭上标记(若上一动作是岭上摸到现在,中间会经过 _step_discard 已自己 clear,
+	# 这里再做一道兜底)。
+	seat.last_draw_is_rinshan = false
 	# 日麻 §5 同巡振听清除:当事人下一次自摸时,temporary 振听解除。
 	seat.furiten.clear_temporary()
 	state.phase = BattlePhase.Kind.DISCARD
@@ -235,6 +238,8 @@ func _take_rinshan_to(seat: Seat) -> void:
 		seat.add_to_hand(t)
 		# 杠后岭上摸 = 新的"刚摸的牌"
 		seat.last_drawn_tile_id = t.id
+		# 标记 last_draw_is_rinshan,让 BC._step_discard 检 tsumo 时识别为岭上开花
+		seat.last_draw_is_rinshan = true
 
 
 # 日麻 §6.4 一発:任何鸣牌(吃/碰/明杠/暗杠/加杠)都立刻关闭所有座位

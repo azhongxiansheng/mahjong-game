@@ -14,8 +14,9 @@ func test_each_option_is_valid_gacha_result():
 		assert_true(
 			r.kind == GachaResult.KIND_TILE or
 			r.kind == GachaResult.KIND_ABILITY or
-			r.kind == GachaResult.KIND_CONSUMABLE,
-			"每个选项应有有效 kind"
+			r.kind == GachaResult.KIND_CONSUMABLE or
+			r.kind == GachaResult.KIND_RELIC,
+			"每个选项应有有效 kind(tile/ability/consumable/relic)"
 		)
 
 func test_reward_options_deterministic():

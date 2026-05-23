@@ -17,12 +17,13 @@ func before_each() -> void:
 
 
 func test_boots_to_starter_pack_picker() -> void:
+	# 流程已改为:先 CharacterPicker → 选角色后再 StarterPackPicker。
 	var flow: RunFlow = RUN_FLOW.instantiate()
 	add_child_autofree(flow)
 	await get_tree().process_frame
 	assert_not_null(flow._current_panel, "启动后应有当前面板")
-	assert_true(flow._current_panel is StarterPackPicker,
-		"无存档时应落到起始包选择面板，实际：%s"
+	assert_true(flow._current_panel is CharacterPicker,
+		"无存档时应先到角色选择面板,实际：%s"
 			% flow._current_panel.get_class())
 
 
@@ -30,8 +31,17 @@ func test_choosing_pack_advances_to_chapter_map() -> void:
 	var flow: RunFlow = RUN_FLOW.instantiate()
 	add_child_autofree(flow)
 	await get_tree().process_frame
+	# 1) 角色选择面板 → 选第一个可用角色 emit signal
+	var char_picker := flow._current_panel as CharacterPicker
+	assert_not_null(char_picker, "应先在角色选择面板")
+	if char_picker == null:
+		return
+	char_picker.character_chosen.emit(&"akagi")
+	await get_tree().process_frame
+
+	# 2) 推进到起始包选择面板
 	var picker := flow._current_panel as StarterPackPicker
-	assert_not_null(picker, "应在起始包选择面板")
+	assert_not_null(picker, "选角后应在起始包选择面板")
 	if picker == null:
 		return
 
