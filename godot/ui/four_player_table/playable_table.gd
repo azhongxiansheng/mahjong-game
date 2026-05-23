@@ -419,6 +419,11 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 			return "河底捞鱼!"
 		&"GAME_BEGIN":
 			return "开局"
+		&"SKILL_TRIGGERED":
+			var name: String = String(ev.extra.get("skill_name", ""))
+			if name == "":
+				return ""
+			return "⚡ %s — %s" % [name, _seat_short(ev.actor_seat)]
 	return ""
 
 func _exit_tree() -> void:

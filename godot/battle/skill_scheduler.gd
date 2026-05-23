@@ -93,9 +93,14 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 		if c.skill.consumed:
 			continue
 		ctx.beneficiary_seat = c.beneficiary_seat
-		ctx.current_skill = c.skill  # M7: ctx.consume_self() 用
+		ctx.current_skill = c.skill
 		c.hook.on_event(c.skill, event, ctx)
-	ctx.current_skill = null  # 防止 hook 外部误用残留引用
+		ctx.triggered_skills.append({
+			"skill_id": c.skill.id,
+			"skill_name": c.skill.display_name,
+			"beneficiary_seat": c.beneficiary_seat,
+		})
+	ctx.current_skill = null
 
 func _dump_state() -> Dictionary:
 	return {

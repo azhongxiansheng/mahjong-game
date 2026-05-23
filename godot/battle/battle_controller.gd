@@ -150,7 +150,15 @@ func _emit(type: StringName, actor_seat: int, ti: TileInstance, extra: Dictionar
 	var ev := BattleEvent.make(type, actor_seat, ti, extra)
 	events.append(ev)
 	_last_event_type = type
-	return scheduler.emit_event(ev)
+	var ctx := scheduler.emit_event(ev)
+	for entry in ctx.triggered_skills:
+		var skill_ev := BattleEvent.make(&"SKILL_TRIGGERED", int(entry.beneficiary_seat), null, {
+			"skill_id": entry.skill_id,
+			"skill_name": entry.skill_name,
+			"source_event": type,
+		})
+		events.append(skill_ev)
+	return ctx
 
 # 把 Tile 包成 TileInstance 以喂事件 payload。
 # Tile 当前没有 owner_seat 字段（main 合并冲突里 commit 2b87929 的字段被丢掉，是 main 旧债，
