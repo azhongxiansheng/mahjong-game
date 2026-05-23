@@ -621,6 +621,9 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	win_hand_ron.add(ron_tile)
 	var score_yaku_list := _adapt_yaku_list(
 		yaku_list, win_hand_ron, melds_arr, winner.riichi.declared)
+	# 包牌(大三元/大四喜)— 检 yaku evaluator 命中 + melds 含 open dragon/wind 刻
+	score_ctx.pao_seat = PaoCalculator.detect_pao_seat(
+		yaku_list.id_list(), melds_arr)
 
 	# M7：在 ScoreCalc 之前 emit pre-score 事件（HOUTEI? + WIN_DECLARED_PRE），
 	# hooks 此时可通过 ctx.add_han / mark_extra_dora / multiply_han_for_seat
@@ -684,6 +687,9 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	# seat.hand 此时就是 14 张胡牌手,直接传给 _adapt_yaku_list 数 dora。
 	var score_yaku_list := _adapt_yaku_list(
 		yaku_list, seat.hand, melds_arr, seat.riichi.declared)
+	# 包牌(自摸路径):大三元/大四喜由外鸣完成 → 包人付全额
+	score_ctx.pao_seat = PaoCalculator.detect_pao_seat(
+		yaku_list.id_list(), melds_arr)
 
 	# M7：HAITEI? + WIN_DECLARED_PRE，accumulate hook 影响（han_deltas / dora /
 	# multiplier）。pre_ctxs 持所有 pre-score ctx 引用。
