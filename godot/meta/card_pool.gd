@@ -174,6 +174,17 @@ static func all_abilities() -> Array:
 		"一发窗口延长至 2 巡（v1：自胡 +1 番）",
 		Rarity.Kind.EPIC, "res://skills/hooks/riichi_kago_hook.gd"))
 
+	# 角色被动能力
+	pool.append(_mk_ability(&"char_akagi_passive_v1", "赤木·闘志",
+		"每次胡牌额外 +1 番（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_akagi_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_kaiji_passive_v1", "开司·逆境",
+		"被荣胡时 50% 概率取消（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kaiji_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_washizu_passive_v1", "鹲巣·透视",
+		"每局开始看牌墙顶 3 张（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_washizu_passive_hook.gd"))
+
 	# M7 收尾：M6 唯一 holdout（plan-6 §8.10 #12）
 	pool.append(_mk_ability(&"tougenkyo_v1", "偷天换日",
 		"每局 1 次手牌↔弃牌河交换（v1 简化：自胡 +3 番 + 消耗）",

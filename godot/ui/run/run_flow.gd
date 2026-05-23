@@ -26,6 +26,7 @@ const CONTINUE_PROMPT := preload("res://ui/run/continue_prompt.tscn")
 # 战斗节点真实可玩：玩家 vs 3 AI
 const PLAYABLE_TABLE := preload("res://ui/four_player_table/playable_table.tscn")
 const REWARD_PICK_VIEW := preload("res://ui/run/reward_pick_view.tscn")
+const CHARACTER_PICKER := preload("res://ui/run/character_picker.tscn")
 
 var _run_state: RunState = null
 var _hud: RunHud = null
@@ -33,6 +34,7 @@ var _current_panel: Control = null
 var _last_node_ref: NodeRef = null
 var _last_result: NodeResult = null
 var _seed_seed: int = 0
+var _pending_character_id: StringName = &""
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(1280, 720)
@@ -50,9 +52,18 @@ func _ready() -> void:
 # ---- panel transitions ----
 
 func _show_starter_picker() -> void:
-	var picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
+	_show_character_picker()
+
+func _show_character_picker() -> void:
+	var picker: CharacterPicker = CHARACTER_PICKER.instantiate()
 	_swap_panel(picker)
-	picker.pack_chosen.connect(_on_pack_chosen)
+	picker.character_chosen.connect(_on_character_chosen)
+
+func _on_character_chosen(char_id: StringName) -> void:
+	_pending_character_id = char_id
+	var pack_picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
+	_swap_panel(pack_picker)
+	pack_picker.pack_chosen.connect(_on_pack_chosen)
 
 # M5 第 4 步：存档恢复入口
 func _show_continue_prompt() -> void:
@@ -106,6 +117,7 @@ func _show_summary() -> void:
 
 func _on_pack_chosen(pack_id: StringName) -> void:
 	_run_state = RunState.new(_seed_seed)
+	_apply_character(_pending_character_id)
 	StarterPacks.apply_to(_run_state, pack_id)
 	_run_state.node_completed.connect(_on_run_node_completed)
 	_run_state.run_failed.connect(_on_run_failed)
@@ -186,7 +198,13 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 
 func _player_ability_ids() -> Array:
 	var ids: Array = []
-	if _run_state == null or _run_state.player_deck == null:
+	if _run_state == null:
+		return ids
+	if _run_state.selected_character_id != &"":
+		var ch: Character = CharacterPool.find(_run_state.selected_character_id)
+		if ch and ch.ability_id != &"":
+			ids.append(ch.ability_id)
+	if _run_state.player_deck == null:
 		return ids
 	for a in _run_state.player_deck.abilities:
 		if a != null:
@@ -396,6 +414,17 @@ func _find_ability_card(aid: StringName) -> AbilityCard:
 		if a.id == aid:
 			return a
 	return null
+
+func _apply_character(char_id: StringName) -> void:
+	if _run_state == null or char_id == &"":
+		return
+	var ch: Character = CharacterPool.find(char_id)
+	if ch == null:
+		return
+	_run_state.selected_character_id = char_id
+	_run_state.hp = ch.starting_hp
+	_run_state.max_hp = ch.starting_hp + 2
+	_run_state.gold = ch.starting_gold
 
 func _find_consumable(cid: StringName) -> ConsumableItem:
 	for c in CardPool.all_consumables():

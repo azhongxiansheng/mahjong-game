@@ -32,6 +32,7 @@ var player_deck: Deck = null               # M5 第 3 步：实际玩家卡组�
 var pity_state: PityState = null           # M5 第 3 步：跨 Run 抽卡保底
 var consumables: Array = []
 var relics: Array = []
+var selected_character_id: StringName = &""
 var finished: bool = false
 var won: bool = false
 
@@ -197,6 +198,7 @@ func to_dict() -> Dictionary:
 		"pity_state": pity_state.to_dict() if pity_state else {},
 		"consumables": _serialize_consumables(),
 		"relics": _serialize_relics(),
+		"selected_character_id": String(selected_character_id),
 		"finished": finished,
 		"won": won,
 	}
@@ -261,6 +263,7 @@ static func from_dict(d: Dictionary) -> RunState:
 			var ri := RelicItem.from_dict(rd)
 			if ri:
 				rs.relics.append(ri)
+	rs.selected_character_id = StringName(d.get("selected_character_id", ""))
 	rs.finished = bool(d.get("finished", false))
 	rs.won = bool(d.get("won", false))
 	return rs
