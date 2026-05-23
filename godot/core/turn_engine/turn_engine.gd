@@ -115,7 +115,7 @@ func apply_chi(claimant_seat: int, claimed_tile: Tile, companion_ids: Array) -> 
 		meld_tiles.append(found)
 	meld_tiles.sort_custom(func(a, b): return a.id < b.id)
 	claimant.melds.append(Meld.make_chi(meld_tiles, discarder_seat))
-	state.discards_per_seat[discarder_seat].pop_back()
+	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(claimant_seat)
 	_clear_all_ippatsu_windows()  # 日麻 §6.4 一発:任何鸣牌(含暗杠)立刻关窗
 	return true
@@ -130,7 +130,7 @@ func apply_pon(claimant_seat: int, claimed_tile: Tile) -> bool:
 	for _i in range(2):
 		meld_tiles.append(_take_from_hand(claimant.hand, claimed_tile.id))
 	claimant.melds.append(Meld.make_pon(meld_tiles, discarder_seat))
-	state.discards_per_seat[discarder_seat].pop_back()
+	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(claimant_seat)
 	_clear_all_ippatsu_windows()
 	return true
@@ -145,7 +145,7 @@ func apply_minkan(claimant_seat: int, claimed_tile: Tile) -> bool:
 	for _i in range(3):
 		meld_tiles.append(_take_from_hand(claimant.hand, claimed_tile.id))
 	claimant.melds.append(Meld.make_minkan(meld_tiles, discarder_seat))
-	state.discards_per_seat[discarder_seat].pop_back()
+	_pop_discard_clearing_riichi_index(discarder_seat)
 	_reveal_new_dora()
 	_take_rinshan_to(claimant)
 	state.current_seat = claimant_seat
@@ -249,3 +249,15 @@ func _clear_all_ippatsu_windows() -> void:
 	for seat in state.seats:
 		if seat.riichi.ippatsu_window:
 			seat.riichi.consume_ippatsu()
+
+
+# pop discarder 最后一张弃牌;若它是 riichi 宣告牌(== riichi_discard_index 末位)
+# 则同步把 riichi_discard_index 清 -1。否则 DiscardRiver 渲染时会把
+# discarder 的"新位置末位"错旋转 — 因为索引固定但底层 Array 元素已替换。
+func _pop_discard_clearing_riichi_index(discarder_seat: int) -> void:
+	var seat: Seat = state.seats[discarder_seat]
+	var last_idx: int = state.discards_per_seat[discarder_seat].size() - 1
+	state.discards_per_seat[discarder_seat].pop_back()
+	# 立直牌被鸣 → riichi 旋转标记丢弃(牌已不在弃牌堆)
+	if seat.riichi.declared and seat.riichi.riichi_discard_index == last_idx:
+		seat.riichi.riichi_discard_index = -1
