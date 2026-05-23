@@ -115,6 +115,8 @@ func _snapshot_before(ctx: SkillCtx) -> Dictionary:
 		"furiten": _state.furiten_flags.duplicate(),
 		"ron_cancelled": _state.ron_cancelled.duplicate(),
 		"scores": _state.scores.duplicate(),
+		"extra_dora": _state.extra_dora_count.duplicate(),
+		"extra_red_dora": _state.extra_red_dora_count.duplicate(),
 		"consumed": ctx.current_skill.consumed if ctx.current_skill else false,
 	}
 
@@ -136,6 +138,10 @@ func _did_mutate(ctx: SkillCtx, snap: Dictionary) -> bool:
 	if _state.ron_cancelled != snap.ron_cancelled:
 		return true
 	if _state.scores != snap.scores:
+		return true
+	if _state.extra_dora_count != snap.extra_dora:
+		return true
+	if _state.extra_red_dora_count != snap.extra_red_dora:
 		return true
 	if ctx.current_skill != null and ctx.current_skill.consumed and not snap.consumed:
 		return true
