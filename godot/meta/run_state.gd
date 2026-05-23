@@ -40,6 +40,48 @@ func _init(p_seed: int = 0) -> void:
 	pity_state = PityState.new()
 	_generate_chapter_map(1)
 
+# ---- consumables API ----
+
+const MAX_CONSUMABLES: int = 5
+
+func add_consumable(item: ConsumableItem) -> bool:
+	if item == null or consumables.size() >= MAX_CONSUMABLES:
+		return false
+	consumables.append(item)
+	return true
+
+func remove_consumable(item_id: StringName) -> bool:
+	for i in range(consumables.size()):
+		if consumables[i].id == item_id:
+			consumables.remove_at(i)
+			return true
+	return false
+
+func has_consumable(item_id: StringName) -> bool:
+	for c in consumables:
+		if c.id == item_id:
+			return true
+	return false
+
+func consumable_count() -> int:
+	return consumables.size()
+
+func use_run_consumable(item_id: StringName) -> bool:
+	for i in range(consumables.size()):
+		var c: ConsumableItem = consumables[i]
+		if c.id == item_id and c.is_run():
+			consumables.remove_at(i)
+			_apply_run_consumable(c)
+			return true
+	return false
+
+func _apply_run_consumable(item: ConsumableItem) -> void:
+	match item.id:
+		&"hp_potion_v1":
+			hp = clampi(hp + 1, 0, max_hp)
+		&"gold_doubler_v1":
+			gold += 500
+
 # ---- public API ----
 
 # 选择并推进到下层节点。返 true 表示推进成功（node_index 在 next_options 内）。
@@ -125,13 +167,22 @@ func to_dict() -> Dictionary:
 		"deck": deck.duplicate(true),
 		"player_deck": player_deck.to_dict() if player_deck else {},
 		"pity_state": pity_state.to_dict() if pity_state else {},
-		"consumables": consumables.duplicate(),
+		"consumables": _serialize_consumables(),
 		"finished": finished,
 		"won": won,
 	}
 
 # Helper：避开 ternary "Values not mutually compatible" warning
 # （GDScript 4 严格类型推断，{} vs null 在 ternary 上下文中要显式 helper）。
+func _serialize_consumables() -> Array:
+	var result: Array = []
+	for c in consumables:
+		if c is ConsumableItem:
+			result.append(c.to_dict())
+		else:
+			result.append(c)
+	return result
+
 func _serialize_current_map() -> Variant:
 	if current_map == null:
 		return null
@@ -162,7 +213,13 @@ static func from_dict(d: Dictionary) -> RunState:
 	rs.deck = d.get("deck", {}).duplicate(true)
 	rs.player_deck = Deck.from_dict(d.get("player_deck", {}))
 	rs.pity_state = PityState.from_dict(d.get("pity_state", {}))
-	rs.consumables = d.get("consumables", []).duplicate()
+	for cd in d.get("consumables", []):
+		if cd is Dictionary:
+			var ci := ConsumableItem.from_dict(cd)
+			if ci:
+				rs.consumables.append(ci)
+		else:
+			rs.consumables.append(cd)
 	rs.finished = bool(d.get("finished", false))
 	rs.won = bool(d.get("won", false))
 	return rs

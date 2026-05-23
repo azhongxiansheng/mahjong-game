@@ -188,6 +188,48 @@ static func abilities_by_rarity(rarity: int) -> Array:
 			result.append(a)
 	return result
 
+# ---- consumables ----
+
+static func all_consumables() -> Array:
+	var pool: Array = []
+
+	pool.append(_mk_consumable(&"iron_shield_v1", "铁盾",
+		"本局被荣胡时取消 1 次（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
+		"res://skills/hooks/consumable_iron_shield_hook.gd"))
+
+	pool.append(_mk_consumable(&"wall_peek_v1", "千里眼",
+		"开局 reveal 牌墙顶 5 张（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
+		"res://skills/hooks/consumable_wall_peek_hook.gd"))
+
+	pool.append(_mk_consumable(&"double_payout_v1", "倍率券",
+		"下次胡牌番数 ×2（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
+		"res://skills/hooks/consumable_double_payout_hook.gd"))
+
+	pool.append(_mk_consumable(&"dora_charm_v1", "宝牌护符",
+		"下次胡牌额外 +3 Dora（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
+		"res://skills/hooks/consumable_dora_charm_hook.gd"))
+
+	pool.append(_mk_consumable(&"hp_potion_v1", "回复药",
+		"恢复 1 点 HP（旅途消耗品）",
+		ConsumableItem.Kind.RUN, Rarity.Kind.COMMON, ""))
+
+	pool.append(_mk_consumable(&"gold_doubler_v1", "聚宝盆",
+		"下场战斗 gold 奖励 ×2（旅途消耗品）",
+		ConsumableItem.Kind.RUN, Rarity.Kind.UNCOMMON, ""))
+
+	return pool
+
+static func consumables_by_kind(kind: int) -> Array:
+	var result: Array = []
+	for c in all_consumables():
+		if c.kind == kind:
+			result.append(c)
+	return result
+
 # ---- internal ----
 
 static func _mk_tile(id: StringName, name: String, desc: String, tile_id: int, rarity: int, hook_path: String) -> TileVariant:
@@ -203,3 +245,10 @@ static func _mk_ability(id: StringName, name: String, desc: String, rarity: int,
 	a.description = desc
 	a.hook_resource_path = hook_path
 	return a
+
+static func _mk_consumable(id: StringName, name: String, desc: String, kind: int, rarity: int, hook_path: String) -> ConsumableItem:
+	var c := ConsumableItem.new(id, kind, rarity)
+	c.display_name = name
+	c.description = desc
+	c.hook_resource_path = hook_path
+	return c

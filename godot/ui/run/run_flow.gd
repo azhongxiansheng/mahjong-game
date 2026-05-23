@@ -173,10 +173,11 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 		boss_id = ChapterConfig.get_boss_id(_run_state.chapter)
 	var player_ability_ids: Array = _player_ability_ids()
 	var player_tile_variants: Dictionary = _player_tile_variants()
+	var player_consumable_ids: Array = _player_consumable_ids()
 	var session_kind: String = "east_round"  # M8 半庄留作后续
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
-		player_tile_variants, session_kind
+		player_tile_variants, session_kind, 0, player_consumable_ids
 	)
 	if not is_instance_valid(table) or not table.is_inside_tree():
 		return
@@ -193,11 +194,18 @@ func _player_ability_ids() -> Array:
 	return ids
 
 func _player_tile_variants() -> Dictionary:
-	# Deck.tile_variants 是 Dictionary[TileId(int) → TileVariant]
-	# TileSkillFactory.inject_player_tile_variants 直接接受这种形态
 	if _run_state == null or _run_state.player_deck == null:
 		return {}
 	return _run_state.player_deck.tile_variants
+
+func _player_consumable_ids() -> Array:
+	var ids: Array = []
+	if _run_state == null:
+		return ids
+	for c in _run_state.consumables:
+		if c is ConsumableItem and c.is_battle():
+			ids.append(c.id)
+	return ids
 
 func _show_placeholder(node_ref: NodeRef) -> void:
 	# US-007：EVENT 节点用真实 UI（硬编码事件 + 选项 + 副作用）。

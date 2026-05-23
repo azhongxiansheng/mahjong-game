@@ -20,8 +20,8 @@ const HANDS_PER_ROUND: int = 4  # M8: 一个风圈 4 局（东 1-4 / 南 1-4）
 # inject 到 BattleController 的 SkillRegistry（默认 AI seat 1）。若 boss_id
 # 未在 BossAbilityFactory 注册或 CardPool 找不到，本调用静默 fallback 到
 # 普通对局（不 inject）。
-static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round", use_shanten_ai: bool = false) -> NodeResult:
-	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed, ai_abilities_seed, session_kind, use_shanten_ai).node_result
+static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round", use_shanten_ai: bool = false, player_consumable_ids: Array = []) -> NodeResult:
+	return run_battle_with_stats(seed, boss_id, player_ability_ids, use_heuristic_ai, player_tile_variants, tiebreak_seed, ai_abilities_seed, session_kind, use_shanten_ai, player_consumable_ids).node_result
 
 # M7 D4：扩展版本，附带 hand-level 统计（plan-7 D6 simulation 假设 B 用）。
 # 返：
@@ -31,7 +31,7 @@ static func run_battle_to_node_result(seed: int, boss_id: StringName = &"", play
 #     final_scores: Array[int]（4 seats），
 #     hand_count: int（实际跑了几局）
 #   }
-static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round", use_shanten_ai: bool = false) -> Dictionary:
+static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_ability_ids: Array = [], use_heuristic_ai: bool = false, player_tile_variants: Dictionary = {}, tiebreak_seed: int = 0, ai_abilities_seed: int = 0, session_kind: String = "east_round", use_shanten_ai: bool = false, player_consumable_ids: Array = []) -> Dictionary:
 	# M8: session_kind 决定本节点局数。"east_round" → 4 局；"hanchan" → 8 局。
 	# total_hands 从 BalanceConstants 查；hands_per_round 固定 4（东/南各 4 局）。
 	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
@@ -51,6 +51,8 @@ static func run_battle_with_stats(seed: int, boss_id: StringName = &"", player_a
 		# M7：玩家 deck.tile_variants → registry（每局重建）
 		if not player_tile_variants.is_empty():
 			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
+		if not player_consumable_ids.is_empty():
+			ConsumableFactory.inject_all(bc.registry, player_consumable_ids, VIEWER_SEAT)
 		# M7（baseline 5 假设 J/M）：AI seat 1/2/3 也分配 1 张随机 ability
 		if ai_abilities_seed > 0:
 			var excluded: Array = player_ability_ids.duplicate()
@@ -159,7 +161,8 @@ static func run_with_player_input_async(
 	player_ability_ids: Array = [],
 	player_tile_variants: Dictionary = {},
 	session_kind: String = "east_round",
-	tiebreak_seed: int = 0
+	tiebreak_seed: int = 0,
+	player_consumable_ids: Array = []
 ) -> NodeResult:
 	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
 	var driver := GameDriver.new(seed, total_hands, HANDS_PER_ROUND)
@@ -177,6 +180,8 @@ static func run_with_player_input_async(
 			BossAbilityFactory.inject_player_abilities(bc.registry, player_ability_ids, VIEWER_SEAT)
 		if not player_tile_variants.is_empty():
 			TileSkillFactory.inject_player_tile_variants(bc.registry, player_tile_variants, VIEWER_SEAT)
+		if not player_consumable_ids.is_empty():
+			ConsumableFactory.inject_all(bc.registry, player_consumable_ids, VIEWER_SEAT)
 		# 跑这一局 — UI 接入由 PlayableTable.play_hand_async 完成
 		var run_result: Dictionary = await table.play_hand_async(bc)
 		var apply_res: Dictionary = driver.apply_result(run_result.events)
