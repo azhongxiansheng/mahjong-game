@@ -164,9 +164,6 @@ func _on_run_won() -> void:
 func _run_battle_node(node_ref: NodeRef) -> void:
 	var table: PlayableTable = PLAYABLE_TABLE.instantiate()
 	_swap_panel(table)
-	# 让玩家先看到空桌一眼再开局
-	await get_tree().create_timer(0.4).timeout
-	# 用节点 index 做 seed 偏移，避免同 Run 重复牌局
 	var node_seed: int = _run_state.run_seed * 100 + node_ref.index
 	var boss_id: StringName = &""
 	if node_ref.kind == NodeKind.Kind.BOSS:
@@ -174,7 +171,8 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var player_ability_ids: Array = _player_ability_ids()
 	var player_tile_variants: Dictionary = _player_tile_variants()
 	var player_consumable_ids: Array = _player_consumable_ids()
-	var session_kind: String = "east_round"  # M8 半庄留作后续
+	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids)
+	var session_kind: String = "east_round"
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
 		player_tile_variants, session_kind, 0, player_consumable_ids
@@ -315,6 +313,80 @@ func _make_loading_label(text: String) -> Control:
 static func _loading_text_for_battle(node_ref: NodeRef) -> String:
 	var label := node_ref.display_name() if node_ref else "战斗"
 	return "%s 进行中…\n（v1 v1 同步跑完整场东风战，无 4 人桌动画；M5/M6 视觉化）" % label
+
+func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array) -> void:
+	var overlay := Control.new()
+	overlay.size = Vector2(1280, 800)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	table.add_child(overlay)
+	var bg := ColorRect.new()
+	bg.size = Vector2(1280, 800)
+	bg.color = Color(0, 0, 0, 0.85)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(bg)
+	var panel := VBoxContainer.new()
+	panel.position = Vector2(340, 120)
+	panel.custom_minimum_size = Vector2(600, 500)
+	overlay.add_child(panel)
+	var title := Label.new()
+	title.text = "战斗准备" if boss_id == &"" else "BOSS 战"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 36)
+	title.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	panel.add_child(title)
+	panel.add_child(HSeparator.new())
+	if not ability_ids.is_empty():
+		var ab_label := Label.new()
+		ab_label.text = "角色能力："
+		ab_label.add_theme_font_size_override("font_size", 20)
+		ab_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		panel.add_child(ab_label)
+		for aid in ability_ids:
+			var card: AbilityCard = _find_ability_card(aid)
+			var l := Label.new()
+			l.text = "  • %s" % (card.display_name if card else String(aid))
+			l.add_theme_font_size_override("font_size", 16)
+			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			panel.add_child(l)
+	if tile_variants.size() > 0:
+		var tv_label := Label.new()
+		tv_label.text = "牌技能：%d 张" % tile_variants.size()
+		tv_label.add_theme_font_size_override("font_size", 20)
+		tv_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		panel.add_child(tv_label)
+	if not consumable_ids.is_empty():
+		var c_label := Label.new()
+		c_label.text = "战斗道具："
+		c_label.add_theme_font_size_override("font_size", 20)
+		c_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		panel.add_child(c_label)
+		for cid in consumable_ids:
+			var item: ConsumableItem = _find_consumable(cid)
+			var l := Label.new()
+			l.text = "  • %s" % (item.display_name if item else String(cid))
+			l.add_theme_font_size_override("font_size", 16)
+			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			panel.add_child(l)
+	panel.add_child(HSeparator.new())
+	var btn := Button.new()
+	btn.text = "开战！"
+	btn.custom_minimum_size = Vector2(200, 44)
+	btn.pressed.connect(func(): overlay.queue_free())
+	panel.add_child(btn)
+	while is_instance_valid(overlay):
+		await get_tree().process_frame
+
+func _find_ability_card(aid: StringName) -> AbilityCard:
+	for a in CardPool.all_abilities():
+		if a.id == aid:
+			return a
+	return null
+
+func _find_consumable(cid: StringName) -> ConsumableItem:
+	for c in CardPool.all_consumables():
+		if c.id == cid:
+			return c
+	return null
 
 func _reset() -> void:
 	_run_state = null
