@@ -31,6 +31,7 @@ var player_deck: Deck = null               # M5 第 3 步：实际玩家卡组�
                                             # 卡 / 商店购买 / 卡包打开都加到这）
 var pity_state: PityState = null           # M5 第 3 步：跨 Run 抽卡保底
 var consumables: Array = []
+var relics: Array = []
 var finished: bool = false
 var won: bool = false
 
@@ -43,6 +44,7 @@ func _init(p_seed: int = 0) -> void:
 # ---- consumables API ----
 
 const MAX_CONSUMABLES: int = 5
+const MAX_RELICS: int = 5
 
 func add_consumable(item: ConsumableItem) -> bool:
 	if item == null or consumables.size() >= MAX_CONSUMABLES:
@@ -81,6 +83,32 @@ func _apply_run_consumable(item: ConsumableItem) -> void:
 			hp = clampi(hp + 1, 0, max_hp)
 		&"gold_doubler_v1":
 			gold += 500
+
+# ---- relics API ----
+
+func add_relic(item: RelicItem) -> bool:
+	if item == null or relics.size() >= MAX_RELICS:
+		return false
+	for r in relics:
+		if r.id == item.id:
+			return false
+	relics.append(item)
+	return true
+
+func has_relic(item_id: StringName) -> bool:
+	for r in relics:
+		if r.id == item_id:
+			return true
+	return false
+
+func relic_count() -> int:
+	return relics.size()
+
+func relic_ids() -> Array:
+	var ids: Array = []
+	for r in relics:
+		ids.append(r.id)
+	return ids
 
 # ---- public API ----
 
@@ -168,12 +196,20 @@ func to_dict() -> Dictionary:
 		"player_deck": player_deck.to_dict() if player_deck else {},
 		"pity_state": pity_state.to_dict() if pity_state else {},
 		"consumables": _serialize_consumables(),
+		"relics": _serialize_relics(),
 		"finished": finished,
 		"won": won,
 	}
 
 # Helper：避开 ternary "Values not mutually compatible" warning
 # （GDScript 4 严格类型推断，{} vs null 在 ternary 上下文中要显式 helper）。
+func _serialize_relics() -> Array:
+	var result: Array = []
+	for r in relics:
+		if r is RelicItem:
+			result.append(r.to_dict())
+	return result
+
 func _serialize_consumables() -> Array:
 	var result: Array = []
 	for c in consumables:
@@ -220,6 +256,11 @@ static func from_dict(d: Dictionary) -> RunState:
 				rs.consumables.append(ci)
 		else:
 			rs.consumables.append(cd)
+	for rd in d.get("relics", []):
+		if rd is Dictionary:
+			var ri := RelicItem.from_dict(rd)
+			if ri:
+				rs.relics.append(ri)
 	rs.finished = bool(d.get("finished", false))
 	rs.won = bool(d.get("won", false))
 	return rs

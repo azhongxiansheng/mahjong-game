@@ -25,6 +25,7 @@ const SHOP_VIEW := preload("res://ui/run/shop_view.tscn")
 const CONTINUE_PROMPT := preload("res://ui/run/continue_prompt.tscn")
 # 战斗节点真实可玩：玩家 vs 3 AI
 const PLAYABLE_TABLE := preload("res://ui/four_player_table/playable_table.tscn")
+const REWARD_PICK_VIEW := preload("res://ui/run/reward_pick_view.tscn")
 
 var _run_state: RunState = null
 var _hud: RunHud = null
@@ -171,11 +172,12 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var player_ability_ids: Array = _player_ability_ids()
 	var player_tile_variants: Dictionary = _player_tile_variants()
 	var player_consumable_ids: Array = _player_consumable_ids()
+	var player_relic_ids: Array = _player_relic_ids()
 	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids)
 	var session_kind: String = "east_round"
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
-		player_tile_variants, session_kind, 0, player_consumable_ids
+		player_tile_variants, session_kind, 0, player_consumable_ids, player_relic_ids
 	)
 	if not is_instance_valid(table) or not table.is_inside_tree():
 		return
@@ -195,6 +197,11 @@ func _player_tile_variants() -> Dictionary:
 	if _run_state == null or _run_state.player_deck == null:
 		return {}
 	return _run_state.player_deck.tile_variants
+
+func _player_relic_ids() -> Array:
+	if _run_state == null:
+		return []
+	return _run_state.relic_ids()
 
 func _player_consumable_ids() -> Array:
 	var ids: Array = []
@@ -245,19 +252,25 @@ func _show_camp(_node_ref: NodeRef) -> void:
 
 # M5 第 3 步：战斗节点结算后弹 1 张抽卡奖励
 func _show_node_pack_open() -> void:
-	var view: PackOpenView = PACK_OPEN_VIEW.instantiate()
+	var view: RewardPickView = REWARD_PICK_VIEW.instantiate()
 	_swap_panel(view)
-	view.set_title_text("节点抽卡奖励（保底 streak: %d / %d）" % [
-		_run_state.pity_state.node_single_no_epic_streak,
-		PityState.NODE_SINGLE_PITY_THRESHOLD
-	])
-	# 用节点 index 决定 seed
 	var draw_seed: int = _run_state.run_seed * 1000 + (_last_node_ref.index if _last_node_ref else 0)
-	var result: GachaResult = Gacha.draw_node_single(_run_state.pity_state, draw_seed)
-	_run_state.pity_state.record_draw(result.rarity)
-	_apply_gacha_to_deck(result)
-	view.set_results([result])
-	view.done.connect(_show_chapter_map)
+	var options: Array = Gacha.draw_reward_options(_run_state.pity_state, draw_seed)
+	var rank: int = _last_result.rank if _last_result else 1
+	view.show_rewards(options, rank)
+	view.reward_chosen.connect(func(result: GachaResult):
+		_run_state.pity_state.record_draw(result.rarity)
+		_apply_gacha_to_deck(result)
+		_hud.bind_run_state(_run_state)
+		_save_run_state()
+		_show_chapter_map()
+	)
+	view.skipped.connect(func():
+		_run_state.gold += RewardPickView.SKIP_GOLD_REWARD
+		_hud.bind_run_state(_run_state)
+		_save_run_state()
+		_show_chapter_map()
+	)
 
 # M5 第 3 步：商店节点
 func _show_shop(node_ref: NodeRef) -> void:
@@ -288,6 +301,8 @@ func _apply_gacha_to_deck(result: GachaResult) -> void:
 			_run_state.player_deck.add_ability(result.ability)
 	elif result.kind == GachaResult.KIND_CONSUMABLE and result.consumable:
 		_run_state.add_consumable(result.consumable)
+	elif result.kind == GachaResult.KIND_RELIC and result.relic:
+		_run_state.add_relic(result.relic)
 
 # ---- helpers ----
 

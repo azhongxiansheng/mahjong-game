@@ -188,6 +188,31 @@ static func abilities_by_rarity(rarity: int) -> Array:
 			result.append(a)
 	return result
 
+# ---- relics ----
+
+static func all_relics() -> Array:
+	var pool: Array = []
+	pool.append(_mk_relic(&"relic_lucky_cat_v1", "招财猫",
+		"每次胡牌额外 +1 Dora",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_lucky_cat_hook.gd"))
+	pool.append(_mk_relic(&"relic_iron_will_v1", "铁壁意志",
+		"被荣胡时对手 -1 番",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_iron_will_hook.gd"))
+	pool.append(_mk_relic(&"relic_soul_mirror_v1", "魂镜",
+		"对手胡牌时偷取 10% 得分",
+		Rarity.Kind.EPIC, "res://skills/hooks/relic_soul_mirror_hook.gd"))
+	pool.append(_mk_relic(&"relic_wall_eye_v1", "墙眼",
+		"每次摸牌后预知下 1 张",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/relic_wall_eye_hook.gd"))
+	return pool
+
+static func relics_by_rarity(rarity: int) -> Array:
+	var result: Array = []
+	for r in all_relics():
+		if r.rarity == rarity:
+			result.append(r)
+	return result
+
 # ---- consumables ----
 
 static func all_consumables() -> Array:
@@ -245,6 +270,13 @@ static func _mk_ability(id: StringName, name: String, desc: String, rarity: int,
 	a.description = desc
 	a.hook_resource_path = hook_path
 	return a
+
+static func _mk_relic(id: StringName, name: String, desc: String, rarity: int, hook_path: String) -> RelicItem:
+	var r := RelicItem.new(id, rarity)
+	r.display_name = name
+	r.description = desc
+	r.hook_resource_path = hook_path
+	return r
 
 static func _mk_consumable(id: StringName, name: String, desc: String, kind: int, rarity: int, hook_path: String) -> ConsumableItem:
 	var c := ConsumableItem.new(id, kind, rarity)

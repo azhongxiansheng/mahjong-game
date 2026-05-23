@@ -75,6 +75,9 @@ static func format_slot_text(result: GachaResult) -> String:
 	elif result.kind == GachaResult.KIND_CONSUMABLE and result.consumable:
 		name_str = result.consumable.display_name if result.consumable.display_name != "" else String(result.consumable.id)
 		desc_str = result.consumable.description
+	elif result.kind == GachaResult.KIND_RELIC and result.relic:
+		name_str = result.relic.display_name if result.relic.display_name != "" else String(result.relic.id)
+		desc_str = result.relic.description
 	var rarity_label := Rarity.display_name(result.rarity)
 	var price := price_for(result)
 	var text := "%s\n[%s]\n💰 %d" % [name_str, rarity_label, price]

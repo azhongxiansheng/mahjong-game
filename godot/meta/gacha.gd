@@ -58,6 +58,33 @@ static func open_pack(theme: int, seed: int) -> Array:
 		results.append(_draw_tile(rarity, rng))
 	return results
 
+# ---- 战斗后 3 选 1 ----
+
+const REWARD_OPTION_COUNT: int = 3
+
+static func draw_reward_options(pity: PityState, seed: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed
+	var results: Array = []
+	for i in range(REWARD_OPTION_COUNT):
+		var roll := rng.randf()
+		var rarity: int
+		if pity.node_single_pity_active():
+			rarity = _pick_epic_or_above(rng)
+		else:
+			rarity = Rarity.pick_weighted(Rarity.NODE_SINGLE_WEIGHTS, rng)
+		var result: GachaResult
+		if roll < 0.10:
+			result = _draw_consumable(rng)
+		elif roll < 0.20:
+			result = _draw_relic(rng)
+		elif roll < 0.30:
+			result = _draw_ability(rarity, rng)
+		else:
+			result = _draw_tile(rarity, rng)
+		results.append(result)
+	return results
+
 # ---- 商店 4 槽 ----
 
 static func refresh_shop(seed: int) -> Array:
@@ -94,6 +121,13 @@ static func _draw_tile(rarity: int, rng: RandomNumberGenerator) -> GachaResult:
 		return GachaResult.new()
 	var idx: int = rng.randi_range(0, pool.size() - 1)
 	return GachaResult.make_tile(pool[idx])
+
+static func _draw_relic(rng: RandomNumberGenerator) -> GachaResult:
+	var pool: Array = CardPool.all_relics()
+	if pool.size() == 0:
+		return GachaResult.new()
+	var idx: int = rng.randi_range(0, pool.size() - 1)
+	return GachaResult.make_relic(pool[idx])
 
 static func _draw_consumable(rng: RandomNumberGenerator) -> GachaResult:
 	var pool: Array = CardPool.all_consumables()
