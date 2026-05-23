@@ -321,11 +321,32 @@ func run_to_end_async() -> Dictionary:
 			engine.advance_to_next_seat()
 		elif state.phase == BattlePhase.Kind.SETTLE:
 			break
+		# 日麻 §3.2 途中流局自动判定(四风连打 / 四家立直 / 四杠散了 / 三家和了)。
+		# 任一命中 → 立刻 settle 为 abortive_draw,GameDriver 路径同 kyuusyu。
+		if not _settled:
+			_check_and_emit_abortive_draws()
 
 	return {
 		"last_event": _last_event_type,
 		"events": events,
 	}
+
+
+# 检测 4 种途中流局条件(九種九牌走 _step_draw_async 单独路径,不在此)。
+# 命中 → emit ABORTIVE_DRAW + _settled = true。
+func _check_and_emit_abortive_draws() -> void:
+	if DrawDetector.is_suufon_renda(state):
+		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suufon_renda"})
+		_settled = true
+		return
+	if DrawDetector.is_suucha_riichi(state):
+		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suucha_riichi"})
+		_settled = true
+		return
+	if DrawDetector.is_suukantsu_sanra(state):
+		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suukantsu_sanra"})
+		_settled = true
+		return
 
 func _step_draw_async() -> void:
 	var t: Tile = engine.draw_for_current()
