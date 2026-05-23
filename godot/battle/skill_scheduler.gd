@@ -94,13 +94,52 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 			continue
 		ctx.beneficiary_seat = c.beneficiary_seat
 		ctx.current_skill = c.skill
+		var snap := _snapshot_before(ctx)
 		c.hook.on_event(c.skill, event, ctx)
-		ctx.triggered_skills.append({
-			"skill_id": c.skill.id,
-			"skill_name": c.skill.display_name,
-			"beneficiary_seat": c.beneficiary_seat,
-		})
+		if _did_mutate(ctx, snap):
+			ctx.triggered_skills.append({
+				"skill_id": c.skill.id,
+				"skill_name": c.skill.display_name,
+				"beneficiary_seat": c.beneficiary_seat,
+			})
 	ctx.current_skill = null
+
+func _snapshot_before(ctx: SkillCtx) -> Dictionary:
+	return {
+		"han_deltas_size": ctx.han_deltas.size(),
+		"han_multipliers_size": ctx.han_multipliers.size(),
+		"mangan_size": ctx.mangan_floor_seats.size(),
+		"yakuman_size": ctx.yakuman_force_seats.size(),
+		"revealed_count": _state.revealed_tiles.size(),
+		"haitei": _state.haitei_forced_seat,
+		"furiten": _state.furiten_flags.duplicate(),
+		"ron_cancelled": _state.ron_cancelled.duplicate(),
+		"scores": _state.scores.duplicate(),
+		"consumed": ctx.current_skill.consumed if ctx.current_skill else false,
+	}
+
+func _did_mutate(ctx: SkillCtx, snap: Dictionary) -> bool:
+	if ctx.han_deltas.size() != int(snap.han_deltas_size):
+		return true
+	if ctx.han_multipliers.size() != int(snap.han_multipliers_size):
+		return true
+	if ctx.mangan_floor_seats.size() != int(snap.mangan_size):
+		return true
+	if ctx.yakuman_force_seats.size() != int(snap.yakuman_size):
+		return true
+	if _state.revealed_tiles.size() != int(snap.revealed_count):
+		return true
+	if _state.haitei_forced_seat != int(snap.haitei):
+		return true
+	if _state.furiten_flags != snap.furiten:
+		return true
+	if _state.ron_cancelled != snap.ron_cancelled:
+		return true
+	if _state.scores != snap.scores:
+		return true
+	if ctx.current_skill != null and ctx.current_skill.consumed and not snap.consumed:
+		return true
+	return false
 
 func _dump_state() -> Dictionary:
 	return {

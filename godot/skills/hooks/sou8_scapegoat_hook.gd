@@ -1,15 +1,23 @@
-# 8 索·替罪 — §8.4 抓马反向得分系（M6 内容生产）
+# 8 索·替罪 — §8.4 抓马反向得分系
 #
-# v1: owner 放铳时给胜者 -1 番（模拟"将放铳责任转嫁部分"）
-# spec 原效果："CHAMBO 触发时转嫁责任（替罪羊代付）"
-# v1 简化：用 add_han(winner, -1) 表达"对方收益减少 ≈ 责任转嫁"；
-# 真"指定对手承担放铳"需 mark_pao_transfer ctx 扩展（M7）。
+# v2: owner 放铳时，从另一个对手转 2000 点给 owner（替罪羊代付一部分损失）。
+# 选最高分的非胜者/非 owner 对手承担。
 extends SkillHook
 
-# SCAPEGOAT_HAN_PENALTY 已迁移到 BalanceConstants (&"sou8_scapegoat_han_penalty")。
+const SCAPEGOAT_AMOUNT: int = 2000
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	var discarder: int = int(event.extra.get("discarder_seat", -1))
 	if discarder != ctx.beneficiary_seat:
 		return
-	ctx.add_han(event.actor_seat, int(BalanceConstants.lookup(&"sou8_scapegoat_han_penalty")))
+	var best_seat: int = -1
+	var best_score: int = -1
+	for i in range(4):
+		if i == ctx.beneficiary_seat or i == event.actor_seat:
+			continue
+		var s: int = ctx.get_score(i)
+		if s > best_score:
+			best_score = s
+			best_seat = i
+	if best_seat >= 0:
+		ctx.transfer_points(best_seat, ctx.beneficiary_seat, SCAPEGOAT_AMOUNT)

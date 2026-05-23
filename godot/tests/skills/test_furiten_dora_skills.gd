@@ -134,20 +134,22 @@ func test_white_red_change_marks_1_red_dora_on_win():
 
 # ---- §8.8 sou4_uradora_pick ----
 
-func test_sou4_uradora_adds_2_han_on_win():
+func test_sou4_uradora_marks_extra_dora_on_win():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"sou4_uradora_pick_v1", Sou4UradoraHook, TileId.S4, [&"WIN_DECLARED"])
+	var sk := _make_tile_skill(&"sou4_uradora_pick_v1", Sou4UradoraHook, TileId.S4, [&"WIN_DECLARED_PRE"])
 	_register_owned_by(reg, sk, 1)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
-	assert_eq(int(out.han_deltas.get(1, 0)), 2)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1))
+	assert_gt(st.extra_dora_count[1], 0, "v2: sou4 应 mark_extra_dora 而非 add_han")
 
-func test_sou4_uradora_no_han_for_other_seat():
+func test_sou4_uradora_no_dora_for_other_seat():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"sou4_uradora_pick_v1", Sou4UradoraHook, TileId.S4, [&"WIN_DECLARED"])
+	var sk := _make_tile_skill(&"sou4_uradora_pick_v1", Sou4UradoraHook, TileId.S4, [&"WIN_DECLARED_PRE"])
 	_register_owned_by(reg, sk, 1)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
-	assert_eq(int(out.han_deltas.get(1, 0)), 0)
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
+	assert_eq(st.extra_dora_count[1], 0, "非 owner 自胡不增 dora")

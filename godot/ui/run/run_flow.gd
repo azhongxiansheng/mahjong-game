@@ -31,10 +31,11 @@ var _hud: RunHud = null
 var _current_panel: Control = null
 var _last_node_ref: NodeRef = null
 var _last_result: NodeResult = null
-var _seed_seed: int = 42  # 全 Run 种子（每 Run 不同避免重复）
+var _seed_seed: int = 0
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(1280, 720)
+	_seed_seed = Time.get_ticks_msec()
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
 	add_child(_hud)

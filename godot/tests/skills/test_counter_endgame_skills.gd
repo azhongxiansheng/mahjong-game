@@ -35,14 +35,16 @@ func _register_owned_by(reg: SkillRegistry, sk: SkillResource, owner_seat: int) 
 
 # ---- §8.4 sou8_scapegoat ----
 
-func test_sou8_scapegoat_minus_1_to_winner_when_owner_discards():
+func test_sou8_scapegoat_transfers_points_when_owner_discards():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"sou8_scapegoat_v1", Sou8ScapegoatHook, TileId.S8, [&"RON_DECLARED"])
+	var sk := _make_tile_skill(&"sou8_scapegoat_v1", Sou8ScapegoatHook, TileId.S8, [&"WIN_DECLARED_PRE"])
 	_register_owned_by(reg, sk, 1)
-	var out := sched.emit_event(BattleEvent.make(&"RON_DECLARED", 3, null, {"discarder_seat": 1}))
-	assert_eq(int(out.han_deltas.get(3, 0)), -1)
+	var before_1: int = st.scores[1]
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 3, null, {"discarder_seat": 1}))
+	assert_gt(st.scores[1], before_1, "v2: owner 应通过 transfer_points 获得补偿")
 
 # ---- §8.6 south_premature_riichi ----
 
@@ -58,14 +60,16 @@ func test_premature_riichi_adds_3_han_on_self_win():
 
 # ---- §8.6 hatsu_stick_refund ----
 
-func test_stick_refund_adds_1_han_on_self_win():
+func test_stick_refund_transfers_points_on_self_win():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	var sk := _make_tile_skill(&"hatsu_stick_refund_v1", RefundHook, TileId.HATSU, [&"WIN_DECLARED"])
+	var sk := _make_tile_skill(&"hatsu_stick_refund_v1", RefundHook, TileId.HATSU, [&"WIN_DECLARED_PRE"])
 	_register_owned_by(reg, sk, 2)
-	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
-	assert_eq(int(out.han_deltas.get(2, 0)), 1)
+	var before_2: int = st.scores[2]
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
+	assert_gt(st.scores[2], before_2, "v2: owner 应通过 transfer_points 获得 1000")
 
 # ---- §8.9 north_sweep ----
 
