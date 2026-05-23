@@ -71,9 +71,14 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 	s.wall.shuffle(rng_seed)
 	s.wall.reserve_dead_wall(14)
 
-	# 翻初始 dora indicator
+	# 翻初始 dora 指示牌 + 预置裏 dora(立直胡时翻出来)。
+	# 缺裏 dora 之前是 dead code:立直胡牌时 count_total_dora(include_uradora=true)
+	# 但 hidden_uradora 列表为空,实际 uradora 永不计入 — 立直收益被低估。
 	s.dora_indicators = DoraIndicators.new()
 	s.dora_indicators.add_visible(s.wall.peek_dora_indicator(0))
+	var ura_first := s.wall.peek_uradora_indicator(0)
+	if ura_first != null:
+		s.dora_indicators.add_hidden_uradora(ura_first)
 
 	# 发 13 张 × 4
 	for _i in range(13):

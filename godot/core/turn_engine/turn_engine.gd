@@ -218,6 +218,11 @@ func _reveal_new_dora() -> void:
 	var indicator: Tile = state.wall.peek_dora_indicator(n)
 	if indicator != null:
 		state.dora_indicators.add_visible(indicator)
+	# 加杠/暗杠时同时预置对应裏 dora 指示牌(立直胡时翻出)。日麻规则:
+	# 每翻 1 张明 dora,对应位置的裏 dora 同步存在 — 等立直胡牌时一起亮。
+	var ura: Tile = state.wall.peek_uradora_indicator(n)
+	if ura != null:
+		state.dora_indicators.add_hidden_uradora(ura)
 
 func _take_rinshan_to(seat: Seat) -> void:
 	var t: Tile = state.wall.take_rinshan()
