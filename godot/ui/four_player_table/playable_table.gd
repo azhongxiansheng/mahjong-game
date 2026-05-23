@@ -129,6 +129,11 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		tier.text = "流局"
 		tier.add_theme_color_override("font_color", Color(0.7, 0.78, 0.85))
 		subtitle.text = "本局无人胡牌"
+	elif last_event == "ABORTIVE_DRAW":
+		# 5 种途中流局(日麻 §3.2):九種九牌 / 四风连打 / 四家立直 / 四杠散了 / 三家和了
+		tier.text = "途中流局"
+		tier.add_theme_color_override("font_color", Color(0.85, 0.62, 0.85))
+		subtitle.text = _abortive_reason_label(_find_last_event_extra("ABORTIVE_DRAW"))
 	else:
 		tier.text = "本局结束"
 		subtitle.text = ""
@@ -297,6 +302,29 @@ func _make_overlay_tile(tile_id: int, is_winning: bool) -> Control:
 	return wrap
 
 
+# 途中流局原因 → 中文展示名
+static func _abortive_reason_label(extra: Dictionary) -> String:
+	var reason: String = String(extra.get("reason", ""))
+	match reason:
+		"kyuusyu_kyuuhai": return "九種九牌"
+		"suufon_renda": return "四风连打"
+		"suucha_riichi": return "四家立直"
+		"suukantsu_sanra": return "四杠散了"
+		"sancha_houra": return "三家和了"
+		_: return "途中流局"
+
+
+# 在 _bc.events 倒序找最末某类型事件的 extra,不存在返 {}
+func _find_last_event_extra(type_name: String) -> Dictionary:
+	if _bc == null or _bc.events == null:
+		return {}
+	for i in range(_bc.events.size() - 1, -1, -1):
+		var ev = _bc.events[i]
+		if ev != null and String(ev.type) == type_name:
+			return ev.extra
+	return {}
+
+
 # Yaku 名 + han 列表 → "立直 1飜 · 自摸 1飜 · 平和 1飜" 风格中点分隔串。
 # 役満条目省略 han(为 0),代之以 "(N 倍)"。
 static func _format_yaku_list(yaku_names: Array) -> String:
@@ -413,6 +441,15 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 			return "荣和! %s" % _seat_short(ev.actor_seat)
 		&"EXHAUSTIVE_DRAW":
 			return "流局"
+		&"ABORTIVE_DRAW":
+			var reason: String = String(ev.extra.get("reason", ""))
+			match reason:
+				"kyuusyu_kyuuhai": return "途中流局 · 九種九牌"
+				"suufon_renda": return "途中流局 · 四风连打"
+				"suucha_riichi": return "途中流局 · 四家立直"
+				"suukantsu_sanra": return "途中流局 · 四杠散了"
+				"sancha_houra": return "途中流局 · 三家和了"
+				_: return "途中流局"
 		&"HAITEI":
 			return "海底捞月!"
 		&"HOUTEI":
