@@ -219,3 +219,41 @@ func test_chi_companion_options_edge_w9():
 	var opts := ClaimValidator.chi_companion_options(h, TileId.W9)
 	assert_eq(opts.size(), 1)
 	assert_eq(opts[0], [TileId.W7, TileId.W8])
+
+# ---- kuikae_restricted_ids ----
+
+func test_kuikae_chi_restricts_claimed_and_suji():
+	# Chi [2,3,4] with claimed W4, companions W2,W3
+	# Restricted: W4 (claimed) + W1 (suji: 1-2-3 sequence)
+	var restricted := ClaimValidator.kuikae_restricted_ids(
+		TileId.W4, [TileId.W2, TileId.W3], true)
+	assert_true(TileId.W4 in restricted, "cannot discard claimed tile")
+	assert_true(TileId.W1 in restricted, "suji restriction: W1")
+
+func test_kuikae_chi_middle_wait_restricts_only_claimed():
+	# Chi [3,4,5] with claimed W4 (kanchan middle)
+	var restricted := ClaimValidator.kuikae_restricted_ids(
+		TileId.W4, [TileId.W3, TileId.W5], true)
+	assert_true(TileId.W4 in restricted)
+	assert_eq(restricted.size(), 1, "middle: only claimed tile restricted")
+
+func test_kuikae_chi_high_end():
+	# Chi [4,5,6] with claimed W4 (low end of meld)
+	# Restricted: W4 + W7 (suji: 5-6-7)
+	var restricted := ClaimValidator.kuikae_restricted_ids(
+		TileId.W4, [TileId.W5, TileId.W6], true)
+	assert_true(TileId.W4 in restricted)
+	assert_true(TileId.W7 in restricted, "suji restriction: W7")
+
+func test_kuikae_chi_edge_w7_w8_w9():
+	# Chi [7,8,9] with claimed W7 (low end)
+	# Restricted: W7 only (W10 doesn't exist)
+	var restricted := ClaimValidator.kuikae_restricted_ids(
+		TileId.W7, [TileId.W8, TileId.W9], true)
+	assert_true(TileId.W7 in restricted)
+	assert_eq(restricted.size(), 1)
+
+func test_kuikae_pon_restricts_4th_copy():
+	var restricted := ClaimValidator.kuikae_restricted_ids(
+		TileId.W5, [], false)
+	assert_eq(restricted, [TileId.W5])

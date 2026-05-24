@@ -212,3 +212,34 @@ static func _suited_range_for(tile_id: int) -> Array:
 		if tile_id >= rng[0] and tile_id <= rng[1]:
 			return rng
 	return []
+
+# AI claiming decision: given a discarded tile, decide whether to pon/minkan/skip.
+# v1: AI never chi (chi often hurts hand shape for heuristic AI).
+# Returns: {"action": "pon"|"minkan"|"skip"}
+func decide_claim(seat: Seat, discarded_id: int, discarder_seat: int) -> Dictionary:
+	if seat.seat_id == discarder_seat:
+		return {"action": "skip"}
+	if seat.riichi.declared:
+		return {"action": "skip"}
+	var count: int = seat.hand.count_of(discarded_id)
+	if count >= 3:
+		return {"action": "minkan"}
+	if count >= 2:
+		return {"action": "pon"}
+	return {"action": "skip"}
+
+# Self-kan decision: after drawing, check if AI should declare ankan or added_kan.
+# v1: always kan when possible (free value), except during riichi.
+# Returns: {"action": "ankan"|"added_kan"|"skip", "tile_id": int}
+func decide_self_kan(seat: Seat) -> Dictionary:
+	if seat.riichi.declared:
+		return {"action": "skip"}
+	var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
+	if not ankan_ids.is_empty():
+		return {"action": "ankan", "tile_id": ankan_ids[0]}
+	for m in seat.melds:
+		if m.kind == Meld.Kind.PON:
+			var tid: int = m.tiles[0].id
+			if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
+				return {"action": "added_kan", "tile_id": tid}
+	return {"action": "skip"}
