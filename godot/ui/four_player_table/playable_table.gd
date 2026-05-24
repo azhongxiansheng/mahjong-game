@@ -70,12 +70,20 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	var dbg = get_node_or_null("/root/DebugOverlay")
 	if dbg:
 		dbg.register_battle_controller(bc)
+	# Pro 日志:开局 + 收局摘要进 Log,可在 DebugOverlay 看
+	var log_node = get_node_or_null("/root/Log")
+	if log_node and bc.state:
+		log_node.info("battle", "hand begin hand=%d dealer=%d wind=%d" % [
+			int(bc.state.hand_number), int(bc.state.dealer_seat),
+			int(bc.state.round_wind)])
 	# 开局 splash:"东 1 局 · AI 2 是庄家" 大字 1.3s。fade-in/out 让玩家
 	# 明确感知"新一局开始 + 谁是庄"。
 	await _show_hand_start_splash(bc.state)
 	var result: Dictionary = await bc.run_to_end_async()
 	if dbg:
 		dbg.unregister_battle_controller(bc)
+	if log_node:
+		log_node.info("battle", "hand end last_event=%s" % str(result.get("last_event", "")))
 	_action_panel.enter_idle("本局结束")
 	_table.bind_battle_state(bc.state, 0, 4)
 	# 记终身统计 + 检测成就解锁(发 achievement_unlocked signal,toast 在 _on_achievement_unlocked)

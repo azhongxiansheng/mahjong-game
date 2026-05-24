@@ -119,7 +119,8 @@ func _refresh() -> void:
 	lines.append("")
 	lines.append("--- Autoloads ---")
 	for n in ["AudioManager", "SettingsManager", "StatsManager",
-			"SaveSystem", "MetaProgress", "DebugOverlay"]:
+			"SaveSystem", "MetaProgress", "DebugOverlay", "Log",
+			"SaveToast"]:
 		var present: bool = tree and tree.root.get_node_or_null("/root/" + n) != null
 		lines.append("  %s: %s" % [n, "✓" if present else "✗"])
 	# 当前 PlayableBattleController(由 PlayableTable register)
@@ -138,6 +139,14 @@ func _refresh() -> void:
 		lines.append("scores: %s" % str(s.scores))
 	else:
 		lines.append("(no BattleController registered)")
+	# 近期 Log:最新 6 条
+	var log_node = tree.root.get_node_or_null("/root/Log") if tree else null
+	if log_node:
+		lines.append("")
+		lines.append("--- Recent log ---")
+		var recent: Array = log_node.recent(6)
+		for entry in recent:
+			lines.append("  " + log_node.format_line(entry))
 	_label.text = "\n".join(lines)
 
 
