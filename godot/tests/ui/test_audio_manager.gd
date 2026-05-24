@@ -1,0 +1,101 @@
+extends GutTest
+
+# AudioManager autoload — 单元测试 cover BC event → SFX key 映射 +
+# play() 静默回退 / pool 循环。autoload 已由 project.godot 注册,跑测试
+# 时通过 /root/AudioManager 拿。
+
+
+func _am() -> Node:
+	return get_tree().root.get_node_or_null("AudioManager")
+
+
+func test_autoload_registered() -> void:
+	assert_not_null(_am(), "/root/AudioManager autoload 应已挂载")
+
+
+# ---- sfx_key_for_event 映射 ----
+
+func test_tile_drawn_maps_to_tile_draw() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"TILE_DRAWN"), "tile_draw")
+
+
+func test_tile_discarded_maps_to_tile_click() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"TILE_DISCARDED"), "tile_click")
+
+
+func test_riichi_declared_maps_to_riichi_chime() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"RIICHI_DECLARED"), "riichi_chime")
+
+
+func test_tsumo_declared_maps_to_win_chime() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"TSUMO_DECLARED"), "win_chime")
+
+
+func test_ron_declared_maps_to_win_chime() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"RON_DECLARED"), "win_chime")
+
+
+func test_exhaustive_draw_maps_to_draw_chime() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"EXHAUSTIVE_DRAW"), "draw_chime")
+
+
+func test_abortive_draw_maps_to_abortive_chime() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"ABORTIVE_DRAW"), "abortive_chime")
+
+
+# WIN_DECLARED yakuman_multiplier>=1 → yakuman_chime
+func test_win_declared_yakuman_maps_to_yakuman() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"WIN_DECLARED",
+		{"yakuman_multiplier": 1}), "yakuman_chime")
+
+
+# 非 yakuman 的 WIN_DECLARED 不重叠 SFX(已有 TSUMO/RON 在前)
+func test_win_declared_non_yakuman_no_sfx() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"WIN_DECLARED",
+		{"yakuman_multiplier": 0}), "")
+
+
+# PLAYER_ACTION kind=chi/pon/kan → chi_tap
+func test_player_action_chi_maps_to_chi_tap() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"PLAYER_ACTION",
+		{"kind": "chi"}), "chi_tap")
+
+
+func test_player_action_minkan_maps_to_chi_tap() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"PLAYER_ACTION",
+		{"kind": "minkan"}), "chi_tap")
+
+
+# 不相关的 PLAYER_ACTION(如 discard / tsumo_accept)不响,SFX 已由
+# TILE_DISCARDED / TSUMO_DECLARED cover
+func test_player_action_discard_no_sfx() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"PLAYER_ACTION",
+		{"kind": "discard", "tile_id": 0}), "")
+
+
+# 未知 event type 返空(静默,无效果)
+func test_unknown_event_no_sfx() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"FOOBAR_EVENT"), "")
+
+
+# ---- play() 静默回退测试(资源不存在不应崩) ----
+
+func test_play_missing_key_does_not_crash() -> void:
+	# 即使 SFX 资源不在,play 应静默退出
+	var am: Node = _am()
+	if am == null:
+		return
+	am.play("nonexistent_sfx_key")
+	# 跑到这里没崩就 ok
+	assert_true(true)
+
+
+func test_play_with_zero_volume_silent_short_circuit() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	var saved: float = am.sfx_volume
+	am.sfx_volume = 0.0
+	am.play("button_click")  # 应早出
+	am.sfx_volume = saved
+	assert_true(true)  # 主要确认不崩

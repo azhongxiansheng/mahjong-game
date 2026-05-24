@@ -22,6 +22,7 @@ GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
 SaveSystem="*res://meta/save_system.gd"
 MetaProgress="*res://meta/meta_progress.gd"
+AudioManager="*res://audio/audio_manager.gd"
 
 [display]
 

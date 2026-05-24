@@ -387,11 +387,28 @@ func _polling_loop() -> void:
 			# Diff: 新 emit 的事件全过一遍 toast handler;再 rebind 桌面视觉
 			for i in range(_last_event_count, n):
 				_handle_event_toast(_bc.events[i])
+				_play_event_sfx(_bc.events[i])
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
 		if n < _last_event_count:
 			_last_event_count = 0
+
+
+# BC 事件 → AudioManager SFX 播放;调 AudioManager.sfx_key_for_event 算 key,
+# tile_click 路径加少量 pitch_variation 避免连续摸切机械感。
+func _play_event_sfx(ev: BattleEvent) -> void:
+	if ev == null:
+		return
+	var am = get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+	var key: String = AudioManager.sfx_key_for_event(ev.type, ev.extra)
+	if key == "":
+		return
+	# 切牌/摸牌 30+次/局 → 加 ±6% 音调随机化
+	var pitch_var := 0.06 if (key == "tile_click" or key == "tile_draw") else 0.0
+	am.play(key, pitch_var)
 
 
 # 关键事件 → 顶部金色 toast,玩家不用盯 events 也能感知发生了什么。

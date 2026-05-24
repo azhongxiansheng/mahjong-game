@@ -231,38 +231,54 @@ func _apply_state(s: State) -> void:
 		State.IDLE: enter_idle()
 		_: pass  # 其它状态由专门 enter_* 入口
 
+# 内部:点 UI 按钮时奏 button_click SFX(autoload AudioManager 静默回退
+# 若资源未生成 — 不影响测试 / 旧场景跑)。
+func _click_sfx() -> void:
+	var am = get_node_or_null("/root/AudioManager")
+	if am != null:
+		am.play("button_click", 0.04)
+
+
 # ---- 玩家点击 hand 时由 PlayableTable 转发进来 ----
 func on_hand_tile_clicked(tile_id: int) -> void:
 	if _state == State.WAITING_DISCARD:
+		_click_sfx()
 		player_action_chosen.emit({"action": "discard", "tile_id": tile_id})
 
 # ---- 按钮回调 ----
 
 func _on_btn_riichi() -> void:
 	if _state == State.WAITING_RIICHI_CONFIRM:
+		_click_sfx()
 		player_action_chosen.emit({"action": "riichi_yes"})
 
 func _on_btn_tsumo() -> void:
 	if _state == State.WAITING_DISCARD:
+		_click_sfx()
 		player_action_chosen.emit({"action": "tsumo"})
 
 func _on_btn_ron() -> void:
 	if _state == State.WAITING_CLAIM:
+		_click_sfx()
 		player_action_chosen.emit({"action": "ron", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_chi() -> void:
 	if _state == State.WAITING_CLAIM:
+		_click_sfx()
 		player_action_chosen.emit({"action": "chi", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_pon() -> void:
 	if _state == State.WAITING_CLAIM:
+		_click_sfx()
 		player_action_chosen.emit({"action": "pon", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_minkan() -> void:
 	if _state == State.WAITING_CLAIM:
+		_click_sfx()
 		player_action_chosen.emit({"action": "minkan", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_skip() -> void:
+	_click_sfx()
 	if _state == State.WAITING_RIICHI_CONFIRM:
 		player_action_chosen.emit({"action": "riichi_no"})
 	elif _state == State.WAITING_CLAIM:
@@ -273,4 +289,5 @@ func _on_btn_skip() -> void:
 
 func _on_btn_kyuusyu() -> void:
 	if _state == State.WAITING_KYUUSYU:
+		_click_sfx()
 		player_action_chosen.emit({"action": "kyuusyu_yes"})
