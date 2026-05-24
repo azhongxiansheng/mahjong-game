@@ -66,6 +66,9 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_table.bind_battle_state(bc.state, 0, 4)
 	_action_panel.enter_idle("准备开局…")
 	_attach_event_polling()
+	# 开局 splash:"东 1 局 · AI 2 是庄家" 大字 1.3s。fade-in/out 让玩家
+	# 明确感知"新一局开始 + 谁是庄"。
+	await _show_hand_start_splash(bc.state)
 	var result: Dictionary = await bc.run_to_end_async()
 	_action_panel.enter_idle("本局结束")
 	_table.bind_battle_state(bc.state, 0, 4)
@@ -447,6 +450,19 @@ func _polling_loop() -> void:
 
 # BC 事件 → AudioManager SFX 播放;调 AudioManager.sfx_key_for_event 算 key,
 # tile_click 路径加少量 pitch_variation 避免连续摸切机械感。
+# 一局开始前弹 splash 1.3s,await 完成。让玩家明确感知 "第 N 局 / 庄家"。
+func _show_hand_start_splash(state) -> void:
+	if state == null:
+		return
+	var info: Dictionary = HandStartSplash.format_title(
+		int(state.hand_number), int(state.round_wind),
+		int(state.dealer_seat), int(state.honba))
+	var splash := HandStartSplash.make(
+		String(info.get("title", "")), String(info.get("subtitle", "")))
+	add_child(splash)
+	await splash.finished
+
+
 # 胡牌时 burst 粒子 + 屏幕震动。按 han / yakuman 分级 tier。
 # 玩家胡 tier 不变(都好看);AI 胡用 LIGHT 让玩家不觉得过度奖励对手。
 func _play_win_effects(win_event: BattleEvent) -> void:
