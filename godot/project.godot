@@ -25,6 +25,7 @@ MetaProgress="*res://meta/meta_progress.gd"
 AudioManager="*res://audio/audio_manager.gd"
 SettingsManager="*res://meta/settings_manager.gd"
 StatsManager="*res://meta/stats_manager.gd"
+Log="*res://meta/log.gd"
 
 [display]
 

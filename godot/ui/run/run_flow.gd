@@ -162,6 +162,11 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	var sm = get_node_or_null("/root/StatsManager")
 	if sm:
 		sm.record_run_started()
+	# Pro 日志:run lifecycle 摘要
+	var log_node = get_node_or_null("/root/Log")
+	if log_node:
+		log_node.info("run", "started pack=%s difficulty=%d seed=%d" % [
+			str(pack_id), int(_pending_difficulty), _seed_seed])
 	_show_chapter_map()
 
 func _on_node_chosen(node_index: int) -> void:
@@ -199,6 +204,10 @@ func _on_run_failed() -> void:
 	var sm = get_node_or_null("/root/StatsManager")
 	if sm:
 		sm.record_run_ended(false)
+	var log_node = get_node_or_null("/root/Log")
+	if log_node:
+		log_node.info("run", "FAILED at chapter=%d node=%d" % [
+			int(_run_state.chapter), _run_state.history.size()])
 	_show_summary()
 
 func _on_run_won() -> void:
@@ -212,6 +221,10 @@ func _on_run_won() -> void:
 	var sm = get_node_or_null("/root/StatsManager")
 	if sm:
 		sm.record_run_ended(true)
+	var log_node = get_node_or_null("/root/Log")
+	if log_node:
+		log_node.info("run", "WON chapter=%d nodes=%d" % [
+			int(_run_state.chapter), _run_state.history.size()])
 	_show_summary()
 
 # ---- node execution ----
