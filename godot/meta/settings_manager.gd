@@ -19,6 +19,8 @@ var bgm_volume: float = 0.6
 # 新手引导首次启动后置 true,RunFlow._ready 不再弹 TutorialOverlay。
 # 玩家可在 SettingsOverlay 重置 → 重新看引导。
 var tutorial_seen: bool = false
+# 全屏模式:true = exclusive fullscreen,false = windowed。DisplayServer 应用。
+var fullscreen: bool = false
 # 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
 # 常用预设:60 / 120 / 144 / 0(unlimited)。
 var framerate_cap: int = 60
@@ -31,6 +33,7 @@ func _ready() -> void:
 	_load_from_disk()
 	# 启动后同步 AudioManager 音量(避免 AudioManager._ready 时 SettingsManager 还没载)
 	_apply_to_audio()
+	_apply_fullscreen()
 	_apply_framerate_cap()
 
 
@@ -54,6 +57,13 @@ func set_tutorial_seen(b: bool) -> void:
 	settings_changed.emit()
 
 
+func set_fullscreen(b: bool) -> void:
+	fullscreen = b
+	_apply_fullscreen()
+	_save_to_disk()
+	settings_changed.emit()
+
+
 func set_framerate_cap(fps: int) -> void:
 	# 接受 0 (uncap) 或 30-300。其它值 clamp。
 	if fps != 0:
@@ -70,6 +80,16 @@ func _apply_to_audio() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am != null and "sfx_volume" in am:
 		am.sfx_volume = sfx_volume
+
+
+func _apply_fullscreen() -> void:
+	# Headless 跑 unit test 时 DisplayServer 没窗,跳过避免崩
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_SUBWINDOWS):
+		return
+	var target_mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen \
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != target_mode:
+		DisplayServer.window_set_mode(target_mode)
 
 
 func _apply_framerate_cap() -> void:
@@ -91,6 +111,7 @@ func _load_from_disk() -> void:
 	sfx_volume = clamp(float(parsed.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
 	tutorial_seen = bool(parsed.get("tutorial_seen", false))
+	fullscreen = bool(parsed.get("fullscreen", false))
 	var fps_v: int = int(parsed.get("framerate_cap", 60))
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
@@ -102,6 +123,7 @@ func _save_to_disk() -> void:
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
 		"tutorial_seen": tutorial_seen,
+		"fullscreen": fullscreen,
 		"framerate_cap": framerate_cap,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)

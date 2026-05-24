@@ -96,6 +96,15 @@ func _ready() -> void:
 	test_btn.pressed.connect(_on_test_pressed)
 	panel.add_child(test_btn)
 
+	# 全屏 toggle — CheckButton 左右滑动开关
+	var fs_btn := CheckButton.new()
+	fs_btn.text = "全屏"
+	fs_btn.position = Vector2(330, 174)
+	fs_btn.custom_minimum_size = Vector2(90, 36)
+	fs_btn.button_pressed = _sm().fullscreen
+	fs_btn.toggled.connect(_on_fullscreen_toggled)
+	panel.add_child(fs_btn)
+
 	# 帧率上限 — OptionButton 5 个预设
 	var fps_label := Label.new()
 	fps_label.text = "帧率上限"
@@ -193,6 +202,10 @@ func _on_test_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play("tile_click")
+
+
+func _on_fullscreen_toggled(b: bool) -> void:
+	_sm().set_fullscreen(b)
 
 
 func _on_fps_selected(idx: int) -> void:
