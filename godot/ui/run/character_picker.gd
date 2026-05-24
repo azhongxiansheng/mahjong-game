@@ -70,6 +70,16 @@ func _build_char_card(c: Character) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", 8)
 	panel.add_child(vbox)
 
+	if c.portrait_path != "":
+		var tex: Texture2D = load(c.portrait_path)
+		if tex:
+			var portrait := TextureRect.new()
+			portrait.texture = tex
+			portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			portrait.custom_minimum_size = Vector2(200, 150)
+			portrait.expand_mode = TextureRect.EXPAND_FIT_HEIGHT
+			vbox.add_child(portrait)
+
 	var name_label := Label.new()
 	name_label.text = c.display_name
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

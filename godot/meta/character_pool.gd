@@ -13,6 +13,7 @@ static func all() -> Array:
 	akagi.starting_gold = 50
 	akagi.recommended_pack = &"starter_aggro"
 	akagi.unlock_renown = 0
+	akagi.portrait_path = "res://assets/roguelike/characters/char_akagi.png"
 	pool.append(akagi)
 
 	var kaiji := Character.new(&"kaiji")
@@ -23,6 +24,7 @@ static func all() -> Array:
 	kaiji.starting_gold = 0
 	kaiji.recommended_pack = &"starter_control"
 	kaiji.unlock_renown = 0
+	kaiji.portrait_path = "res://assets/roguelike/characters/char_kaiji.png"
 	pool.append(kaiji)
 
 	var washizu := Character.new(&"washizu")
@@ -33,6 +35,7 @@ static func all() -> Array:
 	washizu.starting_gold = 0
 	washizu.recommended_pack = &"starter_fast"
 	washizu.unlock_renown = 0
+	washizu.portrait_path = "res://assets/roguelike/characters/char_washizu.png"
 	pool.append(washizu)
 
 	var saki := Character.new(&"saki")

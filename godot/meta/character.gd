@@ -16,6 +16,7 @@ var starting_hp: int = 5
 var starting_gold: int = 0
 var recommended_pack: StringName = &""
 var unlock_renown: int = 0
+var portrait_path: String = ""
 
 func _init(p_id: StringName = &"") -> void:
 	id = p_id
