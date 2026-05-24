@@ -91,13 +91,27 @@ func _ready() -> void:
 	test_btn.pressed.connect(_on_test_pressed)
 	panel.add_child(test_btn)
 
+	# 查看战绩按钮(开 StatsView overlay)
+	var stats_btn := Button.new()
+	stats_btn.text = "查看战绩"
+	stats_btn.position = Vector2(40, PANEL_H - 60)
+	stats_btn.custom_minimum_size = Vector2(120, 40)
+	stats_btn.pressed.connect(_on_stats_pressed)
+	panel.add_child(stats_btn)
+
 	# 关闭按钮
 	var close_btn := Button.new()
 	close_btn.text = "关闭 (ESC)"
-	close_btn.position = Vector2((PANEL_W - 140) / 2, PANEL_H - 60)
+	close_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
 	close_btn.custom_minimum_size = Vector2(140, 40)
 	close_btn.pressed.connect(_on_close)
 	panel.add_child(close_btn)
+
+
+func _on_stats_pressed() -> void:
+	var view := StatsView.new()
+	view.name = "_stats_view_root"
+	get_tree().root.add_child(view)
 
 	# 设为最顶层(其它 overlay/HUD 不挡)
 	z_index = 100

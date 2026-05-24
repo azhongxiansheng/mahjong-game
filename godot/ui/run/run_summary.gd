@@ -16,6 +16,20 @@ func _ready() -> void:
 	RunUi.attach_background(self)
 	if _back_btn:
 		_back_btn.pressed.connect(func(): emit_signal("back_to_menu"))
+	# 加 "查看战绩" 按钮唤起 StatsView(终身统计 + 成就网格)。
+	# 放 _back_btn 旁(主菜单的下方),让玩家通关失败后立刻看到本局进度。
+	if _back_btn != null and _back_btn.get_parent() != null:
+		var stats_btn := Button.new()
+		stats_btn.text = "查看战绩"
+		stats_btn.custom_minimum_size = Vector2(160, 40)
+		stats_btn.pressed.connect(_on_stats_pressed)
+		_back_btn.get_parent().add_child(stats_btn)
+
+
+func _on_stats_pressed() -> void:
+	var view := StatsView.new()
+	view.name = "_stats_view_root"
+	get_tree().root.add_child(view)
 
 # ---- public setters ----
 

@@ -23,6 +23,21 @@ var _seat_panel_player: SeatPanel = null
 func _ready() -> void:
 	custom_minimum_size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
 	_build_layout()
+	# 成就解锁 → toast 弹"🏆 成就解锁:xxx"。autoload 可能晚 ready,defer connect。
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm and sm.has_signal("achievement_unlocked") \
+			and not sm.achievement_unlocked.is_connected(_on_achievement_unlocked):
+		sm.achievement_unlocked.connect(_on_achievement_unlocked)
+
+
+# StatsManager 发解锁信号 → 用 toast 标显示。延 700ms 让 SFX/粒子先播。
+func _on_achievement_unlocked(_id: String, meta: Dictionary) -> void:
+	var nm: String = String(meta.get("name", ""))
+	if nm == "":
+		return
+	var captured := nm
+	get_tree().create_timer(0.7).timeout.connect(func():
+		_show_toast_text("🏆 成就解锁:%s" % captured))
 
 func _build_layout() -> void:
 	# Bg 覆盖整个 800 高度，让桌底 ActionPanel 区跟桌面同色，避免桌外白色背景
@@ -54,9 +69,40 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	var result: Dictionary = await bc.run_to_end_async()
 	_action_panel.enter_idle("本局结束")
 	_table.bind_battle_state(bc.state, 0, 4)
+	# 记终身统计 + 检测成就解锁(发 achievement_unlocked signal,toast 在 _on_achievement_unlocked)
+	_record_hand_stats(bc)
 	# 胡牌或流局后弹结算 overlay：玩家点继续才推进下一局
 	await _show_hand_result_overlay(result)
 	return result
+
+
+# 调 StatsManager 把本局结果存进去 — 主要根据 events 找 WIN_DECLARED + 玩家
+# 视角(seat 0)推断 is_player_winner / loser_was_player。
+func _record_hand_stats(bc) -> void:
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm == null:
+		return
+	var win_event = null
+	for i in range(bc.events.size() - 1, -1, -1):
+		var ev = bc.events[i]
+		if ev.type == &"WIN_DECLARED":
+			win_event = ev
+			break
+	var is_player_winner: bool = (win_event != null and int(win_event.actor_seat) == 0)
+	var loser_was_player: bool = false
+	if win_event != null:
+		var discarder: int = int(win_event.extra.get("discarder_seat", -1))
+		if discarder == 0 and not is_player_winner:
+			loser_was_player = true
+	sm.record_hand_end(win_event, is_player_winner, loser_was_player)
+	# 玩家立直?扫 RIICHI_DECLARED actor==0
+	for ev in bc.events:
+		if ev.type == &"RIICHI_DECLARED" and int(ev.actor_seat) == 0:
+			var is_double: bool = false  # double riichi 标记在 RiichiState,这里近似查 state
+			if bc.state != null and bc.state.seats.size() > 0:
+				is_double = bc.state.seats[0].riichi.double_riichi
+			sm.record_riichi(is_double)
+			break
 
 # 本局结束后弹结算 panel：胡牌显示 役/番/符/点数；流局显示听牌情况
 # 主题化 + tier 大字（役満/倍満/跳満/満貫/N 飜 N 符）+ 玩家胡 / 失点配色。
@@ -451,6 +497,13 @@ func _handle_event_toast(ev: BattleEvent) -> void:
 	if ev == null:
 		return
 	var text: String = _format_toast_text(ev)
+	if text == "":
+		return
+	_show_toast_text(text)
+
+
+# 任意文本 toast — 共用于 BC 事件 + 成就解锁等。
+func _show_toast_text(text: String) -> void:
 	if text == "":
 		return
 	if _toast_label == null:

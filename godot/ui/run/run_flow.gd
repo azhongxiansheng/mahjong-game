@@ -144,6 +144,10 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	_hud.bind_run_state(_run_state)
 	# M5 第 4 步：新 Run 开始时立即存档
 	_save_run_state()
+	# 终身统计:run 开始计 1
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm:
+		sm.record_run_started()
 	_show_chapter_map()
 
 func _on_node_chosen(node_index: int) -> void:
@@ -177,6 +181,10 @@ func _on_run_failed() -> void:
 	var mp := get_tree().root.get_node_or_null("MetaProgress")
 	if mp:
 		mp.add_renown_for_run(false)
+	# 终身统计 + 成就
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm:
+		sm.record_run_ended(false)
 	_show_summary()
 
 func _on_run_won() -> void:
@@ -187,6 +195,9 @@ func _on_run_won() -> void:
 	var mp := get_tree().root.get_node_or_null("MetaProgress")
 	if mp:
 		mp.add_renown_for_run(true)
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm:
+		sm.record_run_ended(true)
 	_show_summary()
 
 # ---- node execution ----
