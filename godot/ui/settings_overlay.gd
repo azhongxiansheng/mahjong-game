@@ -8,10 +8,15 @@ class_name SettingsOverlay extends Control
 signal closed
 
 const PANEL_W: int = 460
-const PANEL_H: int = 320
+const PANEL_H: int = 380
+
+# FPS 预设 — 30/60/120/144/0(unlimited)
+const FPS_PRESETS: Array = [30, 60, 120, 144, 0]
+const FPS_LABELS: Array = ["30 FPS", "60 FPS", "120 FPS", "144 FPS", "不限制"]
 
 var _sfx_slider: HSlider = null
 var _sfx_value_label: Label = null
+var _fps_option: OptionButton = null
 
 
 func _init() -> void:
@@ -91,6 +96,27 @@ func _ready() -> void:
 	test_btn.pressed.connect(_on_test_pressed)
 	panel.add_child(test_btn)
 
+	# 帧率上限 — OptionButton 5 个预设
+	var fps_label := Label.new()
+	fps_label.text = "帧率上限"
+	fps_label.position = Vector2(40, 224)
+	fps_label.size = Vector2(160, 28)
+	fps_label.add_theme_font_size_override("font_size", 18)
+	fps_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	panel.add_child(fps_label)
+	_fps_option = OptionButton.new()
+	_fps_option.position = Vector2(180, 222)
+	_fps_option.custom_minimum_size = Vector2(160, 32)
+	for i in range(FPS_PRESETS.size()):
+		_fps_option.add_item(String(FPS_LABELS[i]))
+	# 选当前 saved 值匹配的项;不在预设里就选 60 (idx 1) 兜底
+	var cur_idx: int = FPS_PRESETS.find(int(_sm().framerate_cap))
+	if cur_idx < 0:
+		cur_idx = 1
+	_fps_option.selected = cur_idx
+	_fps_option.item_selected.connect(_on_fps_selected)
+	panel.add_child(_fps_option)
+
 	# 重看新手引导按钮(清 tutorial_seen 标志 + 立刻弹 TutorialOverlay)
 	var tut_btn := Button.new()
 	tut_btn.text = "重看新手引导"
@@ -167,6 +193,12 @@ func _on_test_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play("tile_click")
+
+
+func _on_fps_selected(idx: int) -> void:
+	if idx < 0 or idx >= FPS_PRESETS.size():
+		return
+	_sm().set_framerate_cap(int(FPS_PRESETS[idx]))
 
 
 func _on_tutorial_pressed() -> void:

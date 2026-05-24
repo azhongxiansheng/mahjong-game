@@ -19,6 +19,9 @@ var bgm_volume: float = 0.6
 # 新手引导首次启动后置 true,RunFlow._ready 不再弹 TutorialOverlay。
 # 玩家可在 SettingsOverlay 重置 → 重新看引导。
 var tutorial_seen: bool = false
+# 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
+# 常用预设:60 / 120 / 144 / 0(unlimited)。
+var framerate_cap: int = 60
 
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
@@ -28,6 +31,7 @@ func _ready() -> void:
 	_load_from_disk()
 	# 启动后同步 AudioManager 音量(避免 AudioManager._ready 时 SettingsManager 还没载)
 	_apply_to_audio()
+	_apply_framerate_cap()
 
 
 func set_sfx_volume(v: float) -> void:
@@ -50,12 +54,27 @@ func set_tutorial_seen(b: bool) -> void:
 	settings_changed.emit()
 
 
+func set_framerate_cap(fps: int) -> void:
+	# 接受 0 (uncap) 或 30-300。其它值 clamp。
+	if fps != 0:
+		fps = clamp(fps, 30, 300)
+	framerate_cap = fps
+	_apply_framerate_cap()
+	_save_to_disk()
+	settings_changed.emit()
+
+
 # ---- internal ----
 
 func _apply_to_audio() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am != null and "sfx_volume" in am:
 		am.sfx_volume = sfx_volume
+
+
+func _apply_framerate_cap() -> void:
+	# 0 = 不限,Engine.max_fps=0 内部表示无限制
+	Engine.max_fps = max(0, framerate_cap)
 
 
 func _load_from_disk() -> void:
@@ -72,6 +91,10 @@ func _load_from_disk() -> void:
 	sfx_volume = clamp(float(parsed.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
 	tutorial_seen = bool(parsed.get("tutorial_seen", false))
+	var fps_v: int = int(parsed.get("framerate_cap", 60))
+	if fps_v != 0:
+		fps_v = clamp(fps_v, 30, 300)
+	framerate_cap = fps_v
 
 
 func _save_to_disk() -> void:
@@ -79,6 +102,7 @@ func _save_to_disk() -> void:
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
 		"tutorial_seen": tutorial_seen,
+		"framerate_cap": framerate_cap,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:

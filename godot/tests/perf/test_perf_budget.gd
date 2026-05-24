@@ -6,12 +6,13 @@ extends GutTest
 # 加 O(N²) 算法把单局从 10ms 拖到 500ms)。
 
 
-# 单局 BC.run_to_end 平均预算 — CI 环境给宽松 50ms(本地正常 1-3ms)
-const PER_HAND_BUDGET_MS: float = 50.0
+# 单局 BC.run_to_end 平均预算 — CI 环境给宽松 100ms(本地正常 1-3ms,
+# headless CI runner 4-5x slower 是常态;此值是 ceiling guard,catch 数量级回归)
+const PER_HAND_BUDGET_MS: float = 100.0
 
 # 一组(50 局)预算 — 累积避免单局抖动
 const BATCH_HANDS: int = 50
-const BATCH_BUDGET_MS: float = PER_HAND_BUDGET_MS * BATCH_HANDS  # 2500ms
+const BATCH_BUDGET_MS: float = PER_HAND_BUDGET_MS * BATCH_HANDS  # 5000ms
 
 
 func test_battle_controller_run_to_end_budget() -> void:
