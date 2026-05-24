@@ -91,6 +91,14 @@ func _ready() -> void:
 	test_btn.pressed.connect(_on_test_pressed)
 	panel.add_child(test_btn)
 
+	# 重看新手引导按钮(清 tutorial_seen 标志 + 立刻弹 TutorialOverlay)
+	var tut_btn := Button.new()
+	tut_btn.text = "重看新手引导"
+	tut_btn.position = Vector2(160, 174)
+	tut_btn.custom_minimum_size = Vector2(160, 36)
+	tut_btn.pressed.connect(_on_tutorial_pressed)
+	panel.add_child(tut_btn)
+
 	# 查看战绩按钮(开 StatsView overlay)
 	var stats_btn := Button.new()
 	stats_btn.text = "查看战绩"
@@ -107,14 +115,14 @@ func _ready() -> void:
 	close_btn.pressed.connect(_on_close)
 	panel.add_child(close_btn)
 
+	# 设为最顶层(其它 overlay/HUD 不挡)
+	z_index = 100
+
 
 func _on_stats_pressed() -> void:
 	var view := StatsView.new()
 	view.name = "_stats_view_root"
 	get_tree().root.add_child(view)
-
-	# 设为最顶层(其它 overlay/HUD 不挡)
-	z_index = 100
 
 
 func _input(event: InputEvent) -> void:
@@ -135,6 +143,14 @@ func _on_test_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play("tile_click")
+
+
+func _on_tutorial_pressed() -> void:
+	# 关闭本 overlay,在 root 弹 TutorialOverlay
+	var t := TutorialOverlay.new()
+	t.name = "_tutorial_overlay_root"
+	get_tree().root.add_child(t)
+	_on_close()
 
 
 func _on_close() -> void:

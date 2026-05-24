@@ -16,6 +16,9 @@ const SETTINGS_PATH: String = "user://settings.json"
 
 var sfx_volume: float = 0.8
 var bgm_volume: float = 0.6
+# 新手引导首次启动后置 true,RunFlow._ready 不再弹 TutorialOverlay。
+# 玩家可在 SettingsOverlay 重置 → 重新看引导。
+var tutorial_seen: bool = false
 
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
@@ -41,6 +44,12 @@ func set_bgm_volume(v: float) -> void:
 	settings_changed.emit()
 
 
+func set_tutorial_seen(b: bool) -> void:
+	tutorial_seen = b
+	_save_to_disk()
+	settings_changed.emit()
+
+
 # ---- internal ----
 
 func _apply_to_audio() -> void:
@@ -62,12 +71,14 @@ func _load_from_disk() -> void:
 		return
 	sfx_volume = clamp(float(parsed.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
+	tutorial_seen = bool(parsed.get("tutorial_seen", false))
 
 
 func _save_to_disk() -> void:
 	var d: Dictionary = {
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
+		"tutorial_seen": tutorial_seen,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:

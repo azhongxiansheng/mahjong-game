@@ -43,12 +43,26 @@ func _ready() -> void:
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
 	add_child(_hud)
+	# 新手引导:第一次启动(SettingsManager.tutorial_seen=false)弹出 5 页教程,
+	# 玩家点 Skip / 读完最后页 → 标 seen=true 持久化,以后不再弹。
+	_maybe_show_tutorial()
 	# M5 第 4 步：启动时检查是否有存档（user://savegame.json）
 	var ss := _save_system()
 	if ss and ss.has_save():
 		_show_continue_prompt()
 	else:
 		_show_starter_picker()
+
+
+func _maybe_show_tutorial() -> void:
+	var sm = get_node_or_null("/root/SettingsManager")
+	if sm == null:
+		return
+	if sm.tutorial_seen:
+		return
+	var t := TutorialOverlay.new()
+	t.name = "_tutorial_overlay_root"
+	get_tree().root.add_child(t)
 
 
 # ESC 唤起设置 overlay(SFX 音量等)。BattleNode 在战斗内有自己的 ESC,
