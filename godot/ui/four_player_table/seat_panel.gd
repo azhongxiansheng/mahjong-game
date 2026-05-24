@@ -97,6 +97,8 @@ func set_score(s: int) -> void:
 		# 分数变化 → 0.55s 脉冲反馈:涨绿、跌红。第一次 bind 时 prev=0 不闪。
 		if prev > 0 and s != prev and _label_score != null:
 			_pulse_score(s > prev)
+			# 商业级 game-feel:在 score label 上方飘 "+N" / "-N" 1.5s 渐隐
+			_spawn_score_delta(s - prev)
 
 
 func _pulse_score(positive: bool) -> void:
@@ -108,6 +110,41 @@ func _pulse_score(positive: bool) -> void:
 	_score_pulse_tween = create_tween()
 	_score_pulse_tween.tween_property(_label_score, "theme_override_colors/font_color",
 		base, 0.55).set_ease(Tween.EASE_OUT)
+
+
+# Score label 上方飘 "+5200" / "-1500" 文本 1.5s,边向上飞边渐隐。
+# 给玩家一秒一瞥就知道这局赢/输多少的精确数字。
+func _spawn_score_delta(delta: int) -> void:
+	if _label_score == null or _label_score.get_parent() == null:
+		return
+	var lbl := Label.new()
+	var sign_text: String = "+" if delta > 0 else ""  # 负数本身含 "-"
+	lbl.text = "%s%d" % [sign_text, delta]
+	lbl.add_theme_font_size_override("font_size", 26)
+	var color: Color = Color(0.45, 1.0, 0.45) if delta > 0 else Color(1.0, 0.45, 0.45)
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_constant_override("shadow_offset_x", 2)
+	lbl.add_theme_constant_override("shadow_offset_y", 2)
+	lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.92))
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 起始位置:score label 顶部上方 4px
+	var sl_pos: Vector2 = _label_score.position
+	var sl_size: Vector2 = _label_score.size
+	lbl.position = sl_pos + Vector2(0, -34)
+	lbl.size = Vector2(max(sl_size.x, 96), 32)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.z_index = 50
+	_label_score.get_parent().add_child(lbl)
+	# 向上飘 40px + 渐隐
+	var tween := create_tween().set_parallel(true)
+	tween.tween_property(lbl, "position", lbl.position + Vector2(0, -40), 1.5)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(lbl, "modulate:a", 0.0, 1.5)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	# 等动画完了再 free
+	get_tree().create_timer(1.55).timeout.connect(func():
+		if is_instance_valid(lbl):
+			lbl.queue_free())
 
 
 var _score_pulse_tween: Tween = null
