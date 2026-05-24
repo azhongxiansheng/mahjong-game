@@ -80,9 +80,13 @@ func set_dora_indicators(ids: Array) -> void:
 		_rebuild_dora_tiles()
 
 func set_wall_remaining(n: int) -> void:
+	var prev: int = _wall_remaining
 	_wall_remaining = n
 	if is_inside_tree():
 		_refresh_labels()
+		# 牌墙跌入终盘警戒区(≤10)时启脉冲,玩家不会错过"快流局了"。
+		# 升回 >10(刚开新局)关脉冲。
+		_apply_wall_pulse(prev, n)
 
 func set_riichi_sticks(n: int) -> void:
 	_riichi_sticks = n
@@ -98,6 +102,7 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 	_hands_per_round = hands_per_round_arg
 	_honba = state.honba
 	_riichi_sticks = state.riichi_sticks
+	var prev_wall: int = _wall_remaining
 	_wall_remaining = state.wall.live_wall_size()
 	_dora_indicators = []
 	for ti in state.dora_indicators.visible:
@@ -106,6 +111,7 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 		_refresh_labels()
 		_rebuild_dora_tiles()
 		_rebuild_riichi_sticks()
+		_apply_wall_pulse(prev_wall, _wall_remaining)
 
 # ---- helpers ----
 
@@ -159,6 +165,32 @@ static func wall_color(remaining: int) -> Color:
 	if remaining <= 30:
 		return Color(0.95, 0.85, 0.30)  # 中盘 黄
 	return Color(0.92, 0.90, 0.82)      # 早盘 骨白
+
+
+# 牌墙进入终盘(≤10)启动脉冲;升回 >10 停。tween 用 set_loops 永久循环
+# alpha 1.0 ↔ 0.55,周期 0.6s。
+const WALL_WARNING_THRESHOLD: int = 10
+var _wall_pulse_tween: Tween = null
+
+func _apply_wall_pulse(prev: int, new_n: int) -> void:
+	if _label_wall == null:
+		return
+	var should_pulse: bool = (new_n <= WALL_WARNING_THRESHOLD)
+	# 已 active 且仍应继续 — 不重启 tween,避免抖。
+	if should_pulse:
+		if _wall_pulse_tween != null and _wall_pulse_tween.is_valid():
+			return
+		_wall_pulse_tween = create_tween().set_loops()
+		_wall_pulse_tween.tween_property(_label_wall, "modulate:a", 0.55, 0.3)\
+			.set_trans(Tween.TRANS_SINE)
+		_wall_pulse_tween.tween_property(_label_wall, "modulate:a", 1.0, 0.3)\
+			.set_trans(Tween.TRANS_SINE)
+	else:
+		# 出警戒区(刚开新局 wall 70 ← prev 0)→ 停脉冲恢复 alpha
+		if _wall_pulse_tween != null and _wall_pulse_tween.is_valid():
+			_wall_pulse_tween.kill()
+		_wall_pulse_tween = null
+		_label_wall.modulate.a = 1.0
 
 # 重建立直棒视觉行(N 根白底红点的迷你棒;N>STICK_MAX_SHOW 时尾部 "+N" 文字)。
 func _rebuild_riichi_sticks() -> void:
