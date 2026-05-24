@@ -74,7 +74,7 @@ static func build(variant_id: StringName) -> SkillResource:
 	var variant: TileVariant = _find_variant_in_pool(variant_id)
 	if variant == null or variant.skill_resource_path == "":
 		return null
-	var hook_script: GDScript = load(variant.skill_resource_path)
+	var hook_script: GDScript = load(variant.active_hook_path())
 	if hook_script == null:
 		return null
 	var s := SkillResource.new()
@@ -98,8 +98,8 @@ static func build(variant_id: StringName) -> SkillResource:
 
 # 把 SkillResource 注册到 SkillRegistry，anchor = fixture TileInstance（tile_id
 # 来自 variant，owner_seat=玩家座位）。holder_triggers 非空时还设 holder_seat。
-static func inject_one(registry: SkillRegistry, variant_id: StringName, player_seat: int = 0) -> bool:
-	var sk: SkillResource = build(variant_id)
+static func inject_one(registry: SkillRegistry, variant_id: StringName, player_seat: int = 0, variant_override: TileVariant = null) -> bool:
+	var sk: SkillResource = _build_with_override(variant_id, variant_override) if variant_override else build(variant_id)
 	if sk == null:
 		return false
 	var ti := TileInstance.make(Tile.new(sk.attached_tile), player_seat, sk)
@@ -118,17 +118,49 @@ static func inject_player_tile_variants(registry: SkillRegistry, variants: Dicti
 	for tile_id in variants:
 		var raw: Variant = variants[tile_id]
 		var variant_id: StringName = &""
+		var variant_obj: TileVariant = null
 		if raw is StringName:
 			variant_id = raw
 		elif raw is TileVariant:
 			variant_id = raw.id
+			variant_obj = raw
 		if variant_id == &"":
 			continue
-		if inject_one(registry, variant_id, player_seat):
+		if inject_one(registry, variant_id, player_seat, variant_obj):
 			count += 1
 	return count
 
 # ---- internal ----
+
+static func _build_with_override(variant_id: StringName, variant: TileVariant) -> SkillResource:
+	if variant_id == &"" or not _TILE_TRIGGERS.has(variant_id):
+		return null
+	var hook_path: String = variant.active_hook_path()
+	if hook_path == "":
+		return null
+	var hook_script: GDScript = load(hook_path)
+	if hook_script == null:
+		return null
+	var s := SkillResource.new()
+	s.id = variant_id
+	s.display_name = variant.display_name
+	if variant.is_upgraded():
+		s.display_name += "+"
+	s.description = variant.description
+	s.rarity = variant.rarity
+	s.attached_tile = variant.tile_id
+	s.is_ability = false
+	var triggers: Dictionary = _TILE_TRIGGERS[variant_id]
+	var ot: Array[StringName] = []
+	for t in triggers.owner:
+		ot.append(t)
+	s.owner_triggers = ot
+	var ht: Array[StringName] = []
+	for t in triggers.holder:
+		ht.append(t)
+	s.holder_triggers = ht
+	s.hook_script = hook_script
+	return s
 
 static func _find_variant_in_pool(variant_id: StringName) -> TileVariant:
 	for v in CardPool.all_tile_variants():

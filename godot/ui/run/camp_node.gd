@@ -53,6 +53,7 @@ func _refresh() -> void:
 			_heal_btn.text = "HP 已满"
 		else:
 			_heal_btn.text = "恢复 %d HP" % HEAL_AMOUNT
+	_rebuild_upgrade_section()
 	_rebuild_consumables()
 
 # 把恢复 HP 应用到 run_state。返回实际恢复量（受 max_hp 上限）。
@@ -69,6 +70,41 @@ func apply_heal() -> int:
 func _on_heal_pressed() -> void:
 	apply_heal()
 	_refresh()
+
+func _rebuild_upgrade_section() -> void:
+	if _run_state == null or _run_state.player_deck == null:
+		return
+	var upgradeable: Array = []
+	for tile_id in _run_state.player_deck.tile_variants:
+		var v: TileVariant = _run_state.player_deck.tile_variants[tile_id]
+		if v.has_skill() and not v.is_upgraded() and v.upgraded_skill_resource_path != "":
+			upgradeable.append(v)
+	if upgradeable.is_empty():
+		return
+	var vbox: VBoxContainer = $VBox
+	if vbox == null:
+		return
+	var container := VBoxContainer.new()
+	var sep := HSeparator.new()
+	container.add_child(sep)
+	var header := Label.new()
+	header.text = "— 升级牌技能 —"
+	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	header.add_theme_font_size_override("font_size", 18)
+	header.add_theme_color_override("font_color", Color(0.3, 0.9, 1.0))
+	container.add_child(header)
+	for v in upgradeable:
+		var btn := Button.new()
+		btn.text = "%s → %s+" % [v.display_name, v.display_name]
+		btn.custom_minimum_size = Vector2(400, 40)
+		var captured_v: TileVariant = v
+		btn.pressed.connect(func():
+			captured_v.upgrade()
+			_refresh()
+		)
+		container.add_child(btn)
+	vbox.add_child(container)
+	vbox.move_child(container, vbox.get_child_count() - 2)
 
 func _rebuild_consumables() -> void:
 	if _consumable_container:

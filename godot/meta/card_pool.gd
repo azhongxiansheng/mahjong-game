@@ -15,14 +15,20 @@ static func all_tile_variants() -> Array:
 	var pool: Array = []
 
 	# M1 demo skill 牌技能（rarity 由各自 demo 性质拍）
-	pool.append(_mk_tile(&"thunder_5w_v1", "5万·闪电", "owner 自胡 +1 番（M1 demo）",
-		TileId.W5, Rarity.Kind.UNCOMMON, "res://skills/hooks/thunder_5w_hook.gd"))
-	pool.append(_mk_tile(&"seal_chun_v1", "中·封印", "持有者出铳被荣胡时取消",
-		TileId.CHUN, Rarity.Kind.EPIC, "res://skills/hooks/seal_chun_hook.gd"))
+	var t5w := _mk_tile(&"thunder_5w_v1", "5万·闪电", "owner 自胡 +1 番（M1 demo）",
+		TileId.W5, Rarity.Kind.UNCOMMON, "res://skills/hooks/thunder_5w_hook.gd")
+	t5w.upgraded_skill_resource_path = "res://skills/hooks/thunder_5w_hook_plus.gd"
+	pool.append(t5w)
+	var sc := _mk_tile(&"seal_chun_v1", "中·封印", "持有者出铳被荣胡时取消",
+		TileId.CHUN, Rarity.Kind.EPIC, "res://skills/hooks/seal_chun_hook.gd")
+	sc.upgraded_skill_resource_path = "res://skills/hooks/seal_chun_hook_plus.gd"
+	pool.append(sc)
 	pool.append(_mk_tile(&"soul_drain_hatsu_v1", "发·吸魂", "对手胡牌时转 30% 给 holder",
 		TileId.HATSU, Rarity.Kind.EPIC, "res://skills/hooks/soul_drain_hatsu_hook.gd"))
-	pool.append(_mk_tile(&"xray_1w_v1", "1万·透视", "owner 摸牌后 reveal 一张他家",
-		TileId.W1, Rarity.Kind.LEGENDARY, "res://skills/hooks/xray_1w_hook.gd"))
+	var x1w := _mk_tile(&"xray_1w_v1", "1万·透视", "owner 摸牌后 reveal 一张他家",
+		TileId.W1, Rarity.Kind.LEGENDARY, "res://skills/hooks/xray_1w_hook.gd")
+	x1w.upgraded_skill_resource_path = "res://skills/hooks/xray_1w_hook_plus.gd"
+	pool.append(x1w)
 	pool.append(_mk_tile(&"unfuriten_5p_v1", "5筒·解振听", "owner 进入振听时清除",
 		TileId.T5, Rarity.Kind.UNCOMMON, "res://skills/hooks/unfuriten_5p_hook.gd"))
 
