@@ -84,6 +84,7 @@ func test_shop_5_seeds_all_produce_valid_results():
 			assert_true(
 				r.kind == GachaResult.KIND_TILE or
 				r.kind == GachaResult.KIND_ABILITY or
-				r.kind == GachaResult.KIND_CONSUMABLE,
+				r.kind == GachaResult.KIND_CONSUMABLE or
+				r.kind == GachaResult.KIND_RELIC,
 				"seed %d 每槽应有有效 kind" % seed_val
 			)
