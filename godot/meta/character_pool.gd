@@ -35,6 +35,36 @@ static func all() -> Array:
 	washizu.unlock_renown = 0
 	pool.append(washizu)
 
+	var saki := Character.new(&"saki")
+	saki.display_name = "宫永咲"
+	saki.description = "嶺上の華。胡牌时额外 +2 Dora。起始标准。"
+	saki.ability_id = &"char_saki_passive_v1"
+	saki.starting_hp = 5
+	saki.starting_gold = 0
+	saki.recommended_pack = &"starter_aggro"
+	saki.unlock_renown = 50
+	pool.append(saki)
+
+	var teru := Character.new(&"teru")
+	teru.display_name = "宫永照"
+	teru.description = "照魔鏡。连续胡牌时每次 +N 番累积（N=连胡次数）。"
+	teru.ability_id = &"char_teru_passive_v1"
+	teru.starting_hp = 4
+	teru.starting_gold = 30
+	teru.recommended_pack = &"starter_aggro"
+	teru.unlock_renown = 100
+	pool.append(teru)
+
+	var awai := Character.new(&"awai")
+	awai.display_name = "大星淡"
+	awai.description = "絶対安全圏。开局清振听 + 预知下张摸牌。"
+	awai.ability_id = &"char_awai_passive_v1"
+	awai.starting_hp = 5
+	awai.starting_gold = 20
+	awai.recommended_pack = &"starter_fast"
+	awai.unlock_renown = 200
+	pool.append(awai)
+
 	return pool
 
 static func find(char_id: StringName) -> Character:

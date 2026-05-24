@@ -191,6 +191,16 @@ static func all_abilities() -> Array:
 		"开局透视所有对手各 2 张手牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_washizu_passive_hook.gd"))
 
+	pool.append(_mk_ability(&"char_saki_passive_v1", "宫永咲·嶺上の華",
+		"胡牌时额外 +2 Dora（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_saki_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_teru_passive_v1", "宫永照·照魔鏡",
+		"每次胡牌 +N 番（N=连续胡牌次数，累积）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_teru_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_awai_passive_v1", "大星淡·絶対安全圏",
+		"开局清振听 + 预知下张摸牌（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_awai_passive_hook.gd"))
+
 	# M7 收尾：M6 唯一 holdout（plan-6 §8.10 #12）
 	pool.append(_mk_ability(&"tougenkyo_v1", "偷天换日",
 		"每局 1 次手牌↔弃牌河交换（v1 简化：自胡 +3 番 + 消耗）",

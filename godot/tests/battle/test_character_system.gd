@@ -1,8 +1,8 @@
 extends GutTest
 
-func test_character_pool_has_3_characters():
+func test_character_pool_has_6_characters():
 	var pool: Array = CharacterPool.all()
-	assert_eq(pool.size(), 3)
+	assert_eq(pool.size(), 6)
 
 func test_all_characters_unlocked_at_zero_renown():
 	var unlocked: Array = CharacterPool.unlocked(0)

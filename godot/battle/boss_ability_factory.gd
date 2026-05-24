@@ -40,6 +40,9 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"char_akagi_passive_v1": [&"TILE_DRAWN"],
 	&"char_kaiji_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_washizu_passive_v1": [&"GAME_BEGIN"],
+	&"char_saki_passive_v1": [&"WIN_DECLARED_PRE"],
+	&"char_teru_passive_v1": [&"WIN_DECLARED_PRE"],
+	&"char_awai_passive_v1": [&"GAME_BEGIN"],
 }
 
 # Boss-only 子集（用于 chapter_config 校验：每章 boss_id 必须在 boss 列表里）。
