@@ -24,6 +24,8 @@ var fullscreen: bool = false
 # 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
 # 常用预设:60 / 120 / 144 / 0(unlimited)。
 var framerate_cap: int = 60
+# 全屏模式:true = exclusive fullscreen,false = windowed。DisplayServer 应用。
+var fullscreen: bool = false
 
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
@@ -35,6 +37,7 @@ func _ready() -> void:
 	_apply_to_audio()
 	_apply_fullscreen()
 	_apply_framerate_cap()
+	_apply_fullscreen()
 
 
 func set_sfx_volume(v: float) -> void:
@@ -116,6 +119,7 @@ func _load_from_disk() -> void:
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
 	framerate_cap = fps_v
+	fullscreen = bool(parsed.get("fullscreen", false))
 
 
 func _save_to_disk() -> void:
@@ -125,6 +129,7 @@ func _save_to_disk() -> void:
 		"tutorial_seen": tutorial_seen,
 		"fullscreen": fullscreen,
 		"framerate_cap": framerate_cap,
+		"fullscreen": fullscreen,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:
