@@ -516,3 +516,15 @@ func _input(event: InputEvent) -> void:
 		KEY_R:
 			if _action_panel != null:
 				_action_panel.player_action_chosen.emit({"action": "riichi_yes"})
+		KEY_ESCAPE:
+			# 唤起设置 overlay(SFX 音量调节);overlay 自己 ESC 关
+			_open_settings_overlay()
+
+
+func _open_settings_overlay() -> void:
+	# 防止 ESC 连按打开多个
+	if get_tree().root.get_node_or_null("_settings_overlay_root") != null:
+		return
+	var overlay := SettingsOverlay.new()
+	overlay.name = "_settings_overlay_root"
+	get_tree().root.add_child(overlay)
