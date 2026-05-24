@@ -2,6 +2,8 @@ class_name CharacterPicker extends Control
 
 signal character_chosen(char_id: StringName)
 
+var _selected_difficulty: int = Difficulty.Level.NORMAL
+
 func _ready() -> void:
 	RunUi.attach_background(self)
 	custom_minimum_size = Vector2(1280, 720)
@@ -40,6 +42,9 @@ func _build_ui() -> void:
 	for c in chars:
 		var card := _build_char_card(c)
 		hbox.add_child(card)
+
+	vbox.add_child(HSeparator.new())
+	_build_difficulty_selector(vbox)
 
 func _build_char_card(c: Character) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -103,6 +108,41 @@ func _build_char_card(c: Character) -> PanelContainer:
 	vbox.add_child(btn_center)
 
 	return panel
+
+func _build_difficulty_selector(parent: VBoxContainer) -> void:
+	var label := Label.new()
+	label.text = "难度选择"
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 22)
+	label.add_theme_color_override("font_color", Color(0.9, 0.85, 0.7))
+	parent.add_child(label)
+
+	var hbox := HBoxContainer.new()
+	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	hbox.add_theme_constant_override("separation", 16)
+	parent.add_child(hbox)
+
+	var _diff_buttons: Array[Button] = []
+	for level in [Difficulty.Level.NORMAL, Difficulty.Level.HARD, Difficulty.Level.LUNATIC]:
+		var btn := Button.new()
+		btn.text = "%s\n%s" % [Difficulty.display_name(level), Difficulty.description(level)]
+		btn.custom_minimum_size = Vector2(280, 60)
+		btn.add_theme_font_size_override("font_size", 13)
+		btn.add_theme_color_override("font_color", Difficulty.color(level))
+		var captured_level: int = level
+		var captured_buttons: Array[Button] = _diff_buttons
+		btn.pressed.connect(func():
+			_selected_difficulty = captured_level
+			for b in captured_buttons:
+				b.flat = true
+			btn.flat = false
+		)
+		btn.flat = (level != _selected_difficulty)
+		hbox.add_child(btn)
+		_diff_buttons.append(btn)
+
+func get_selected_difficulty() -> int:
+	return _selected_difficulty
 
 func _get_renown() -> int:
 	var mp := get_tree().root.get_node_or_null("MetaProgress")

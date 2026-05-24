@@ -35,6 +35,7 @@ var _last_node_ref: NodeRef = null
 var _last_result: NodeResult = null
 var _seed_seed: int = 0
 var _pending_character_id: StringName = &""
+var _pending_difficulty: int = Difficulty.Level.NORMAL
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(1280, 720)
@@ -61,6 +62,8 @@ func _show_character_picker() -> void:
 
 func _on_character_chosen(char_id: StringName) -> void:
 	_pending_character_id = char_id
+	if _current_panel is CharacterPicker:
+		_pending_difficulty = _current_panel.get_selected_difficulty()
 	var pack_picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
 	_swap_panel(pack_picker)
 	pack_picker.pack_chosen.connect(_on_pack_chosen)
@@ -117,7 +120,9 @@ func _show_summary() -> void:
 
 func _on_pack_chosen(pack_id: StringName) -> void:
 	_run_state = RunState.new(_seed_seed)
+	_run_state.difficulty = _pending_difficulty
 	_apply_character(_pending_character_id)
+	_run_state.hp += Difficulty.hp_modifier(_pending_difficulty)
 	StarterPacks.apply_to(_run_state, pack_id)
 	_run_state.node_completed.connect(_on_run_node_completed)
 	_run_state.run_failed.connect(_on_run_failed)
