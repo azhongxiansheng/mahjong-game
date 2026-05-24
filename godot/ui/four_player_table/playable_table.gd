@@ -68,6 +68,10 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		if ev.type == &"WIN_DECLARED":
 			win_event = ev
 			break
+	# 胡牌 → 先放粒子 + 震动,再弹 overlay。让玩家先体验冲击再看结算细节。
+	if win_event != null:
+		_play_win_effects(win_event)
+		await get_tree().create_timer(0.45).timeout
 	var overlay := Control.new()
 	overlay.size = Vector2(1280, 800)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -397,6 +401,36 @@ func _polling_loop() -> void:
 
 # BC 事件 → AudioManager SFX 播放;调 AudioManager.sfx_key_for_event 算 key,
 # tile_click 路径加少量 pitch_variation 避免连续摸切机械感。
+# 胡牌时 burst 粒子 + 屏幕震动。按 han / yakuman 分级 tier。
+# 玩家胡 tier 不变(都好看);AI 胡用 LIGHT 让玩家不觉得过度奖励对手。
+func _play_win_effects(win_event: BattleEvent) -> void:
+	var tier := _win_tier(win_event)
+	# 粒子 — 挂 self(PlayableTable),坐标取屏幕中心
+	var burst := WinBurst.new()
+	burst.position = Vector2(640, 400)
+	add_child(burst)
+	burst.play(tier)
+	# 屏幕震动 — 抖 self.position
+	var shake := ScreenShake.for_tier(self, tier)
+	shake.start()
+
+
+# 决定胡牌特效层级:役満 / 倍満+(11飜+) / 跳満+(6飜+) / 普通
+func _win_tier(win_event: BattleEvent) -> int:
+	if win_event == null:
+		return WinBurst.Tier.LIGHT
+	var yakuman_mul: int = int(win_event.extra.get("yakuman_multiplier", 0))
+	var han: int = int(win_event.extra.get("han", 0))
+	# 玩家胡 vs AI 胡:同样 tier(AI 胡也是表演)
+	if yakuman_mul >= 1:
+		return WinBurst.Tier.YAKUMAN
+	if han >= 11:
+		return WinBurst.Tier.HEAVY  # 三倍満
+	if han >= 6:
+		return WinBurst.Tier.MEDIUM  # 跳満/倍満
+	return WinBurst.Tier.LIGHT
+
+
 func _play_event_sfx(ev: BattleEvent) -> void:
 	if ev == null:
 		return
