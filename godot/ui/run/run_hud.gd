@@ -16,6 +16,15 @@ class_name RunHud extends Control
 const ICON_HP_PATH := "res://assets/run_icons/icon_hp.png"
 const ICON_GOLD_PATH := "res://assets/run_icons/icon_gold.png"
 
+# 上一次绑定时的值,用于 bind_run_state 检测增减触发 tween+flash。-1 = 未初始化。
+var _last_hp: int = -1
+var _last_max_hp: int = -1
+var _last_gold: int = -1
+var _hp_tween: Tween = null
+var _gold_tween: Tween = null
+
+const TWEEN_DURATION: float = 0.4  # 数字 counter tween 持续时间
+
 # HUD 末尾的能力芯片容器(程序化追加,.tscn 里没有):
 # 每个能力一颗小 Panel,稀有度色描边 + 短名 Label + 悬停 tooltip 显示全名+描述。
 var _abilities_box: HBoxContainer = null
@@ -68,8 +77,10 @@ func bind_run_state(rs: RunState) -> void:
 	if node_ref:
 		floor_str = String.num(node_ref.floor_index + 1)
 	_label_chapter.text = format_chapter_text(rs.chapter, floor_str)
-	_set_hp(rs.hp, rs.max_hp)
-	_label_gold.text = format_gold_text(rs.gold)
+	# 数字 tween + flash:HP/gold 变化时 counter 滚到新值,红/绿/金 闪烁。
+	# 首次绑定(_last_hp == -1)直接 jump 不 tween,避免开局看到从 0 数到 50。
+	_animate_hp(rs.hp, rs.max_hp)
+	_animate_gold(rs.gold)
 	_label_deck.text = format_deck_text(_deck_size(rs))
 	_rebuild_abilities(rs)
 
@@ -118,6 +129,75 @@ func _set_hp(hp: int, max_hp: int) -> void:
 		sb.corner_radius_bottom_left = 4
 		sb.corner_radius_bottom_right = 4
 		_hp_bar.add_theme_stylebox_override("fill", sb)
+
+
+# HP 变化时 counter tween + 红(掉血)/绿(回血)flash;首次绑定直接 jump。
+func _animate_hp(new_hp: int, new_max: int) -> void:
+	if _last_hp < 0 or _last_max_hp != new_max:
+		# 首次或 max_hp 变(章节升级)→ 直接 set,不 tween
+		_set_hp(new_hp, new_max)
+		_last_hp = new_hp
+		_last_max_hp = new_max
+		return
+	var from_hp: int = _last_hp
+	_last_hp = new_hp
+	_last_max_hp = new_max
+	if from_hp == new_hp:
+		_set_hp(new_hp, new_max)
+		return
+	# Tween HP counter:from_hp → new_hp,期间逐帧更新 label + bar.value
+	if _hp_tween and _hp_tween.is_valid():
+		_hp_tween.kill()
+	_hp_tween = create_tween()
+	_hp_tween.tween_method(_update_hp_display.bind(new_max),
+		float(from_hp), float(new_hp), TWEEN_DURATION)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	# Flash 颜色:HP 增 → 绿,减 → 红
+	var flash_color: Color = Color(0.4, 1.0, 0.4) if new_hp > from_hp else Color(1.0, 0.4, 0.4)
+	_flash_label(_label_hp, flash_color)
+
+
+# Gold 同理(只 flash 金色 — 失去金币时也用相同色,简化设计)
+func _animate_gold(new_gold: int) -> void:
+	if _last_gold < 0:
+		_label_gold.text = format_gold_text(new_gold)
+		_last_gold = new_gold
+		return
+	var from_gold: int = _last_gold
+	_last_gold = new_gold
+	if from_gold == new_gold:
+		_label_gold.text = format_gold_text(new_gold)
+		return
+	if _gold_tween and _gold_tween.is_valid():
+		_gold_tween.kill()
+	_gold_tween = create_tween()
+	_gold_tween.tween_method(_update_gold_display,
+		float(from_gold), float(new_gold), TWEEN_DURATION)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var flash_color: Color = Color(1.0, 0.85, 0.3) if new_gold > from_gold else Color(0.9, 0.6, 0.3)
+	_flash_label(_label_gold, flash_color)
+
+
+# tween callback - 把 float 取整后更新 HP 显示(含 bar)
+func _update_hp_display(v: float, max_hp: int) -> void:
+	var hp: int = int(round(v))
+	_label_hp.text = format_hp_text(hp, max_hp)
+	if _hp_bar:
+		_hp_bar.max_value = max(1, max_hp)
+		_hp_bar.value = clamp(hp, 0, max_hp)
+
+
+func _update_gold_display(v: float) -> void:
+	_label_gold.text = format_gold_text(int(round(v)))
+
+
+# Label 短暂染色 200ms 后恢复 white
+func _flash_label(label: Label, flash_color: Color) -> void:
+	if label == null:
+		return
+	label.modulate = flash_color
+	var tw := create_tween()
+	tw.tween_property(label, "modulate", Color(1, 1, 1, 1), 0.35)
 
 func _refresh_default() -> void:
 	if _label_chapter == null:

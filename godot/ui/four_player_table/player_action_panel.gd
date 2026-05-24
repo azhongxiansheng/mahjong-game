@@ -29,6 +29,10 @@ var _claim_discarder_seat: int = -1
 
 var _bg: ColorRect = null  # 仅在有按钮 visible 时才显示，避免遮挡桌面
 var _label_status: Label = null
+# 文本以 "…" 结尾时奏动画(. / .. / ...)循环让玩家感知 AI 在思考。
+# Tween 在 enter_idle 设新文本时启停。
+var _dots_tween: Tween = null
+var _dots_base_text: String = ""
 var _btn_riichi: Button = null     # WAITING_RIICHI_CONFIRM 用 — "立直"
 var _btn_tsumo: Button = null      # WAITING_DISCARD 用 — "自摸"
 var _btn_ron: Button = null        # WAITING_CLAIM 用 — "荣和"
@@ -214,9 +218,10 @@ func enter_waiting_kyuusyu() -> void:
 	_show_btn(_btn_skip)
 
 
-func enter_idle(status_text: String = "等待 AI...") -> void:
+func enter_idle(status_text: String = "等待 AI…") -> void:
 	_state = State.IDLE
 	_label_status.text = status_text
+	_start_dots_animation_if_applicable(status_text)
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
@@ -225,6 +230,35 @@ func enter_idle(status_text: String = "等待 AI...") -> void:
 	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_kyuusyu)
 	_hide_btn(_btn_skip)
+
+
+# 若 status 以 "…" 或 "..." 结尾,周期性切换 "X" / "X." / "X.." / "X..." 让
+# AI 思考状态有"活的"感觉。文本变化或离开 IDLE 时停。
+func _start_dots_animation_if_applicable(text: String) -> void:
+	if _dots_tween and _dots_tween.is_valid():
+		_dots_tween.kill()
+	# 检测尾部是否含省略符
+	var base: String = text
+	if text.ends_with("…"):
+		base = text.substr(0, text.length() - 1)
+	elif text.ends_with("..."):
+		base = text.substr(0, text.length() - 3)
+	else:
+		return  # 非"思考中"风格文本,不动
+	_dots_base_text = base
+	# 循环 tween:0.4s 切一次,3 个状态轮换
+	_dots_tween = create_tween().set_loops()
+	_dots_tween.tween_callback(_set_dots.bind(1)).set_delay(0.0)
+	_dots_tween.tween_callback(_set_dots.bind(2)).set_delay(0.4)
+	_dots_tween.tween_callback(_set_dots.bind(3)).set_delay(0.4)
+	_dots_tween.tween_callback(_set_dots.bind(0)).set_delay(0.4)
+
+
+func _set_dots(n: int) -> void:
+	if _label_status == null:
+		return
+	var suffix: String = "·".repeat(n) if n > 0 else ""
+	_label_status.text = "%s%s" % [_dots_base_text, suffix]
 
 func _apply_state(s: State) -> void:
 	match s:
