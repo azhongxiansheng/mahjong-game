@@ -11,6 +11,12 @@ extends Node
 
 const SAVE_PATH: String = "user://savegame.json"
 
+# save / clear 操作成功完成时 emit,UI 层(SaveToast autoload)挂监听显示
+# "💾 已保存" toast。
+signal save_completed
+signal save_cleared
+
+
 # 保存当前 RunState 到磁盘。返 OK / ERR_*。
 func save_run(run_state) -> int:
 	if run_state == null:
@@ -25,6 +31,7 @@ func save_run(run_state) -> int:
 		return err if err != OK else ERR_FILE_CANT_WRITE
 	file.store_string(json_str)
 	file.close()
+	save_completed.emit()
 	return OK
 
 # 从磁盘加载 Run。返 RunState 或 null（不存在 / 解析失败 / 版本不匹配）。
@@ -60,3 +67,5 @@ func clear_run() -> void:
 	var err: int = DirAccess.remove_absolute(SAVE_PATH)
 	if err != OK:
 		push_warning("SaveSystem.clear_run: 删除 %s 失败（err=%d）" % [SAVE_PATH, err])
+		return
+	save_cleared.emit()
