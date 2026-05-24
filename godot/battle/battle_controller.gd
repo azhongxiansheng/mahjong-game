@@ -644,7 +644,14 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	if _has_yakuman_force(winner_seat, pre_ctxs):
 		_apply_yakuman_force(score_yaku_list)
 
-	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
+	var ron_game_ctx := _build_game_ctx(winner, false, false, is_houtei)
+	var yaku_per_decomp := _build_yaku_per_decomp(
+		wp, winner, ron_tile, melds_arr, win_hand_ron, ron_game_ctx,
+		_sum_skill_han(winner_seat, pre_ctxs), winner_seat,
+		_composite_multiplier(winner_seat, pre_ctxs),
+		_has_mangan_floor(winner_seat, pre_ctxs),
+		_has_yakuman_force(winner_seat, pre_ctxs))
+	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx, yaku_per_decomp)
 
 	# M7：把 discarder_seat / points_won 注入 WIN_DECLARED.extra，让 post-score
 	# hooks（soul_drain_hatsu / east_mirror_chambo 等用 transfer_points）能读到
@@ -707,7 +714,14 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	if _has_yakuman_force(state.current_seat, pre_ctxs):
 		_apply_yakuman_force(score_yaku_list)
 
-	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
+	var tsumo_game_ctx := _build_game_ctx(seat, true, is_haitei)
+	var yaku_per_decomp_tsumo := _build_yaku_per_decomp(
+		wp, seat, drawn, melds_arr, seat.hand, tsumo_game_ctx,
+		_sum_skill_han(state.current_seat, pre_ctxs), state.current_seat,
+		_composite_multiplier(state.current_seat, pre_ctxs),
+		_has_mangan_floor(state.current_seat, pre_ctxs),
+		_has_yakuman_force(state.current_seat, pre_ctxs))
+	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx, yaku_per_decomp_tsumo)
 
 	# M7：tsumo 无 discarder_seat（自摸无放铳人），仅设 points_won
 	result["points_won"] = int(result.get("winner_total", 0))
@@ -851,6 +865,33 @@ static func _yaku_id_to_string_name(yaku_id: int) -> StringName:
 		YakuId.PINFU: return &"pinfu"
 		YakuId.CHIITOITSU: return &"chiitoitsu"
 	return StringName(str(yaku_id))
+
+# Per-decomposition yaku callback: 对每个分解独立评役 + 应用技能效果。
+func _build_yaku_per_decomp(wp: Dictionary, seat_ref: Seat, winning_tile: Tile,
+		melds_arr: Array, win_hand: Hand, p_game_ctx: GameContext,
+		skill_han: int, winner_seat_idx: int, multiplier: float,
+		mangan_floor: bool, yakuman_force: bool) -> Callable:
+	var bc_ref := self
+	var game_ctx: GameContext = p_game_ctx
+	var typed_melds: Array[Meld] = []
+	for m in melds_arr:
+		typed_melds.append(m)
+	var riichi_declared: bool = seat_ref.riichi.declared
+
+	return func(i: int) -> YakuList:
+		var single_wp: Dictionary = wp.duplicate()
+		single_wp.standard_decompositions = [wp.standard_decompositions[i]]
+		var wc := WinContext.new(seat_ref.hand, typed_melds, winning_tile, single_wp, game_ctx)
+		var entries: YakuEntries = YakuEvaluator.evaluate(wc)
+		var yl: YakuList = bc_ref._adapt_yaku_list(entries, win_hand, melds_arr, riichi_declared)
+		BattleController._apply_skill_han_delta(yl, skill_han)
+		bc_ref._apply_extra_dora(yl, winner_seat_idx)
+		BattleController._apply_han_multiplier(yl, multiplier)
+		if mangan_floor:
+			BattleController._apply_mangan_floor(yl)
+		if yakuman_force:
+			BattleController._apply_yakuman_force(yl)
+		return yl
 
 # ---- 私有 helper ----
 

@@ -42,12 +42,7 @@ func transfer_points(from_seat: int, to_seat: int, amount: int) -> void:
 func reveal_tile_to(tile: TileInstance, target_seat: int) -> void:
 	_state.revealed_tiles.append({"tile": tile, "visible_to": [target_seat]})
 
-# ---- M10 信息系：真 reveal API（替代 5 个 hook 的占位 stub） ----
-#
-# 历史背景：M6 batch 的 §8.5 透明牌 / §8.10 信息系角色能力（xray_1w /
-# tenpai_seethru / white_oracle / isshun_senken / yamagan）实现时 ctx 没有
-# 真 reveal API，每个 hook 都创建假 TileInstance 占位 reveal。本 PR 加 3
-# 个真 API，让 hook 直接拉真牌 reveal，spec 原效果首次成立。
+# ---- 信息系 reveal API ----
 
 # 从 target_seat 手牌随机抽 1 张，标记为对 viewer_seat 可见。
 # 用 _state 的 RNG 决定（保证决定性 sim）。target 手牌空时返 false。
@@ -174,9 +169,7 @@ func force_tsumo(seat: int) -> void:
 	_state.haitei_forced_seat = seat
 
 # 一次性消耗品：把当前正在派发的 skill 标记为 consumed。
-# 替代 hook 内直写 `skill.consumed = true`（leaky abstraction，未来联机权威化时
-# 所有状态改动必须走 ctx）。current_skill 由 SkillScheduler._dispatch 注入。
-# M7 待办：逐步把现有 6 个 hook 的直写改为本 API（独立小 PR，避免一次性大改）。
+# current_skill 由 SkillScheduler._dispatch 注入。
 func consume_self() -> void:
 	if current_skill != null:
 		current_skill.consumed = true
