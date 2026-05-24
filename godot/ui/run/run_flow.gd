@@ -65,18 +65,29 @@ func _maybe_show_tutorial() -> void:
 	get_tree().root.add_child(t)
 
 
-# ESC 唤起设置 overlay(SFX 音量等)。BattleNode 在战斗内有自己的 ESC,
+# ESC 唤起设置 overlay,H 唤起帮助 overlay。BattleNode 在战斗内有自己的 ESC,
 # 但 run 主流程(地图/商店/事件)由此处接管。overlay 自己关闭。
 func _input(event: InputEvent) -> void:
-	if event is InputEventKey:
-		var k: InputEventKey = event
-		if k.pressed and not k.echo and k.keycode == KEY_ESCAPE:
-			if get_tree().root.get_node_or_null("_settings_overlay_root") != null:
-				return  # 已开,让 overlay 自己处理 ESC 关闭
-			var overlay := SettingsOverlay.new()
-			overlay.name = "_settings_overlay_root"
-			get_tree().root.add_child(overlay)
-			get_viewport().set_input_as_handled()
+	if not (event is InputEventKey):
+		return
+	var k: InputEventKey = event
+	if not k.pressed or k.echo:
+		return
+	if k.keycode == KEY_ESCAPE:
+		if get_tree().root.get_node_or_null("_settings_overlay_root") != null:
+			return
+		var overlay := SettingsOverlay.new()
+		overlay.name = "_settings_overlay_root"
+		get_tree().root.add_child(overlay)
+		get_viewport().set_input_as_handled()
+	elif k.keycode == KEY_H:
+		# 帮助 overlay 已开则不重复弹(让自己 close)
+		if get_tree().root.get_node_or_null("_help_overlay_root") != null:
+			return
+		var help := HelpOverlay.new()
+		help.name = "_help_overlay_root"
+		get_tree().root.add_child(help)
+		get_viewport().set_input_as_handled()
 
 # ---- panel transitions ----
 
