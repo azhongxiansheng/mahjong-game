@@ -107,6 +107,30 @@ func _ready() -> void:
 	stats_btn.pressed.connect(_on_stats_pressed)
 	panel.add_child(stats_btn)
 
+	# 放弃本场 Run 按钮 — 仅当当前有进行中的 run 时可见(SaveSystem.has_save)
+	var ss = get_node_or_null("/root/SaveSystem")
+	if ss and ss.has_save():
+		var quit_btn := Button.new()
+		quit_btn.text = "放弃本场"
+		quit_btn.position = Vector2(170, PANEL_H - 60)
+		quit_btn.custom_minimum_size = Vector2(120, 40)
+		# 猩红 styling 警示
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.45, 0.18, 0.18)
+		sb.border_color = Color(0.85, 0.32, 0.32)
+		sb.border_width_left = 2
+		sb.border_width_right = 2
+		sb.border_width_top = 2
+		sb.border_width_bottom = 2
+		sb.corner_radius_top_left = 4
+		sb.corner_radius_top_right = 4
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
+		quit_btn.add_theme_stylebox_override("normal", sb)
+		quit_btn.add_theme_color_override("font_color", Color(1, 0.92, 0.85))
+		quit_btn.pressed.connect(_on_quit_run_pressed)
+		panel.add_child(quit_btn)
+
 	# 关闭按钮
 	var close_btn := Button.new()
 	close_btn.text = "关闭 (ESC)"
@@ -151,6 +175,28 @@ func _on_tutorial_pressed() -> void:
 	t.name = "_tutorial_overlay_root"
 	get_tree().root.add_child(t)
 	_on_close()
+
+
+# 放弃本场 Run — 弹 ConfirmDialog,确认 → SaveSystem.clear_run() + 退出战斗。
+# 用 get_tree().reload_current_scene() 简洁地把当前场景重置,回到 run_flow 起点
+# (检测无存档 → starter picker)。
+func _on_quit_run_pressed() -> void:
+	var d := ConfirmDialog.show_dialog(
+		"放弃当前 Run?",
+		"你的 Run 进度将被清除,这是不可逆操作。回到主菜单后请重新开始。",
+		"确认放弃", "取消", true)
+	d.confirmed.connect(_on_quit_confirmed)
+	get_tree().root.add_child(d)
+
+
+func _on_quit_confirmed() -> void:
+	var ss = get_node_or_null("/root/SaveSystem")
+	if ss:
+		ss.clear_run()
+	# 关 settings overlay 然后 reload current_scene 回 run_flow start
+	_on_close()
+	# defer 避免 reload 时还在 settings 的 _input 解栈链上
+	get_tree().call_deferred("reload_current_scene")
 
 
 func _on_close() -> void:
