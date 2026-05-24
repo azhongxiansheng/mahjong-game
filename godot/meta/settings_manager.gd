@@ -22,6 +22,8 @@ var tutorial_seen: bool = false
 # 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
 # 常用预设:60 / 120 / 144 / 0(unlimited)。
 var framerate_cap: int = 60
+# 全屏模式:true = exclusive fullscreen,false = windowed。DisplayServer 应用。
+var fullscreen: bool = false
 
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
@@ -32,6 +34,7 @@ func _ready() -> void:
 	# 启动后同步 AudioManager 音量(避免 AudioManager._ready 时 SettingsManager 还没载)
 	_apply_to_audio()
 	_apply_framerate_cap()
+	_apply_fullscreen()
 
 
 func set_sfx_volume(v: float) -> void:
@@ -54,6 +57,13 @@ func set_tutorial_seen(b: bool) -> void:
 	settings_changed.emit()
 
 
+func set_fullscreen(b: bool) -> void:
+	fullscreen = b
+	_apply_fullscreen()
+	_save_to_disk()
+	settings_changed.emit()
+
+
 func set_framerate_cap(fps: int) -> void:
 	# 接受 0 (uncap) 或 30-300。其它值 clamp。
 	if fps != 0:
@@ -70,6 +80,16 @@ func _apply_to_audio() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am != null and "sfx_volume" in am:
 		am.sfx_volume = sfx_volume
+
+
+func _apply_fullscreen() -> void:
+	# Headless 跑 unit test 时 DisplayServer 没窗,跳过避免崩
+	if not DisplayServer.has_feature(DisplayServer.FEATURE_SUBWINDOWS):
+		return
+	var target_mode: int = DisplayServer.WINDOW_MODE_FULLSCREEN if fullscreen \
+		else DisplayServer.WINDOW_MODE_WINDOWED
+	if DisplayServer.window_get_mode() != target_mode:
+		DisplayServer.window_set_mode(target_mode)
 
 
 func _apply_framerate_cap() -> void:
@@ -95,6 +115,7 @@ func _load_from_disk() -> void:
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
 	framerate_cap = fps_v
+	fullscreen = bool(parsed.get("fullscreen", false))
 
 
 func _save_to_disk() -> void:
@@ -103,6 +124,7 @@ func _save_to_disk() -> void:
 		"bgm_volume": bgm_volume,
 		"tutorial_seen": tutorial_seen,
 		"framerate_cap": framerate_cap,
+		"fullscreen": fullscreen,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:

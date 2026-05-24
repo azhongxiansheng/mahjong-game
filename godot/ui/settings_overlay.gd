@@ -117,6 +117,15 @@ func _ready() -> void:
 	_fps_option.item_selected.connect(_on_fps_selected)
 	panel.add_child(_fps_option)
 
+	# 全屏 toggle — CheckButton 左右滑动开关
+	var fs_btn := CheckButton.new()
+	fs_btn.text = "全屏"
+	fs_btn.position = Vector2(330, 174)
+	fs_btn.custom_minimum_size = Vector2(90, 36)
+	fs_btn.button_pressed = _sm().fullscreen
+	fs_btn.toggled.connect(_on_fullscreen_toggled)
+	panel.add_child(fs_btn)
+
 	# 重看新手引导按钮(清 tutorial_seen 标志 + 立刻弹 TutorialOverlay)
 	var tut_btn := Button.new()
 	tut_btn.text = "重看新手引导"
@@ -193,6 +202,10 @@ func _on_test_pressed() -> void:
 	var am = get_node_or_null("/root/AudioManager")
 	if am:
 		am.play("tile_click")
+
+
+func _on_fullscreen_toggled(b: bool) -> void:
+	_sm().set_fullscreen(b)
 
 
 func _on_fps_selected(idx: int) -> void:
