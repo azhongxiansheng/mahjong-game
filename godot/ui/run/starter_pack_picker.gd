@@ -94,11 +94,26 @@ func _rebuild() -> void:
 	for child in _hbox.get_children():
 		child.queue_free()
 	for pack in _packs:
+		# Button 不带 text — 否则 minimum_size 被单行文字撑爆,卡片溢出 HBox。
+		# 描述放 Label 子项,autowrap 按 220 宽换行。
 		var btn := Button.new()
-		btn.text = format_card_text(pack)
 		btn.custom_minimum_size = Vector2(220, 280)
+		btn.text = ""
+		btn.clip_text = true
 		btn.disabled = not pack.get("available", false)
 		_apply_archetype_border(btn, pack.get("id", &""))
+		var lbl := Label.new()
+		lbl.text = format_card_text(pack)
+		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.offset_left = 12
+		lbl.offset_right = -12
+		lbl.offset_top = 12
+		lbl.offset_bottom = -12
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 点击穿透到 Button
+		btn.add_child(lbl)
 		var pack_id_capture: StringName = pack.id
 		btn.pressed.connect(func(): emit_signal("pack_chosen", pack_id_capture))
 		_hbox.add_child(btn)
