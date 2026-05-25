@@ -100,6 +100,24 @@ static func all_tile_variants() -> Array:
 	pool.append(_mk_tile(&"sou4_uradora_pick_v1", "4 索·指示牌操纵", "owner 自胡 +2 番（v1 模拟重选最优裏 Dora）",
 		TileId.S4, Rarity.Kind.EPIC, "res://skills/hooks/sou4_uradora_pick_hook.gd"))
 
+	# M12 新增牌技能
+	pool.append(_mk_tile(&"w7_flow_ride_v1", "7 万·顺流", "owner 摸牌且 turn >= 3 时 reveal 牌墙顶 3 张",
+		TileId.W7, Rarity.Kind.UNCOMMON, "res://skills/hooks/w7_flow_ride_hook.gd"))
+	pool.append(_mk_tile(&"t5_double_draw_v1", "5 筒·双摸", "owner 胡牌 +1 番（双摸加成）",
+		TileId.T5, Rarity.Kind.UNCOMMON, "res://skills/hooks/t5_double_draw_hook.gd"))
+	pool.append(_mk_tile(&"s7_counter_ron_v1", "7 索·反击", "owner 被荣胡时偷回 20% 得分",
+		TileId.S7, Rarity.Kind.EPIC, "res://skills/hooks/s7_counter_ron_hook.gd"))
+	pool.append(_mk_tile(&"w3_furiten_spread_v1", "3 万·振听扩散", "owner 胡牌 +1 番（防御加成）",
+		TileId.W3, Rarity.Kind.UNCOMMON, "res://skills/hooks/w3_furiten_spread_hook.gd"))
+	pool.append(_mk_tile(&"t7_ippatsu_extend_v1", "7 筒·一发延长", "owner 立直下胡牌 +1 番",
+		TileId.T7, Rarity.Kind.EPIC, "res://skills/hooks/t7_ippatsu_extend_hook.gd"))
+	pool.append(_mk_tile(&"s1_yakuhai_boost_v1", "1 索·役牌加成", "owner 胡牌 +1 番（役牌加成）",
+		TileId.S1, Rarity.Kind.UNCOMMON, "res://skills/hooks/s1_yakuhai_boost_hook.gd"))
+	pool.append(_mk_tile(&"w8_kan_bonus_v1", "8 万·杠加成", "owner 有杠时胡牌 +2 番",
+		TileId.W8, Rarity.Kind.EPIC, "res://skills/hooks/w8_kan_bonus_hook.gd"))
+	pool.append(_mk_tile(&"chun_blood_pact_v1", "中·血盟", "owner 胡牌时从三家各转 1000 点",
+		TileId.CHUN, Rarity.Kind.EPIC, "res://skills/hooks/chun_blood_pact_hook.gd"))
+
 	# 30 张普通占位"无技能牌"，覆盖 30 个 TileId（万 9 + 筒 9 + 条 9 + 3 风）
 	var placeholder_ids: Array = []
 	for i in range(9):
@@ -201,6 +219,25 @@ static func all_abilities() -> Array:
 		"开局清振听 + 预知下张摸牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_awai_passive_hook.gd"))
 
+	pool.append(_mk_ability(&"char_koromo_passive_v1", "天江衣·海底支配",
+		"海底/河底胡牌 +3 番 + 摸牌時残り 3 枚透視（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_koromo_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_nodoka_passive_v1", "原村和·デジタル",
+		"胡牌 +1 番 + 対手聴牌時に手牌 1 枚透視（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_nodoka_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_toki_passive_v1", "園城寺怜·一巡先見",
+		"開局時に全 4 席の次の摸牌を透視（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_toki_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_kuro_passive_v1", "松実玄·ドラの愛",
+		"胡牌時に +2 extra Dora（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kuro_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_momoko_passive_v1", "東横桃子·ステルス",
+		"立直後の胡牌 +1 番（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_momoko_passive_hook.gd"))
+	pool.append(_mk_ability(&"char_tetsuya_passive_v1", "哲也·玄人技",
+		"胡牌每回 +1 番累積（角色被动）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_tetsuya_passive_hook.gd"))
+
 	# M7 收尾：M6 唯一 holdout（plan-6 §8.10 #12）
 	pool.append(_mk_ability(&"tougenkyo_v1", "偷天换日",
 		"每局 1 次手牌↔弃牌河交换（v1 简化：自胡 +3 番 + 消耗）",
@@ -231,6 +268,33 @@ static func all_relics() -> Array:
 	pool.append(_mk_relic(&"relic_wall_eye_v1", "墙眼",
 		"每次摸牌后预知下 1 张",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/relic_wall_eye_hook.gd"))
+
+	# M12 新增遗物
+	pool.append(_mk_relic(&"relic_red_string_v1", "红线",
+		"每次胡牌额外 +1 赤 Dora",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_red_string_hook.gd"))
+	pool.append(_mk_relic(&"relic_dragon_seal_v1", "龙印",
+		"胡牌时 +1 番（三元牌加成）",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_dragon_seal_hook.gd"))
+	pool.append(_mk_relic(&"relic_wind_charm_v1", "风铃",
+		"胡牌时 +1 番（风役加成）",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_wind_charm_hook.gd"))
+	pool.append(_mk_relic(&"relic_speed_demon_v1", "速攻鬼",
+		"巡数 < 8 时胡牌 +1 番",
+		Rarity.Kind.EPIC, "res://skills/hooks/relic_speed_demon_hook.gd"))
+	pool.append(_mk_relic(&"relic_patience_stone_v1", "忍石",
+		"流局时获得 +2000 点",
+		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_patience_stone_hook.gd"))
+	pool.append(_mk_relic(&"relic_han_crystal_v1", "番水晶",
+		"立直状态下胡牌 +1 番",
+		Rarity.Kind.EPIC, "res://skills/hooks/relic_han_crystal_hook.gd"))
+	pool.append(_mk_relic(&"relic_comeback_crown_v1", "逆转王冠",
+		"四家最低分时胡牌 +2 番",
+		Rarity.Kind.EPIC, "res://skills/hooks/relic_comeback_crown_hook.gd"))
+	pool.append(_mk_relic(&"relic_pity_breaker_v1", "天命打破",
+		"保底概率提升（被动 gacha 修改器）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/relic_pity_breaker_hook.gd"))
+
 	return pool
 
 static func relics_by_rarity(rarity: int) -> Array:
@@ -272,6 +336,32 @@ static func all_consumables() -> Array:
 	pool.append(_mk_consumable(&"gold_doubler_v1", "聚宝盆",
 		"下场战斗 gold 奖励 ×2（旅途消耗品）",
 		ConsumableItem.Kind.RUN, Rarity.Kind.UNCOMMON, ""))
+
+	# M12 新增消耗品
+	pool.append(_mk_consumable(&"wall_collapse_v1", "牌墙崩塌",
+		"开局减少牌墙 10 张（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
+		"res://skills/hooks/consumable_wall_collapse_hook.gd"))
+	pool.append(_mk_consumable(&"dora_flip_v1", "翻宝牌",
+		"摸牌时额外 +1 Dora 并消耗（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
+		"res://skills/hooks/consumable_dora_flip_hook.gd"))
+	pool.append(_mk_consumable(&"seat_swap_v1", "换座",
+		"开局交换座位（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
+		"res://skills/hooks/consumable_seat_swap_hook.gd"))
+	pool.append(_mk_consumable(&"furiten_bomb_v1", "振听炸弹",
+		"取消对手荣胡 1 次（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
+		"res://skills/hooks/consumable_furiten_bomb_hook.gd"))
+	pool.append(_mk_consumable(&"point_shield_v1", "点棒护盾",
+		"被荣胡时偷回 50% 点数（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
+		"res://skills/hooks/consumable_point_shield_hook.gd"))
+	pool.append(_mk_consumable(&"tsubame_v1", "燕返",
+		"开局手牌重洗（消耗品）",
+		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
+		"res://skills/hooks/consumable_tsubame_hook.gd"))
 
 	return pool
 
