@@ -72,20 +72,6 @@ static func format_card_text(pack: Dictionary) -> String:
 	return "\n".join(lines)
 
 
-# 给 pack 按钮 4 态 stylebox 套打法色描边。disabled 也染色,玩家仍能看出取向。
-static func _apply_archetype_border(btn: Button, pack_id) -> void:
-	var col := archetype_color(pack_id)
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
-		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
-		sb.border_color = col
-		sb.border_width_left = 3
-		sb.border_width_top = 3
-		sb.border_width_right = 3
-		sb.border_width_bottom = 3
-		btn.add_theme_stylebox_override(state, sb)
-
-
 # ---- internal ----
 
 func _rebuild() -> void:
@@ -94,26 +80,12 @@ func _rebuild() -> void:
 	for child in _hbox.get_children():
 		child.queue_free()
 	for pack in _packs:
-		# Button 不带 text — 否则 minimum_size 被单行文字撑爆,卡片溢出 HBox。
-		# 描述放 Label 子项,autowrap 按 220 宽换行。
-		var btn := Button.new()
-		btn.custom_minimum_size = Vector2(220, 280)
-		btn.text = ""
-		btn.clip_text = true
+		# DT.make_text_card_button 统一处理 Button+Label autowrap 防撑爆。
+		var btn := DT.make_text_card_button(
+				_hbox,
+				format_card_text(pack),
+				Vector2(DT.CARD_W, DT.CARD_H),
+				archetype_color(pack.get("id", &"")))
 		btn.disabled = not pack.get("available", false)
-		_apply_archetype_border(btn, pack.get("id", &""))
-		var lbl := Label.new()
-		lbl.text = format_card_text(pack)
-		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
-		lbl.offset_left = 12
-		lbl.offset_right = -12
-		lbl.offset_top = 12
-		lbl.offset_bottom = -12
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE  # 点击穿透到 Button
-		btn.add_child(lbl)
 		var pack_id_capture: StringName = pack.id
 		btn.pressed.connect(func(): emit_signal("pack_chosen", pack_id_capture))
-		_hbox.add_child(btn)

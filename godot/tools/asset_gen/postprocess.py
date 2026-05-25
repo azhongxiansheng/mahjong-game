@@ -10,6 +10,7 @@ falling back to even division of the row extent when the gap count is wrong.
 from __future__ import annotations
 
 import io
+from collections import deque
 from PIL import Image
 
 # Match the existing mahjong_tiles_riichi assets so no UI layout shifts.
@@ -99,3 +100,55 @@ def slice_row(png_bytes: bytes, expected: int) -> list[Image.Image]:
 def save_png(png_bytes: bytes, path: str) -> None:
     with open(path, "wb") as f:
         f.write(png_bytes)
+
+
+def strip_checkerboard(path: str, gray_lo: int = 200, gray_hi: int = 255,
+                       channel_tol: int = 6) -> tuple[int, int]:
+    """Flood-fill kill gpt-image-2's fake transparent checkerboard pixels.
+
+    The image generator often "draws" a Photoshop-style gray checkerboard into
+    pixels it thinks should be transparent — RGB is checker, but alpha=255.
+    Only the corners get true alpha=0. Real Godot rendering then shows the
+    fake checkerboard instead of the layer behind.
+
+    Fix: from every existing alpha=0 pixel, BFS into 4-connected neighbors that
+    are also checker-colored (R≈G≈B in [gray_lo, gray_hi]) and set their alpha
+    to 0. Bounded by the subject's opaque pixels so it never eats into art.
+
+    Returns (pixels_before, pixels_after) — alpha=0 counts before/after.
+    Safe no-op if image is fully opaque (no seed) or has no checker pixels.
+    """
+    try:
+        import numpy as np
+    except ImportError as e:
+        raise RuntimeError("strip_checkerboard needs numpy") from e
+
+    img = Image.open(path).convert("RGBA")
+    arr = np.array(img)
+    h, w, _ = arr.shape
+    r = arr[..., 0].astype(int)
+    g = arr[..., 1].astype(int)
+    b = arr[..., 2].astype(int)
+    alpha = arr[..., 3]
+    is_check = ((np.abs(r - g) < channel_tol)
+                & (np.abs(g - b) < channel_tol)
+                & (r >= gray_lo) & (r <= gray_hi))
+    before = int((alpha == 0).sum())
+    visited = (alpha == 0).copy()
+    q: deque[tuple[int, int]] = deque()
+    ys, xs = np.where(alpha == 0)
+    for y, x in zip(ys, xs):
+        q.append((int(y), int(x)))
+    while q:
+        y, x = q.popleft()
+        for dy, dx in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and not visited[ny, nx] and is_check[ny, nx]:
+                visited[ny, nx] = True
+                alpha[ny, nx] = 0
+                q.append((ny, nx))
+    arr[..., 3] = alpha
+    after = int((alpha == 0).sum())
+    if after > before:
+        Image.fromarray(arr).save(path)
+    return before, after

@@ -12,37 +12,38 @@ const SKIP_GOLD_REWARD: int = 30
 
 func _ready() -> void:
 	RunUi.attach_background(self)
-	custom_minimum_size = Vector2(1280, 720)
+	set_anchors_preset(Control.PRESET_FULL_RECT)
 
 func show_rewards(options: Array, battle_rank: int) -> void:
 	for child in get_children():
-		if child.name != "Bg":
+		if child.name != "RunBgArt":
 			child.queue_free()
 
 	var vbox := VBoxContainer.new()
-	vbox.position = Vector2(140, 40)
-	vbox.custom_minimum_size = Vector2(1000, 640)
+	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left = DT.PANEL_PAD
+	vbox.offset_right = -DT.PANEL_PAD
+	vbox.offset_top = DT.PANEL_PAD
+	vbox.offset_bottom = -DT.PANEL_PAD
+	vbox.add_theme_constant_override("separation", DT.GAP_NORMAL)
 	add_child(vbox)
 
 	var title := Label.new()
 	title.text = "战斗奖励 — 选择 1 张"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 32)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	DT.apply_title_style(title)
 	vbox.add_child(title)
 
 	var rank_label := Label.new()
 	rank_label.text = "排名：第 %d 名" % battle_rank
-	rank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rank_label.add_theme_font_size_override("font_size", 20)
-	rank_label.add_theme_color_override("font_color", Color(0.8, 0.85, 0.9))
+	DT.apply_body_style(rank_label)
+	rank_label.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	vbox.add_child(rank_label)
 
 	vbox.add_child(HSeparator.new())
 
 	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	hbox.add_theme_constant_override("separation", 24)
+	hbox.add_theme_constant_override("separation", DT.GAP_LOOSE)
 	vbox.add_child(hbox)
 
 	for i in range(options.size()):
@@ -54,8 +55,8 @@ func show_rewards(options: Array, battle_rank: int) -> void:
 
 	var skip_btn := Button.new()
 	skip_btn.text = "跳过（+%d 金币）" % SKIP_GOLD_REWARD
-	skip_btn.custom_minimum_size = Vector2(240, 44)
-	skip_btn.add_theme_font_size_override("font_size", 16)
+	skip_btn.custom_minimum_size = Vector2(240, DT.BUTTON_H)
+	skip_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	skip_btn.pressed.connect(func(): emit_signal("skipped"))
 	var center := HBoxContainer.new()
 	center.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -66,7 +67,7 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(280, 380)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.12, 0.15, 0.22, 0.95)
+	sb.bg_color = Color(DT.BG_BASE.r + 0.08, DT.BG_BASE.g + 0.09, DT.BG_BASE.b + 0.14, 0.95)
 	sb.border_color = Rarity.color(r.rarity)
 	sb.border_width_left = 3
 	sb.border_width_top = 3
@@ -76,20 +77,18 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 	sb.corner_radius_top_right = 8
 	sb.corner_radius_bottom_left = 8
 	sb.corner_radius_bottom_right = 8
-	sb.content_margin_left = 16
-	sb.content_margin_right = 16
-	sb.content_margin_top = 16
-	sb.content_margin_bottom = 16
+	sb.content_margin_left = DT.GAP_NORMAL
+	sb.content_margin_right = DT.GAP_NORMAL
+	sb.content_margin_top = DT.GAP_NORMAL
+	sb.content_margin_bottom = DT.GAP_NORMAL
 	panel.add_theme_stylebox_override("panel", sb)
 
 	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
+	vbox.add_theme_constant_override("separation", DT.GAP_TIGHT)
 	panel.add_child(vbox)
 
 	var kind_label := Label.new()
-	kind_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	kind_label.add_theme_font_size_override("font_size", 14)
-	kind_label.add_theme_color_override("font_color", Color(0.6, 0.7, 0.8))
+	DT.apply_caption_style(kind_label)
 	match r.kind:
 		GachaResult.KIND_TILE:
 			kind_label.text = "牌技能"
@@ -104,15 +103,13 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 	vbox.add_child(kind_label)
 
 	var name_label := Label.new()
-	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	name_label.add_theme_font_size_override("font_size", 24)
+	DT.apply_subtitle_style(name_label)
 	name_label.add_theme_color_override("font_color", Rarity.color(r.rarity))
 	name_label.text = _get_name(r)
 	vbox.add_child(name_label)
 
 	var rarity_label := Label.new()
-	rarity_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	rarity_label.add_theme_font_size_override("font_size", 14)
+	DT.apply_caption_style(rarity_label)
 	rarity_label.add_theme_color_override("font_color", Rarity.color(r.rarity))
 	rarity_label.text = Rarity.display_name(r.rarity)
 	vbox.add_child(rarity_label)
@@ -120,17 +117,15 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 	vbox.add_child(HSeparator.new())
 
 	var desc_label := Label.new()
-	desc_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	DT.apply_caption_style(desc_label)
 	desc_label.custom_minimum_size = Vector2(240, 100)
-	desc_label.add_theme_font_size_override("font_size", 14)
-	desc_label.add_theme_color_override("font_color", Color(0.85, 0.85, 0.8))
 	desc_label.text = _get_description(r)
 	vbox.add_child(desc_label)
 
 	var pick_btn := Button.new()
 	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(120, 36)
-	pick_btn.add_theme_font_size_override("font_size", 18)
+	pick_btn.custom_minimum_size = Vector2(120, DT.BUTTON_H)
+	pick_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	var captured_result: GachaResult = r
 	pick_btn.pressed.connect(func(): emit_signal("reward_chosen", captured_result))
 	var btn_center := HBoxContainer.new()

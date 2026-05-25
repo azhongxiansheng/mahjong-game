@@ -47,7 +47,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.7)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -71,9 +71,9 @@ func _ready() -> void:
 	title_lbl.position = Vector2(0, 28)
 	title_lbl.size = Vector2(PANEL_W, 36)
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_lbl.add_theme_font_size_override("font_size", 22)
+	title_lbl.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
 	title_lbl.add_theme_color_override("font_color",
-		Color(1, 0.5, 0.5) if _destructive else Color(1, 0.85, 0.5))
+		DT.TEXT_DANGER if _destructive else DT.TEXT_TITLE)
 	panel.add_child(title_lbl)
 
 	var msg_lbl := Label.new()
@@ -83,8 +83,8 @@ func _ready() -> void:
 	msg_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	msg_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	msg_lbl.add_theme_font_size_override("font_size", 15)
-	msg_lbl.add_theme_color_override("font_color", Color(0.93, 0.91, 0.82))
+	msg_lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	msg_lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	panel.add_child(msg_lbl)
 
 	# Cancel 在左,Confirm 在右 — Windows/macOS 通用习惯
@@ -102,8 +102,8 @@ func _ready() -> void:
 	if _destructive:
 		# 猩红 styling 强调"不可逆"
 		var sb_normal := StyleBoxFlat.new()
-		sb_normal.bg_color = Color(0.55, 0.18, 0.18)
-		sb_normal.border_color = Color(0.85, 0.32, 0.32)
+		sb_normal.bg_color = Color(DT.TEXT_DANGER.r * 0.6, DT.TEXT_DANGER.g * 0.2, DT.TEXT_DANGER.b * 0.2)
+		sb_normal.border_color = DT.TEXT_DANGER
 		sb_normal.border_width_left = 2
 		sb_normal.border_width_right = 2
 		sb_normal.border_width_top = 2
@@ -113,7 +113,7 @@ func _ready() -> void:
 		sb_normal.corner_radius_bottom_left = 4
 		sb_normal.corner_radius_bottom_right = 4
 		confirm_btn.add_theme_stylebox_override("normal", sb_normal)
-		confirm_btn.add_theme_color_override("font_color", Color(1, 0.92, 0.85))
+		confirm_btn.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	confirm_btn.pressed.connect(_on_confirm)
 	panel.add_child(confirm_btn)
 

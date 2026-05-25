@@ -92,11 +92,16 @@ func _rebuild() -> void:
 		card.add_theme_stylebox_override("panel", sb)
 		var lbl := Label.new()
 		lbl.text = format_card_text(r)
-		lbl.size = Vector2(170, 230)
-		lbl.position = Vector2(5, 5)
+		lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
+		lbl.offset_left = DT.GAP_TIGHT
+		lbl.offset_right = -DT.GAP_TIGHT
+		lbl.offset_top = DT.GAP_TIGHT
+		lbl.offset_bottom = -DT.GAP_TIGHT
 		lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		# 卡底变暗后字色用 bone-white 保证对比度;稀有度信息靠描边色传达。
-		lbl.add_theme_color_override("font_color", Color(0.95, 0.93, 0.85))
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+		# 卡底变暗后字色用 TEXT_PRIMARY 保证对比度;稀有度信息靠描边色传达。
+		lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 		card.add_child(lbl)
 		_hbox.add_child(card)
 

@@ -89,14 +89,13 @@ func _rebuild_upgrade_section() -> void:
 	container.add_child(sep)
 	var header := Label.new()
 	header.text = "— 升级牌技能 —"
-	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header.add_theme_font_size_override("font_size", 18)
-	header.add_theme_color_override("font_color", Color(0.3, 0.9, 1.0))
+	DT.apply_subtitle_style(header)
+	header.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	container.add_child(header)
 	for v in upgradeable:
 		var btn := Button.new()
 		btn.text = "%s → %s+" % [v.display_name, v.display_name]
-		btn.custom_minimum_size = Vector2(400, 40)
+		btn.custom_minimum_size = Vector2(400, DT.BUTTON_H)
 		var captured_v: TileVariant = v
 		btn.pressed.connect(func():
 			captured_v.upgrade()
@@ -120,9 +119,8 @@ func _rebuild_consumables() -> void:
 	_consumable_container.add_child(sep)
 	var header := Label.new()
 	header.text = "— 道具 —"
-	header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	header.add_theme_font_size_override("font_size", 18)
-	header.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	DT.apply_subtitle_style(header)
+	header.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	_consumable_container.add_child(header)
 	for c in _run_state.consumables:
 		if not (c is ConsumableItem):
@@ -131,7 +129,7 @@ func _rebuild_consumables() -> void:
 			continue
 		var btn := Button.new()
 		btn.text = "%s — %s" % [c.display_name, c.description]
-		btn.custom_minimum_size = Vector2(400, 40)
+		btn.custom_minimum_size = Vector2(400, DT.BUTTON_H)
 		var cid: StringName = c.id
 		btn.pressed.connect(func():
 			_run_state.use_run_consumable(cid)

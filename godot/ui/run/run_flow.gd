@@ -38,7 +38,7 @@ var _pending_character_id: StringName = &""
 var _pending_difficulty: int = Difficulty.Level.NORMAL
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(1280, 720)
+	custom_minimum_size = Vector2(DT.VIEW_W, DT.VIEW_H)
 	_seed_seed = Time.get_ticks_msec()
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
@@ -395,19 +395,27 @@ func _apply_gacha_to_deck(result: GachaResult) -> void:
 func _swap_panel(new_panel: Control) -> void:
 	if _current_panel:
 		_current_panel.queue_free()
-	new_panel.position = Vector2(0, 50)  # HUD 占了 0..40
+	# 用 anchor 让 panel 占满 HUD 下方,不再硬偏移 (HUD_H 来自 DT)。
+	# 子面板 .tscn 也都改成 anchors_preset=15 自适应,这样不论窗口尺寸都
+	# 正确占满。原本 position=(0,50) 在 panel 自带 anchor 时会跑位。
+	new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	new_panel.offset_top = DT.HUD_H
+	new_panel.offset_left = 0
+	new_panel.offset_right = 0
+	new_panel.offset_bottom = 0
 	add_child(new_panel)
 	_current_panel = new_panel
 
 func _make_loading_label(text: String) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(800, 600)
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.size = Vector2(800, 600)
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 24)
+	lbl.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	lbl.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	c.add_child(lbl)
 	return c
 
@@ -417,61 +425,62 @@ static func _loading_text_for_battle(node_ref: NodeRef) -> String:
 
 func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array) -> void:
 	var overlay := Control.new()
-	overlay.size = Vector2(1280, 800)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	table.add_child(overlay)
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, 800)
-	bg.color = Color(0, 0, 0, 0.85)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
 	var panel := VBoxContainer.new()
-	panel.position = Vector2(340, 120)
+	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(600, 500)
+	panel.offset_left = -300
+	panel.offset_top = -250
+	panel.offset_right = 300
+	panel.offset_bottom = 250
+	panel.add_theme_constant_override("separation", DT.GAP_NORMAL)
 	overlay.add_child(panel)
 	var title := Label.new()
 	title.text = "战斗准备" if boss_id == &"" else "BOSS 战"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	DT.apply_title_style(title)
 	panel.add_child(title)
 	panel.add_child(HSeparator.new())
 	if not ability_ids.is_empty():
 		var ab_label := Label.new()
-		ab_label.text = "角色能力："
-		ab_label.add_theme_font_size_override("font_size", 20)
-		ab_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		ab_label.text = "角色能力"
+		DT.apply_subtitle_style(ab_label)
+		ab_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(ab_label)
 		for aid in ability_ids:
 			var card: AbilityCard = _find_ability_card(aid)
 			var l := Label.new()
 			l.text = "  • %s" % (card.display_name if card else String(aid))
-			l.add_theme_font_size_override("font_size", 16)
-			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			DT.apply_body_style(l)
 			panel.add_child(l)
 	if tile_variants.size() > 0:
 		var tv_label := Label.new()
 		tv_label.text = "牌技能：%d 张" % tile_variants.size()
-		tv_label.add_theme_font_size_override("font_size", 20)
-		tv_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		DT.apply_subtitle_style(tv_label)
+		tv_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(tv_label)
 	if not consumable_ids.is_empty():
 		var c_label := Label.new()
-		c_label.text = "战斗道具："
-		c_label.add_theme_font_size_override("font_size", 20)
-		c_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		c_label.text = "战斗道具"
+		DT.apply_subtitle_style(c_label)
+		c_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(c_label)
 		for cid in consumable_ids:
 			var item: ConsumableItem = _find_consumable(cid)
 			var l := Label.new()
 			l.text = "  • %s" % (item.display_name if item else String(cid))
-			l.add_theme_font_size_override("font_size", 16)
-			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			DT.apply_body_style(l)
 			panel.add_child(l)
 	panel.add_child(HSeparator.new())
 	var btn := Button.new()
 	btn.text = "开战！"
-	btn.custom_minimum_size = Vector2(200, 44)
+	btn.custom_minimum_size = Vector2(200, DT.BUTTON_H)
 	btn.pressed.connect(func(): overlay.queue_free())
 	panel.add_child(btn)
 	while is_instance_valid(overlay):

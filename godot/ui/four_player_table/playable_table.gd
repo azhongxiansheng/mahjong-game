@@ -21,7 +21,7 @@ var _bc: PlayableBattleController = null
 var _seat_panel_player: SeatPanel = null
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	custom_minimum_size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
 	_build_layout()
 	# 成就解锁 → toast 弹"🏆 成就解锁:xxx"。autoload 可能晚 ready,defer connect。
 	var sm = get_node_or_null("/root/StatsManager")
@@ -40,10 +40,10 @@ func _on_achievement_unlocked(_id: String, meta: Dictionary) -> void:
 		_show_toast_text("🏆 成就解锁:%s" % captured))
 
 func _build_layout() -> void:
-	# Bg 覆盖整个 800 高度，让桌底 ActionPanel 区跟桌面同色，避免桌外白色背景
+	# Bg 覆盖整个 viewport,让桌底 ActionPanel 区跟桌面同色,避免桌外背景跳变。
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
-	bg.color = Color(0.06, 0.12, 0.20, 1.0)  # 跟 four_player_table TableBg 同系
+	bg.size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	bg.color = DT.BG_BASE
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
@@ -136,12 +136,12 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		_play_win_effects(win_event)
 		await get_tree().create_timer(0.45).timeout
 	var overlay := Control.new()
-	overlay.size = Vector2(1280, 800)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, 800)
-	bg.color = Color(0, 0, 0, 0.78)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.85)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
 
@@ -319,6 +319,8 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	strip.position = Vector2(0, y_offset)
 	strip.size = Vector2(720, 56)
 	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	# 1 px 紧贴 — 胡牌 14 张牌展示行传统紧贴,**不要**改用 DT.GAP_TIGHT(8)
+	# 否则 14 张牌 + 13 个 8px 间隔总宽超 720 容器宽,溢出。
 	strip.add_theme_constant_override("separation", 1)
 	parent.add_child(strip)
 	for tid in concealed_ids:

@@ -66,7 +66,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.85)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -89,8 +89,8 @@ func _ready() -> void:
 	_title_lbl.position = Vector2(0, 32)
 	_title_lbl.size = Vector2(PANEL_W, 50)
 	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title_lbl.add_theme_font_size_override("font_size", 32)
-	_title_lbl.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	_title_lbl.add_theme_font_size_override("font_size", DT.FONT_TITLE)
+	_title_lbl.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(_title_lbl)
 
 	_body_lbl = Label.new()
@@ -98,8 +98,8 @@ func _ready() -> void:
 	_body_lbl.size = Vector2(PANEL_W - 80, PANEL_H - 200)
 	_body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_body_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	_body_lbl.add_theme_font_size_override("font_size", 17)
-	_body_lbl.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	_body_lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	_body_lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	panel.add_child(_body_lbl)
 
 	# 底部按钮组
@@ -114,8 +114,8 @@ func _ready() -> void:
 	_page_indicator.position = Vector2(0, PANEL_H - 56)
 	_page_indicator.size = Vector2(PANEL_W, 32)
 	_page_indicator.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_page_indicator.add_theme_font_size_override("font_size", 16)
-	_page_indicator.add_theme_color_override("font_color", Color(0.75, 0.7, 0.55))
+	_page_indicator.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	_page_indicator.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	panel.add_child(_page_indicator)
 
 	_next_btn = Button.new()

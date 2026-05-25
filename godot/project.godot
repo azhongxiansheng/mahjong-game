@@ -18,6 +18,7 @@ config/features=PackedStringArray("4.5")
 
 [autoload]
 
+DT="*res://ui/design_tokens.gd"
 GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
 SaveSystem="*res://meta/save_system.gd"

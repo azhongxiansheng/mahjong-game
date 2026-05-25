@@ -104,8 +104,8 @@ func set_score(s: int) -> void:
 func _pulse_score(positive: bool) -> void:
 	if _score_pulse_tween and _score_pulse_tween.is_valid():
 		_score_pulse_tween.kill()
-	var flash: Color = Color(0.45, 0.95, 0.50) if positive else Color(1.0, 0.45, 0.45)
-	var base: Color = Color(0.91, 0.88, 0.81)
+	var flash: Color = DT.TEXT_SUCCESS if positive else DT.TEXT_DANGER
+	var base: Color = DT.TEXT_PRIMARY
 	_label_score.add_theme_color_override("font_color", flash)
 	_score_pulse_tween = create_tween()
 	_score_pulse_tween.tween_property(_label_score, "theme_override_colors/font_color",
@@ -120,8 +120,8 @@ func _spawn_score_delta(delta: int) -> void:
 	var lbl := Label.new()
 	var sign_text: String = "+" if delta > 0 else ""  # 负数本身含 "-"
 	lbl.text = "%s%d" % [sign_text, delta]
-	lbl.add_theme_font_size_override("font_size", 26)
-	var color: Color = Color(0.45, 1.0, 0.45) if delta > 0 else Color(1.0, 0.45, 0.45)
+	lbl.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	var color: Color = DT.TEXT_SUCCESS if delta > 0 else DT.TEXT_DANGER
 	lbl.add_theme_color_override("font_color", color)
 	lbl.add_theme_constant_override("shadow_offset_x", 2)
 	lbl.add_theme_constant_override("shadow_offset_y", 2)
@@ -178,7 +178,7 @@ func _apply_status_badges() -> void:
 	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
 	var show_tenpai: bool = _tenpai and _seat_id == 0 and not _riichi
 	_badge_tenpai = _set_badge(_badge_tenpai, show_tenpai, "听",
-		Color(1.0, 0.78, 0.22), Vector2(60, -46))
+		DT.TEXT_TITLE, Vector2(60, -46))
 	# 一発(刚立直未轮回一圈)— 青底,所有 seat 都显(玩家需要算别家一发风险)。
 	_badge_ippatsu = _set_badge(_badge_ippatsu, _ippatsu, "発",
 		Color(0.30, 0.70, 0.90), Vector2(90, -46))
@@ -263,7 +263,7 @@ func _apply_active_visual() -> void:
 		# 金色描边浮出来,Bg 本身保留底色,不破坏既有视觉
 		var glow := StyleBoxFlat.new()
 		glow.bg_color = bg.color  # 保持原底色
-		glow.border_color = Color(1, 0.85, 0.25)
+		glow.border_color = DT.TEXT_TITLE
 		glow.border_width_left = 3
 		glow.border_width_top = 3
 		glow.border_width_right = 3
@@ -281,7 +281,7 @@ func _apply_active_visual() -> void:
 			glow_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var sb := StyleBoxFlat.new()
 			sb.bg_color = Color(0, 0, 0, 0)  # 透明,仅显边
-			sb.border_color = Color(1, 0.85, 0.25)
+			sb.border_color = DT.TEXT_TITLE
 			sb.border_width_left = 3
 			sb.border_width_top = 3
 			sb.border_width_right = 3

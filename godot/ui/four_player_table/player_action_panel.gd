@@ -56,7 +56,7 @@ func _ready() -> void:
 func _build_ui() -> void:
 	# Bg 半透明仅在有按钮时显示，避免空状态遮挡桌面
 	_bg = ColorRect.new()
-	_bg.color = Color(0.08, 0.08, 0.10, 0.85)
+	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.9)
 	_bg.size = Vector2(PANEL_W, PANEL_H)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg.visible = false  # IDLE/WAITING_DISCARD 默认隐藏
@@ -66,8 +66,8 @@ func _build_ui() -> void:
 	_label_status = Label.new()
 	_label_status.position = Vector2(12, 8)
 	_label_status.size = Vector2(PANEL_W - 24, 24)
-	_label_status.add_theme_font_size_override("font_size", 14)
-	_label_status.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+	_label_status.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	_label_status.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	# 加文字阴影让浮在桌面上更易读
 	_label_status.add_theme_constant_override("shadow_offset_x", 1)
 	_label_status.add_theme_constant_override("shadow_offset_y", 1)
@@ -79,15 +79,15 @@ func _build_ui() -> void:
 	# 按动作类型染色,玩家从一组按钮中第一眼分辨"什么动作":
 	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、紫=途中流局(规则牌)、灰=跳过(中性)
 	_btn_riichi = _make_btn("立直", 12, 32, Color(0.30, 0.55, 0.85))
-	_btn_tsumo = _make_btn("自摸", 12 + 66, 32, Color(1.0, 0.80, 0.25))
-	_btn_ron = _make_btn("荣和", 12 + 132, 32, Color(1.0, 0.80, 0.25))
-	_btn_chi = _make_btn("吃", 12 + 198, 32, Color(0.85, 0.25, 0.25))
-	_btn_pon = _make_btn("碰", 12 + 264, 32, Color(0.85, 0.25, 0.25))
-	_btn_minkan = _make_btn("杠", 12 + 330, 32, Color(0.85, 0.25, 0.25))
+	_btn_tsumo = _make_btn("自摸", 12 + 66, 32, DT.TEXT_TITLE)
+	_btn_ron = _make_btn("荣和", 12 + 132, 32, DT.TEXT_TITLE)
+	_btn_chi = _make_btn("吃", 12 + 198, 32, DT.TEXT_DANGER)
+	_btn_pon = _make_btn("碰", 12 + 264, 32, DT.TEXT_DANGER)
+	_btn_minkan = _make_btn("杠", 12 + 330, 32, DT.TEXT_DANGER)
 	_btn_kyuusyu = _make_btn("九種", 12 + 396, 32, Color(0.65, 0.30, 0.85))
 	_btn_ankan = _make_btn("暗杠", 12 + 462, 32, Color(0.85, 0.50, 0.15))
 	_btn_added_kan = _make_btn("加杠", 12 + 528, 32, Color(0.85, 0.50, 0.15))
-	_btn_skip = _make_btn("跳过", 12 + 594, 32, Color(0.55, 0.55, 0.55))
+	_btn_skip = _make_btn("跳过", 12 + 594, 32, DT.TEXT_MUTED)
 
 	_btn_consumable = _make_btn("道具", 12 + 594, 32, Color(0.95, 0.60, 0.15))
 	# Shift skip button right to make room for consumable button

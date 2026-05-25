@@ -37,12 +37,13 @@ func bind_run_state(rs: RunState) -> void:
 	if _title == null:
 		return
 	_title.text = format_outcome_title(rs.won)
-	# 商业级:通关 → 金大字、失败 → 猩红大字,把胜负情绪放在标题。
+	# 商业级:通关 → 金大字、失败 → 猩红大字,把胜负情绪放在标题。64 是结算专
+	# 用的"超大字"(DT.FONT_TITLE 36 不够,这页就一个标题,留特例)。
 	_title.add_theme_font_size_override("font_size", 64)
 	if rs.won:
-		_title.add_theme_color_override("font_color", Color(1, 0.82, 0.28))
+		_title.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	else:
-		_title.add_theme_color_override("font_color", Color(0.95, 0.30, 0.30))
+		_title.add_theme_color_override("font_color", DT.TEXT_DANGER)
 	_title.add_theme_constant_override("shadow_offset_x", 2)
 	_title.add_theme_constant_override("shadow_offset_y", 2)
 	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
