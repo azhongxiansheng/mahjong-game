@@ -63,6 +63,35 @@ const EMOTE_WINNING: Color = Color(1.3, 1.15, 0.7, 1.0)  # 金调:胡牌喜悦(�
 const EMOTE_UPSET: Color = Color(0.5, 0.45, 0.45, 0.75)  # 灰调:被胡失落
 var _portrait_rect: TextureRect = null
 var _portrait_path: String = ""
+# 气泡台词:say(text) 临时创建 Label 显示 1.5s 后淡出 queue_free。
+# AI 在 RIICHI/WIN/被胡 时根据 persona_name 从台词池随机选一句,让 3 家
+# AI 有"性格的声音"。比录配音便宜,比静态文字鲜活。
+var _speech_label: Label = null
+
+# 各 persona 的台词池。key = persona_name(set_ai_persona 时设),value =
+# Dictionary{event → Array[String]}。无对应 persona 用 GENERIC fallback。
+const SPEECH_POOL: Dictionary = {
+	"赤木": {
+		"riichi": ["立直。", "看你怎么躲。", "无路可退了。"],
+		"winning": ["自摸。", "如我所料。", "这就是差距。"],
+		"upset": ["啧。", "下一把。", "意料之中。"],
+	},
+	"开司": {
+		"riichi": ["立直——！", "全押了！", "命运的一手！"],
+		"winning": ["胡了——！", "成功了!", "再赢一把!"],
+		"upset": ["啊啊啊不!", "怎么会！", "再来再来！"],
+	},
+	"鹫巣": {
+		"riichi": ["立直。可笑。", "回响吧, 我的牌。", "看清了。"],
+		"winning": ["和。", "不过尔尔。", "随便玩玩。"],
+		"upset": ["哼。", "运气罢了。", "无趣。"],
+	},
+}
+const SPEECH_GENERIC: Dictionary = {
+	"riichi": ["立直！"],
+	"winning": ["胡！"],
+	"upset": ["唉。"],
+}
 var _hand_size: int = 13
 var _meld_count: int = 0
 var _discards_count: int = 0
@@ -118,6 +147,51 @@ func set_ai_persona(name_: String, style: String, portrait_path: String = "") ->
 	if is_inside_tree():
 		_refresh_labels()
 		_ensure_portrait()
+
+
+# AI 气泡台词:event_kind ∈ riichi/winning/upset,从 persona 池随机选一句
+# 显示 1.5s 后淡出。无 persona/无文案 fallback 到 SPEECH_GENERIC。playable
+# _table 在 RIICHI/WIN/被胡时调。
+func say_for_event(event_kind: String) -> void:
+	var pool: Dictionary = SPEECH_POOL.get(_persona_name, SPEECH_GENERIC)
+	var lines: Array = pool.get(event_kind, [])
+	if lines.is_empty():
+		lines = SPEECH_GENERIC.get(event_kind, [])
+	if lines.is_empty():
+		return
+	var text: String = String(lines[randi() % lines.size()])
+	say(text)
+
+
+# 直接说一句指定文字(供未来玩家选预设台词复用)。1.5s 淡出 queue_free。
+# 重复调用:旧 label 先 fade 掉再创建新的,避免叠字。
+func say(text: String) -> void:
+	if text == "":
+		return
+	if _speech_label and is_instance_valid(_speech_label):
+		_speech_label.queue_free()
+	_speech_label = Label.new()
+	_speech_label.text = text
+	_speech_label.add_theme_font_size_override("font_size", 16)
+	_speech_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	_speech_label.add_theme_constant_override("shadow_offset_x", 1)
+	_speech_label.add_theme_constant_override("shadow_offset_y", 1)
+	_speech_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	_speech_label.position = Vector2(-60, -180)  # portrait 上方
+	_speech_label.size = Vector2(120, 30)
+	_speech_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_speech_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_speech_label)
+	# fade in 0.15 → hold 1.2 → fade out 0.4 → free
+	_speech_label.modulate.a = 0.0
+	var captured := _speech_label
+	var tw := create_tween()
+	tw.tween_property(captured, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(1.2)
+	tw.tween_property(captured, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func():
+		if is_instance_valid(captured):
+			captured.queue_free())
 
 
 # 切 AI 情绪 → 调 portrait modulate 色。RIICHI/WIN/被胡时由 playable_table 调用,

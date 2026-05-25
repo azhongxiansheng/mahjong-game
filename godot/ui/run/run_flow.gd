@@ -49,6 +49,15 @@ func _ready() -> void:
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
 	add_child(_hud)
+	# Daily quest: 接 quest_claimed signal → 加 renown + 弹 toast。
+	# Run 内完成的任务 gold 也加到 _run_state(若存在);run 外只加 renown。
+	var dq = get_node_or_null("/root/DailyQuest")
+	if dq and not dq.quest_claimed.is_connected(_on_daily_quest_claimed):
+		dq.quest_claimed.connect(_on_daily_quest_claimed)
+	# BattlePass 升级 toast — quest 完成会触发 add_xp 进而 emit level_up
+	var bp = get_node_or_null("/root/BattlePass")
+	if bp and not bp.level_up.is_connected(_on_bp_level_up):
+		bp.level_up.connect(_on_bp_level_up)
 	# 新手引导:第一次启动(SettingsManager.tutorial_seen=false)弹出 5 页教程,
 	# 玩家点 Skip / 读完最后页 → 标 seen=true 持久化,以后不再弹。
 	_maybe_show_tutorial()
@@ -113,6 +122,30 @@ func _on_character_chosen(char_id: StringName) -> void:
 	_swap_panel(pack_picker)
 	pack_picker.pack_chosen.connect(_on_pack_chosen)
 	pack_picker.daily_mode_toggled.connect(_on_daily_mode_toggled)
+
+
+# Daily quest 完成回调:加 gold(若 run 内) + renown + 弹 toast。BattlePass 也
+# 在监听同 signal 累 season_xp(本文件不重复发,避免双发)。
+func _on_daily_quest_claimed(_quest_id: StringName, gold: int, renown: int, _xp: int) -> void:
+	if _run_state and not _run_state.finished:
+		_run_state.gold += gold
+		_hud.bind_run_state(_run_state)
+	var mp = get_node_or_null("/root/MetaProgress")
+	if mp:
+		mp.renown += renown
+		if mp.has_method("save_meta"):
+			mp.save_meta()
+	var toast = get_node_or_null("/root/SaveToast")
+	if toast and toast.has_method("show_message"):
+		toast.show_message("✅ 每日任务 +%d gold · +%d 声望" % [gold, renown])
+
+
+# BattlePass 升级回调:弹 toast 让玩家感知"赛季在动"。reward_unlocked 由
+# BattlePass UI 在主菜单 / 战令页直接消费,这里不重复处理。
+func _on_bp_level_up(new_level: int) -> void:
+	var toast = get_node_or_null("/root/SaveToast")
+	if toast and toast.has_method("show_message"):
+		toast.show_message("🎖️ 赛季等级 → Lv.%d" % new_level)
 
 
 # Daily 模式 toggle 回调:仅记一个 flag,等 _on_pack_chosen 时按 flag 选 seed。

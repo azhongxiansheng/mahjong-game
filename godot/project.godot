@@ -29,6 +29,8 @@ DebugOverlay="*res://meta/debug_overlay.gd"
 StatsManager="*res://meta/stats_manager.gd"
 Log="*res://meta/log.gd"
 SaveToast="*res://meta/save_toast.gd"
+DailyQuest="*res://meta/daily_quest.gd"
+BattlePass="*res://meta/battle_pass.gd"
 
 [display]
 

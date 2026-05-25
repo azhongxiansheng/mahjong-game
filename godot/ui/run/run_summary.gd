@@ -79,7 +79,7 @@ func bind_run_state(rs: RunState) -> void:
 	_title.add_theme_constant_override("shadow_offset_x", 2)
 	_title.add_theme_constant_override("shadow_offset_y", 2)
 	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	_summary_label.text = format_summary(rs) + _format_highlights_line(rs)
+	_summary_label.text = format_summary(rs) + _format_highlights_line(rs) + _format_daily_quests_line()
 	# M5 第 3 步：尝试从 MetaProgress autoload 取真声望；若不存在 fallback 占位
 	var mp := get_tree().root.get_node_or_null("MetaProgress") if is_inside_tree() else null
 	if mp:
@@ -124,6 +124,30 @@ func _format_highlights_line(rs: RunState) -> String:
 	if parts.is_empty():
 		return ""
 	return "\n\n— 本 run 亮点 —\n" + "  ·  ".join(parts)
+
+
+# 每日任务进度 + 自动 claim 行。完成自动 claim 不让玩家再点(简化 UX),
+# 通过 SaveToast 弹 "✅ 任务完成 +X gold/+Y renown"。RunSummary 显示所有
+# 3 个任务的进度条 "今日胡 5 次 [3/5]"。
+func _format_daily_quests_line() -> String:
+	var dq = get_tree().root.get_node_or_null("DailyQuest") if is_inside_tree() else null
+	if dq == null:
+		return ""
+	dq._ensure_today()  # 防 day 切换没刷
+	var lines: Array[String] = []
+	for q in dq.quests:
+		var cur: int = dq.progress_for(q)
+		var tgt: int = int(q.target)
+		var mark: String = "✅" if cur >= tgt else "◯"
+		if q.get("claimed", false):
+			mark = "💰"
+		lines.append("%s %s [%d/%d]" % [mark, q.desc, cur, tgt])
+		# auto-claim 完成未领的
+		if cur >= tgt and not q.get("claimed", false):
+			dq.claim(q.id)
+	if lines.is_empty():
+		return ""
+	return "\n\n— 今日任务 —\n" + "\n".join(lines)
 
 
 static func format_summary(rs: RunState) -> String:

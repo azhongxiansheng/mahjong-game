@@ -284,10 +284,21 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	# 继续按钮(主题化)
 	var btn := Button.new()
 	btn.text = "继续 →"
-	btn.position = Vector2(280, 490)
+	btn.position = Vector2(380, 490)
 	btn.custom_minimum_size = Vector2(160, 44)
 	btn.pressed.connect(func(): overlay.queue_free())
 	panel.add_child(btn)
+
+	# 牌谱按钮:点了弹本局所有 events 的文字列表 panel,玩家可复盘"AI 1 弃 W5、
+	# 我立直、AI 2 抢杠..."。基于 _bc.events 即时格式化,无需 events sourcing
+	# 重放(那需要 UI apply_event 镜像 BC state mutation,工作量超 1 周)。
+	# 是 PVP 战报常见形态,玩家可截图分享。
+	var replay_btn := Button.new()
+	replay_btn.text = "📜 牌谱"
+	replay_btn.position = Vector2(180, 490)
+	replay_btn.custom_minimum_size = Vector2(160, 44)
+	replay_btn.pressed.connect(func(): _show_replay_log(overlay))
+	panel.add_child(replay_btn)
 
 	# 点击空白处也能继续(保留旧的快速关闭)
 	overlay.gui_input.connect(func(ev: InputEvent):
@@ -501,6 +512,7 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# AI 立直 → 该 seat 立绘转蓝调"决意"。actor_seat 越界 / seat 0 无立绘
 			# 时 set_emote 是 no-op,不会崩。
 			_set_seat_emote(int(ev.actor_seat), "riichi")
+			_say_for_seat(int(ev.actor_seat), "riichi")
 		&"HAITEI", &"HOUTEI":
 			# 海底/河底:罕见,玩家可能整个 run 见 1-2 次。补 LIGHT 屏震 +
 			# 蓝白闪让它"被注意到"——单纯 toast 容易错过。WIN_DECLARED 紧
@@ -516,9 +528,11 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
 			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
 			_set_seat_emote(int(ev.actor_seat), "winning")
+			_say_for_seat(int(ev.actor_seat), "winning")
 			for s in [0, 1, 2, 3]:
 				if s != int(ev.actor_seat):
 					_set_seat_emote(s, "upset")
+					_say_for_seat(s, "upset")
 		&"GAME_BEGIN":
 			# 新局开始 → 4 家 emote 重置 normal
 			for s in [0, 1, 2, 3]:
@@ -533,8 +547,133 @@ func _set_seat_emote(seat_id: int, emote: String) -> void:
 		sp.set_emote(emote)
 
 
+func _say_for_seat(seat_id: int, event_kind: String) -> void:
+	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
+		return
+	var sp: SeatPanel = _table.seat_panels[seat_id]
+	if sp and sp.has_method("say_for_event"):
+		sp.say_for_event(event_kind)
+
+
 # 全屏白闪 — 短瞬覆盖全屏的半透明 ColorRect, tween alpha 1→0。
 # 不阻塞其他事件,挂 self 顶层 z_index 让胡牌粒子之类不被遮。
+# 弹本局牌谱回放 panel —— ScrollContainer 内显示所有关键 events 的中文摘要,
+# 跟 PVP 战报一样让玩家可复盘 + 截图分享。父 overlay 仍在底,玩家关闭牌谱
+# 就回到 hand_result_overlay。
+func _show_replay_log(parent_overlay: Control) -> void:
+	if _bc == null or _bc.events.is_empty():
+		return
+	var log_overlay := Control.new()
+	log_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	log_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	parent_overlay.add_child(log_overlay)
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.92)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_overlay.add_child(bg)
+	var panel := Panel.new()
+	panel.position = Vector2(160, 60)
+	panel.size = Vector2(960, 660)
+	log_overlay.add_child(panel)
+	var title := Label.new()
+	title.text = "📜 本局牌谱"
+	title.position = Vector2(0, 16)
+	title.size = Vector2(960, 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	title.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	panel.add_child(title)
+	# Scroll 内放一长 Label。events 数十~百条,纯文本足够。
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(24, 72)
+	scroll.size = Vector2(912, 520)
+	panel.add_child(scroll)
+	var log_label := Label.new()
+	log_label.text = _format_event_log()
+	log_label.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	log_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	log_label.custom_minimum_size = Vector2(880, 0)
+	scroll.add_child(log_label)
+	# 关闭按钮
+	var close_btn := Button.new()
+	close_btn.text = "关闭"
+	close_btn.position = Vector2(400, 608)
+	close_btn.custom_minimum_size = Vector2(160, 40)
+	close_btn.pressed.connect(func(): log_overlay.queue_free())
+	panel.add_child(close_btn)
+
+
+# 把 _bc.events 转中文牌谱字串。每行一条事件,带 seat 名 + 牌名(若有)。
+# 过滤噪音事件(PLAYER_ACTION 内部 kind="discard"/"draw" 已被 TILE_DRAWN/
+# DISCARDED 表达,不重复显示)。
+func _format_event_log() -> String:
+	var lines: Array[String] = []
+	var hand_no: int = 1
+	for ev in _bc.events:
+		var line: String = _format_one_event(ev, hand_no)
+		if line == "":
+			continue
+		if ev.type == &"GAME_BEGIN":
+			hand_no += 1
+		lines.append(line)
+	return "\n".join(lines)
+
+
+func _format_one_event(ev: BattleEvent, _hand_no: int) -> String:
+	if ev == null:
+		return ""
+	var who: String = _seat_short(ev.actor_seat)
+	var tile_name: String = ""
+	if ev.tile_instance != null:
+		tile_name = CardTileBack.tile_short_name(ev.tile_instance.id)
+	match ev.type:
+		&"GAME_BEGIN":
+			return "\n— 局开始 (庄家 %s) —" % who
+		&"TILE_DRAWN":
+			return ""  # 太密,不显
+		&"TILE_DISCARDED":
+			return "  %s 弃 %s" % [who, tile_name]
+		&"RIICHI_DECLARED":
+			return "  ⚡ %s 立直!" % who
+		&"TSUMO_DECLARED":
+			return "  🎯 %s 自摸 %s!" % [who, tile_name]
+		&"RON_DECLARED":
+			var ds: int = int(ev.extra.get("discarder_seat", -1))
+			return "  🎯 %s 荣胡 %s (点炮: %s)" % [who, tile_name, _seat_short(ds)]
+		&"WIN_DECLARED":
+			var han: int = int(ev.extra.get("han", 0))
+			var fu: int = int(ev.extra.get("fu", 0))
+			var ym: int = int(ev.extra.get("yakuman_multiplier", 0))
+			if ym > 0:
+				return "    ⭐ 役満%s!" % ("" if ym == 1 else " x%d" % ym)
+			return "    %d 飜 %d 符" % [han, fu]
+		&"EXHAUSTIVE_DRAW":
+			return "  — 流局 —"
+		&"ABORTIVE_DRAW":
+			var reason: String = String(ev.extra.get("reason", ""))
+			return "  — 途中流局 (%s) —" % reason
+		&"NAGASHI_MANGAN":
+			return "  ✨ %s 流し満貫!" % who
+		&"HAITEI":
+			return "  🌊 海底捞月!"
+		&"HOUTEI":
+			return "  🌊 河底捞鱼!"
+		&"PLAYER_ACTION":
+			var kind: String = String(ev.extra.get("kind", ""))
+			match kind:
+				"chi": return "  %s 吃" % who
+				"pon": return "  %s 碰" % who
+				"minkan", "ankan", "added_kan": return "  %s 杠" % who
+				"riichi": return ""  # RIICHI_DECLARED 已显
+			return ""
+		&"SKILL_TRIGGERED":
+			var skill: String = String(ev.extra.get("skill_name", ""))
+			return "    ⚡ 技能 %s (%s)" % [skill, who]
+	return ""
+
+
 func _flash_screen(duration: float, color: Color) -> void:
 	var flash := ColorRect.new()
 	flash.color = color
