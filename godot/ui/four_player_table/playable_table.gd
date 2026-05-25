@@ -457,6 +457,7 @@ func _polling_loop() -> void:
 			for i in range(_last_event_count, n):
 				_handle_event_toast(_bc.events[i])
 				_play_event_sfx(_bc.events[i])
+				_handle_event_dramatic(_bc.events[i])
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
@@ -481,8 +482,44 @@ func _show_hand_start_splash(state) -> void:
 
 # 胡牌时 burst 粒子 + 屏幕震动。按 han / yakuman 分级 tier。
 # 玩家胡 tier 不变(都好看);AI 胡用 LIGHT 让玩家不觉得过度奖励对手。
+# 高光时刻的"重量感"效果 — 立直/Dora 翻牌等不到胡牌的中间事件,加屏震
+# + 白闪 + 短 hitstop,让玩家感到"刚才发生了大事"。WIN_DECLARED 的特写
+# 走专属的 _play_win_effects (粒子+大屏震)。
+#
+# 立直: LIGHT 屏震(0.15s 4px) + 白闪 0.2s,让玩家立刻感知到"对手立直了
+# 我得防"。即便走 toast 路径,1.5s 文字 + 屏震 双通道更难错过。
+# DORA 翻牌: 同立直,提示"新 dora 出现"。
+# RINSHAN_DRAW: 短闪,呼应"岭上的紧张感"。
+func _handle_event_dramatic(ev: BattleEvent) -> void:
+	if ev == null:
+		return
+	match ev.type:
+		&"RIICHI_DECLARED", &"DORA_INDICATOR_REVEALED", &"RINSHAN_DRAW":
+			var shake := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
+			shake.start()
+			_flash_screen(0.18, Color(1, 1, 1, 0.35))
+
+
+# 全屏白闪 — 短瞬覆盖全屏的半透明 ColorRect, tween alpha 1→0。
+# 不阻塞其他事件,挂 self 顶层 z_index 让胡牌粒子之类不被遮。
+func _flash_screen(duration: float, color: Color) -> void:
+	var flash := ColorRect.new()
+	flash.color = color
+	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash.z_index = 1000
+	add_child(flash)
+	var tw := create_tween()
+	tw.tween_property(flash, "color:a", 0.0, duration).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(flash.queue_free)
+
+
 func _play_win_effects(win_event: BattleEvent) -> void:
 	var tier := _win_tier(win_event)
+	# Hitstop:胡牌前 0.12s 全屏微暗 + 白闪,模拟"瞬间空气凝固"。tier 越高
+	# 闪越亮(役満到 0.65 alpha);玩家有"刚才那一下不简单"的体感。
+	var flash_alpha: float = 0.35 + 0.10 * tier  # LIGHT=0.35 / YAKUMAN=0.65
+	_flash_screen(0.5, Color(1, 1, 1, flash_alpha))
 	# 粒子 — 挂 self(PlayableTable),坐标取屏幕中心
 	var burst := WinBurst.new()
 	burst.position = Vector2(640, 400)

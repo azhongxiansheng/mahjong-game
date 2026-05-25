@@ -36,6 +36,12 @@ var _last_result: NodeResult = null
 var _seed_seed: int = 0
 var _pending_character_id: StringName = &""
 var _pending_difficulty: int = Difficulty.Level.NORMAL
+# 章节过场:_on_run_node_completed 检测 chapter 变化,弹出 ChapterIntroOverlay
+# 让玩家"为剧情想通关"。第一次进 run 时 _last_chapter=0 跳过 ch1 intro。
+var _last_chapter: int = 0
+# Daily 模式:StarterPackPicker toggle 后置 true,_on_pack_chosen 用
+# DailySeed.today_seed() 替代默认 Time.get_ticks_msec()。全服同 seed 可比成绩。
+var _daily_mode: bool = false
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(DT.VIEW_W, DT.VIEW_H)
@@ -106,6 +112,13 @@ func _on_character_chosen(char_id: StringName) -> void:
 	var pack_picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
 	_swap_panel(pack_picker)
 	pack_picker.pack_chosen.connect(_on_pack_chosen)
+	pack_picker.daily_mode_toggled.connect(_on_daily_mode_toggled)
+
+
+# Daily 模式 toggle 回调:仅记一个 flag,等 _on_pack_chosen 时按 flag 选 seed。
+# 玩家可随时再点取消(_daily_mode 跟着切回 false),pack_chosen 之前都生效。
+func _on_daily_mode_toggled(enabled: bool) -> void:
+	_daily_mode = enabled
 
 # M5 第 4 步：存档恢复入口
 func _show_continue_prompt() -> void:
@@ -181,7 +194,10 @@ func _on_revive_requested() -> void:
 # ---- callbacks ----
 
 func _on_pack_chosen(pack_id: StringName) -> void:
-	_run_state = RunState.new(_seed_seed)
+	# Daily 模式:用 DailySeed.today_seed() 让全服同 seed,玩家可比成绩。
+	# 非 daily 用 Time.get_ticks_msec() 当 seed 保持每次 run 随机。
+	var actual_seed: int = DailySeed.today_seed() if _daily_mode else _seed_seed
+	_run_state = RunState.new(actual_seed)
 	_run_state.difficulty = _pending_difficulty
 	_apply_character(_pending_character_id)
 	_run_state.hp += Difficulty.hp_modifier(_pending_difficulty)
@@ -199,8 +215,14 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	# Pro 日志:run lifecycle 摘要
 	var log_node = get_node_or_null("/root/Log")
 	if log_node:
-		log_node.info("run", "started pack=%s difficulty=%d seed=%d" % [
-			str(pack_id), int(_pending_difficulty), _seed_seed])
+		var mode_tag: String = "daily" if _daily_mode else "free"
+		log_node.info("run", "started pack=%s difficulty=%d seed=%d mode=%s" % [
+			str(pack_id), int(_pending_difficulty), actual_seed, mode_tag])
+	# Daily run 启动 toast 让玩家明确进入 daily(避免点了 toggle 又忘了)
+	if _daily_mode:
+		var toast = get_node_or_null("/root/SaveToast")
+		if toast and toast.has_method("show_message"):
+			toast.show_message("🗓️ 今日挑战 #%s 开始" % DailySeed.today_display())
 	_show_chapter_map()
 
 func _on_node_chosen(node_index: int) -> void:
@@ -225,11 +247,32 @@ func _on_run_node_completed(_opts: Array) -> void:
 		if toast and toast.has_method("show_message"):
 			toast.show_message("🔥 速战 %d 连胡 +%d gold" % [
 				_run_state.speed_streak, _run_state.last_speed_streak_bonus])
+	# 章节过场:检测到 chapter 推进(打过 Boss + 还有下章) → 弹剧情 overlay。
+	# _last_chapter=0 第一次跑时跳过 ch1 intro(那是 starter_pack/character
+	# picker 的职责)。awaits overlay closed 后继续下个 panel。
+	if _run_state.chapter > _last_chapter and _last_chapter > 0:
+		await _show_chapter_intro_for(_run_state.chapter)
+	_last_chapter = _run_state.chapter
 	# M5 第 3 步：战斗节点结算后给 1 抽（spec §9.2 节点单抽自动）。
 	if _last_node_ref and NodeKind.is_battle(_last_node_ref.kind):
 		_show_node_pack_open()
 	else:
 		_show_chapter_map()
+
+
+# 章节过场:按 new_chapter 选 ChapterIntroOverlay.Beat,弹 overlay 等关闭。
+# ch2 → Beat.ENTER_CHAPTER_2;ch3 → Beat.ENTER_CHAPTER_3;无对应章默认跳过。
+func _show_chapter_intro_for(new_chapter: int) -> void:
+	var beat: int = -1
+	match new_chapter:
+		2: beat = ChapterIntroOverlay.Beat.ENTER_CHAPTER_2
+		3: beat = ChapterIntroOverlay.Beat.ENTER_CHAPTER_3
+	if beat < 0:
+		return
+	var overlay := ChapterIntroOverlay.new()
+	overlay.set_beat(beat)
+	get_tree().root.add_child(overlay)
+	await overlay.closed
 
 func _on_run_failed() -> void:
 	_hud.bind_run_state(_run_state)
@@ -266,6 +309,12 @@ func _on_run_won() -> void:
 	if log_node:
 		log_node.info("run", "WON chapter=%d nodes=%d" % [
 			int(_run_state.chapter), _run_state.history.size()])
+	# 通关过场:RunSummary 之前播 WIN 剧情(3 句台词 ~8s),给玩家一段情绪
+	# 高峰再看战绩。失败不播过场(避免冲淡失败感)。
+	var overlay := ChapterIntroOverlay.new()
+	overlay.set_beat(ChapterIntroOverlay.Beat.WIN)
+	get_tree().root.add_child(overlay)
+	await overlay.closed
 	_show_summary()
 
 # ---- node execution ----
