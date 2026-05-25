@@ -151,6 +151,7 @@ func _step_discard() -> void:
 	if not ok:
 		_settled = true
 		return
+	state.kuikae_restricted[actor] = []
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
 	# M7：discard 后 hand=13 张，AI 可决定立直（HeuristicAi.decide_riichi 走
 	# RiichiValidator）。declare_riichi 成功 → state.scores[seat] -= 1000 让
@@ -326,12 +327,19 @@ func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> 
 # 决定 actor 切哪张牌；默认 = ai.decide_discard(seat)。
 # 日麻 §5 立直锁牌:已立直 + 有刚摸的牌 → 强制 tsumogiri,不再让 AI 决策
 # (AI 决策不知 riichi 状态,会非法换牌)。
-func _get_discard_decision(seat: Seat, _actor: int) -> Tile:
+func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 	if seat.riichi.declared and seat.last_drawn_tile_id >= 0:
 		var forced: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
 		if forced != null:
 			return forced
-	return ai.decide_discard(seat)
+	var pick: Tile = ai.decide_discard(seat)
+	if pick != null and not state.kuikae_restricted[actor].is_empty():
+		var restricted: Array = state.kuikae_restricted[actor]
+		if restricted.has(pick.id):
+			for t in seat.hand._tiles:
+				if not restricted.has(t.id):
+					return t
+	return pick
 
 # 决定 actor 是否立直；默认 = HeuristicAi.decide_riichi（如有），否则 false。
 func _get_riichi_decision(actor: int) -> bool:
@@ -543,6 +551,7 @@ func _step_discard_async() -> void:
 	if not ok:
 		_settled = true
 		return
+	state.kuikae_restricted[actor] = []
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
 	# 立直决策（discard 后 hand=13）
 	var should_riichi: bool = false
@@ -948,6 +957,8 @@ func _resolve_claims(discarded: Tile, discarder: int) -> void:
 	})
 	if best_kind == "pon":
 		engine.apply_pon(best_seat, discarded)
+		state.kuikae_restricted[best_seat] = ClaimValidator.kuikae_restricted_ids(
+			discarded.id, [], false)
 	elif best_kind == "minkan":
 		engine.apply_minkan(best_seat, discarded)
 	# Emit TILE_CLAIMED event for UI / replay

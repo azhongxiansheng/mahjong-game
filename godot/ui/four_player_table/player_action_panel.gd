@@ -41,8 +41,10 @@ var _btn_pon: Button = null        # WAITING_CLAIM 用 — "碰"
 var _btn_minkan: Button = null     # WAITING_CLAIM 用 — "杠"
 var _btn_skip: Button = null       # WAITING_CLAIM/WAITING_RIICHI_CONFIRM 用 — "跳过"
 var _btn_kyuusyu: Button = null    # WAITING_KYUUSYU 用 — "九種九牌"(途中流局)
+var _btn_ankan: Button = null      # WAITING_DISCARD 用 — "暗杠"
+var _btn_added_kan: Button = null  # WAITING_DISCARD 用 — "加杠"
 
-const PANEL_W: float = 540.0  # 容纳 8 个按钮(原 7 + 九種九牌)
+const PANEL_W: float = 672.0  # 容纳 10 个按钮
 const PANEL_H: float = 80.0   # 紧凑：status 8-28 + buttons 32-72
 
 func _ready() -> void:
@@ -82,7 +84,9 @@ func _build_ui() -> void:
 	_btn_pon = _make_btn("碰", 12 + 264, 32, Color(0.85, 0.25, 0.25))
 	_btn_minkan = _make_btn("杠", 12 + 330, 32, Color(0.85, 0.25, 0.25))
 	_btn_kyuusyu = _make_btn("九種", 12 + 396, 32, Color(0.65, 0.30, 0.85))
-	_btn_skip = _make_btn("跳过", 12 + 462, 32, Color(0.55, 0.55, 0.55))
+	_btn_ankan = _make_btn("暗杠", 12 + 462, 32, Color(0.85, 0.50, 0.15))
+	_btn_added_kan = _make_btn("加杠", 12 + 528, 32, Color(0.85, 0.50, 0.15))
+	_btn_skip = _make_btn("跳过", 12 + 594, 32, Color(0.55, 0.55, 0.55))
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -91,6 +95,8 @@ func _build_ui() -> void:
 	_btn_pon.pressed.connect(_on_btn_pon)
 	_btn_minkan.pressed.connect(_on_btn_minkan)
 	_btn_kyuusyu.pressed.connect(_on_btn_kyuusyu)
+	_btn_ankan.pressed.connect(_on_btn_ankan)
+	_btn_added_kan.pressed.connect(_on_btn_added_kan)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
 func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
@@ -130,7 +136,7 @@ func _refresh_bg() -> void:
 	if _bg == null:
 		return
 	var any_btn_visible := false
-	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_kyuusyu, _btn_skip]:
+	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_kyuusyu, _btn_ankan, _btn_added_kan, _btn_skip]:
 		if btn != null and btn.visible:
 			any_btn_visible = true
 			break
@@ -140,7 +146,7 @@ func _refresh_bg() -> void:
 
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
 # 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
-func enter_waiting_discard(can_tsumo: bool) -> void:
+func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false) -> void:
 	_state = State.WAITING_DISCARD
 	_label_status.text = "轮到你出牌（点手牌切）"
 	_hide_btn(_btn_riichi)
@@ -153,6 +159,14 @@ func enter_waiting_discard(can_tsumo: bool) -> void:
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_skip)
+	if can_ankan:
+		_show_btn(_btn_ankan)
+	else:
+		_hide_btn(_btn_ankan)
+	if can_added_kan:
+		_show_btn(_btn_added_kan)
+	else:
+		_hide_btn(_btn_added_kan)
 
 # 进入"立直确认"状态：玩家刚切完牌，BC 算出可立直，弹按钮。
 func enter_waiting_riichi_confirm() -> void:
@@ -229,6 +243,8 @@ func enter_idle(status_text: String = "等待 AI…") -> void:
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_kyuusyu)
+	_hide_btn(_btn_ankan)
+	_hide_btn(_btn_added_kan)
 	_hide_btn(_btn_skip)
 
 
@@ -310,6 +326,16 @@ func _on_btn_minkan() -> void:
 	if _state == State.WAITING_CLAIM:
 		_click_sfx()
 		player_action_chosen.emit({"action": "minkan", "discarder_seat": _claim_discarder_seat})
+
+func _on_btn_ankan() -> void:
+	if _state == State.WAITING_DISCARD:
+		_click_sfx()
+		player_action_chosen.emit({"action": "ankan"})
+
+func _on_btn_added_kan() -> void:
+	if _state == State.WAITING_DISCARD:
+		_click_sfx()
+		player_action_chosen.emit({"action": "added_kan"})
 
 func _on_btn_skip() -> void:
 	_click_sfx()

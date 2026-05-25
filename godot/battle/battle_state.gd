@@ -46,6 +46,7 @@ var haitei_forced_seat: int = -1
 # 在 ScoreCalc 之前把对应 seat 的额外 count 加到 yaku_list.dora_count 上）
 var extra_dora_count: Array[int] = [0, 0, 0, 0]
 var extra_red_dora_count: Array[int] = [0, 0, 0, 0]
+var kuikae_restricted: Array = [[], [], [], []]
 
 static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int, round_wind_arg: int = TileId.E) -> BattleState:
 	# round_wind_arg: M8 半庄战支持。默认东（兼容 M7）；半庄战南场由 GameDriver

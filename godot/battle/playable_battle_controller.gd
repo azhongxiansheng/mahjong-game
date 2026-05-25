@@ -68,6 +68,7 @@ func _step_discard_async() -> void:
 	if not ok:
 		_settled = true
 		return
+	state.kuikae_restricted[actor] = []
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
 	# 立直决策（discard 后 hand=13）
 	var should_riichi: bool = false
@@ -119,8 +120,16 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 		if picked_cached != null:
 			return picked_cached
 		# 缓存的 tile_id 不在手牌（异常）— 落到正常流程让玩家再选
-	# 正常流程：玩家点切（自摸已处理过或本次摸的牌不构成自摸）
-	_action_panel.enter_waiting_discard(false)
+	# Check player self-kan availability
+	var can_ankan: bool = not ClaimValidator.ankan_candidates(seat.hand).is_empty()
+	var can_added: bool = false
+	if not seat.riichi.declared:
+		for m in seat.melds:
+			if m.kind == Meld.Kind.PON:
+				if ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
+					can_added = true
+					break
+	_action_panel.enter_waiting_discard(false, can_ankan, can_added)
 	_seat_panel_player.set_hand_clickable(true)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
@@ -133,7 +142,31 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 			_seat_panel_player.set_hand_clickable(false)
 			_action_panel.enter_idle("AI 出牌中…")
 			return picked
-		# 其它 action 在此状态被忽略，继续等
+		elif action == "ankan":
+			var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
+			if not ankan_ids.is_empty():
+				if engine.apply_ankan(actor, ankan_ids[0]):
+					_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
+					_seat_panel_player.set_hand_clickable(false)
+					_action_panel.enter_idle("暗杠！")
+					return null
+			continue
+		elif action == "added_kan":
+			for m in seat.melds:
+				if m.kind == Meld.Kind.PON:
+					var tid: int = m.tiles[0].id
+					if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
+						if _try_chankan_ron(tid, actor):
+							_seat_panel_player.set_hand_clickable(false)
+							_action_panel.enter_idle("抢杠！")
+							return null
+						if engine.apply_added_kan(actor, tid):
+							_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": tid})
+							_seat_panel_player.set_hand_clickable(false)
+							_action_panel.enter_idle("加杠！")
+							return null
+						break
+			continue
 	return null  # unreachable
 
 # 九種九牌覆写:玩家(seat 0)摸完牌触发条件时,弹按钮等选择;其它 seat AI 不主动 abort。
@@ -212,6 +245,8 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 		match action:
 			"pon":
 				if engine.apply_pon(PLAYER_SEAT, discarded):
+					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
+						discarded.id, [], false)
 					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "pon", "tile_id": discarded.id})
 					_action_panel.enter_idle("碰！")
 				return
@@ -221,9 +256,10 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 					_action_panel.enter_idle("杠！")
 				return
 			"chi":
-				# v1 自动选第一个合法 companion 组合
 				var companions: Array = _pick_chi_companions(hand, discarded.id)
 				if companions.size() == 2 and engine.apply_chi(PLAYER_SEAT, discarded, companions):
+					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
+						discarded.id, companions, true)
 					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "chi", "tile_id": discarded.id})
 					_action_panel.enter_idle("吃！")
 				return
