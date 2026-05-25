@@ -55,6 +55,14 @@ var _score: int = 25000
 # seat_info 行做后缀(如 "赤木·东·激进")。
 var _persona_name: String = ""
 var _persona_style: String = ""
+# AI 立绘:set_ai_persona 时设;_emote_state 控制 modulate 调色情绪。
+# 1 张立绘 + 色调表达 4 种情绪,比录制台词便宜,比静态肖像有感染力。
+const EMOTE_NORMAL: Color = Color(1, 1, 1, 1)            # 默认白
+const EMOTE_RIICHI: Color = Color(0.6, 0.85, 1.0, 1.0)   # 蓝调:决意立直
+const EMOTE_WINNING: Color = Color(1.3, 1.15, 0.7, 1.0)  # 金调:胡牌喜悦(略过曝)
+const EMOTE_UPSET: Color = Color(0.5, 0.45, 0.45, 0.75)  # 灰调:被胡失落
+var _portrait_rect: TextureRect = null
+var _portrait_path: String = ""
 var _hand_size: int = 13
 var _meld_count: int = 0
 var _discards_count: int = 0
@@ -102,11 +110,53 @@ func set_seat_wind(wind_id: int) -> void:
 
 # AI 性格化入口。four_player_table 在 _build_layout 给 seat 1/2/3 各调一次,
 # 玩家 seat 0 可选(传角色名让玩家自己也"有名字")。
-func set_ai_persona(name_: String, style: String) -> void:
+# portrait_path 为空时跳过立绘渲染;不为空时挂一个小肖像在分数框上方。
+func set_ai_persona(name_: String, style: String, portrait_path: String = "") -> void:
 	_persona_name = name_
 	_persona_style = style
+	_portrait_path = portrait_path
 	if is_inside_tree():
 		_refresh_labels()
+		_ensure_portrait()
+
+
+# 切 AI 情绪 → 调 portrait modulate 色。RIICHI/WIN/被胡时由 playable_table 调用,
+# 局间 reset_emote 回 normal。无立绘时本方法 no-op,不会崩。
+func set_emote(emote: String) -> void:
+	if _portrait_rect == null or not is_instance_valid(_portrait_rect):
+		return
+	var target: Color = EMOTE_NORMAL
+	match emote:
+		"riichi": target = EMOTE_RIICHI
+		"winning": target = EMOTE_WINNING
+		"upset": target = EMOTE_UPSET
+		_: target = EMOTE_NORMAL
+	# 用 tween 0.3s 过渡比硬切更顺眼
+	var tw := create_tween()
+	tw.tween_property(_portrait_rect, "modulate", target, 0.3)
+
+
+# 立绘节点懒创建。固定尺寸 64x80,位置在分数框上方(seat panel center 上 70px)。
+# seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
+func _ensure_portrait() -> void:
+	if _portrait_path == "":
+		return
+	if _portrait_rect and is_instance_valid(_portrait_rect):
+		return
+	if not ResourceLoader.exists(_portrait_path):
+		return
+	var tex: Texture2D = load(_portrait_path) as Texture2D
+	if tex == null:
+		return
+	_portrait_rect = TextureRect.new()
+	_portrait_rect.texture = tex
+	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_portrait_rect.size = Vector2(64, 80)
+	# 居中,放在分数框正上方(Bg offset_top=-50,留 +10 px 让 portrait 不贴边)
+	_portrait_rect.position = Vector2(-32, -130)
+	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_portrait_rect)
 
 func set_score(s: int) -> void:
 	var prev := _score

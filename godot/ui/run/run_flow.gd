@@ -212,6 +212,9 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	var sm = get_node_or_null("/root/StatsManager")
 	if sm:
 		sm.record_run_started()
+		# 记 baseline snapshot 让 RunSummary 算"本 run 亮点"diff
+		if sm.has_method("snapshot"):
+			_run_state.stats_at_start = sm.snapshot()
 	# Pro 日志:run lifecycle 摘要
 	var log_node = get_node_or_null("/root/Log")
 	if log_node:

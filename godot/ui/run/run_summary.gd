@@ -79,7 +79,7 @@ func bind_run_state(rs: RunState) -> void:
 	_title.add_theme_constant_override("shadow_offset_x", 2)
 	_title.add_theme_constant_override("shadow_offset_y", 2)
 	_title.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	_summary_label.text = format_summary(rs)
+	_summary_label.text = format_summary(rs) + _format_highlights_line(rs)
 	# M5 第 3 步：尝试从 MetaProgress autoload 取真声望；若不存在 fallback 占位
 	var mp := get_tree().root.get_node_or_null("MetaProgress") if is_inside_tree() else null
 	if mp:
@@ -94,6 +94,37 @@ static func format_outcome_title(won: bool) -> String:
 	if won:
 		return "通关"
 	return "Run 失败"
+
+# "本 run 亮点":StatsManager.diff_from(rs.stats_at_start) 算这场 run 的增量,
+# 只显示非零项,让玩家看到"我这场 N 次胡牌 / M 次役満"。stats_at_start 为空
+# 说明 baseline 没记(旧档),跳过本段返 ""。失败 run 仍显示("虽然死了,但拿了
+# 1 次役満")让结算页有 ego boost。
+func _format_highlights_line(rs: RunState) -> String:
+	if rs == null or rs.stats_at_start.is_empty():
+		return ""
+	var sm = get_tree().root.get_node_or_null("StatsManager") if is_inside_tree() else null
+	if sm == null or not sm.has_method("diff_from"):
+		return ""
+	var d: Dictionary = sm.diff_from(rs.stats_at_start)
+	var parts: Array[String] = []
+	if int(d.get("hands_played", 0)) > 0:
+		parts.append("打了 %d 局" % int(d.hands_played))
+	if int(d.get("hands_won", 0)) > 0:
+		var tsumo: int = int(d.get("tsumo_count", 0))
+		var ron: int = int(d.get("ron_count", 0))
+		parts.append("胡 %d (自摸 %d / 荣和 %d)" % [int(d.hands_won), tsumo, ron])
+	if int(d.get("riichi_count", 0)) > 0:
+		parts.append("立直 %d" % int(d.riichi_count))
+	if int(d.get("yakuman_count", 0)) > 0:
+		parts.append("⭐ 役満 %d" % int(d.yakuman_count))
+	if int(d.get("ippatsu_count", 0)) > 0:
+		parts.append("一発 %d" % int(d.ippatsu_count))
+	if int(d.get("hands_lost_by_deal_in", 0)) > 0:
+		parts.append("放铳 %d" % int(d.hands_lost_by_deal_in))
+	if parts.is_empty():
+		return ""
+	return "\n\n— 本 run 亮点 —\n" + "  ·  ".join(parts)
+
 
 static func format_summary(rs: RunState) -> String:
 	var lines: Array[String] = []

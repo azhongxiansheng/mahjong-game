@@ -119,6 +119,34 @@ func record_riichi(is_double: bool = false) -> void:
 	_save_to_disk()
 
 
+# 返当前所有 count 字段的 snapshot dict。RunState 在 run 开始时记一份,
+# RunSummary 算 diff 显示"本 run 亮点":胡牌 / 立直 / 役満 等增量。
+# 字段保持稳定 key,新加字段时只需扩这里和 diff_from 的减法。
+func snapshot() -> Dictionary:
+	return {
+		"hands_played": hands_played,
+		"hands_won": hands_won,
+		"hands_lost_by_deal_in": hands_lost_by_deal_in,
+		"tsumo_count": tsumo_count,
+		"ron_count": ron_count,
+		"yakuman_count": yakuman_count,
+		"double_yakuman_count": double_yakuman_count,
+		"riichi_count": riichi_count,
+		"ippatsu_count": ippatsu_count,
+		"haitei_count": haitei_count,
+		"rinshan_count": rinshan_count,
+	}
+
+
+# snapshot 跟 baseline 的 diff(每个 key 的当前 - baseline)。RunSummary 用。
+func diff_from(baseline: Dictionary) -> Dictionary:
+	var cur := snapshot()
+	var d: Dictionary = {}
+	for k in cur.keys():
+		d[k] = int(cur[k]) - int(baseline.get(k, 0))
+	return d
+
+
 func record_run_started() -> void:
 	runs_started += 1
 	_save_to_disk()

@@ -43,6 +43,10 @@ var won: bool = false
 var speed_streak: int = 0
 # 上一次拿到的 streak bonus gold 金额,UI 显示 toast 用。-1 = 本次未触发。
 var last_speed_streak_bonus: int = 0
+# Run 开始时的 StatsManager.snapshot()。RunSummary 算 diff 显示"本 run 亮点":
+# 胡牌 N 次 / 立直 M 次 / 役満 V 次 等增量。空 dict = 旧档没记 baseline,
+# RunSummary 跳过亮点段(不破坏旧存档加载)。
+var stats_at_start: Dictionary = {}
 
 func _init(p_seed: int = 0) -> void:
 	run_seed = p_seed
@@ -223,6 +227,7 @@ func to_dict() -> Dictionary:
 		"finished": finished,
 		"won": won,
 		"speed_streak": speed_streak,
+		"stats_at_start": stats_at_start.duplicate(true),
 	}
 
 # Helper：避开 ternary "Values not mutually compatible" warning
@@ -291,4 +296,8 @@ static func from_dict(d: Dictionary) -> RunState:
 	rs.won = bool(d.get("won", false))
 	# v1 存档没 speed_streak,默认 0 (= 重启从零开始连击,不破坏既有存档)
 	rs.speed_streak = int(d.get("speed_streak", 0))
+	# v1 存档没 stats_at_start,空 dict = RunSummary 跳过亮点段(safe default)
+	var sas = d.get("stats_at_start", {})
+	if sas is Dictionary:
+		rs.stats_at_start = (sas as Dictionary).duplicate(true)
 	return rs

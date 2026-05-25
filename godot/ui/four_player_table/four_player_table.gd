@@ -79,16 +79,14 @@ func bind_cumulative_scores(scores: Array) -> void:
 
 # ---- helpers ----
 
-# AI 性格化映射:seat_id → (角色名, 打法风格)。
-# seat 1 (下家右)、seat 2 (对家上)、seat 3 (上家左) 各挂一个固定 persona。
-# v1 用 CharacterPool 里的 3 个 starter character (赤木/开司/鹫巢) 对应风格,
-# 让玩家从首局就熟悉这些 IP 角色,后续 character_picker 也用同样名字。
-# v2 可改成"每节点随机选 3 个 AI persona",让每场对局有新意。
+# AI 性格化映射:seat_id → (角色名, 打法风格, 立绘路径)。
+# seat 1/2/3 各挂固定 persona。立绘资产已就位(round 1 任务 12),情绪由
+# SeatPanel.set_emote 通过 modulate 调色表达(RIICHI=蓝、WIN=金、被胡=灰)。
 static func ai_persona_for_seat(seat_id: int) -> Array:
 	match seat_id:
-		1: return ["赤木", "激进"]   # 下家:增番打法,会主动鸣牌
-		2: return ["开司", "速胡"]   # 对家:逆境立直,听牌+1
-		3: return ["鹫巣", "防守"]   # 上家:鬼麻防御,透视手牌
+		1: return ["赤木", "激进", "res://assets/roguelike/characters/char_akagi.png"]
+		2: return ["开司", "速胡", "res://assets/roguelike/characters/char_kaiji.png"]
+		3: return ["鹫巣", "防守", "res://assets/roguelike/characters/char_washizu.png"]
 	return []  # seat 0 玩家自家不挂 AI persona
 
 
@@ -146,8 +144,9 @@ func _build_layout() -> void:
 		table.add_child(sp)
 		seat_panels.append(sp)
 		var persona: Array = ai_persona_for_seat(i)
-		if persona.size() == 2:
-			sp.set_ai_persona(persona[0], persona[1])
+		if persona.size() >= 2:
+			var pp: String = String(persona[2]) if persona.size() >= 3 else ""
+			sp.set_ai_persona(persona[0], persona[1], pp)
 
 	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
 	for i in range(4):

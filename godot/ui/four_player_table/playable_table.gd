@@ -494,10 +494,43 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 	if ev == null:
 		return
 	match ev.type:
-		&"RIICHI_DECLARED", &"DORA_INDICATOR_REVEALED", &"RINSHAN_DRAW":
+		&"RIICHI_DECLARED":
 			var shake := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
 			shake.start()
 			_flash_screen(0.18, Color(1, 1, 1, 0.35))
+			# AI 立直 → 该 seat 立绘转蓝调"决意"。actor_seat 越界 / seat 0 无立绘
+			# 时 set_emote 是 no-op,不会崩。
+			_set_seat_emote(int(ev.actor_seat), "riichi")
+		&"HAITEI", &"HOUTEI":
+			# 海底/河底:罕见,玩家可能整个 run 见 1-2 次。补 LIGHT 屏震 +
+			# 蓝白闪让它"被注意到"——单纯 toast 容易错过。WIN_DECLARED 紧
+			# 跟其后会再播胡牌特效,不冲突。
+			var shake2 := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
+			shake2.start()
+			_flash_screen(0.22, Color(0.7, 0.85, 1.0, 0.45))
+		&"ABORTIVE_DRAW":
+			# 途中流局(四风连打/四家立直/九種九牌/三家和了等):红闪让玩家
+			# 注意"这局白打了"。WinBurst 不触发(不是胡牌)。
+			_flash_screen(0.3, Color(1.0, 0.7, 0.7, 0.3))
+		&"TSUMO_DECLARED", &"RON_DECLARED":
+			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
+			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
+			_set_seat_emote(int(ev.actor_seat), "winning")
+			for s in [0, 1, 2, 3]:
+				if s != int(ev.actor_seat):
+					_set_seat_emote(s, "upset")
+		&"GAME_BEGIN":
+			# 新局开始 → 4 家 emote 重置 normal
+			for s in [0, 1, 2, 3]:
+				_set_seat_emote(s, "normal")
+
+
+func _set_seat_emote(seat_id: int, emote: String) -> void:
+	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
+		return
+	var sp: SeatPanel = _table.seat_panels[seat_id]
+	if sp and sp.has_method("set_emote"):
+		sp.set_emote(emote)
 
 
 # 全屏白闪 — 短瞬覆盖全屏的半透明 ColorRect, tween alpha 1→0。
