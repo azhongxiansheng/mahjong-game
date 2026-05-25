@@ -254,7 +254,7 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var player_consumable_ids: Array = _player_consumable_ids()
 	var player_relic_ids: Array = _player_relic_ids()
 	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids)
-	var session_kind: String = "east_round"
+	var session_kind: String = node_ref.session_kind
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
 		player_tile_variants, session_kind, 0, player_consumable_ids, player_relic_ids
