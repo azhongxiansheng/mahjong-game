@@ -79,6 +79,19 @@ func bind_cumulative_scores(scores: Array) -> void:
 
 # ---- helpers ----
 
+# AI 性格化映射:seat_id → (角色名, 打法风格)。
+# seat 1 (下家右)、seat 2 (对家上)、seat 3 (上家左) 各挂一个固定 persona。
+# v1 用 CharacterPool 里的 3 个 starter character (赤木/开司/鹫巢) 对应风格,
+# 让玩家从首局就熟悉这些 IP 角色,后续 character_picker 也用同样名字。
+# v2 可改成"每节点随机选 3 个 AI persona",让每场对局有新意。
+static func ai_persona_for_seat(seat_id: int) -> Array:
+	match seat_id:
+		1: return ["赤木", "激进"]   # 下家:增番打法,会主动鸣牌
+		2: return ["开司", "速胡"]   # 对家:逆境立直,听牌+1
+		3: return ["鹫巣", "防守"]   # 上家:鬼麻防御,透视手牌
+	return []  # seat 0 玩家自家不挂 AI persona
+
+
 # 静态：seat_id → 桌面坐标（相对 Table 区域）。
 # 0=下、1=右、2=上、3=左；中央为 (TABLE_WIDTH/2, TABLE_HEIGHT/2)。
 # seat 0 margin 比 AI 大 50px,因为玩家自家手牌(60 高)要画在分数框下方,
@@ -123,13 +136,18 @@ func _build_layout() -> void:
 	table.position = Vector2(0, 0)
 	add_child(table)
 
-	# 4 个 SeatPanel
+	# 4 个 SeatPanel — seat 0 玩家自家,seat 1/2/3 三家 AI 性格化。
+	# 每家 AI 固定挂一个角色 (赤木下家/开司对家/鹫巢上家),不同打法风格,
+	# 显示在 SeatInfo 行替代抽象的 "AI 1/2/3"。
 	for i in range(4):
 		var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 		sp.position = seat_position(i)
 		sp.set_seat_id(i)  # 自动旋转
 		table.add_child(sp)
 		seat_panels.append(sp)
+		var persona: Array = ai_persona_for_seat(i)
+		if persona.size() == 2:
+			sp.set_ai_persona(persona[0], persona[1])
 
 	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
 	for i in range(4):

@@ -6,6 +6,14 @@ class_name RunSummary extends Control
 # "声望 +N" 占位（M5 实装真元进度）+ "返回主菜单"按钮。
 
 signal back_to_menu
+# 失败时玩家点"花 X gold 复活"emit;RunFlow 接住后把 hp 恢复 1 + 扣 gold +
+# 把当前 run 状态回放到失败节点重玩。仅 rs.won=false 且 gold>=cost 时按钮显示。
+signal revive_requested
+
+# 复活费用 — gold 数。设为略低于通关单局奖励 (60 hanchan / 30 east_round),
+# 让玩家失败后"咬咬牙就能再来"。每场 run 复活次数无限,但每次都要 gold,
+# 防止无脑利用 (没 gold 就只能放弃)。M7 平衡时按数据调。
+const REVIVE_GOLD_COST: int = 50
 
 @onready var _title: Label = $VBox/Title
 @onready var _summary_label: Label = $VBox/Summary
@@ -16,12 +24,11 @@ func _ready() -> void:
 	RunUi.attach_background(self)
 	if _back_btn:
 		_back_btn.pressed.connect(func(): emit_signal("back_to_menu"))
-	# 加 "查看战绩" 按钮唤起 StatsView(终身统计 + 成就网格)。
-	# 放 _back_btn 旁(主菜单的下方),让玩家通关失败后立刻看到本局进度。
+	# "查看战绩" + "复活" 共用 _back_btn 父容器,横向并列在结算页底部。
 	if _back_btn != null and _back_btn.get_parent() != null:
 		var stats_btn := Button.new()
 		stats_btn.text = "查看战绩"
-		stats_btn.custom_minimum_size = Vector2(160, 40)
+		stats_btn.custom_minimum_size = Vector2(160, DT.BUTTON_H)
 		stats_btn.pressed.connect(_on_stats_pressed)
 		_back_btn.get_parent().add_child(stats_btn)
 
@@ -30,6 +37,31 @@ func _on_stats_pressed() -> void:
 	var view := StatsView.new()
 	view.name = "_stats_view_root"
 	get_tree().root.add_child(view)
+
+
+# 失败态根据 gold 添加 / 不添加 "花 X gold 复活" 按钮。bind_run_state 调用。
+# gold 不够则按钮 disabled + 文字提示;够则可点 → emit revive_requested。
+func _maybe_add_revive_button(rs: RunState) -> void:
+	if rs == null or rs.won:
+		return
+	if _back_btn == null or _back_btn.get_parent() == null:
+		return
+	var revive_btn := Button.new()
+	revive_btn.name = "ReviveBtn"
+	revive_btn.custom_minimum_size = Vector2(220, DT.BUTTON_H)
+	var afford: bool = rs.gold >= REVIVE_GOLD_COST
+	if afford:
+		revive_btn.text = "💰 花 %d gold 复活" % REVIVE_GOLD_COST
+		revive_btn.add_theme_color_override("font_color", DT.TEXT_TITLE)
+		revive_btn.pressed.connect(func(): emit_signal("revive_requested"))
+	else:
+		revive_btn.text = "复活需要 %d gold (你有 %d)" % [REVIVE_GOLD_COST, rs.gold]
+		revive_btn.disabled = true
+		revive_btn.add_theme_color_override("font_color", DT.TEXT_MUTED)
+	# 放在第一位 (主推这个 CTA),让"再来一把"成为失败页面的视觉重点
+	var parent := _back_btn.get_parent()
+	parent.add_child(revive_btn)
+	parent.move_child(revive_btn, 0)
 
 # ---- public setters ----
 
@@ -54,6 +86,7 @@ func bind_run_state(rs: RunState) -> void:
 		_renown_label.text = format_renown_with_meta(rs.won, int(mp.renown), int(mp.runs_completed), int(mp.runs_won))
 	else:
 		_renown_label.text = format_renown_placeholder(rs.won)
+	_maybe_add_revive_button(rs)
 
 # ---- helpers (static) ----
 

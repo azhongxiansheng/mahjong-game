@@ -49,6 +49,12 @@ var _hand_clickable: bool = false
 var _seat_id: int = 0
 var _seat_wind: int = TileId.E
 var _score: int = 25000
+# AI 性格化:替代默认"AI 1/2/3"用具体人物名+打法风格,让玩家从一眼看出
+# 对面 3 家不是一团抽象的 AI,而是"赤木·激进 / 开司·速胡 / 鹫巢·防守"。
+# seat_display_name 优先用 _persona_name (非空时);_persona_style 显示在
+# seat_info 行做后缀(如 "赤木·东·激进")。
+var _persona_name: String = ""
+var _persona_style: String = ""
 var _hand_size: int = 13
 var _meld_count: int = 0
 var _discards_count: int = 0
@@ -90,6 +96,15 @@ func set_seat_id(id: int) -> void:
 
 func set_seat_wind(wind_id: int) -> void:
 	_seat_wind = wind_id
+	if is_inside_tree():
+		_refresh_labels()
+
+
+# AI 性格化入口。four_player_table 在 _build_layout 给 seat 1/2/3 各调一次,
+# 玩家 seat 0 可选(传角色名让玩家自己也"有名字")。
+func set_ai_persona(name_: String, style: String) -> void:
+	_persona_name = name_
+	_persona_style = style
 	if is_inside_tree():
 		_refresh_labels()
 
@@ -357,7 +372,10 @@ func _refresh_labels() -> void:
 		status += " · 庄"
 	if _riichi:
 		status += " · 立直"
-	_label_seat_info.text = "%s · %s%s" % [seat_display_name(_seat_id), wind_name(_seat_wind), status]
+	# 优先用 persona_name (set_ai_persona 注入),fallback 到 "你"/"AI N"
+	var who: String = _persona_name if _persona_name != "" else seat_display_name(_seat_id)
+	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
+	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	_label_score.text = "%d" % _score
 	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label

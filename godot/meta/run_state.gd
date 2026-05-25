@@ -36,6 +36,13 @@ var selected_character_id: StringName = &""
 var difficulty: int = Difficulty.Level.NORMAL
 var finished: bool = false
 var won: bool = false
+# 速战连击:speed 节点连续 rank=1 的次数。≥2 时第 2+ 次给 200% gold 奖励,
+# 补偿 speed mode 砍掉的"完整东风战故事感"。在速战短局里追求连击 → 类似
+# Slay the Spire combo / Hades 节奏奖励,玩家有"压力下持续高手感"的爽点。
+# 任何 rank>1 或非 speed 节点都清零(打破连击)。
+var speed_streak: int = 0
+# 上一次拿到的 streak bonus gold 金额,UI 显示 toast 用。-1 = 本次未触发。
+var last_speed_streak_bonus: int = 0
 
 func _init(p_seed: int = 0) -> void:
 	run_seed = p_seed
@@ -128,6 +135,18 @@ func complete_node(result: NodeResult) -> void:
 		return
 	hp = clampi(hp + result.hp_delta, 0, max_hp)
 	gold += result.gold_reward
+	# 速战连击:speed 节点 rank=1 累计 streak,第 2 连胡起每次额外 +200% gold。
+	# 公式: bonus = gold_reward * 2 when streak >= 2 (streak=1 没奖励,2 给 +200%
+	# 即总 3x,3 给 4x,...)。任何 rank>1 或非 speed 节点都清零。
+	last_speed_streak_bonus = 0
+	if result.session_kind == "speed" and result.rank == 1:
+		speed_streak += 1
+		if speed_streak >= 2:
+			var bonus: int = result.gold_reward * 2
+			gold += bonus
+			last_speed_streak_bonus = bonus
+	else:
+		speed_streak = 0
 	var current_ref: NodeRef = current_node_ref()
 	if current_ref:
 		history.append(current_ref)
@@ -203,6 +222,7 @@ func to_dict() -> Dictionary:
 		"difficulty": difficulty,
 		"finished": finished,
 		"won": won,
+		"speed_streak": speed_streak,
 	}
 
 # Helper：避开 ternary "Values not mutually compatible" warning
@@ -269,4 +289,6 @@ static func from_dict(d: Dictionary) -> RunState:
 	rs.difficulty = int(d.get("difficulty", Difficulty.Level.NORMAL))
 	rs.finished = bool(d.get("finished", false))
 	rs.won = bool(d.get("won", false))
+	# v1 存档没 speed_streak,默认 0 (= 重启从零开始连击,不破坏既有存档)
+	rs.speed_streak = int(d.get("speed_streak", 0))
 	return rs

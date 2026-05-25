@@ -154,6 +154,29 @@ func _show_summary() -> void:
 	_swap_panel(summary)
 	summary.bind_run_state(_run_state)
 	summary.back_to_menu.connect(_reset)
+	summary.revive_requested.connect(_on_revive_requested)
+
+
+# 玩家在 RunSummary 失败页点"花 X gold 复活": 扣 gold + hp 恢复 1 + 把
+# run_state 回滚到失败前 (未 finalize), 回到当前章节地图继续选节点。
+# RunSummary 已经校验过 gold >= REVIVE_GOLD_COST, 这里再 defense check 一遍。
+func _on_revive_requested() -> void:
+	if _run_state == null:
+		return
+	if _run_state.gold < RunSummary.REVIVE_GOLD_COST:
+		return  # 防御:UI 不该让我们到这一步
+	_run_state.gold -= RunSummary.REVIVE_GOLD_COST
+	_run_state.hp = 1  # 复活给 1 HP (起死回生,不是满血,保留紧迫感)
+	_run_state.finished = false
+	_run_state.won = false
+	_hud.bind_run_state(_run_state)
+	_save_run_state()
+	# 终身统计:复活算"防止 run_failed"事件,加个 hook 让 StatsManager 计数
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm and sm.has_method("on_revive_used"):
+		sm.on_revive_used()
+	# 回到章节地图选下一节点 (失败的节点不重打,直接进下一选项)
+	_show_chapter_map()
 
 # ---- callbacks ----
 
@@ -195,6 +218,13 @@ func _on_run_node_completed(_opts: Array) -> void:
 	_hud.bind_run_state(_run_state)
 	# M5 第 4 步：节点完成后立即自动存档
 	_save_run_state()
+	# 速战连击 toast: streak >= 2 时玩家拿到额外 gold,用 SaveToast 通道弹提示
+	# 让玩家感知"我在连胡,gold 多了"。toast 在 chapter_map 切换前显示。
+	if _run_state.last_speed_streak_bonus > 0:
+		var toast = get_node_or_null("/root/SaveToast")
+		if toast and toast.has_method("show_message"):
+			toast.show_message("🔥 速战 %d 连胡 +%d gold" % [
+				_run_state.speed_streak, _run_state.last_speed_streak_bonus])
 	# M5 第 3 步：战斗节点结算后给 1 抽（spec §9.2 节点单抽自动）。
 	if _last_node_ref and NodeKind.is_battle(_last_node_ref.kind):
 		_show_node_pack_open()
@@ -253,16 +283,69 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var player_tile_variants: Dictionary = _player_tile_variants()
 	var player_consumable_ids: Array = _player_consumable_ids()
 	var player_relic_ids: Array = _player_relic_ids()
-	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids)
+	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids, node_ref)
+	# session_kind 从 node_ref 读 (同事 commit 813814e 修复的 silent bug):
+	# 之前硬编码 east_round 让 GAP-4 speed mode 在 ChapterConfig/Generator/
+	# BalanceConstants 全改完后仍无生效,玩家实际仍跑 4 局/节点。
 	var session_kind: String = node_ref.session_kind
+	# AI 难度按 chapter / difficulty / 节点类型决定:
+	#  - 章 1 第一个 NORMAL 节点 + 难度 NORMAL → SimpleAi (新手第 1 局保护)
+	#  - 其余 → HeuristicAi (有挑战感,之前硬编 SimpleAi 让所有玩家都太弱)
+	# 之前 run_with_player_input_async 内部硬编 use_heuristic_ai=false,老手
+	# 体验不到挑战。现在由 RunFlow 决策:让新手温暖入门,老手有压力。
+	var use_heuristic: bool = _should_use_heuristic_ai(node_ref)
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
-		player_tile_variants, session_kind, 0, player_consumable_ids, player_relic_ids
+		player_tile_variants, session_kind, 0, player_consumable_ids,
+		player_relic_ids, use_heuristic
 	)
 	if not is_instance_valid(table) or not table.is_inside_tree():
 		return
 	_last_result = result
 	_run_state.complete_node(result)
+
+# 节点 → AI 难度决策。新手保护规则:
+#  - Difficulty.NORMAL + chapter 1 + 玩家访问节点数 <= 1 + NodeKind.NORMAL
+#    → 用 SimpleAi (随机弃牌,几乎不胡)
+#  - 其余情况 → HeuristicAi
+# Boss / Elite / 章 2+ / 难度 HARD+ / 第 2+ 节点都吃 HeuristicAi。让"第 1 局"
+# 是温暖的体验:玩家先熟悉规则 + UI + 自己的 deck,再面对真正会胡的对手。
+# 战斗 prep 预告字串。读节点 session_kind + 难度策略,告诉玩家"几局 / AI 多硬"。
+# 例: "速战 · 2 局 · 普通 AI (新手保护)" / "东风战 · 4 局 · 强 AI" / "半庄战 · 8 局 · 强 AI"
+func _format_battle_preview(node_ref: NodeRef) -> String:
+	var sk: String = node_ref.session_kind
+	var hands: int = BalanceConstants.get_hands_per_node(sk)
+	var session_name: String = ""
+	match sk:
+		"speed": session_name = "速战"
+		"east_round": session_name = "东风战"
+		"hanchan": session_name = "半庄战"
+		_: session_name = sk
+	var ai_label: String = "强 AI" if _should_use_heuristic_ai(node_ref) else "普通 AI（新手保护）"
+	# 时长粗估:speed/east_round 一局 ~2 分钟,hanchan 一局 ~3 分钟
+	var per_hand_min: int = 3 if sk == "hanchan" else 2
+	var est_min: int = hands * per_hand_min
+	return "%s · %d 局 · 约 %d 分钟 · %s" % [session_name, hands, est_min, ai_label]
+
+
+func _should_use_heuristic_ai(node_ref: NodeRef) -> bool:
+	if _run_state == null:
+		return true
+	# 难度高:全程 HeuristicAi
+	if _run_state.difficulty > Difficulty.Level.NORMAL:
+		return true
+	# 章 2+: 全程 HeuristicAi
+	if _run_state.chapter > 1:
+		return true
+	# Boss / Elite 节点:始终 HeuristicAi (这是"考核",不能放水)
+	if node_ref.kind == NodeKind.Kind.BOSS or node_ref.kind == NodeKind.Kind.ELITE:
+		return true
+	# 已访问节点 >= 2:玩家熟悉了,上 HeuristicAi
+	if _run_state.history.size() >= 2:
+		return true
+	# 剩下的:章 1 + Normal 难度 + 普通节点 + 前 2 个 → SimpleAi 保护
+	return false
+
 
 func _player_ability_ids() -> Array:
 	var ids: Array = []
@@ -423,7 +506,7 @@ static func _loading_text_for_battle(node_ref: NodeRef) -> String:
 	var label := node_ref.display_name() if node_ref else "战斗"
 	return "%s 进行中…\n（v1 v1 同步跑完整场东风战，无 4 人桌动画；M5/M6 视觉化）" % label
 
-func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array) -> void:
+func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array, node_ref: NodeRef = null) -> void:
 	var overlay := Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -446,6 +529,15 @@ func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, 
 	title.text = "战斗准备" if boss_id == &"" else "BOSS 战"
 	DT.apply_title_style(title)
 	panel.add_child(title)
+	# 预告:本节点局数 + AI 难度,让玩家心理预期清晰("速战 2 局 vs Heuristic AI"
+	# 比"开始战斗"更让人知道自己面对什么)。boss_id 不空时已有 "BOSS 战"标题
+	# 传递主题色,不再重复 AI 信息。
+	if node_ref != null:
+		var preview := Label.new()
+		preview.text = _format_battle_preview(node_ref)
+		DT.apply_body_style(preview)
+		preview.add_theme_color_override("font_color", DT.TEXT_MUTED)
+		panel.add_child(preview)
 	panel.add_child(HSeparator.new())
 	if not ability_ids.is_empty():
 		var ab_label := Label.new()
