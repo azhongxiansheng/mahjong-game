@@ -62,8 +62,12 @@ func run_to_end() -> Dictionary:
 		elif state.phase == BattlePhase.Kind.DISCARD:
 			_step_discard()
 		elif state.phase == BattlePhase.Kind.CLAIM:
-			# 鸣牌窗口（里程碑 2 不实现），直接 advance
-			engine.advance_to_next_seat()
+			var last_discard: Tile = _get_last_discarded()
+			var last_discarder: int = _get_last_discarder()
+			if last_discard != null and last_discarder >= 0:
+				_resolve_claims(last_discard, last_discarder)
+			else:
+				engine.advance_to_next_seat()
 		elif state.phase == BattlePhase.Kind.SETTLE:
 			# 已被 _step_xxx 内部处理；保险起见强制退出
 			break
@@ -80,7 +84,7 @@ func _step_draw() -> void:
 	if t == null:
 		# 牌墙耗尽 — 流局
 		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
-		# 流し満貫(nagashi mangan)检测:命中则额外 emit NAGASHI_MANGAN 让 UI 反馈
+		# 流し満貫(nagashi mangan)检測:命中则额外 emit NAGASHI_MANGAN 让 UI 反馈
 		var nm_winner: int = NagashiMangan.detect_winner_seat(state)
 		if nm_winner >= 0:
 			_emit(&"NAGASHI_MANGAN", nm_winner, null,
@@ -103,6 +107,9 @@ func _step_draw() -> void:
 	var win := _check_tsumo(t, is_haitei, false, is_tenhou, is_chiihou)
 	if win.is_winning and _should_accept_tsumo(state.current_seat, t, win):
 		_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
+	# Task 3: AI self-kan (ankan / added_kan) after draw, only if not settled
+	if not _settled:
+		_try_ai_self_kan()
 
 func _step_discard() -> void:
 	var seat: Seat = state.seats[state.current_seat]
@@ -234,7 +241,7 @@ func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false
 
 # 检查 winner_seat 用 ron_tile 荣胡是否合法。
 # winner.hand 是 13 张听牌期手（不含 ron_tile）；ron_tile 由对家弃牌补上。
-func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false) -> Dictionary:
+func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> Dictionary:
 	var winner: Seat = state.seats[winner_seat]
 	var typed_melds: Array[Meld] = []
 	for m in winner.melds:
@@ -243,6 +250,7 @@ func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false) -> Di
 	if not wp.is_winning:
 		return {"is_winning": false}
 	var game_ctx := _build_game_ctx(winner, false, false, is_houtei)
+	game_ctx.is_chankan = is_chankan
 	var yaku_wc := WinContext.new(winner.hand, typed_melds, ron_tile, wp, game_ctx)
 	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
 	var has_yaku: bool = yaku_list.is_yakuman() or yaku_list.size() > 0
@@ -426,7 +434,12 @@ func run_to_end_async() -> Dictionary:
 		elif state.phase == BattlePhase.Kind.DISCARD:
 			await _step_discard_async()
 		elif state.phase == BattlePhase.Kind.CLAIM:
-			engine.advance_to_next_seat()
+			var last_discard: Tile = _get_last_discarded()
+			var last_discarder: int = _get_last_discarder()
+			if last_discard != null and last_discarder >= 0:
+				_resolve_claims(last_discard, last_discarder)
+			else:
+				engine.advance_to_next_seat()
 		elif state.phase == BattlePhase.Kind.SETTLE:
 			break
 		# 日麻 §3.2 途中流局自动判定(四风连打 / 四家立直 / 四杠散了 / 三家和了)。
@@ -494,6 +507,9 @@ func _step_draw_async() -> void:
 		var accept: bool = await _should_accept_tsumo(state.current_seat, t, win)
 		if accept:
 			_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
+	# Task 3: AI self-kan (ankan / added_kan) after draw, only if not settled
+	if not _settled:
+		_try_ai_self_kan()
 
 func _step_discard_async() -> void:
 	var seat: Seat = state.seats[state.current_seat]
@@ -574,7 +590,7 @@ func _try_ron_async(discarded: Tile, discarder: int) -> void:
 # 公共入口：荣胡（外部 driver 调用，不走 run_to_end 主循环）。
 # discarder_seat: 弃牌人座（决定 ron_tile 的 owner_seat 与 score_ctx.loser_seat）。
 # 返 false 表示和牌不成立（无役 / 听牌不命中 / 技能取消）。
-func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false) -> bool:
+func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> bool:
 	var ron_ti := TileInstance.make(ron_tile, discarder_seat, null)
 	# M7：reset 上一次 emit 留下的 cancel 标记，避免同 hand 多次 ron 尝试时
 	# 旧值粘连（例：先 seat 1 的 ron 被 cancel；再 seat 2 试 ron 时 ron_cancelled[2]
@@ -591,7 +607,7 @@ func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei:
 	_emit(&"RON_DECLARED", winner_seat, ron_ti, {"discarder_seat": discarder_seat})
 	if state.ron_cancelled[winner_seat]:
 		return false
-	var win := _check_ron(ron_tile, winner_seat, is_houtei)
+	var win := _check_ron(ron_tile, winner_seat, is_houtei, is_chankan)
 	if not win.is_winning:
 		return false
 	_settle_ron(ron_tile, ron_ti, winner_seat, discarder_seat, win.wp, win.yaku_list, is_houtei)
@@ -644,14 +660,7 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	if _has_yakuman_force(winner_seat, pre_ctxs):
 		_apply_yakuman_force(score_yaku_list)
 
-	var ron_game_ctx := _build_game_ctx(winner, false, false, is_houtei)
-	var yaku_per_decomp := _build_yaku_per_decomp(
-		wp, winner, ron_tile, melds_arr, win_hand_ron, ron_game_ctx,
-		_sum_skill_han(winner_seat, pre_ctxs), winner_seat,
-		_composite_multiplier(winner_seat, pre_ctxs),
-		_has_mangan_floor(winner_seat, pre_ctxs),
-		_has_yakuman_force(winner_seat, pre_ctxs))
-	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx, yaku_per_decomp)
+	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
 	# M7：把 discarder_seat / points_won 注入 WIN_DECLARED.extra，让 post-score
 	# hooks（soul_drain_hatsu / east_mirror_chambo 等用 transfer_points）能读到
@@ -714,14 +723,7 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	if _has_yakuman_force(state.current_seat, pre_ctxs):
 		_apply_yakuman_force(score_yaku_list)
 
-	var tsumo_game_ctx := _build_game_ctx(seat, true, is_haitei)
-	var yaku_per_decomp_tsumo := _build_yaku_per_decomp(
-		wp, seat, drawn, melds_arr, seat.hand, tsumo_game_ctx,
-		_sum_skill_han(state.current_seat, pre_ctxs), state.current_seat,
-		_composite_multiplier(state.current_seat, pre_ctxs),
-		_has_mangan_floor(state.current_seat, pre_ctxs),
-		_has_yakuman_force(state.current_seat, pre_ctxs))
-	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx, yaku_per_decomp_tsumo)
+	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
 	# M7：tsumo 无 discarder_seat（自摸无放铳人），仅设 points_won
 	result["points_won"] = int(result.get("winner_total", 0))
@@ -866,32 +868,134 @@ static func _yaku_id_to_string_name(yaku_id: int) -> StringName:
 		YakuId.CHIITOITSU: return &"chiitoitsu"
 	return StringName(str(yaku_id))
 
-# Per-decomposition yaku callback: 对每个分解独立评役 + 应用技能效果。
-func _build_yaku_per_decomp(wp: Dictionary, seat_ref: Seat, winning_tile: Tile,
-		melds_arr: Array, win_hand: Hand, p_game_ctx: GameContext,
-		skill_han: int, winner_seat_idx: int, multiplier: float,
-		mangan_floor: bool, yakuman_force: bool) -> Callable:
-	var bc_ref := self
-	var game_ctx: GameContext = p_game_ctx
-	var typed_melds: Array[Meld] = []
-	for m in melds_arr:
-		typed_melds.append(m)
-	var riichi_declared: bool = seat_ref.riichi.declared
+# ---- Task 3: Self-kan after draw ----
+#
+# After AI draws and tsumo is not accepted, check if ankan/added_kan is possible.
+# Calls ai.decide_self_kan(seat) if available. For added_kan, first checks chankan
+# (Task 5) before applying.
 
-	return func(i: int) -> YakuList:
-		var single_wp: Dictionary = wp.duplicate()
-		single_wp.standard_decompositions = [wp.standard_decompositions[i]]
-		var wc := WinContext.new(seat_ref.hand, typed_melds, winning_tile, single_wp, game_ctx)
-		var entries: YakuEntries = YakuEvaluator.evaluate(wc)
-		var yl: YakuList = bc_ref._adapt_yaku_list(entries, win_hand, melds_arr, riichi_declared)
-		BattleController._apply_skill_han_delta(yl, skill_han)
-		bc_ref._apply_extra_dora(yl, winner_seat_idx)
-		BattleController._apply_han_multiplier(yl, multiplier)
-		if mangan_floor:
-			BattleController._apply_mangan_floor(yl)
-		if yakuman_force:
-			BattleController._apply_yakuman_force(yl)
-		return yl
+func _try_ai_self_kan() -> void:
+	if not ai.has_method("decide_self_kan"):
+		return
+	var actor: int = state.current_seat
+	var seat: Seat = state.seats[actor]
+	var decision: Dictionary = ai.decide_self_kan(seat)
+	if decision.is_empty():
+		return
+	var kind: String = String(decision.get("kind", ""))
+	var tid: int = int(decision.get("tile_id", -1))
+	if kind == "ankan":
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": tid})
+		engine.apply_ankan(actor, tid)
+	elif kind == "added_kan":
+		# Task 5: chankan check before applying added_kan
+		if _try_chankan_ron(tid, actor):
+			return  # someone ronned the kan tile
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": tid})
+		engine.apply_added_kan(actor, tid)
+
+# ---- Task 4: Claim resolution ----
+#
+# After discard, check if any AI seat wants to pon/minkan the discarded tile.
+# Priority: pon/minkan (priority 2) > chi (priority 1).
+# Ron is handled separately by _try_auto_ron before this.
+
+func _get_last_discarded() -> Tile:
+	for i in range(events.size() - 1, -1, -1):
+		if events[i].type == &"TILE_DISCARDED" and events[i].tile_instance != null:
+			return Tile.new(events[i].tile_instance.tile.id, events[i].tile_instance.tile.is_red_dora)
+	return null
+
+func _get_last_discarder() -> int:
+	for i in range(events.size() - 1, -1, -1):
+		if events[i].type == &"TILE_DISCARDED":
+			return events[i].actor_seat
+	return -1
+
+func _resolve_claims(discarded: Tile, discarder: int) -> void:
+	if not ai.has_method("decide_claim_for_seat"):
+		engine.advance_to_next_seat()
+		return
+	var best_seat: int = -1
+	var best_priority: int = 0
+	var best_kind: String = ""
+	for offset in range(1, 4):
+		var candidate: int = (discarder + offset) % 4
+		if candidate == 0:
+			continue  # skip player seat — player claims via PlayableBattleController
+		var seat: Seat = state.seats[candidate]
+		var decision: Dictionary = ai.decide_claim_for_seat(seat, discarded.id, discarder)
+		if decision.is_empty():
+			continue
+		var kind: String = String(decision.get("kind", ""))
+		var priority: int = 0
+		if kind == "pon" or kind == "minkan":
+			priority = 2
+		elif kind == "chi":
+			priority = 1
+		if priority > best_priority:
+			best_priority = priority
+			best_seat = candidate
+			best_kind = kind
+	if best_seat < 0:
+		engine.advance_to_next_seat()
+		return
+	# Apply the best claim
+	_emit(&"PLAYER_ACTION", best_seat, null, {
+		"kind": best_kind,
+		"tile_id": discarded.id,
+		"discarder_seat": discarder,
+	})
+	if best_kind == "pon":
+		engine.apply_pon(best_seat, discarded)
+	elif best_kind == "minkan":
+		engine.apply_minkan(best_seat, discarded)
+	# Emit TILE_CLAIMED event for UI / replay
+	_emit(&"TILE_CLAIMED", best_seat, _wrap_tile(discarded), {
+		"kind": best_kind,
+		"discarder_seat": discarder,
+	})
+
+# ---- Task 5: Chankan (robbing a kan) ----
+#
+# Before applying added_kan, check if any other seat can ron the tile.
+# Sets game_ctx.is_chankan = true for the yaku evaluation.
+
+func _try_chankan_ron(kan_tile_id: int, kan_declarer: int) -> bool:
+	var kan_tile := Tile.new(kan_tile_id)
+	for offset in range(1, 4):
+		var candidate: int = (kan_declarer + offset) % 4
+		var candidate_seat: Seat = state.seats[candidate]
+		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, kan_tile, candidate_seat.furiten):
+			continue
+		var ron_check: Dictionary = _check_ron_chankan(kan_tile, candidate)
+		if not ron_check.is_winning:
+			continue
+		if apply_ron(candidate, kan_tile, kan_declarer, false, true):
+			return true
+	return false
+
+func _check_ron_chankan(ron_tile: Tile, winner_seat: int) -> Dictionary:
+	var winner: Seat = state.seats[winner_seat]
+	var typed_melds: Array[Meld] = []
+	for m in winner.melds:
+		typed_melds.append(m)
+	var wp: Dictionary = WinPattern.detect(winner.hand, typed_melds, ron_tile)
+	if not wp.is_winning:
+		return {"is_winning": false}
+	var game_ctx := _build_game_ctx(winner, false, false, false)
+	game_ctx.is_chankan = true
+	var yaku_wc := WinContext.new(winner.hand, typed_melds, ron_tile, wp, game_ctx)
+	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
+	var has_yaku: bool = yaku_list.is_yakuman() or yaku_list.size() > 0
+	if not has_yaku:
+		return {"is_winning": false}
+	return {
+		"is_winning": true,
+		"wp": wp,
+		"yaku_list": yaku_list,
+		"melds": typed_melds,
+	}
 
 # ---- 私有 helper ----
 
@@ -954,13 +1058,22 @@ func _consume_replay_decision_if_match(p_seat: int, p_kind: String) -> Dictionar
 # 返：[{seat, kind: "discard"|"riichi"|"tsumo_accept"|"ron_accept",
 #       tile_id?: int, discarder_seat?: int}, ...]
 static func extract_player_actions(p_events: Array) -> Array:
+	# Only extract action kinds that the replay system consumes (discard, riichi,
+	# tsumo_accept, ron_accept). AI-deterministic actions (pon, minkan, ankan,
+	# added_kan) are re-derived from the AI during replay and must NOT enter the
+	# replay queue — otherwise _consume_replay_decision_if_match will stall on
+	# unmatched kinds and block subsequent legitimate matches.
+	const REPLAY_KINDS: Array = ["discard", "riichi", "tsumo_accept", "ron_accept"]
 	var result: Array = []
 	for ev in p_events:
 		if ev.type != &"PLAYER_ACTION":
 			continue
+		var kind_str: String = String(ev.extra.get("kind", ""))
+		if kind_str not in REPLAY_KINDS:
+			continue
 		var entry: Dictionary = {
 			"seat": ev.actor_seat,
-			"kind": String(ev.extra.get("kind", "")),
+			"kind": kind_str,
 		}
 		if entry.kind == "discard" or entry.kind == "tsumo_accept" or entry.kind == "ron_accept":
 			entry["tile_id"] = int(ev.extra.get("tile_id", -1))

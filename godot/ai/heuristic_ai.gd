@@ -213,33 +213,42 @@ static func _suited_range_for(tile_id: int) -> Array:
 			return rng
 	return []
 
-# AI claiming decision: given a discarded tile, decide whether to pon/minkan/skip.
-# v1: AI never chi (chi often hurts hand shape for heuristic AI).
-# Returns: {"action": "pon"|"minkan"|"skip"}
-func decide_claim(seat: Seat, discarded_id: int, discarder_seat: int) -> Dictionary:
-	if seat.seat_id == discarder_seat:
-		return {"action": "skip"}
-	if seat.riichi.declared:
-		return {"action": "skip"}
-	var count: int = seat.hand.count_of(discarded_id)
-	if count >= 3:
-		return {"action": "minkan"}
-	if count >= 2:
-		return {"action": "pon"}
-	return {"action": "skip"}
-
-# Self-kan decision: after drawing, check if AI should declare ankan or added_kan.
-# v1: always kan when possible (free value), except during riichi.
-# Returns: {"action": "ankan"|"added_kan"|"skip", "tile_id": int}
+# ---- Self-kan decision (Task 3: claim window plan) ----
+#
+# After AI draws, check if ankan or added_kan is possible.
+# Returns: {"kind": "ankan"|"added_kan", "tile_id": int} or {} (pass).
+# Riichi blocks ankan (standard rules: riichi player cannot declare ankan
+# unless it doesn't change wait shape — simplified here to "never ankan
+# during riichi" which is the conservative/common interpretation).
 func decide_self_kan(seat: Seat) -> Dictionary:
-	if seat.riichi.declared:
-		return {"action": "skip"}
-	var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
-	if not ankan_ids.is_empty():
-		return {"action": "ankan", "tile_id": ankan_ids[0]}
+	# Ankan: 4 copies of any tile in hand (blocked during riichi)
+	if not seat.riichi.declared:
+		var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
+		if not ankan_ids.is_empty():
+			return {"kind": "ankan", "tile_id": ankan_ids[0]}
+	# Added kan: existing PON + 4th tile in hand
 	for m in seat.melds:
 		if m.kind == Meld.Kind.PON:
 			var tid: int = m.tiles[0].id
-			if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
-				return {"action": "added_kan", "tile_id": tid}
-	return {"action": "skip"}
+			if seat.hand.count_of(tid) >= 1:
+				return {"kind": "added_kan", "tile_id": tid}
+	return {}
+
+# ---- Claim decision (Task 4: claim window plan) ----
+#
+# When an opponent discards, decide whether to pon/minkan/chi.
+# Takes Seat directly (BattleController has state access, passes the seat).
+# Returns: {"kind": "pon"|"minkan"|"chi", ...} or {} (pass).
+# Heuristic: always pon/minkan if possible (greedy); chi skipped for now
+# (chi requires being shimocha and has more complex decision logic).
+func decide_claim_for_seat(seat: Seat, discarded_id: int, discarder: int) -> Dictionary:
+	if seat.seat_id == discarder:
+		return {}
+	# Minkan: 3 copies in hand
+	if ClaimValidator.can_minkan(seat.seat_id, discarder, seat.hand, discarded_id):
+		return {"kind": "minkan"}
+	# Pon: 2 copies in hand
+	if ClaimValidator.can_pon(seat.seat_id, discarder, seat.hand, discarded_id):
+		return {"kind": "pon"}
+	# Chi skipped for v1 heuristic (requires being shimocha + complex choice)
+	return {}
