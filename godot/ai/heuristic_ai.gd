@@ -248,33 +248,32 @@ static func _suited_range_for(tile_id: int) -> Array:
 			return rng
 	return []
 
-# AI claiming decision: given a discarded tile, decide whether to pon/minkan/skip.
+# AI claiming decision: given a discarded tile, decide whether to pon/minkan.
 # v1: AI never chi (chi often hurts hand shape for heuristic AI).
-# Returns: {"action": "pon"|"minkan"|"skip"}
-func decide_claim(seat: Seat, discarded_id: int, discarder_seat: int) -> Dictionary:
+# Returns: {"kind": "pon"|"minkan"} or {} (skip).
+func decide_claim_for_seat(seat: Seat, discarded_id: int, discarder_seat: int) -> Dictionary:
 	if seat.seat_id == discarder_seat:
-		return {"action": "skip"}
+		return {}
 	if seat.riichi.declared:
-		return {"action": "skip"}
-	var count: int = seat.hand.count_of(discarded_id)
-	if count >= 3:
-		return {"action": "minkan"}
-	if count >= 2:
-		return {"action": "pon"}
-	return {"action": "skip"}
+		return {}
+	if ClaimValidator.can_minkan(seat.seat_id, discarder_seat, seat.hand, discarded_id):
+		return {"kind": "minkan"}
+	if ClaimValidator.can_pon(seat.seat_id, discarder_seat, seat.hand, discarded_id):
+		return {"kind": "pon"}
+	return {}
 
 # Self-kan decision: after drawing, check if AI should declare ankan or added_kan.
 # v1: always kan when possible (free value), except during riichi.
-# Returns: {"action": "ankan"|"added_kan"|"skip", "tile_id": int}
+# Returns: {"kind": "ankan"|"added_kan", "tile_id": int} or {} (skip).
 func decide_self_kan(seat: Seat) -> Dictionary:
 	if seat.riichi.declared:
-		return {"action": "skip"}
+		return {}
 	var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
 	if not ankan_ids.is_empty():
-		return {"action": "ankan", "tile_id": ankan_ids[0]}
+		return {"kind": "ankan", "tile_id": ankan_ids[0]}
 	for m in seat.melds:
 		if m.kind == Meld.Kind.PON:
 			var tid: int = m.tiles[0].id
-			if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
-				return {"action": "added_kan", "tile_id": tid}
-	return {"action": "skip"}
+			if seat.hand.count_of(tid) >= 1:
+				return {"kind": "added_kan", "tile_id": tid}
+	return {}
