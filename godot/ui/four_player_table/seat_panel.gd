@@ -35,6 +35,10 @@ const HAND_ROW_OFFSET_Y: float = 30.0
 const PLAYER_HAND_TILE_W: float = 40.0
 const PLAYER_HAND_TILE_H: float = 60.0
 const PLAYER_HAND_ROW_OFFSET_X: float = -240.0
+# seat 0 手牌画在分数框(Bg offset_bottom=50)下方 + 8px 间隙,避免覆盖
+# 分数 Label。AI seat 用 HAND_ROW_OFFSET_Y(30)即可,因为它们的色块手牌
+# 是次要信息,可以跟分数框略叠。
+const PLAYER_HAND_ROW_OFFSET_Y: float = 58.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null
@@ -64,7 +68,7 @@ func _apply_hand_row_offset() -> void:
 	if _hand_tile_row == null:
 		return
 	if _seat_id == 0:
-		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y)
 	else:
 		_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 

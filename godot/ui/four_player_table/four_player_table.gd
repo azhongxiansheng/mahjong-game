@@ -81,13 +81,15 @@ func bind_cumulative_scores(scores: Array) -> void:
 
 # 静态：seat_id → 桌面坐标（相对 Table 区域）。
 # 0=下、1=右、2=上、3=左；中央为 (TABLE_WIDTH/2, TABLE_HEIGHT/2)。
+# seat 0 margin 比 AI 大 50px,因为玩家自家手牌(60 高)要画在分数框下方,
+# 需要留 60+ 垂直空间;AI 手牌只是色块,小得多。
 static func seat_position(seat_id: int) -> Vector2:
 	var cx := TABLE_WIDTH / 2.0
 	var cy := TABLE_HEIGHT / 2.0
 	var margin := 110.0
 	match seat_id:
 		0:
-			return Vector2(cx, TABLE_HEIGHT - margin)
+			return Vector2(cx, TABLE_HEIGHT - margin - 50)
 		1:
 			return Vector2(TABLE_WIDTH - margin, cy)
 		2:
