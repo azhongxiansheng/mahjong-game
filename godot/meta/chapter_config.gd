@@ -14,7 +14,7 @@ class_name ChapterConfig
 static func chapter_1() -> Dictionary:
 	return {
 		"chapter_index": 1,
-		"floor_count": 7,
+		"floor_count": 5,
 		"nodes_per_floor": Vector2i(1, 3),
 		"node_weights": {
 			NodeKind.Kind.NORMAL: 0.6,
@@ -23,14 +23,15 @@ static func chapter_1() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.15,
 		},
 		"boss_id": &"boss1_iron_curtain_v1",
-		# M8: 章 1 全东风战 — 学习曲线起点（spec §15 风险缓解）
-		"default_session_kind": "east_round",
+		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 east_round (4 局)
+		"default_session_kind": "speed",
+		"boss_session_kind": "east_round",
 	}
 
 static func chapter_2() -> Dictionary:
 	return {
 		"chapter_index": 2,
-		"floor_count": 8,
+		"floor_count": 5,
 		"nodes_per_floor": Vector2i(1, 3),
 		"node_weights": {
 			NodeKind.Kind.NORMAL: 0.5,
@@ -39,14 +40,15 @@ static func chapter_2() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss2_fortune_runner_v1",
-		# M8: 章 2 仍东风战 — 玩家熟悉机制
-		"default_session_kind": "east_round",
+		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 east_round (4 局)
+		"default_session_kind": "speed",
+		"boss_session_kind": "east_round",
 	}
 
 static func chapter_3() -> Dictionary:
 	return {
 		"chapter_index": 3,
-		"floor_count": 8,
+		"floor_count": 6,
 		"nodes_per_floor": Vector2i(2, 3),
 		"node_weights": {
 			NodeKind.Kind.NORMAL: 0.4,
@@ -55,8 +57,9 @@ static func chapter_3() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss3_kanmon_v1",
-		# M8: 章 3 全半庄战 — endgame 深度（含 BOSS / 普通 / 精英 / 营地 / 商店）
-		"default_session_kind": "hanchan",
+		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 hanchan (8 局)
+		"default_session_kind": "speed",
+		"boss_session_kind": "hanchan",
 	}
 
 static func get_chapter(chapter_index: int) -> Dictionary:

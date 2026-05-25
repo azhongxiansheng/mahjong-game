@@ -38,8 +38,8 @@ const VALUES: Dictionary = {
 
 	# ---- 章节 / 节点（spec §14） ----
 	&"chapters": 3,
-	&"nodes_per_chapter_min": 12,
-	&"nodes_per_chapter_max": 15,
+	&"nodes_per_chapter_min": 7,
+	&"nodes_per_chapter_max": 9,
 	# 节点排名扣血映射 [rank1, rank2, rank3, rank4]
 	&"node_rank_hp_delta": [0, 0, -1, -2],
 	# 节点排名金币奖励（v1 拍数，等 simulation + alpha 反馈调）
@@ -51,6 +51,8 @@ const VALUES: Dictionary = {
 
 	# ---- 局参数（spec §14） ----
 	&"hands_per_node": 4,            # 一节点 = 东风战 4 局（east_round 默认）
+	# GAP-4 speed battle: 普通/精英节点只打 2 局（减少 run 时长 ~50%）
+	&"hands_per_node_speed": 2,
 	# M8 半庄战（spec §14 脚注 "Phase 2 可选半庄战 8 局"）
 	&"hands_per_node_hanchan": 8,
 	# 半庄时长 ~2x → 排名扣血 / 金币奖励相应翻倍（拍数，等 baseline 6 调）
@@ -150,6 +152,7 @@ static func all_keys() -> Array[StringName]:
 static func get_hands_per_node(session_kind: String) -> int:
 	match session_kind:
 		"east_round": return int(lookup(&"hands_per_node"))
+		"speed": return int(lookup(&"hands_per_node_speed"))
 		"hanchan": return int(lookup(&"hands_per_node_hanchan"))
 		_:
 			assert(false, "BalanceConstants.get_hands_per_node 未知 session_kind: %s" % session_kind)
@@ -157,7 +160,7 @@ static func get_hands_per_node(session_kind: String) -> int:
 
 static func get_node_rank_hp_delta(session_kind: String) -> Array:
 	match session_kind:
-		"east_round": return get_array(&"node_rank_hp_delta")
+		"east_round", "speed": return get_array(&"node_rank_hp_delta")
 		"hanchan": return get_array(&"node_rank_hp_delta_hanchan")
 		_:
 			assert(false, "BalanceConstants.get_node_rank_hp_delta 未知 session_kind: %s" % session_kind)
@@ -165,7 +168,7 @@ static func get_node_rank_hp_delta(session_kind: String) -> Array:
 
 static func get_node_rank_gold_reward(session_kind: String) -> Array:
 	match session_kind:
-		"east_round": return get_array(&"node_rank_gold_reward")
+		"east_round", "speed": return get_array(&"node_rank_gold_reward")
 		"hanchan": return get_array(&"node_rank_gold_reward_hanchan")
 		_:
 			assert(false, "BalanceConstants.get_node_rank_gold_reward 未知 session_kind: %s" % session_kind)

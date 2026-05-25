@@ -332,6 +332,18 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 		var forced: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
 		if forced != null:
 			return forced
+	if ai.has_method("set_defense_context"):
+		var riichi_seats: Array = []
+		var discards_flat: Array = []
+		for i in range(4):
+			if i == actor:
+				continue
+			if state.seats[i].riichi.declared:
+				riichi_seats.append(i)
+			for d in state.discards_per_seat[i]:
+				if d != null:
+					discards_flat.append(d.id)
+		ai.set_defense_context(riichi_seats, discards_flat)
 	var pick: Tile = ai.decide_discard(seat)
 	if pick != null and not state.kuikae_restricted[actor].is_empty():
 		var restricted: Array = state.kuikae_restricted[actor]
