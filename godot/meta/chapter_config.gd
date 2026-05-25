@@ -23,6 +23,7 @@ static func chapter_1() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.15,
 		},
 		"boss_id": &"boss1_iron_curtain_v1",
+		"boss_variants": [&"boss1_iron_curtain_v1", &"boss1_stealth_wall_v1"],
 		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 east_round (4 局)
 		"default_session_kind": "speed",
 		"boss_session_kind": "east_round",
@@ -40,6 +41,7 @@ static func chapter_2() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss2_fortune_runner_v1",
+		"boss_variants": [&"boss2_fortune_runner_v1", &"boss2_dora_thief_v1"],
 		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 east_round (4 局)
 		"default_session_kind": "speed",
 		"boss_session_kind": "east_round",
@@ -57,6 +59,7 @@ static func chapter_3() -> Dictionary:
 			NodeKind.Kind.EVENT: 0.2,
 		},
 		"boss_id": &"boss3_kanmon_v1",
+		"boss_variants": [&"boss3_kanmon_v1", &"boss3_yakuman_pressure_v1"],
 		# GAP-4: 普通/精英节点 speed (2 局)；Boss 保留 hanchan (8 局)
 		"default_session_kind": "speed",
 		"boss_session_kind": "hanchan",

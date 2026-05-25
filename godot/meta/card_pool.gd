@@ -243,6 +243,43 @@ static func all_abilities() -> Array:
 		"每局 1 次手牌↔弃牌河交换（v1 简化：自胡 +3 番 + 消耗）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/tougenkyo_hook.gd"))
 
+	# M12 新增角色能力（8 张）
+	pool.append(_mk_ability(&"hisa_bad_wait_v1", "久・悪待ち",
+		"任意自胡 +2 番（悪待ち熟練表現）",
+		Rarity.Kind.EPIC, "res://skills/hooks/hisa_bad_wait_hook.gd"))
+	pool.append(_mk_ability(&"mako_memory_v1", "記憶力",
+		"巡数 >= 6 時摸牌後に牌墙トップ 3 枚 reveal",
+		Rarity.Kind.EPIC, "res://skills/hooks/mako_memory_hook.gd"))
+	pool.append(_mk_ability(&"koromo_haitei_ability_v1", "海底支配",
+		"HAITEI/HOUTEI 自胡 +3 番 + 満貫下限",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/koromo_haitei_ability_hook.gd"))
+	pool.append(_mk_ability(&"toki_foresight_v1", "先見",
+		"GAME_BEGIN 全 4 席の次摸牌 reveal（コスト -1000 点）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/toki_foresight_hook.gd"))
+	pool.append(_mk_ability(&"kuro_dora_love_v1", "ドラの愛",
+		"自胡 +2 Dora + DORA_REVEALED 時 +1 追加 Dora",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/kuro_dora_love_hook.gd"))
+	pool.append(_mk_ability(&"momoko_stealth_ability_v1", "ステルス",
+		"RIICHI 後の自胡 +1 番",
+		Rarity.Kind.EPIC, "res://skills/hooks/momoko_stealth_ability_hook.gd"))
+	pool.append(_mk_ability(&"tsubame_gaeshi_v1", "燕返し",
+		"自胡 +3 番（一回限り・消滅）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/tsubame_gaeshi_hook.gd"))
+	pool.append(_mk_ability(&"streak_escalation_v1", "連勝エスカレーション",
+		"連勝ごとに +N 番累積（流局リセット）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/streak_escalation_hook.gd"))
+
+	# M12 新増 Boss 変種能力（3 張）
+	pool.append(_mk_ability(&"boss1_stealth_wall_v1", "ステルス壁",
+		"章 1 Boss 変種：自胡 +1 番（ステルス優位）",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss1_stealth_wall_hook.gd"))
+	pool.append(_mk_ability(&"boss2_dora_thief_v1", "Dora 泥棒",
+		"章 2 Boss 変種：自胡 +2 extra Dora",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss2_dora_thief_hook.gd"))
+	pool.append(_mk_ability(&"boss3_yakuman_pressure_v1", "役満プレッシャー",
+		"章 3 Boss 変種：自胡 +4 番 + 2 回目ごとに役満化",
+		Rarity.Kind.LEGENDARY, "res://skills/hooks/boss3_yakuman_pressure_hook.gd"))
+
 	return pool
 
 static func abilities_by_rarity(rarity: int) -> Array:

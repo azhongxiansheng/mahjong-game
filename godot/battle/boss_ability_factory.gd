@@ -43,6 +43,19 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"char_saki_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_teru_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_awai_passive_v1": [&"GAME_BEGIN"],
+	# M12 新增角色能力
+	&"hisa_bad_wait_v1": [&"WIN_DECLARED_PRE"],
+	&"mako_memory_v1": [&"TILE_DRAWN"],
+	&"koromo_haitei_ability_v1": [&"HAITEI", &"HOUTEI"],
+	&"toki_foresight_v1": [&"GAME_BEGIN"],
+	&"kuro_dora_love_v1": [&"WIN_DECLARED_PRE", &"DORA_REVEALED"],
+	&"momoko_stealth_ability_v1": [&"RIICHI_DECLARED", &"WIN_DECLARED_PRE"],
+	&"tsubame_gaeshi_v1": [&"WIN_DECLARED_PRE"],
+	&"streak_escalation_v1": [&"WIN_DECLARED_PRE", &"WIN_DECLARED", &"EXHAUSTIVE_DRAW"],
+	# M12 新增 Boss 変種
+	&"boss1_stealth_wall_v1": [&"WIN_DECLARED_PRE"],
+	&"boss2_dora_thief_v1": [&"WIN_DECLARED_PRE"],
+	&"boss3_yakuman_pressure_v1": [&"WIN_DECLARED_PRE"],
 }
 
 # Boss-only 子集（用于 chapter_config 校验：每章 boss_id 必须在 boss 列表里）。
@@ -50,6 +63,9 @@ const _BOSS_IDS: Array = [
 	&"boss1_iron_curtain_v1",
 	&"boss2_fortune_runner_v1",
 	&"boss3_kanmon_v1",
+	&"boss1_stealth_wall_v1",
+	&"boss2_dora_thief_v1",
+	&"boss3_yakuman_pressure_v1",
 ]
 
 # 用 ability_id 从 CardPool 查 hook_resource_path + 用 _ABILITY_TRIGGERS 取
