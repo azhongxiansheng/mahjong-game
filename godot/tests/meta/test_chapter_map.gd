@@ -73,11 +73,11 @@ func test_boss_previous_floor_all_camp():
 				"Boss 前一层节点 %d 应为营地" % n.index)
 
 func test_node_count_within_bounds():
-	# floor_count=7，nodes_per_floor=(1,3)；entry=1, boss=1, pre_boss=1，
-	# 中间 4 floor 各 1-3。总数 ∈ [3+4=7, 3+12=15]
+	# floor_count=5，nodes_per_floor=(1,3)；entry=1, boss=1, pre_boss=1，
+	# 中间 2 floor 各 1-3。总数 ∈ [3+2=5, 3+6=9]
 	var m := _gen_chapter_1(42)
-	assert_gte(m.node_count(), 7)
-	assert_lte(m.node_count(), 15)
+	assert_gte(m.node_count(), 5)
+	assert_lte(m.node_count(), 9)
 
 func test_seed_determinism():
 	var m1 := _gen_chapter_1(42)
@@ -89,10 +89,10 @@ func test_seed_determinism():
 
 # ---- 章 2 / 章 3 配置 ----
 
-func test_chapter_2_floor_count_is_8():
+func test_chapter_2_floor_count_is_5():
 	var m := ChapterMapGenerator.generate(ChapterConfig.chapter_2(), 42)
 	var c: NodeRef = m.nodes[m.boss_node]
-	assert_eq(c.floor_index, 7)
+	assert_eq(c.floor_index, 4)
 	assert_true(m.has_path_to_boss())
 
 func test_chapter_3_more_elite_nodes():
@@ -139,34 +139,54 @@ func test_node_ref_from_dict_missing_session_kind_defaults_east_round():
 	assert_eq(n.session_kind, "east_round", "缺字段回默认（不崩、不返 null）")
 
 func test_chapter_config_explicit_default_session_kind():
-	# 章 1/2 显式 east_round（不是默认值兜底）；章 3 显式 hanchan
+	# GAP-4: 全章默认 speed（普通/精英 2 局）；Boss 各章独立 session_kind
 	var c1: Dictionary = ChapterConfig.chapter_1()
-	assert_eq(c1.get("default_session_kind", ""), "east_round",
-		"章 1 显式 east_round 锁定")
+	assert_eq(c1.get("default_session_kind", ""), "speed",
+		"章 1 普通/精英 speed 锁定")
+	assert_eq(c1.get("boss_session_kind", ""), "east_round",
+		"章 1 Boss east_round 锁定")
 	var c2: Dictionary = ChapterConfig.chapter_2()
-	assert_eq(c2.get("default_session_kind", ""), "east_round",
-		"章 2 显式 east_round 锁定")
+	assert_eq(c2.get("default_session_kind", ""), "speed",
+		"章 2 普通/精英 speed 锁定")
+	assert_eq(c2.get("boss_session_kind", ""), "east_round",
+		"章 2 Boss east_round 锁定")
 	var c3: Dictionary = ChapterConfig.chapter_3()
-	assert_eq(c3.get("default_session_kind", ""), "hanchan",
-		"章 3 全 hanchan")
+	assert_eq(c3.get("default_session_kind", ""), "speed",
+		"章 3 普通/精英 speed 锁定")
+	assert_eq(c3.get("boss_session_kind", ""), "hanchan",
+		"章 3 Boss hanchan 锁定")
 
-func test_chapter_1_2_all_nodes_east_round():
+func test_chapter_1_2_non_boss_nodes_speed():
+	# GAP-4: 普通/精英/营地/商店/事件节点用 speed；Boss 用 east_round
 	for seed in [1, 7, 42, 123]:
 		var m1 := ChapterMapGenerator.generate(ChapterConfig.chapter_1(), seed)
 		for n in m1.nodes:
-			assert_eq(n.session_kind, "east_round",
-				"章 1 节点 %d 应 east_round" % n.index)
+			if n.kind == NodeKind.Kind.BOSS:
+				assert_eq(n.session_kind, "east_round",
+					"章 1 Boss 节点 %d 应 east_round" % n.index)
+			else:
+				assert_eq(n.session_kind, "speed",
+					"章 1 非 Boss 节点 %d 应 speed" % n.index)
 		var m2 := ChapterMapGenerator.generate(ChapterConfig.chapter_2(), seed)
 		for n in m2.nodes:
-			assert_eq(n.session_kind, "east_round",
-				"章 2 节点 %d 应 east_round" % n.index)
+			if n.kind == NodeKind.Kind.BOSS:
+				assert_eq(n.session_kind, "east_round",
+					"章 2 Boss 节点 %d 应 east_round" % n.index)
+			else:
+				assert_eq(n.session_kind, "speed",
+					"章 2 非 Boss 节点 %d 应 speed" % n.index)
 
-func test_chapter_3_all_nodes_hanchan():
+func test_chapter_3_non_boss_nodes_speed_boss_hanchan():
+	# GAP-4: 章 3 普通/精英 speed；Boss hanchan
 	for seed in [1, 7, 42, 123]:
 		var m := ChapterMapGenerator.generate(ChapterConfig.chapter_3(), seed)
 		for n in m.nodes:
-			assert_eq(n.session_kind, "hanchan",
-				"章 3 节点 %d 应 hanchan（含 BOSS / CAMP / 战斗）" % n.index)
+			if n.kind == NodeKind.Kind.BOSS:
+				assert_eq(n.session_kind, "hanchan",
+					"章 3 Boss 节点 %d 应 hanchan" % n.index)
+			else:
+				assert_eq(n.session_kind, "speed",
+					"章 3 非 Boss 节点 %d 应 speed" % n.index)
 
 func test_chapter_3_boss_node_is_hanchan():
 	var m := ChapterMapGenerator.generate(ChapterConfig.chapter_3(), 42)

@@ -43,6 +43,6 @@ func run_to_end() -> Dictionary:
 	return {}
 
 # 玩家声明荣胡（返 true 表示成功；false 表示参数无效或已结算）
-func apply_ron(_winner_seat: int, _ron_tile: Tile, _discarder_seat: int, _is_houtei: bool = false) -> bool:
+func apply_ron(_winner_seat: int, _ron_tile: Tile, _discarder_seat: int, _is_houtei: bool = false, _is_chankan: bool = false) -> bool:
 	push_error("IBattleController.apply_ron() 必须被 override")
 	return false

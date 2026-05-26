@@ -28,6 +28,12 @@ var _scene_tree: SceneTree = null  # 用于 await create_timer
 # 用 -1 表示"无缓存"，因为 tile_id 0 是合法的（W1）。
 var _pending_discard_tile_id: int = -1
 
+# GAP-5：主动消耗品系统。RunFlow 通过 set_consumables 注入可用消耗品 id 列表；
+# 每局（hand）每个消耗品最多使用 1 次，用后从 _available_consumables 移除。
+# _used_consumables_this_hand 防同一局内重复使用同一消耗品。
+var _available_consumables: Array = []  # Array[StringName] — 当前 Run 中持有的消耗品 id
+var _used_consumables_this_hand: Dictionary = {}  # {StringName: true} — 本局已用
+
 func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E) -> void:
 	super(seed, dealer_seat, use_heuristic_ai, round_wind)
 
@@ -39,6 +45,62 @@ func bind_ui(action_panel: PlayerActionPanel, seat_panel_player: SeatPanel, tree
 
 func set_ai_think_delay(seconds: float) -> void:
 	_ai_think_delay_sec = max(0.0, seconds)
+
+# GAP-5：RunFlow 注入当前 Run 持有的消耗品 id 列表。
+# 必须在 run_to_end_async 之前调用。
+func set_consumables(ids: Array) -> void:
+	_available_consumables = ids.duplicate()
+	_used_consumables_this_hand = {}
+
+# GAP-5：本局是否有可用（未在本局内用过的）消耗品。
+func has_usable_consumable() -> bool:
+	for cid in _available_consumables:
+		if not _used_consumables_this_hand.has(cid):
+			return true
+	return false
+
+# GAP-5：获取本局可用消耗品列表（排除已用的）。
+func get_usable_consumables() -> Array:
+	var result: Array = []
+	for cid in _available_consumables:
+		if not _used_consumables_this_hand.has(cid):
+			result.append(cid)
+	return result
+
+# GAP-5：使用一个消耗品，应用效果并标记已用。返 true 表示使用成功。
+func use_consumable(consumable_id: StringName) -> bool:
+	if not _available_consumables.has(consumable_id):
+		return false
+	if _used_consumables_this_hand.has(consumable_id):
+		return false
+	# 标记本局已用
+	_used_consumables_this_hand[consumable_id] = true
+	# 从持有列表移除（消耗品用完即消失）
+	var idx: int = _available_consumables.find(consumable_id)
+	if idx >= 0:
+		_available_consumables.remove_at(idx)
+	# 应用效果
+	_apply_consumable_effect(consumable_id)
+	# emit 事件让 UI / 日志可追踪
+	_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {
+		"kind": "use_consumable",
+		"consumable_id": String(consumable_id),
+	})
+	return true
+
+# GAP-5：消耗品效果分发。v1 支持 hp_potion 和 peek_wall（千里眼）。
+func _apply_consumable_effect(consumable_id: StringName) -> void:
+	match consumable_id:
+		&"hp_potion_v1":
+			# HP 回复通过 PLAYER_ACTION 事件传递给 RunFlow 层处理
+			# （RunFlow 监听事件并调 RunState.hp += 1）。
+			# 此处不直接改 RunState — BC 不持有 RunState 引用。
+			pass
+		&"wall_peek_v1":
+			# 透视牌墙顶 3 张给玩家（用已有的 SkillCtx.reveal_wall_top_to 模式）
+			var dummy_event := BattleEvent.make(&"CONSUMABLE_USED", PLAYER_SEAT, null, {})
+			var ctx := SkillCtx.new(state, dummy_event)
+			ctx.reveal_wall_top_to(PLAYER_SEAT, 3)
 
 # ---- 覆写 _step_discard_async（GDScript 4 quirk workaround） ----
 #
@@ -68,6 +130,7 @@ func _step_discard_async() -> void:
 	if not ok:
 		_settled = true
 		return
+	state.kuikae_restricted[actor] = []
 	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
 	# 立直决策（discard 后 hand=13）
 	var should_riichi: bool = false
@@ -119,8 +182,17 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 		if picked_cached != null:
 			return picked_cached
 		# 缓存的 tile_id 不在手牌（异常）— 落到正常流程让玩家再选
-	# 正常流程：玩家点切（自摸已处理过或本次摸的牌不构成自摸）
-	_action_panel.enter_waiting_discard(false)
+	# Check player self-kan availability
+	var can_ankan: bool = not ClaimValidator.ankan_candidates(seat.hand).is_empty()
+	var can_added: bool = false
+	if not seat.riichi.declared:
+		for m in seat.melds:
+			if m.kind == Meld.Kind.PON:
+				if ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
+					can_added = true
+					break
+	var _has_consumable: bool = has_usable_consumable()
+	_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_consumable)
 	_seat_panel_player.set_hand_clickable(true)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
@@ -133,7 +205,41 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 			_seat_panel_player.set_hand_clickable(false)
 			_action_panel.enter_idle("AI 出牌中…")
 			return picked
-		# 其它 action 在此状态被忽略，继续等
+		elif action == "use_consumable":
+			# GAP-5：玩家点了"道具"按钮。v1 自动使用第一个可用消耗品。
+			var usable: Array = get_usable_consumables()
+			if not usable.is_empty():
+				use_consumable(usable[0])
+			# 使用后刷新按钮状态（可能没有更多消耗品了），继续等切牌
+			_has_consumable = has_usable_consumable()
+			_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_consumable)
+			_seat_panel_player.set_hand_clickable(true)
+			continue
+		elif action == "ankan":
+			var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
+			if not ankan_ids.is_empty():
+				if engine.apply_ankan(actor, ankan_ids[0]):
+					_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
+					_seat_panel_player.set_hand_clickable(false)
+					_action_panel.enter_idle("暗杠！")
+					return null
+			continue
+		elif action == "added_kan":
+			for m in seat.melds:
+				if m.kind == Meld.Kind.PON:
+					var tid: int = m.tiles[0].id
+					if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
+						if _try_chankan_ron(tid, actor):
+							_seat_panel_player.set_hand_clickable(false)
+							_action_panel.enter_idle("抢杠！")
+							return null
+						if engine.apply_added_kan(actor, tid):
+							_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": tid})
+							_seat_panel_player.set_hand_clickable(false)
+							_action_panel.enter_idle("加杠！")
+							return null
+						break
+			continue
 	return null  # unreachable
 
 # 九種九牌覆写:玩家(seat 0)摸完牌触发条件时,弹按钮等选择;其它 seat AI 不主动 abort。
@@ -212,6 +318,8 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 		match action:
 			"pon":
 				if engine.apply_pon(PLAYER_SEAT, discarded):
+					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
+						discarded.id, [], false)
 					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "pon", "tile_id": discarded.id})
 					_action_panel.enter_idle("碰！")
 				return
@@ -221,9 +329,10 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 					_action_panel.enter_idle("杠！")
 				return
 			"chi":
-				# v1 自动选第一个合法 companion 组合
 				var companions: Array = _pick_chi_companions(hand, discarded.id)
 				if companions.size() == 2 and engine.apply_chi(PLAYER_SEAT, discarded, companions):
+					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
+						discarded.id, companions, true)
 					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "chi", "tile_id": discarded.id})
 					_action_panel.enter_idle("吃！")
 				return
@@ -256,7 +365,8 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:
 		return true
 	# 玩家路径：可自摸 + 可切牌都开放，等玩家选
-	_action_panel.enter_waiting_discard(true)
+	var _has_con: bool = has_usable_consumable()
+	_action_panel.enter_waiting_discard(true, false, false, _has_con)
 	_seat_panel_player.set_hand_clickable(true)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
@@ -265,6 +375,15 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 			_seat_panel_player.set_hand_clickable(false)
 			_action_panel.enter_idle("自摸！")
 			return true
+		elif action == "use_consumable":
+			# GAP-5：在自摸窗口使用消耗品，然后继续等待
+			var usable: Array = get_usable_consumables()
+			if not usable.is_empty():
+				use_consumable(usable[0])
+			_has_con = has_usable_consumable()
+			_action_panel.enter_waiting_discard(true, false, false, _has_con)
+			_seat_panel_player.set_hand_clickable(true)
+			continue
 		elif action == "discard":
 			var tid: int = int(choice.get("tile_id", -1))
 			# 缓存切牌选择，让 _step_discard_async / _get_discard_decision 直接用

@@ -68,13 +68,16 @@ func test_win_declared_pre_fires_zero_or_one_per_battle():
 	# 每场必 ≤ 1（一场最多一次胡 — 此 hook 注在 seat 2 单家）
 	for c in fire_counts:
 		assert_lte(c, 1, "WIN_DECLARED_PRE 单 seat 单场最多 1 次")
-	# 至少有一些场为 0（不胡）—— 这就是假设 O 的核心
+	# 至少有一些场为 0（不胡）—— 这就是假设 O 的核心。
+	# M12 claim window: AI 现在可以碰牌（pon），手牌更容易完成，胡率大幅上升。
+	# 原 threshold >=4 基于 AI 无法鸣牌的前提；启用 pon 后 seat 2 胡率 ~80%+，
+	# 放宽到 >=1（至少有一场不胡即可验证 hook 有条件性触发的机制）。
 	var zero_count: int = 0
 	for c in fire_counts:
 		if c == 0:
 			zero_count += 1
-	assert_gte(zero_count, 4,
-		"假设 O 实证：8 场中至少一半 (≥4) WIN_DECLARED_PRE seat 2 没 fire（AI 没胡）")
+	assert_gte(zero_count, 1,
+		"假设 O 实证：8 场中至少 1 场 WIN_DECLARED_PRE seat 2 没 fire（AI 没胡）")
 
 func test_assumption_o_REFUTED_ai_seat_2_win_rate_actually_high():
 	# 假设 O **证伪**：以 HeuristicAi 跑单 BattleController（dealer=seat 0），

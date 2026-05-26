@@ -17,7 +17,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.78)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -42,8 +42,8 @@ func _ready() -> void:
 	title.position = Vector2(0, 22)
 	title.size = Vector2(PANEL_W, 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 28)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.5))
+	title.add_theme_font_size_override("font_size", DT.FONT_TITLE)
+	title.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(title)
 
 	# 左:统计数字
@@ -87,8 +87,8 @@ func _build_stats_column(parent: Control, x: int, y: int, w: int) -> void:
 	lbl.position = Vector2(x, y)
 	lbl.size = Vector2(w, PANEL_H - 160)
 	lbl.text = "\n".join(lines)
-	lbl.add_theme_font_size_override("font_size", 17)
-	lbl.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	parent.add_child(lbl)
 
 
@@ -105,8 +105,8 @@ func _build_achievements_column(parent: Control, x: int, y: int, w: int) -> void
 	var total: int = ach.size()
 	var hdr := Label.new()
 	hdr.text = "成就 (%d / %d)" % [unlocked_count, total]
-	hdr.add_theme_font_size_override("font_size", 20)
-	hdr.add_theme_color_override("font_color", Color(1, 0.85, 0.4))
+	hdr.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	hdr.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	grid.add_child(hdr)
 
 	# 滚动容器避免超长
@@ -125,8 +125,8 @@ func _build_achievements_column(parent: Control, x: int, y: int, w: int) -> void
 		var row := Label.new()
 		var prefix: String = "🏆" if is_unlocked else "🔒"
 		row.text = "%s  %s — %s" % [prefix, nm, desc]
-		row.add_theme_font_size_override("font_size", 14)
-		var color := Color(1, 0.88, 0.32) if is_unlocked else Color(0.55, 0.55, 0.55)
+		row.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+		var color: Color = DT.TEXT_TITLE if is_unlocked else DT.TEXT_MUTED
 		row.add_theme_color_override("font_color", color)
 		inner.add_child(row)
 

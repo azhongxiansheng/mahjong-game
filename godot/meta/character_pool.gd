@@ -68,6 +68,66 @@ static func all() -> Array:
 	awai.unlock_renown = 200
 	pool.append(awai)
 
+	var koromo := Character.new(&"koromo")
+	koromo.display_name = "天江衣"
+	koromo.description = "海底支配。海底/河底胡牌 +3 番 + 摸牌時残り 3 枚透視。"
+	koromo.ability_id = &"char_koromo_passive_v1"
+	koromo.starting_hp = 4
+	koromo.starting_gold = 30
+	koromo.recommended_pack = &"starter_control"
+	koromo.unlock_renown = 300
+	pool.append(koromo)
+
+	var nodoka := Character.new(&"nodoka")
+	nodoka.display_name = "原村和"
+	nodoka.description = "デジタル。胡牌 +1 番 + 対手聴牌時に手牌 1 枚透視。"
+	nodoka.ability_id = &"char_nodoka_passive_v1"
+	nodoka.starting_hp = 5
+	nodoka.starting_gold = 10
+	nodoka.recommended_pack = &"starter_control"
+	nodoka.unlock_renown = 300
+	pool.append(nodoka)
+
+	var toki := Character.new(&"toki")
+	toki.display_name = "園城寺怜"
+	toki.description = "一巡先見。開局時に全 4 席の次の摸牌を透視。"
+	toki.ability_id = &"char_toki_passive_v1"
+	toki.starting_hp = 4
+	toki.starting_gold = 20
+	toki.recommended_pack = &"starter_fast"
+	toki.unlock_renown = 400
+	pool.append(toki)
+
+	var kuro := Character.new(&"kuro")
+	kuro.display_name = "松実玄"
+	kuro.description = "ドラの愛。胡牌時に +2 extra Dora。"
+	kuro.ability_id = &"char_kuro_passive_v1"
+	kuro.starting_hp = 5
+	kuro.starting_gold = 0
+	kuro.recommended_pack = &"starter_aggro"
+	kuro.unlock_renown = 400
+	pool.append(kuro)
+
+	var momoko := Character.new(&"momoko")
+	momoko.display_name = "東横桃子"
+	momoko.description = "ステルス。立直後の胡牌 +1 番。"
+	momoko.ability_id = &"char_momoko_passive_v1"
+	momoko.starting_hp = 5
+	momoko.starting_gold = 10
+	momoko.recommended_pack = &"starter_fast"
+	momoko.unlock_renown = 500
+	pool.append(momoko)
+
+	var tetsuya := Character.new(&"tetsuya")
+	tetsuya.display_name = "哲也"
+	tetsuya.description = "玄人技。胡牌每回 +1 番累積（初回 +1、2 回目 +2…）。"
+	tetsuya.ability_id = &"char_tetsuya_passive_v1"
+	tetsuya.starting_hp = 4
+	tetsuya.starting_gold = 40
+	tetsuya.recommended_pack = &"starter_aggro"
+	tetsuya.unlock_renown = 500
+	pool.append(tetsuya)
+
 	return pool
 
 static func find(char_id: StringName) -> Character:

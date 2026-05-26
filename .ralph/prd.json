@@ -1,0 +1,213 @@
+{
+  "project": "MahjongKing",
+  "branchName": "ralph/playable-game-polish",
+  "description": "让麻将王 Roguelike 真实可玩：Stage 2 事件回放可视化 + UI 排版打磨 + Stage 3 玩家交互（点弃牌 / 立直 / ron-tsumo）。复用现有 four_player_table / SeatPanel / TextureExtractor / RunHud 等组件。",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "BattleNodeRunner 暴露所有 hand 的 events 供回放",
+      "description": "As a UI developer, I need access to BattleEvent sequence per hand so RunFlow can replay battles with animation. 现状: run_battle_with_stats 只返终态。",
+      "acceptanceCriteria": [
+        "run_battle_with_stats 返 dict 加 events_per_hand: Array[Array[BattleEvent]]（每手一个数组）",
+        "保留 last_state / final_scores 兼容 Stage 1",
+        "新增 GUT 测：events_per_hand.size() == hand_count，每个 sub-array 非空",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "FourPlayerTable 加事件回放 API（apply_event）",
+      "description": "As a battle viewer, I want to see tiles drawn / discarded / riichi sticks placed step by step. 现状: 只有 bind_battle_state 静态快照。",
+      "acceptanceCriteria": [
+        "FourPlayerTable.apply_event(event: BattleEvent) 处理 DRAW / DISCARD / RIICHI_DECLARED / WIN_DECLARED_PRE 等关键事件",
+        "DRAW: 对应 seat 的 hand size +1（或显示新牌）",
+        "DISCARD: 对应 seat 的 discards 区追加牌",
+        "RIICHI_DECLARED: 对应 seat 显示立直棒",
+        "新增 GUT 测：apply_event 后 SeatPanel 状态正确更新",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "RunFlow Stage 2 — Timer 回放战斗事件",
+      "description": "As a player, I want to watch the AI battle play out instead of seeing only final state. 现状: Stage 1 只 bind 终态。",
+      "acceptanceCriteria": [
+        "_run_battle_node 改用 events_per_hand；用 Timer 每 N ms 触发 apply_event",
+        "默认速度 200ms/event，按钮可切 instant / 1x / 2x / 4x",
+        "回放完成后 overlay 显示 rank 和 下一节点 按钮",
+        "节点速度按钮持久化（meta_progress 存档）",
+        "F5 试玩走过完整 4 局回放",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "ChapterMapView 视觉地图替代文本按钮",
+      "description": "As a player, I want to see the chapter map visually with node icons connected by lines. 现状: 纯文本按钮列表（plan-4 D5 占位）。",
+      "acceptanceCriteria": [
+        "复用现有 ChapterMap 数据 + NodeKind 枚举",
+        "节点用图标+边框（NORMAL=战斗 / ELITE=精英 / CAMP=营地 / SHOP=商店 / EVENT=事件 / BOSS=Boss）",
+        "层级布局（按层从上到下排，每层 1-3 节点平铺）",
+        "可点击节点 emit node_chosen signal（兼容现 API）",
+        "已通关节点灰显，下层可选节点高亮",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Camp 节点真实 UI（恢复 HP / 升级卡）",
+      "description": "As a player, I want camp nodes to actually do something. 现状: PlaceholderNode 只显示 下一步 按钮。",
+      "acceptanceCriteria": [
+        "camp_node.tscn / .gd 取代 PlaceholderNode for CAMP",
+        "提供 2 个选项：恢复 1 HP（max+1 限） / 升级 1 张 deck 卡（rarity +1）",
+        "选项确认后 RunState 更新（hp 或 deck mutation）",
+        "复用现有 PlaceholderNode UI 风格 + Button 组件",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Shop 节点真实 UI（用 gold 买卡 / ability）",
+      "description": "As a player, I want shop nodes to let me spend gold. 现状: PlaceholderNode 占位。",
+      "acceptanceCriteria": [
+        "shop_node.tscn 显示 3 张随机商品（mix tile / ability）+ 价格",
+        "商品池来自 GachaPool；价格按 rarity",
+        "玩家点击商品 → 扣 gold + 加入 deck",
+        "gold 不够时按钮 disabled",
+        "右下角 离开 按钮 emit done",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Event 节点真实 UI（随机事件选项）",
+      "description": "As a player, I want event nodes to give me choices. 现状: PlaceholderNode 占位。",
+      "acceptanceCriteria": [
+        "event_node.tscn 显示事件标题 + 描述 + 2-3 选项",
+        "事件池硬编码 3-5 个 v1 事件（如 老人乞讨：给 50 gold or 收免费 ability）",
+        "选项按钮触发对应 RunState 副作用",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "RunHud 排版打磨（HP bar / Gold / Chapter / Deck）",
+      "description": "As a player, I want HUD always visible with key info. 现状: RunHud 实装 minimal。",
+      "acceptanceCriteria": [
+        "顶部 HUD 固定显示：HP bar (心形 icon × N) / Gold 数字 / 章节 X 节点 Y / Deck size",
+        "HP bar 颜色：green > 50% / yellow > 25% / red ≤ 25%",
+        "点击 Deck size 弹出 deck preview overlay（复用现有 deck UI）",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "RunSummary 排版打磨（胜利/失败屏 + Run stats）",
+      "description": "As a player, I want a satisfying end screen with run stats. 现状: minimal 文本。",
+      "acceptanceCriteria": [
+        "胜利屏：金色背景 / 完整 Run 统计（hand 总数 / 胡牌次 / 役满次 / Run 用时 / 通关章节）",
+        "失败屏：暗红背景 / 失败章节 + boss 名 / 死因 (HP=0)",
+        "返回主菜单 按钮（StarterPackPicker）",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "StarterPackPicker 排版打磨（卡牌预览 + 三选一）",
+      "description": "As a player, I want to see what each starter pack contains. 现状: 只有名字按钮。",
+      "acceptanceCriteria": [
+        "三套起始包卡片化布局（横向并列）",
+        "每张卡显示：包名 + 主题描述 + 含 abilities/tiles 列表预览（icon + name）",
+        "鼠标悬停高亮；点击选定 → emit pack_chosen",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "TurnEngine 加 await player_input 钩子（Stage 3 准备）",
+      "description": "As an architect, I need TurnEngine to yield for player decision so RunFlow can show input UI. 现状: 全 sync run_to_end。",
+      "acceptanceCriteria": [
+        "TurnEngine 加 player_seat 配置 + emit player_decision_needed signal（含 phase / legal_actions）",
+        "默认 player_seat = -1（全 AI 兼容现状），>=0 时该 seat 的 draw/discard/win 决策 yield",
+        "新增 GUT 测：player_seat=0 时 RIICHI_DECLARED 事件 emit decision signal",
+        "现有所有 sim / GUT 测试用 player_seat=-1 跑通（0 regression）",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "玩家手牌点击弃牌 UI（Stage 3 第 1 步）",
+      "description": "As a player, I want to click my tile to discard it. 现状: AI 自动弃牌。",
+      "acceptanceCriteria": [
+        "FourPlayerTable seat 0 SeatPanel 手牌可点击",
+        "悬停高亮；点击 emit tile_discarded(tile)",
+        "RunFlow 监听 emit 调 TurnEngine.apply_discard",
+        "AI 摸牌 / 弃牌仍自动",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "玩家立直 / Ron / Tsumo UI 弹窗",
+      "description": "As a player, I want explicit prompts to declare riichi / ron / tsumo. 现状: AI 自动声明。",
+      "acceptanceCriteria": [
+        "玩家进入 tenpai 时 立直 按钮显（剩 1 张牌可弃听）",
+        "玩家可 ron 时 弹窗 (Ron / Skip)；同理 Tsumo",
+        "Skip 后玩家振听标记 1 巡（spec 规则）",
+        "godot --import 0 error",
+        "GUT 全套 PASS"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

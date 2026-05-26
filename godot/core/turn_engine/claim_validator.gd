@@ -91,3 +91,33 @@ static func can_tsumo(hand: Hand, melds: Array, drawn_tile: Tile) -> bool:
 		typed_melds.append(m)
 	var r := WinPattern.detect(hand, typed_melds, drawn_tile)
 	return r.is_winning
+
+# 喰い替え: after chi/pon, which tile IDs are forbidden to discard immediately.
+# is_chi=true: claimed_id + suji partner (the tile at the "other end" of the sequence).
+# is_chi=false (pon): just claimed_id (cannot discard 4th copy).
+# companion_ids: the two tiles from hand used in chi (sorted ascending); empty for pon.
+static func kuikae_restricted_ids(claimed_id: int, companion_ids: Array, is_chi: bool) -> Array:
+	var restricted: Array = [claimed_id]
+	if not is_chi:
+		return restricted
+	if companion_ids.size() != 2:
+		return restricted
+	var lo: int = min(companion_ids[0], companion_ids[1])
+	var hi: int = max(companion_ids[0], companion_ids[1])
+	if claimed_id < lo:
+		var suji: int = hi + 1
+		if _in_same_suit(claimed_id, suji):
+			restricted.append(suji)
+	elif claimed_id > hi:
+		var suji: int = lo - 1
+		if _in_same_suit(claimed_id, suji):
+			restricted.append(suji)
+	return restricted
+
+static func _in_same_suit(a: int, b: int) -> bool:
+	if TileId.is_honor(a) or TileId.is_honor(b):
+		return false
+	for rng in [[TileId.W1, TileId.W9], [TileId.T1, TileId.T9], [TileId.S1, TileId.S9]]:
+		if a >= rng[0] and a <= rng[1] and b >= rng[0] and b <= rng[1]:
+			return true
+	return false

@@ -19,6 +19,8 @@ var bgm_volume: float = 0.6
 # 新手引导首次启动后置 true,RunFlow._ready 不再弹 TutorialOverlay。
 # 玩家可在 SettingsOverlay 重置 → 重新看引导。
 var tutorial_seen: bool = false
+# 全屏模式:true = exclusive fullscreen,false = windowed。DisplayServer 应用。
+var fullscreen: bool = false
 # 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
 # 常用预设:60 / 120 / 144 / 0(unlimited)。
 var framerate_cap: int = 60
@@ -33,6 +35,7 @@ func _ready() -> void:
 	_load_from_disk()
 	# 启动后同步 AudioManager 音量(避免 AudioManager._ready 时 SettingsManager 还没载)
 	_apply_to_audio()
+	_apply_fullscreen()
 	_apply_framerate_cap()
 	_apply_fullscreen()
 
@@ -111,6 +114,7 @@ func _load_from_disk() -> void:
 	sfx_volume = clamp(float(parsed.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
 	tutorial_seen = bool(parsed.get("tutorial_seen", false))
+	fullscreen = bool(parsed.get("fullscreen", false))
 	var fps_v: int = int(parsed.get("framerate_cap", 60))
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
@@ -123,6 +127,7 @@ func _save_to_disk() -> void:
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
 		"tutorial_seen": tutorial_seen,
+		"fullscreen": fullscreen,
 		"framerate_cap": framerate_cap,
 		"fullscreen": fullscreen,
 	}

@@ -36,13 +36,28 @@ var _last_result: NodeResult = null
 var _seed_seed: int = 0
 var _pending_character_id: StringName = &""
 var _pending_difficulty: int = Difficulty.Level.NORMAL
+# 章节过场:_on_run_node_completed 检测 chapter 变化,弹出 ChapterIntroOverlay
+# 让玩家"为剧情想通关"。第一次进 run 时 _last_chapter=0 跳过 ch1 intro。
+var _last_chapter: int = 0
+# Daily 模式:StarterPackPicker toggle 后置 true,_on_pack_chosen 用
+# DailySeed.today_seed() 替代默认 Time.get_ticks_msec()。全服同 seed 可比成绩。
+var _daily_mode: bool = false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(1280, 720)
+	custom_minimum_size = Vector2(DT.VIEW_W, DT.VIEW_H)
 	_seed_seed = Time.get_ticks_msec()
 	_hud = RUN_HUD.instantiate()
 	_hud.position = Vector2(0, 0)
 	add_child(_hud)
+	# Daily quest: 接 quest_claimed signal → 加 renown + 弹 toast。
+	# Run 内完成的任务 gold 也加到 _run_state(若存在);run 外只加 renown。
+	var dq = get_node_or_null("/root/DailyQuest")
+	if dq and not dq.quest_claimed.is_connected(_on_daily_quest_claimed):
+		dq.quest_claimed.connect(_on_daily_quest_claimed)
+	# BattlePass 升级 toast — quest 完成会触发 add_xp 进而 emit level_up
+	var bp = get_node_or_null("/root/BattlePass")
+	if bp and not bp.level_up.is_connected(_on_bp_level_up):
+		bp.level_up.connect(_on_bp_level_up)
 	# 新手引导:第一次启动(SettingsManager.tutorial_seen=false)弹出 5 页教程,
 	# 玩家点 Skip / 读完最后页 → 标 seen=true 持久化,以后不再弹。
 	_maybe_show_tutorial()
@@ -106,6 +121,37 @@ func _on_character_chosen(char_id: StringName) -> void:
 	var pack_picker: StarterPackPicker = STARTER_PACK_PICKER.instantiate()
 	_swap_panel(pack_picker)
 	pack_picker.pack_chosen.connect(_on_pack_chosen)
+	pack_picker.daily_mode_toggled.connect(_on_daily_mode_toggled)
+
+
+# Daily quest 完成回调:加 gold(若 run 内) + renown + 弹 toast。BattlePass 也
+# 在监听同 signal 累 season_xp(本文件不重复发,避免双发)。
+func _on_daily_quest_claimed(_quest_id: StringName, gold: int, renown: int, _xp: int) -> void:
+	if _run_state and not _run_state.finished:
+		_run_state.gold += gold
+		_hud.bind_run_state(_run_state)
+	var mp = get_node_or_null("/root/MetaProgress")
+	if mp:
+		mp.renown += renown
+		if mp.has_method("save_meta"):
+			mp.save_meta()
+	var toast = get_node_or_null("/root/SaveToast")
+	if toast and toast.has_method("show_message"):
+		toast.show_message("✅ 每日任务 +%d gold · +%d 声望" % [gold, renown])
+
+
+# BattlePass 升级回调:弹 toast 让玩家感知"赛季在动"。reward_unlocked 由
+# BattlePass UI 在主菜单 / 战令页直接消费,这里不重复处理。
+func _on_bp_level_up(new_level: int) -> void:
+	var toast = get_node_or_null("/root/SaveToast")
+	if toast and toast.has_method("show_message"):
+		toast.show_message("🎖️ 赛季等级 → Lv.%d" % new_level)
+
+
+# Daily 模式 toggle 回调:仅记一个 flag,等 _on_pack_chosen 时按 flag 选 seed。
+# 玩家可随时再点取消(_daily_mode 跟着切回 false),pack_chosen 之前都生效。
+func _on_daily_mode_toggled(enabled: bool) -> void:
+	_daily_mode = enabled
 
 # M5 第 4 步：存档恢复入口
 func _show_continue_prompt() -> void:
@@ -154,11 +200,43 @@ func _show_summary() -> void:
 	_swap_panel(summary)
 	summary.bind_run_state(_run_state)
 	summary.back_to_menu.connect(_reset)
+	summary.revive_requested.connect(_on_revive_requested)
+
+
+# 玩家在 RunSummary 失败页点"花 X gold 复活": 扣 gold + hp 恢复 1 + 把
+# run_state 回滚到失败前 (未 finalize), 回到当前章节地图继续选节点。
+# RunSummary 已经校验过 gold >= REVIVE_GOLD_COST, 这里再 defense check 一遍。
+func _on_revive_requested() -> void:
+	if _run_state == null:
+		return
+	if _run_state.gold < RunSummary.REVIVE_GOLD_COST:
+		return  # 防御:UI 不该让我们到这一步
+	_run_state.gold -= RunSummary.REVIVE_GOLD_COST
+	_run_state.hp = 1  # 复活给 1 HP (起死回生,不是满血,保留紧迫感)
+	_run_state.finished = false
+	_run_state.won = false
+	# P1 fix (codex review): _on_run_failed 已经 finalize (清存档 + 加 renown +
+	# 记 ended)。如果不撤销,玩家"故意失败 + 复活"可重复刷 renown/runs_completed
+	# /runs_failed (每次失败都计一次)。撤销让计数恢复到 fail 之前的状态。
+	# 成就解锁不撤回(达成是真发生过)。
+	var mp = get_node_or_null("/root/MetaProgress")
+	if mp and mp.has_method("revert_last_run"):
+		mp.revert_last_run(false)
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm and sm.has_method("revert_run_ended"):
+		sm.revert_run_ended(false)
+	_hud.bind_run_state(_run_state)
+	_save_run_state()
+	# 回到章节地图选下一节点 (失败的节点不重打,直接进下一选项)
+	_show_chapter_map()
 
 # ---- callbacks ----
 
 func _on_pack_chosen(pack_id: StringName) -> void:
-	_run_state = RunState.new(_seed_seed)
+	# Daily 模式:用 DailySeed.today_seed() 让全服同 seed,玩家可比成绩。
+	# 非 daily 用 Time.get_ticks_msec() 当 seed 保持每次 run 随机。
+	var actual_seed: int = DailySeed.today_seed() if _daily_mode else _seed_seed
+	_run_state = RunState.new(actual_seed)
 	_run_state.difficulty = _pending_difficulty
 	_apply_character(_pending_character_id)
 	_run_state.hp += Difficulty.hp_modifier(_pending_difficulty)
@@ -173,11 +251,20 @@ func _on_pack_chosen(pack_id: StringName) -> void:
 	var sm = get_node_or_null("/root/StatsManager")
 	if sm:
 		sm.record_run_started()
+		# 记 baseline snapshot 让 RunSummary 算"本 run 亮点"diff
+		if sm.has_method("snapshot"):
+			_run_state.stats_at_start = sm.snapshot()
 	# Pro 日志:run lifecycle 摘要
 	var log_node = get_node_or_null("/root/Log")
 	if log_node:
-		log_node.info("run", "started pack=%s difficulty=%d seed=%d" % [
-			str(pack_id), int(_pending_difficulty), _seed_seed])
+		var mode_tag: String = "daily" if _daily_mode else "free"
+		log_node.info("run", "started pack=%s difficulty=%d seed=%d mode=%s" % [
+			str(pack_id), int(_pending_difficulty), actual_seed, mode_tag])
+	# Daily run 启动 toast 让玩家明确进入 daily(避免点了 toggle 又忘了)
+	if _daily_mode:
+		var toast = get_node_or_null("/root/SaveToast")
+		if toast and toast.has_method("show_message"):
+			toast.show_message("🗓️ 今日挑战 #%s 开始" % DailySeed.today_display())
 	_show_chapter_map()
 
 func _on_node_chosen(node_index: int) -> void:
@@ -195,11 +282,39 @@ func _on_run_node_completed(_opts: Array) -> void:
 	_hud.bind_run_state(_run_state)
 	# M5 第 4 步：节点完成后立即自动存档
 	_save_run_state()
+	# 速战连击 toast: streak >= 2 时玩家拿到额外 gold,用 SaveToast 通道弹提示
+	# 让玩家感知"我在连胡,gold 多了"。toast 在 chapter_map 切换前显示。
+	if _run_state.last_speed_streak_bonus > 0:
+		var toast = get_node_or_null("/root/SaveToast")
+		if toast and toast.has_method("show_message"):
+			toast.show_message("🔥 速战 %d 连胡 +%d gold" % [
+				_run_state.speed_streak, _run_state.last_speed_streak_bonus])
+	# 章节过场:检测到 chapter 推进(打过 Boss + 还有下章) → 弹剧情 overlay。
+	# _last_chapter=0 第一次跑时跳过 ch1 intro(那是 starter_pack/character
+	# picker 的职责)。awaits overlay closed 后继续下个 panel。
+	if _run_state.chapter > _last_chapter and _last_chapter > 0:
+		await _show_chapter_intro_for(_run_state.chapter)
+	_last_chapter = _run_state.chapter
 	# M5 第 3 步：战斗节点结算后给 1 抽（spec §9.2 节点单抽自动）。
 	if _last_node_ref and NodeKind.is_battle(_last_node_ref.kind):
 		_show_node_pack_open()
 	else:
 		_show_chapter_map()
+
+
+# 章节过场:按 new_chapter 选 ChapterIntroOverlay.Beat,弹 overlay 等关闭。
+# ch2 → Beat.ENTER_CHAPTER_2;ch3 → Beat.ENTER_CHAPTER_3;无对应章默认跳过。
+func _show_chapter_intro_for(new_chapter: int) -> void:
+	var beat: int = -1
+	match new_chapter:
+		2: beat = ChapterIntroOverlay.Beat.ENTER_CHAPTER_2
+		3: beat = ChapterIntroOverlay.Beat.ENTER_CHAPTER_3
+	if beat < 0:
+		return
+	var overlay := ChapterIntroOverlay.new()
+	overlay.set_beat(beat)
+	get_tree().root.add_child(overlay)
+	await overlay.closed
 
 func _on_run_failed() -> void:
 	_hud.bind_run_state(_run_state)
@@ -236,6 +351,12 @@ func _on_run_won() -> void:
 	if log_node:
 		log_node.info("run", "WON chapter=%d nodes=%d" % [
 			int(_run_state.chapter), _run_state.history.size()])
+	# 通关过场:RunSummary 之前播 WIN 剧情(3 句台词 ~8s),给玩家一段情绪
+	# 高峰再看战绩。失败不播过场(避免冲淡失败感)。
+	var overlay := ChapterIntroOverlay.new()
+	overlay.set_beat(ChapterIntroOverlay.Beat.WIN)
+	get_tree().root.add_child(overlay)
+	await overlay.closed
 	_show_summary()
 
 # ---- node execution ----
@@ -253,16 +374,69 @@ func _run_battle_node(node_ref: NodeRef) -> void:
 	var player_tile_variants: Dictionary = _player_tile_variants()
 	var player_consumable_ids: Array = _player_consumable_ids()
 	var player_relic_ids: Array = _player_relic_ids()
-	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids)
-	var session_kind: String = "east_round"
+	await _show_battle_prep(table, boss_id, player_ability_ids, player_tile_variants, player_consumable_ids, node_ref)
+	# session_kind 从 node_ref 读 (同事 commit 813814e 修复的 silent bug):
+	# 之前硬编码 east_round 让 GAP-4 speed mode 在 ChapterConfig/Generator/
+	# BalanceConstants 全改完后仍无生效,玩家实际仍跑 4 局/节点。
+	var session_kind: String = node_ref.session_kind
+	# AI 难度按 chapter / difficulty / 节点类型决定:
+	#  - 章 1 第一个 NORMAL 节点 + 难度 NORMAL → SimpleAi (新手第 1 局保护)
+	#  - 其余 → HeuristicAi (有挑战感,之前硬编 SimpleAi 让所有玩家都太弱)
+	# 之前 run_with_player_input_async 内部硬编 use_heuristic_ai=false,老手
+	# 体验不到挑战。现在由 RunFlow 决策:让新手温暖入门,老手有压力。
+	var use_heuristic: bool = _should_use_heuristic_ai(node_ref)
 	var result: NodeResult = await BattleNodeRunner.run_with_player_input_async(
 		table, get_tree(), node_seed, boss_id, player_ability_ids,
-		player_tile_variants, session_kind, 0, player_consumable_ids, player_relic_ids
+		player_tile_variants, session_kind, 0, player_consumable_ids,
+		player_relic_ids, use_heuristic
 	)
 	if not is_instance_valid(table) or not table.is_inside_tree():
 		return
 	_last_result = result
 	_run_state.complete_node(result)
+
+# 节点 → AI 难度决策。新手保护规则:
+#  - Difficulty.NORMAL + chapter 1 + 玩家访问节点数 <= 1 + NodeKind.NORMAL
+#    → 用 SimpleAi (随机弃牌,几乎不胡)
+#  - 其余情况 → HeuristicAi
+# Boss / Elite / 章 2+ / 难度 HARD+ / 第 2+ 节点都吃 HeuristicAi。让"第 1 局"
+# 是温暖的体验:玩家先熟悉规则 + UI + 自己的 deck,再面对真正会胡的对手。
+# 战斗 prep 预告字串。读节点 session_kind + 难度策略,告诉玩家"几局 / AI 多硬"。
+# 例: "速战 · 2 局 · 普通 AI (新手保护)" / "东风战 · 4 局 · 强 AI" / "半庄战 · 8 局 · 强 AI"
+func _format_battle_preview(node_ref: NodeRef) -> String:
+	var sk: String = node_ref.session_kind
+	var hands: int = BalanceConstants.get_hands_per_node(sk)
+	var session_name: String = ""
+	match sk:
+		"speed": session_name = "速战"
+		"east_round": session_name = "东风战"
+		"hanchan": session_name = "半庄战"
+		_: session_name = sk
+	var ai_label: String = "强 AI" if _should_use_heuristic_ai(node_ref) else "普通 AI（新手保护）"
+	# 时长粗估:speed/east_round 一局 ~2 分钟,hanchan 一局 ~3 分钟
+	var per_hand_min: int = 3 if sk == "hanchan" else 2
+	var est_min: int = hands * per_hand_min
+	return "%s · %d 局 · 约 %d 分钟 · %s" % [session_name, hands, est_min, ai_label]
+
+
+func _should_use_heuristic_ai(node_ref: NodeRef) -> bool:
+	if _run_state == null:
+		return true
+	# 难度高:全程 HeuristicAi
+	if _run_state.difficulty > Difficulty.Level.NORMAL:
+		return true
+	# 章 2+: 全程 HeuristicAi
+	if _run_state.chapter > 1:
+		return true
+	# Boss / Elite 节点:始终 HeuristicAi (这是"考核",不能放水)
+	if node_ref.kind == NodeKind.Kind.BOSS or node_ref.kind == NodeKind.Kind.ELITE:
+		return true
+	# 已访问节点 >= 2:玩家熟悉了,上 HeuristicAi
+	if _run_state.history.size() >= 2:
+		return true
+	# 剩下的:章 1 + Normal 难度 + 普通节点 + 前 2 个 → SimpleAi 保护
+	return false
+
 
 func _player_ability_ids() -> Array:
 	var ids: Array = []
@@ -395,19 +569,27 @@ func _apply_gacha_to_deck(result: GachaResult) -> void:
 func _swap_panel(new_panel: Control) -> void:
 	if _current_panel:
 		_current_panel.queue_free()
-	new_panel.position = Vector2(0, 50)  # HUD 占了 0..40
+	# 用 anchor 让 panel 占满 HUD 下方,不再硬偏移 (HUD_H 来自 DT)。
+	# 子面板 .tscn 也都改成 anchors_preset=15 自适应,这样不论窗口尺寸都
+	# 正确占满。原本 position=(0,50) 在 panel 自带 anchor 时会跑位。
+	new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+	new_panel.offset_top = DT.HUD_H
+	new_panel.offset_left = 0
+	new_panel.offset_right = 0
+	new_panel.offset_bottom = 0
 	add_child(new_panel)
 	_current_panel = new_panel
 
 func _make_loading_label(text: String) -> Control:
 	var c := Control.new()
-	c.custom_minimum_size = Vector2(800, 600)
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
 	var lbl := Label.new()
 	lbl.text = text
-	lbl.size = Vector2(800, 600)
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 24)
+	lbl.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	lbl.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	c.add_child(lbl)
 	return c
 
@@ -415,63 +597,73 @@ static func _loading_text_for_battle(node_ref: NodeRef) -> String:
 	var label := node_ref.display_name() if node_ref else "战斗"
 	return "%s 进行中…\n（v1 v1 同步跑完整场东风战，无 4 人桌动画；M5/M6 视觉化）" % label
 
-func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array) -> void:
+func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array, node_ref: NodeRef = null) -> void:
 	var overlay := Control.new()
-	overlay.size = Vector2(1280, 800)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	table.add_child(overlay)
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, 800)
-	bg.color = Color(0, 0, 0, 0.85)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
 	var panel := VBoxContainer.new()
-	panel.position = Vector2(340, 120)
+	panel.set_anchors_preset(Control.PRESET_CENTER)
 	panel.custom_minimum_size = Vector2(600, 500)
+	panel.offset_left = -300
+	panel.offset_top = -250
+	panel.offset_right = 300
+	panel.offset_bottom = 250
+	panel.add_theme_constant_override("separation", DT.GAP_NORMAL)
 	overlay.add_child(panel)
 	var title := Label.new()
 	title.text = "战斗准备" if boss_id == &"" else "BOSS 战"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 36)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	DT.apply_title_style(title)
 	panel.add_child(title)
+	# 预告:本节点局数 + AI 难度,让玩家心理预期清晰("速战 2 局 vs Heuristic AI"
+	# 比"开始战斗"更让人知道自己面对什么)。boss_id 不空时已有 "BOSS 战"标题
+	# 传递主题色,不再重复 AI 信息。
+	if node_ref != null:
+		var preview := Label.new()
+		preview.text = _format_battle_preview(node_ref)
+		DT.apply_body_style(preview)
+		preview.add_theme_color_override("font_color", DT.TEXT_MUTED)
+		panel.add_child(preview)
 	panel.add_child(HSeparator.new())
 	if not ability_ids.is_empty():
 		var ab_label := Label.new()
-		ab_label.text = "角色能力："
-		ab_label.add_theme_font_size_override("font_size", 20)
-		ab_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		ab_label.text = "角色能力"
+		DT.apply_subtitle_style(ab_label)
+		ab_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(ab_label)
 		for aid in ability_ids:
 			var card: AbilityCard = _find_ability_card(aid)
 			var l := Label.new()
 			l.text = "  • %s" % (card.display_name if card else String(aid))
-			l.add_theme_font_size_override("font_size", 16)
-			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			DT.apply_body_style(l)
 			panel.add_child(l)
 	if tile_variants.size() > 0:
 		var tv_label := Label.new()
 		tv_label.text = "牌技能：%d 张" % tile_variants.size()
-		tv_label.add_theme_font_size_override("font_size", 20)
-		tv_label.add_theme_color_override("font_color", Color(0.7, 0.9, 1.0))
+		DT.apply_subtitle_style(tv_label)
+		tv_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(tv_label)
 	if not consumable_ids.is_empty():
 		var c_label := Label.new()
-		c_label.text = "战斗道具："
-		c_label.add_theme_font_size_override("font_size", 20)
-		c_label.add_theme_color_override("font_color", Color(1.0, 0.75, 0.4))
+		c_label.text = "战斗道具"
+		DT.apply_subtitle_style(c_label)
+		c_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		panel.add_child(c_label)
 		for cid in consumable_ids:
 			var item: ConsumableItem = _find_consumable(cid)
 			var l := Label.new()
 			l.text = "  • %s" % (item.display_name if item else String(cid))
-			l.add_theme_font_size_override("font_size", 16)
-			l.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+			DT.apply_body_style(l)
 			panel.add_child(l)
 	panel.add_child(HSeparator.new())
 	var btn := Button.new()
 	btn.text = "开战！"
-	btn.custom_minimum_size = Vector2(200, 44)
+	btn.custom_minimum_size = Vector2(200, DT.BUTTON_H)
 	btn.pressed.connect(func(): overlay.queue_free())
 	panel.add_child(btn)
 	while is_instance_valid(overlay):
@@ -506,6 +698,12 @@ func _reset() -> void:
 	_last_result = null
 	# Run 间种子不同
 	_seed_seed += 1
+	# P2 fix (codex review): _daily_mode 是 toggle 状态,不在 _reset 时清零会
+	# 让上次 daily run 默默继承到下次 run (玩家以为开 free run 却跑了 daily
+	# 同 seed)。下次进 starter picker 默认从"非 daily"开始,要 daily 主动 toggle。
+	_daily_mode = false
+	# _last_chapter 类似:残留会让回到主菜单后再开新 run 误判 chapter intro。
+	_last_chapter = 0
 	_hud._refresh_default()
 	_show_starter_picker()
 

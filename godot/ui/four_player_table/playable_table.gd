@@ -21,7 +21,7 @@ var _bc: PlayableBattleController = null
 var _seat_panel_player: SeatPanel = null
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	custom_minimum_size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
 	_build_layout()
 	# 成就解锁 → toast 弹"🏆 成就解锁:xxx"。autoload 可能晚 ready,defer connect。
 	var sm = get_node_or_null("/root/StatsManager")
@@ -40,10 +40,10 @@ func _on_achievement_unlocked(_id: String, meta: Dictionary) -> void:
 		_show_toast_text("🏆 成就解锁:%s" % captured))
 
 func _build_layout() -> void:
-	# Bg 覆盖整个 800 高度，让桌底 ActionPanel 区跟桌面同色，避免桌外白色背景
+	# Bg 覆盖整个 viewport,让桌底 ActionPanel 区跟桌面同色,避免桌外背景跳变。
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
-	bg.color = Color(0.06, 0.12, 0.20, 1.0)  # 跟 four_player_table TableBg 同系
+	bg.size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	bg.color = DT.BG_BASE
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
@@ -136,12 +136,12 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		_play_win_effects(win_event)
 		await get_tree().create_timer(0.45).timeout
 	var overlay := Control.new()
-	overlay.size = Vector2(1280, 800)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
 	var bg := ColorRect.new()
-	bg.size = Vector2(1280, 800)
-	bg.color = Color(0, 0, 0, 0.78)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.85)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
 
@@ -284,10 +284,21 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	# 继续按钮(主题化)
 	var btn := Button.new()
 	btn.text = "继续 →"
-	btn.position = Vector2(280, 490)
+	btn.position = Vector2(380, 490)
 	btn.custom_minimum_size = Vector2(160, 44)
 	btn.pressed.connect(func(): overlay.queue_free())
 	panel.add_child(btn)
+
+	# 牌谱按钮:点了弹本局所有 events 的文字列表 panel,玩家可复盘"AI 1 弃 W5、
+	# 我立直、AI 2 抢杠..."。基于 _bc.events 即时格式化,无需 events sourcing
+	# 重放(那需要 UI apply_event 镜像 BC state mutation,工作量超 1 周)。
+	# 是 PVP 战报常见形态,玩家可截图分享。
+	var replay_btn := Button.new()
+	replay_btn.text = "📜 牌谱"
+	replay_btn.position = Vector2(180, 490)
+	replay_btn.custom_minimum_size = Vector2(160, 44)
+	replay_btn.pressed.connect(func(): _show_replay_log(overlay))
+	panel.add_child(replay_btn)
 
 	# 点击空白处也能继续(保留旧的快速关闭)
 	overlay.gui_input.connect(func(ev: InputEvent):
@@ -319,6 +330,8 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	strip.position = Vector2(0, y_offset)
 	strip.size = Vector2(720, 56)
 	strip.alignment = BoxContainer.ALIGNMENT_CENTER
+	# 1 px 紧贴 — 胡牌 14 张牌展示行传统紧贴,**不要**改用 DT.GAP_TIGHT(8)
+	# 否则 14 张牌 + 13 个 8px 间隔总宽超 720 容器宽,溢出。
 	strip.add_theme_constant_override("separation", 1)
 	parent.add_child(strip)
 	for tid in concealed_ids:
@@ -455,6 +468,7 @@ func _polling_loop() -> void:
 			for i in range(_last_event_count, n):
 				_handle_event_toast(_bc.events[i])
 				_play_event_sfx(_bc.events[i])
+				_handle_event_dramatic(_bc.events[i])
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
@@ -479,8 +493,205 @@ func _show_hand_start_splash(state) -> void:
 
 # 胡牌时 burst 粒子 + 屏幕震动。按 han / yakuman 分级 tier。
 # 玩家胡 tier 不变(都好看);AI 胡用 LIGHT 让玩家不觉得过度奖励对手。
+# 高光时刻的"重量感"效果 — 立直/Dora 翻牌等不到胡牌的中间事件,加屏震
+# + 白闪 + 短 hitstop,让玩家感到"刚才发生了大事"。WIN_DECLARED 的特写
+# 走专属的 _play_win_effects (粒子+大屏震)。
+#
+# 立直: LIGHT 屏震(0.15s 4px) + 白闪 0.2s,让玩家立刻感知到"对手立直了
+# 我得防"。即便走 toast 路径,1.5s 文字 + 屏震 双通道更难错过。
+# DORA 翻牌: 同立直,提示"新 dora 出现"。
+# RINSHAN_DRAW: 短闪,呼应"岭上的紧张感"。
+func _handle_event_dramatic(ev: BattleEvent) -> void:
+	if ev == null:
+		return
+	match ev.type:
+		&"RIICHI_DECLARED":
+			var shake := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
+			shake.start()
+			_flash_screen(0.18, Color(1, 1, 1, 0.35))
+			# AI 立直 → 该 seat 立绘转蓝调"决意"。actor_seat 越界 / seat 0 无立绘
+			# 时 set_emote 是 no-op,不会崩。
+			_set_seat_emote(int(ev.actor_seat), "riichi")
+			_say_for_seat(int(ev.actor_seat), "riichi")
+		&"HAITEI", &"HOUTEI":
+			# 海底/河底:罕见,玩家可能整个 run 见 1-2 次。补 LIGHT 屏震 +
+			# 蓝白闪让它"被注意到"——单纯 toast 容易错过。WIN_DECLARED 紧
+			# 跟其后会再播胡牌特效,不冲突。
+			var shake2 := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
+			shake2.start()
+			_flash_screen(0.22, Color(0.7, 0.85, 1.0, 0.45))
+		&"ABORTIVE_DRAW":
+			# 途中流局(四风连打/四家立直/九種九牌/三家和了等):红闪让玩家
+			# 注意"这局白打了"。WinBurst 不触发(不是胡牌)。
+			_flash_screen(0.3, Color(1.0, 0.7, 0.7, 0.3))
+		&"TSUMO_DECLARED", &"RON_DECLARED":
+			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
+			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
+			_set_seat_emote(int(ev.actor_seat), "winning")
+			_say_for_seat(int(ev.actor_seat), "winning")
+			for s in [0, 1, 2, 3]:
+				if s != int(ev.actor_seat):
+					_set_seat_emote(s, "upset")
+					_say_for_seat(s, "upset")
+		&"GAME_BEGIN":
+			# 新局开始 → 4 家 emote 重置 normal
+			for s in [0, 1, 2, 3]:
+				_set_seat_emote(s, "normal")
+
+
+func _set_seat_emote(seat_id: int, emote: String) -> void:
+	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
+		return
+	var sp: SeatPanel = _table.seat_panels[seat_id]
+	if sp and sp.has_method("set_emote"):
+		sp.set_emote(emote)
+
+
+func _say_for_seat(seat_id: int, event_kind: String) -> void:
+	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
+		return
+	var sp: SeatPanel = _table.seat_panels[seat_id]
+	if sp and sp.has_method("say_for_event"):
+		sp.say_for_event(event_kind)
+
+
+# 全屏白闪 — 短瞬覆盖全屏的半透明 ColorRect, tween alpha 1→0。
+# 不阻塞其他事件,挂 self 顶层 z_index 让胡牌粒子之类不被遮。
+# 弹本局牌谱回放 panel —— ScrollContainer 内显示所有关键 events 的中文摘要,
+# 跟 PVP 战报一样让玩家可复盘 + 截图分享。父 overlay 仍在底,玩家关闭牌谱
+# 就回到 hand_result_overlay。
+func _show_replay_log(parent_overlay: Control) -> void:
+	if _bc == null or _bc.events.is_empty():
+		return
+	var log_overlay := Control.new()
+	log_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	log_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	parent_overlay.add_child(log_overlay)
+	var bg := ColorRect.new()
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.92)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	log_overlay.add_child(bg)
+	var panel := Panel.new()
+	panel.position = Vector2(160, 60)
+	panel.size = Vector2(960, 660)
+	log_overlay.add_child(panel)
+	var title := Label.new()
+	title.text = "📜 本局牌谱"
+	title.position = Vector2(0, 16)
+	title.size = Vector2(960, 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	title.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	panel.add_child(title)
+	# Scroll 内放一长 Label。events 数十~百条,纯文本足够。
+	var scroll := ScrollContainer.new()
+	scroll.position = Vector2(24, 72)
+	scroll.size = Vector2(912, 520)
+	panel.add_child(scroll)
+	var log_label := Label.new()
+	log_label.text = _format_event_log()
+	log_label.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	log_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	log_label.custom_minimum_size = Vector2(880, 0)
+	scroll.add_child(log_label)
+	# 关闭按钮
+	var close_btn := Button.new()
+	close_btn.text = "关闭"
+	close_btn.position = Vector2(400, 608)
+	close_btn.custom_minimum_size = Vector2(160, 40)
+	close_btn.pressed.connect(func(): log_overlay.queue_free())
+	panel.add_child(close_btn)
+
+
+# 把 _bc.events 转中文牌谱字串。每行一条事件,带 seat 名 + 牌名(若有)。
+# 过滤噪音事件(PLAYER_ACTION 内部 kind="discard"/"draw" 已被 TILE_DRAWN/
+# DISCARDED 表达,不重复显示)。
+func _format_event_log() -> String:
+	var lines: Array[String] = []
+	var hand_no: int = 1
+	for ev in _bc.events:
+		var line: String = _format_one_event(ev, hand_no)
+		if line == "":
+			continue
+		if ev.type == &"GAME_BEGIN":
+			hand_no += 1
+		lines.append(line)
+	return "\n".join(lines)
+
+
+func _format_one_event(ev: BattleEvent, _hand_no: int) -> String:
+	if ev == null:
+		return ""
+	var who: String = _seat_short(ev.actor_seat)
+	var tile_name: String = ""
+	if ev.tile_instance != null:
+		tile_name = CardTileBack.tile_short_name(ev.tile_instance.id)
+	match ev.type:
+		&"GAME_BEGIN":
+			return "\n— 局开始 (庄家 %s) —" % who
+		&"TILE_DRAWN":
+			return ""  # 太密,不显
+		&"TILE_DISCARDED":
+			return "  %s 弃 %s" % [who, tile_name]
+		&"RIICHI_DECLARED":
+			return "  ⚡ %s 立直!" % who
+		&"TSUMO_DECLARED":
+			return "  🎯 %s 自摸 %s!" % [who, tile_name]
+		&"RON_DECLARED":
+			var ds: int = int(ev.extra.get("discarder_seat", -1))
+			return "  🎯 %s 荣胡 %s (点炮: %s)" % [who, tile_name, _seat_short(ds)]
+		&"WIN_DECLARED":
+			var han: int = int(ev.extra.get("han", 0))
+			var fu: int = int(ev.extra.get("fu", 0))
+			var ym: int = int(ev.extra.get("yakuman_multiplier", 0))
+			if ym > 0:
+				return "    ⭐ 役満%s!" % ("" if ym == 1 else " x%d" % ym)
+			return "    %d 飜 %d 符" % [han, fu]
+		&"EXHAUSTIVE_DRAW":
+			return "  — 流局 —"
+		&"ABORTIVE_DRAW":
+			var reason: String = String(ev.extra.get("reason", ""))
+			return "  — 途中流局 (%s) —" % reason
+		&"NAGASHI_MANGAN":
+			return "  ✨ %s 流し満貫!" % who
+		&"HAITEI":
+			return "  🌊 海底捞月!"
+		&"HOUTEI":
+			return "  🌊 河底捞鱼!"
+		&"PLAYER_ACTION":
+			var kind: String = String(ev.extra.get("kind", ""))
+			match kind:
+				"chi": return "  %s 吃" % who
+				"pon": return "  %s 碰" % who
+				"minkan", "ankan", "added_kan": return "  %s 杠" % who
+				"riichi": return ""  # RIICHI_DECLARED 已显
+			return ""
+		&"SKILL_TRIGGERED":
+			var skill: String = String(ev.extra.get("skill_name", ""))
+			return "    ⚡ 技能 %s (%s)" % [skill, who]
+	return ""
+
+
+func _flash_screen(duration: float, color: Color) -> void:
+	var flash := ColorRect.new()
+	flash.color = color
+	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	flash.z_index = 1000
+	add_child(flash)
+	var tw := create_tween()
+	tw.tween_property(flash, "color:a", 0.0, duration).set_ease(Tween.EASE_OUT)
+	tw.tween_callback(flash.queue_free)
+
+
 func _play_win_effects(win_event: BattleEvent) -> void:
 	var tier := _win_tier(win_event)
+	# Hitstop:胡牌前 0.12s 全屏微暗 + 白闪,模拟"瞬间空气凝固"。tier 越高
+	# 闪越亮(役満到 0.65 alpha);玩家有"刚才那一下不简单"的体感。
+	var flash_alpha: float = 0.35 + 0.10 * tier  # LIGHT=0.35 / YAKUMAN=0.65
+	_flash_screen(0.5, Color(1, 1, 1, flash_alpha))
 	# 粒子 — 挂 self(PlayableTable),坐标取屏幕中心
 	var burst := WinBurst.new()
 	burst.position = Vector2(640, 400)

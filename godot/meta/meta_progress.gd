@@ -33,6 +33,19 @@ func add_renown_for_run(won: bool) -> int:
 	save_meta()
 	return amount
 
+
+# 撤销最近一次 add_renown_for_run。RunFlow 复活时调:_on_run_failed 已经
+# finalize (renown +5 / runs_completed +1),复活后玩家继续 run,本次终态
+# 还没真的到。需要撤回避免玩家"故意失败 + 复活"刷 renown/runs_completed。
+# clamp 到 ≥0 不让负数,防御 partial save 之类。
+func revert_last_run(won_was: bool) -> void:
+	var amount: int = RENOWN_RUN_WON if won_was else RENOWN_RUN_FAILED
+	renown = max(0, renown - amount)
+	runs_completed = max(0, runs_completed - 1)
+	if won_was:
+		runs_won = max(0, runs_won - 1)
+	save_meta()
+
 # ---- 持久化 ----
 
 func save_meta() -> int:

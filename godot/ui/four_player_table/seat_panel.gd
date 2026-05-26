@@ -35,6 +35,10 @@ const HAND_ROW_OFFSET_Y: float = 30.0
 const PLAYER_HAND_TILE_W: float = 40.0
 const PLAYER_HAND_TILE_H: float = 60.0
 const PLAYER_HAND_ROW_OFFSET_X: float = -240.0
+# seat 0 手牌画在分数框(Bg offset_bottom=50)下方 + 8px 间隙,避免覆盖
+# 分数 Label。AI seat 用 HAND_ROW_OFFSET_Y(30)即可,因为它们的色块手牌
+# 是次要信息,可以跟分数框略叠。
+const PLAYER_HAND_ROW_OFFSET_Y: float = 58.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null
@@ -45,6 +49,49 @@ var _hand_clickable: bool = false
 var _seat_id: int = 0
 var _seat_wind: int = TileId.E
 var _score: int = 25000
+# AI 性格化:替代默认"AI 1/2/3"用具体人物名+打法风格,让玩家从一眼看出
+# 对面 3 家不是一团抽象的 AI,而是"赤木·激进 / 开司·速胡 / 鹫巢·防守"。
+# seat_display_name 优先用 _persona_name (非空时);_persona_style 显示在
+# seat_info 行做后缀(如 "赤木·东·激进")。
+var _persona_name: String = ""
+var _persona_style: String = ""
+# AI 立绘:set_ai_persona 时设;_emote_state 控制 modulate 调色情绪。
+# 1 张立绘 + 色调表达 4 种情绪,比录制台词便宜,比静态肖像有感染力。
+const EMOTE_NORMAL: Color = Color(1, 1, 1, 1)            # 默认白
+const EMOTE_RIICHI: Color = Color(0.6, 0.85, 1.0, 1.0)   # 蓝调:决意立直
+const EMOTE_WINNING: Color = Color(1.3, 1.15, 0.7, 1.0)  # 金调:胡牌喜悦(略过曝)
+const EMOTE_UPSET: Color = Color(0.5, 0.45, 0.45, 0.75)  # 灰调:被胡失落
+var _portrait_rect: TextureRect = null
+var _portrait_path: String = ""
+# 气泡台词:say(text) 临时创建 Label 显示 1.5s 后淡出 queue_free。
+# AI 在 RIICHI/WIN/被胡 时根据 persona_name 从台词池随机选一句,让 3 家
+# AI 有"性格的声音"。比录配音便宜,比静态文字鲜活。
+var _speech_label: Label = null
+
+# 各 persona 的台词池。key = persona_name(set_ai_persona 时设),value =
+# Dictionary{event → Array[String]}。无对应 persona 用 GENERIC fallback。
+const SPEECH_POOL: Dictionary = {
+	"赤木": {
+		"riichi": ["立直。", "看你怎么躲。", "无路可退了。"],
+		"winning": ["自摸。", "如我所料。", "这就是差距。"],
+		"upset": ["啧。", "下一把。", "意料之中。"],
+	},
+	"开司": {
+		"riichi": ["立直——！", "全押了！", "命运的一手！"],
+		"winning": ["胡了——！", "成功了!", "再赢一把!"],
+		"upset": ["啊啊啊不!", "怎么会！", "再来再来！"],
+	},
+	"鹫巣": {
+		"riichi": ["立直。可笑。", "回响吧, 我的牌。", "看清了。"],
+		"winning": ["和。", "不过尔尔。", "随便玩玩。"],
+		"upset": ["哼。", "运气罢了。", "无趣。"],
+	},
+}
+const SPEECH_GENERIC: Dictionary = {
+	"riichi": ["立直！"],
+	"winning": ["胡！"],
+	"upset": ["唉。"],
+}
 var _hand_size: int = 13
 var _meld_count: int = 0
 var _discards_count: int = 0
@@ -64,7 +111,7 @@ func _apply_hand_row_offset() -> void:
 	if _hand_tile_row == null:
 		return
 	if _seat_id == 0:
-		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y)
 	else:
 		_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 
@@ -89,6 +136,102 @@ func set_seat_wind(wind_id: int) -> void:
 	if is_inside_tree():
 		_refresh_labels()
 
+
+# AI 性格化入口。four_player_table 在 _build_layout 给 seat 1/2/3 各调一次,
+# 玩家 seat 0 可选(传角色名让玩家自己也"有名字")。
+# portrait_path 为空时跳过立绘渲染;不为空时挂一个小肖像在分数框上方。
+func set_ai_persona(name_: String, style: String, portrait_path: String = "") -> void:
+	_persona_name = name_
+	_persona_style = style
+	_portrait_path = portrait_path
+	if is_inside_tree():
+		_refresh_labels()
+		_ensure_portrait()
+
+
+# AI 气泡台词:event_kind ∈ riichi/winning/upset,从 persona 池随机选一句
+# 显示 1.5s 后淡出。无 persona/无文案 fallback 到 SPEECH_GENERIC。playable
+# _table 在 RIICHI/WIN/被胡时调。
+func say_for_event(event_kind: String) -> void:
+	var pool: Dictionary = SPEECH_POOL.get(_persona_name, SPEECH_GENERIC)
+	var lines: Array = pool.get(event_kind, [])
+	if lines.is_empty():
+		lines = SPEECH_GENERIC.get(event_kind, [])
+	if lines.is_empty():
+		return
+	var text: String = String(lines[randi() % lines.size()])
+	say(text)
+
+
+# 直接说一句指定文字(供未来玩家选预设台词复用)。1.5s 淡出 queue_free。
+# 重复调用:旧 label 先 fade 掉再创建新的,避免叠字。
+func say(text: String) -> void:
+	if text == "":
+		return
+	if _speech_label and is_instance_valid(_speech_label):
+		_speech_label.queue_free()
+	_speech_label = Label.new()
+	_speech_label.text = text
+	_speech_label.add_theme_font_size_override("font_size", 16)
+	_speech_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	_speech_label.add_theme_constant_override("shadow_offset_x", 1)
+	_speech_label.add_theme_constant_override("shadow_offset_y", 1)
+	_speech_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
+	_speech_label.position = Vector2(-60, -180)  # portrait 上方
+	_speech_label.size = Vector2(120, 30)
+	_speech_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_speech_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_speech_label)
+	# fade in 0.15 → hold 1.2 → fade out 0.4 → free
+	_speech_label.modulate.a = 0.0
+	var captured := _speech_label
+	var tw := create_tween()
+	tw.tween_property(captured, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(1.2)
+	tw.tween_property(captured, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(func():
+		if is_instance_valid(captured):
+			captured.queue_free())
+
+
+# 切 AI 情绪 → 调 portrait modulate 色。RIICHI/WIN/被胡时由 playable_table 调用,
+# 局间 reset_emote 回 normal。无立绘时本方法 no-op,不会崩。
+func set_emote(emote: String) -> void:
+	if _portrait_rect == null or not is_instance_valid(_portrait_rect):
+		return
+	var target: Color = EMOTE_NORMAL
+	match emote:
+		"riichi": target = EMOTE_RIICHI
+		"winning": target = EMOTE_WINNING
+		"upset": target = EMOTE_UPSET
+		_: target = EMOTE_NORMAL
+	# 用 tween 0.3s 过渡比硬切更顺眼
+	var tw := create_tween()
+	tw.tween_property(_portrait_rect, "modulate", target, 0.3)
+
+
+# 立绘节点懒创建。固定尺寸 64x80,位置在分数框上方(seat panel center 上 70px)。
+# seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
+func _ensure_portrait() -> void:
+	if _portrait_path == "":
+		return
+	if _portrait_rect and is_instance_valid(_portrait_rect):
+		return
+	if not ResourceLoader.exists(_portrait_path):
+		return
+	var tex: Texture2D = load(_portrait_path) as Texture2D
+	if tex == null:
+		return
+	_portrait_rect = TextureRect.new()
+	_portrait_rect.texture = tex
+	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_portrait_rect.size = Vector2(64, 80)
+	# 居中,放在分数框正上方(Bg offset_top=-50,留 +10 px 让 portrait 不贴边)
+	_portrait_rect.position = Vector2(-32, -130)
+	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_portrait_rect)
+
 func set_score(s: int) -> void:
 	var prev := _score
 	_score = s
@@ -104,8 +247,8 @@ func set_score(s: int) -> void:
 func _pulse_score(positive: bool) -> void:
 	if _score_pulse_tween and _score_pulse_tween.is_valid():
 		_score_pulse_tween.kill()
-	var flash: Color = Color(0.45, 0.95, 0.50) if positive else Color(1.0, 0.45, 0.45)
-	var base: Color = Color(0.91, 0.88, 0.81)
+	var flash: Color = DT.TEXT_SUCCESS if positive else DT.TEXT_DANGER
+	var base: Color = DT.TEXT_PRIMARY
 	_label_score.add_theme_color_override("font_color", flash)
 	_score_pulse_tween = create_tween()
 	_score_pulse_tween.tween_property(_label_score, "theme_override_colors/font_color",
@@ -120,8 +263,8 @@ func _spawn_score_delta(delta: int) -> void:
 	var lbl := Label.new()
 	var sign_text: String = "+" if delta > 0 else ""  # 负数本身含 "-"
 	lbl.text = "%s%d" % [sign_text, delta]
-	lbl.add_theme_font_size_override("font_size", 26)
-	var color: Color = Color(0.45, 1.0, 0.45) if delta > 0 else Color(1.0, 0.45, 0.45)
+	lbl.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
+	var color: Color = DT.TEXT_SUCCESS if delta > 0 else DT.TEXT_DANGER
 	lbl.add_theme_color_override("font_color", color)
 	lbl.add_theme_constant_override("shadow_offset_x", 2)
 	lbl.add_theme_constant_override("shadow_offset_y", 2)
@@ -178,7 +321,7 @@ func _apply_status_badges() -> void:
 	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
 	var show_tenpai: bool = _tenpai and _seat_id == 0 and not _riichi
 	_badge_tenpai = _set_badge(_badge_tenpai, show_tenpai, "听",
-		Color(1.0, 0.78, 0.22), Vector2(60, -46))
+		DT.TEXT_TITLE, Vector2(60, -46))
 	# 一発(刚立直未轮回一圈)— 青底,所有 seat 都显(玩家需要算别家一发风险)。
 	_badge_ippatsu = _set_badge(_badge_ippatsu, _ippatsu, "発",
 		Color(0.30, 0.70, 0.90), Vector2(90, -46))
@@ -263,7 +406,7 @@ func _apply_active_visual() -> void:
 		# 金色描边浮出来,Bg 本身保留底色,不破坏既有视觉
 		var glow := StyleBoxFlat.new()
 		glow.bg_color = bg.color  # 保持原底色
-		glow.border_color = Color(1, 0.85, 0.25)
+		glow.border_color = DT.TEXT_TITLE
 		glow.border_width_left = 3
 		glow.border_width_top = 3
 		glow.border_width_right = 3
@@ -281,7 +424,7 @@ func _apply_active_visual() -> void:
 			glow_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var sb := StyleBoxFlat.new()
 			sb.bg_color = Color(0, 0, 0, 0)  # 透明,仅显边
-			sb.border_color = Color(1, 0.85, 0.25)
+			sb.border_color = DT.TEXT_TITLE
 			sb.border_width_left = 3
 			sb.border_width_top = 3
 			sb.border_width_right = 3
@@ -353,7 +496,10 @@ func _refresh_labels() -> void:
 		status += " · 庄"
 	if _riichi:
 		status += " · 立直"
-	_label_seat_info.text = "%s · %s%s" % [seat_display_name(_seat_id), wind_name(_seat_wind), status]
+	# 优先用 persona_name (set_ai_persona 注入),fallback 到 "你"/"AI N"
+	var who: String = _persona_name if _persona_name != "" else seat_display_name(_seat_id)
+	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
+	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	_label_score.text = "%d" % _score
 	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label

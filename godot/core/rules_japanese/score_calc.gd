@@ -8,25 +8,29 @@ class_name ScoreCalc
 #
 # winner_total = sum(payout.values()) + riichi_sticks*1000
 #
-# TODO(0b 串接)：多分解时本计划选 fu 最高。0b 落地后改为 (han, fu) 字典序最大
-#   —— 因为 yaku 判定依赖具体分解（如平和需要全顺子），不同分解可能不同 han。
-#   届时 ScoreCalc.calculate 接口加 yaku_calculator 回调，对每个分解算 yaku 再选 max。
+# yaku_per_decomp 回调（可选）：Callable(decomp_index: int) -> YakuList
+# 提供时对每个 standard_decomposition 独立算役 + fu → 选 base_points 最高的分解。
+# 解决不同分解产出互斥役被错误合并的问题（如 pinfu+iipeikou vs sanankou）。
 
-static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_list: YakuList, win_ctx: ScoreContext) -> Dictionary:
+static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_list: YakuList, win_ctx: ScoreContext, yaku_per_decomp: Callable = Callable()) -> Dictionary:
 	var fu: int
-	var han := yaku_list.total_han()
+	var effective_yaku: YakuList = yaku_list
 
 	if yaku_list.is_yakuman:
-		# 役满：fu 不参与，base 直接 8000 × multiplier
 		fu = 0
 	elif win_pattern_result.is_chiitoi:
 		fu = 25
 	elif win_pattern_result.is_kokushi:
-		fu = 0  # 国士役满走 yakuman 路径；若 yaku_list 没标 yakuman → 视为异常但不崩
+		fu = 0
+	elif yaku_per_decomp.is_valid() and win_pattern_result.standard_decompositions.size() > 1:
+		var best := _pick_best_decomposition(win_pattern_result.standard_decompositions, called_melds, win_ctx, yaku_per_decomp)
+		fu = best.fu
+		effective_yaku = best.yaku_list
 	else:
 		fu = _pick_best_fu(win_pattern_result.standard_decompositions, called_melds, win_ctx, yaku_list)
 
-	var base: int = ScoreFormula.base_points(fu, han, yaku_list.yakuman_multiplier)
+	var han := effective_yaku.total_han()
+	var base: int = ScoreFormula.base_points(fu, han, effective_yaku.yakuman_multiplier)
 	var payout: Dictionary = PayoutCalculator.payout(base, win_ctx)
 
 	var winner_total := 0
@@ -39,10 +43,26 @@ static func calculate(win_pattern_result: Dictionary, called_melds: Array, yaku_
 		"han": han,
 		"base_points": base,
 		"payout": payout,
-		"yakuman_multiplier": yaku_list.yakuman_multiplier,
+		"yakuman_multiplier": effective_yaku.yakuman_multiplier,
 		"winner_seat": win_ctx.winner_seat,
 		"winner_total": winner_total,
 	}
+
+static func _pick_best_decomposition(decompositions: Array, called_melds: Array, win_ctx: ScoreContext, yaku_per_decomp: Callable) -> Dictionary:
+	var best_base := -1
+	var best_fu := 0
+	var best_yl: YakuList = YakuList.empty()
+	for i in range(decompositions.size()):
+		var yl: YakuList = yaku_per_decomp.call(i)
+		if yl == null:
+			continue
+		var fu_i: int = FuCalculator.calculate(decompositions[i], called_melds, win_ctx, yl)
+		var base_i: int = ScoreFormula.base_points(fu_i, yl.total_han(), yl.yakuman_multiplier)
+		if base_i > best_base or (base_i == best_base and fu_i > best_fu):
+			best_base = base_i
+			best_fu = fu_i
+			best_yl = yl
+	return {"fu": best_fu, "yaku_list": best_yl}
 
 static func _pick_best_fu(decompositions: Array, called_melds: Array, win_ctx: ScoreContext, yaku_list: YakuList) -> int:
 	var best := 0

@@ -138,7 +138,8 @@ func _rebuild() -> void:
 		var node_ref: NodeRef = _options[i]
 		var btn := Button.new()
 		btn.text = format_option_text(i + 1, node_ref)
-		btn.custom_minimum_size = Vector2(0, 44)
+		btn.custom_minimum_size = Vector2(0, DT.BUTTON_H)
+		btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
 		var index_capture: int = node_ref.index
 		btn.pressed.connect(func(): emit_signal("node_chosen", index_capture))
 		_options_box.add_child(btn)
@@ -203,7 +204,7 @@ func _render_visual_map() -> void:
 			line.add_point(p1)
 			line.add_point(p2)
 			line.width = 2.0
-			line.default_color = Color(0.4, 0.4, 0.4, 0.8)
+			line.default_color = Color(DT.TEXT_MUTED.r, DT.TEXT_MUTED.g, DT.TEXT_MUTED.b, 0.7)
 			edges_root.add_child(line)
 	# 节点按钮：每个节点 = 圆形 Button
 	var available: Dictionary = {}
@@ -232,7 +233,7 @@ func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_avai
 		btn.expand_icon = true
 	else:
 		btn.text = node_glyph(node_ref.kind)
-		btn.add_theme_font_size_override("font_size", 22)
+		btn.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
 	# 配色：当前节点亮金边，可选节点正常色，已访问灰显
 	var base: Color = node_color(node_ref.kind)
 	if is_visited:
@@ -246,13 +247,13 @@ func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_avai
 	sb.corner_radius_bottom_left = int(NODE_RADIUS)
 	sb.corner_radius_bottom_right = int(NODE_RADIUS)
 	if is_current:
-		sb.border_color = Color(1.0, 0.85, 0.2)
+		sb.border_color = DT.TEXT_TITLE
 		sb.border_width_left = 3
 		sb.border_width_right = 3
 		sb.border_width_top = 3
 		sb.border_width_bottom = 3
 	elif is_available:
-		sb.border_color = Color(0.95, 0.95, 0.95)
+		sb.border_color = DT.TEXT_PRIMARY
 		sb.border_width_left = 2
 		sb.border_width_right = 2
 		sb.border_width_top = 2

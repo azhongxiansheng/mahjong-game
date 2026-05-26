@@ -41,6 +41,17 @@ func set_strategic_context(scores: Array, hand_index: int, total_hands: int) -> 
 	_hand_index = hand_index
 	_total_hands = total_hands
 
+# GAP-2：defense context 注入（BattleController 在每次 AI 弃牌前调用）。
+# 默认为空 → AI 维持原攻击行为。设值后开启防守模式：
+# 任一对家立直时，优先弃安全牌（对家已弃过的牌 = 保证安全），
+# 次选字牌/幺九牌（统计上放铳率较低）。自家已立直时不防守（锁牌）。
+var _opponent_riichi_seats: Array = []
+var _opponent_discards_flat: Array = []  # 所有对家弃牌 tile id 合并
+
+func set_defense_context(riichi_seats: Array, discards_flat: Array) -> void:
+	_opponent_riichi_seats = riichi_seats
+	_opponent_discards_flat = discards_flat
+
 # 计 seat_id 当前累计分排名（1 最高，4 最低）。同分时 rank_for 不裁决
 # （AI 决策侧不需要 sim 公平裁决；返最高 rank 是保守选择）。
 # context 未注入时返 0 表示中性（不应触发任何 strategic 分支）。
@@ -116,6 +127,12 @@ func decide_discard(seat: Seat) -> Tile:
 	var hand_tiles: Array = seat.hand._tiles
 	if hand_tiles.is_empty():
 		return null
+	# GAP-2：defense mode — 对家立直时且自家未立直，优先弃安全牌。
+	# 自家立直后锁牌（tsumogiri），不走此分支（BC 层已 force tsumogiri）。
+	if not _opponent_riichi_seats.is_empty() and not seat.riichi.declared:
+		var defensive_pick: Tile = _decide_discard_defensive(hand_tiles)
+		if defensive_pick != null:
+			return defensive_pick
 	# M10：当开启 shanten-aware 且 hand 处于"刚抽完"等待弃牌的状态（14 张 / 暗 +
 	# 副露 = 14 等价），用 shanten 选弃牌；其他场景（hand 不饱满 / 关闭开关）走
 	# 原 retention 启发式。
@@ -130,6 +147,24 @@ static func _is_post_draw_state(seat: Seat) -> bool:
 	var hand_size: int = seat.hand._tiles.size()
 	var meld_count: int = seat.melds.size() if seat.melds != null else 0
 	return hand_size == 14 - 3 * meld_count
+
+# GAP-2：防守弃牌。优先级：
+# 1) 保证安全牌（立直对家已弃过的同 id 牌 — 日麻同名牌不能再铳）
+# 2) 字牌/幺九牌（统计放铳率低于中张数牌）
+# 3) null → fallback 到正常弃牌逻辑
+func _decide_discard_defensive(hand_tiles: Array) -> Tile:
+	var safe_candidates: Array = []
+	var terminal_honor_candidates: Array = []
+	for t in hand_tiles:
+		if _opponent_discards_flat.has(t.id):
+			safe_candidates.append(t)
+		if TileId.is_honor(t.id) or TileId.number(t.id) == 1 or TileId.number(t.id) == 9:
+			terminal_honor_candidates.append(t)
+	if not safe_candidates.is_empty():
+		return safe_candidates[0]
+	if not terminal_honor_candidates.is_empty():
+		return terminal_honor_candidates[0]
+	return null  # fallback 到正常弃牌
 
 # M7 旧 retention 启发式（保留作 fallback / 小手测兼容）。
 static func _decide_discard_retention(hand_tiles: Array) -> Tile:
@@ -212,3 +247,33 @@ static func _suited_range_for(tile_id: int) -> Array:
 		if tile_id >= rng[0] and tile_id <= rng[1]:
 			return rng
 	return []
+
+# AI claiming decision: given a discarded tile, decide whether to pon/minkan.
+# v1: AI never chi (chi often hurts hand shape for heuristic AI).
+# Returns: {"kind": "pon"|"minkan"} or {} (skip).
+func decide_claim_for_seat(seat: Seat, discarded_id: int, discarder_seat: int) -> Dictionary:
+	if seat.seat_id == discarder_seat:
+		return {}
+	if seat.riichi.declared:
+		return {}
+	if ClaimValidator.can_minkan(seat.seat_id, discarder_seat, seat.hand, discarded_id):
+		return {"kind": "minkan"}
+	if ClaimValidator.can_pon(seat.seat_id, discarder_seat, seat.hand, discarded_id):
+		return {"kind": "pon"}
+	return {}
+
+# Self-kan decision: after drawing, check if AI should declare ankan or added_kan.
+# v1: always kan when possible (free value), except during riichi.
+# Returns: {"kind": "ankan"|"added_kan", "tile_id": int} or {} (skip).
+func decide_self_kan(seat: Seat) -> Dictionary:
+	if seat.riichi.declared:
+		return {}
+	var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
+	if not ankan_ids.is_empty():
+		return {"kind": "ankan", "tile_id": ankan_ids[0]}
+	for m in seat.melds:
+		if m.kind == Meld.Kind.PON:
+			var tid: int = m.tiles[0].id
+			if seat.hand.count_of(tid) >= 1:
+				return {"kind": "added_kan", "tile_id": tid}
+	return {}

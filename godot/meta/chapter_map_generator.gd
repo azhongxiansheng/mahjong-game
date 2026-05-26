@@ -22,8 +22,10 @@ static func generate(config: Dictionary, seed: int) -> ChapterMap:
 	var floor_count: int = int(config.get("floor_count", 7))
 	var nodes_per_floor: Vector2i = config.get("nodes_per_floor", Vector2i(1, 3))
 	var weights: Dictionary = config.get("node_weights", {NodeKind.Kind.NORMAL: 1.0})
-	# M8: 本章默认 session_kind（"east_round" / "hanchan"）；缺则回 east_round
+	# M8: 本章默认 session_kind（"east_round" / "speed" / "hanchan"）；缺则回 east_round
 	var default_session: String = String(config.get("default_session_kind", "east_round"))
+	# GAP-4: Boss 节点可用独立 session_kind（保留完整局数）；缺则同 default
+	var boss_session: String = String(config.get("boss_session_kind", default_session))
 
 	var nodes_by_floor: Array = []  # Array[Array[NodeRef]]
 	var idx := 0
@@ -37,7 +39,8 @@ static func generate(config: Dictionary, seed: int) -> ChapterMap:
 			layer_size = rng.randi_range(nodes_per_floor.x, nodes_per_floor.y)
 		for j in range(layer_size):
 			var kind := _pick_kind_for_floor(f, floor_count, weights, rng)
-			var ref := NodeRef.new(idx, f, kind, {}, default_session)
+			var node_session: String = boss_session if kind == NodeKind.Kind.BOSS else default_session
+			var ref := NodeRef.new(idx, f, kind, {}, node_session)
 			m.nodes.append(ref)
 			m.edges.append([])
 			layer.append(ref)
