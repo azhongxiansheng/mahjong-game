@@ -18,6 +18,7 @@ config/features=PackedStringArray("4.5")
 
 [autoload]
 
+DT="*res://ui/design_tokens.gd"
 GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
 SaveSystem="*res://meta/save_system.gd"
@@ -28,15 +29,18 @@ DebugOverlay="*res://meta/debug_overlay.gd"
 StatsManager="*res://meta/stats_manager.gd"
 Log="*res://meta/log.gd"
 SaveToast="*res://meta/save_toast.gd"
+DailyQuest="*res://meta/daily_quest.gd"
+BattlePass="*res://meta/battle_pass.gd"
 
 [display]
 
-; UI 全部按 1280×800 设计;主窗口默认 1280×800 + canvas_items 拉伸,
-; 高 DPI / 全屏时按比例放大,避免默认 1152×648 把 UI 挤成一团。
+; UI 全部按 1280×800 设计;主窗口默认 1280×800 + canvas_items 拉伸。
+; 开 hidpi_allowed:Retina 屏按物理像素渲染,贴图采样高质量不糊。
 window/size/viewport_width=1280
 window/size/viewport_height=800
 window/size/window_width_override=1280
 window/size/window_height_override=800
+window/dpi/allow_hidpi=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"
 
@@ -58,5 +62,8 @@ physics_engine="GodotPhysics2D"
 
 [rendering]
 
-textures/canvas_textures/default_texture_filter=1
+; default_texture_filter:3 = LINEAR_WITH_MIPMAPS。gpt-image-2 生成的写实
+; 贴图(牌 272×389、立绘、图标)缩放时用 mipmap + 双线性,不会硬边糊。
+; 旧的 NEAREST(=1)是 commit 6090d26 时代为 atlas 切片防色块用的,现已过时。
+textures/canvas_textures/default_texture_filter=3
 renderer/rendering_mode="forward_plus"

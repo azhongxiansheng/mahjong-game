@@ -95,6 +95,11 @@ static func sfx_key_for_event(event_type: StringName, extra: Dictionary = {}) ->
 			return "draw_chime"
 		&"ABORTIVE_DRAW":
 			return "abortive_chime"
+		&"HAITEI", &"HOUTEI":
+			# 海底捞月 / 河底捞鱼:罕见牌型,用 dora_flip 声(短促清亮)标记
+			# "命中关键事件"。WIN_DECLARED 紧跟会再播 win_chime,玩家听到的
+			# 是连贯的 "叮 → 胡" 双音,强化命中感。
+			return "dora_flip"
 		&"NAGASHI_MANGAN":
 			return "win_chime"
 		&"PLAYER_ACTION":

@@ -218,26 +218,26 @@ func _refresh() -> void:
 	if _resolved:
 		var done_btn := Button.new()
 		done_btn.text = "继续 →"
-		done_btn.custom_minimum_size = Vector2(0, 50)
+		done_btn.custom_minimum_size = Vector2(0, DT.BUTTON_H)
 		done_btn.pressed.connect(func(): emit_signal("done"))
 		_options_box.add_child(done_btn)
 		return
 	var options: Array = _event_def.get("options", [])
 	for i in range(options.size()):
 		var opt: Dictionary = options[i]
-		var btn := Button.new()
-		# 标题 + 自动生成的 delta 预览(2 行按钮):玩家不用从中文括号里猜
-		# 数值,直接读"+30 金币 · HP -1 · 需 30 金币"一眼可比较选项。
+		# 选项 Button 用 DT.make_text_card_button 防 minimum_size 被多行文字撑爆。
+		# 宽度按容器自适应,卡片 0 宽 + 80 高,内嵌 Label autowrap。
 		var delta_line: String = format_option_delta(opt)
-		if delta_line == "":
-			btn.text = opt.get("label", "选项 %d" % (i + 1))
-		else:
-			btn.text = "%s\n[%s]" % [opt.get("label", "选项 %d" % (i + 1)), delta_line]
-		btn.custom_minimum_size = Vector2(0, 64)
+		var label_text: String = opt.get("label", "选项 %d" % (i + 1))
+		var card_text: String = label_text if delta_line == "" else "%s\n[%s]" % [label_text, delta_line]
+		var btn := DT.make_text_card_button(
+				_options_box,
+				card_text,
+				Vector2(0, 80),
+				DT.TEXT_MUTED)
 		btn.disabled = not can_apply(opt, _run_state)
 		var captured_opt: Dictionary = opt
 		btn.pressed.connect(func(): _on_option_chosen(captured_opt))
-		_options_box.add_child(btn)
 
 
 # 从 option dict 拼"HP +1 · -30 金币 · 需 30 金币"风格预览串(纯派生字段,

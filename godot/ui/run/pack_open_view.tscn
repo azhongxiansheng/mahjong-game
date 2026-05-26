@@ -3,25 +3,30 @@
 [ext_resource type="Script" path="res://ui/run/pack_open_view.gd" id="1"]
 
 [node name="PackOpenView" type="Control"]
-custom_minimum_size = Vector2(1200, 600)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 script = ExtResource("1")
 
 [node name="Bg" type="ColorRect" parent="."]
 anchor_right = 1.0
 anchor_bottom = 1.0
-color = Color(0.06, 0.06, 0.10, 1.0)
+color = Color(0.04, 0.06, 0.08, 1)
 
 [node name="VBox" type="VBoxContainer" parent="."]
-offset_left = 40.0
-offset_top = 40.0
-offset_right = 1160.0
-offset_bottom = 560.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = -24.0
 theme_override_constants/separation = 24
 
 [node name="Title" type="Label" parent="VBox"]
 text = "节点抽卡奖励"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
 
 [node name="HBox" type="HBoxContainer" parent="VBox"]
 theme_override_constants/separation = 16
@@ -29,4 +34,4 @@ alignment = 1
 
 [node name="Confirm" type="Button" parent="VBox"]
 text = "确认"
-custom_minimum_size = Vector2(0, 50)
+custom_minimum_size = Vector2(0, 48)

@@ -79,15 +79,28 @@ func bind_cumulative_scores(scores: Array) -> void:
 
 # ---- helpers ----
 
+# AI 性格化映射:seat_id → (角色名, 打法风格, 立绘路径)。
+# seat 1/2/3 各挂固定 persona。立绘资产已就位(round 1 任务 12),情绪由
+# SeatPanel.set_emote 通过 modulate 调色表达(RIICHI=蓝、WIN=金、被胡=灰)。
+static func ai_persona_for_seat(seat_id: int) -> Array:
+	match seat_id:
+		1: return ["赤木", "激进", "res://assets/roguelike/characters/char_akagi.png"]
+		2: return ["开司", "速胡", "res://assets/roguelike/characters/char_kaiji.png"]
+		3: return ["鹫巣", "防守", "res://assets/roguelike/characters/char_washizu.png"]
+	return []  # seat 0 玩家自家不挂 AI persona
+
+
 # 静态：seat_id → 桌面坐标（相对 Table 区域）。
 # 0=下、1=右、2=上、3=左；中央为 (TABLE_WIDTH/2, TABLE_HEIGHT/2)。
+# seat 0 margin 比 AI 大 50px,因为玩家自家手牌(60 高)要画在分数框下方,
+# 需要留 60+ 垂直空间;AI 手牌只是色块,小得多。
 static func seat_position(seat_id: int) -> Vector2:
 	var cx := TABLE_WIDTH / 2.0
 	var cy := TABLE_HEIGHT / 2.0
 	var margin := 110.0
 	match seat_id:
 		0:
-			return Vector2(cx, TABLE_HEIGHT - margin)
+			return Vector2(cx, TABLE_HEIGHT - margin - 50)
 		1:
 			return Vector2(TABLE_WIDTH - margin, cy)
 		2:
@@ -121,13 +134,19 @@ func _build_layout() -> void:
 	table.position = Vector2(0, 0)
 	add_child(table)
 
-	# 4 个 SeatPanel
+	# 4 个 SeatPanel — seat 0 玩家自家,seat 1/2/3 三家 AI 性格化。
+	# 每家 AI 固定挂一个角色 (赤木下家/开司对家/鹫巢上家),不同打法风格,
+	# 显示在 SeatInfo 行替代抽象的 "AI 1/2/3"。
 	for i in range(4):
 		var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 		sp.position = seat_position(i)
 		sp.set_seat_id(i)  # 自动旋转
 		table.add_child(sp)
 		seat_panels.append(sp)
+		var persona: Array = ai_persona_for_seat(i)
+		if persona.size() >= 2:
+			var pp: String = String(persona[2]) if persona.size() >= 3 else ""
+			sp.set_ai_persona(persona[0], persona[1], pp)
 
 	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
 	for i in range(4):

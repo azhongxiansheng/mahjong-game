@@ -27,9 +27,9 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	# 全屏暗背景
+	# 全屏暗背景 — 用 DT.BG_BASE 保持跨页一致,不再纯黑。
 	var bg := ColorRect.new()
-	bg.color = Color(0, 0, 0, 0.72)
+	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.anchor_right = 1.0
 	bg.anchor_bottom = 1.0
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -56,8 +56,8 @@ func _ready() -> void:
 	title.position = Vector2(0, 22)
 	title.size = Vector2(PANEL_W, 40)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", Color(1, 0.85, 0.5))
+	title.add_theme_font_size_override("font_size", DT.FONT_TITLE)
+	title.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(title)
 
 	# SFX 音量
@@ -65,8 +65,8 @@ func _ready() -> void:
 	sfx_label.text = "音效音量"
 	sfx_label.position = Vector2(40, 90)
 	sfx_label.size = Vector2(160, 28)
-	sfx_label.add_theme_font_size_override("font_size", 18)
-	sfx_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	sfx_label.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	sfx_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	panel.add_child(sfx_label)
 
 	_sfx_slider = HSlider.new()
@@ -84,8 +84,8 @@ func _ready() -> void:
 	_sfx_value_label.size = Vector2(60, 30)
 	_sfx_value_label.text = "%d%%" % int(_sm().sfx_volume * 100)
 	_sfx_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_sfx_value_label.add_theme_font_size_override("font_size", 18)
-	_sfx_value_label.add_theme_color_override("font_color", Color(1, 0.9, 0.55))
+	_sfx_value_label.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	_sfx_value_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(_sfx_value_label)
 
 	# 试听按钮 — 点了奏 button_click,玩家立刻听到当前音量
@@ -151,8 +151,8 @@ func _ready() -> void:
 		quit_btn.custom_minimum_size = Vector2(120, 40)
 		# 猩红 styling 警示
 		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0.45, 0.18, 0.18)
-		sb.border_color = Color(0.85, 0.32, 0.32)
+		sb.bg_color = Color(DT.TEXT_DANGER.r * 0.5, DT.TEXT_DANGER.g * 0.2, DT.TEXT_DANGER.b * 0.2)
+		sb.border_color = DT.TEXT_DANGER
 		sb.border_width_left = 2
 		sb.border_width_right = 2
 		sb.border_width_top = 2
@@ -162,7 +162,7 @@ func _ready() -> void:
 		sb.corner_radius_bottom_left = 4
 		sb.corner_radius_bottom_right = 4
 		quit_btn.add_theme_stylebox_override("normal", sb)
-		quit_btn.add_theme_color_override("font_color", Color(1, 0.92, 0.85))
+		quit_btn.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 		quit_btn.pressed.connect(_on_quit_run_pressed)
 		panel.add_child(quit_btn)
 

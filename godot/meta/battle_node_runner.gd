@@ -165,11 +165,15 @@ static func run_with_player_input_async(
 	session_kind: String = "east_round",
 	tiebreak_seed: int = 0,
 	player_consumable_ids: Array = [],
-	player_relic_ids: Array = []
+	player_relic_ids: Array = [],
+	use_heuristic_ai: bool = false
 ) -> NodeResult:
 	var total_hands: int = BalanceConstants.get_hands_per_node(session_kind)
 	var driver := GameDriver.new(seed, total_hands, HANDS_PER_ROUND)
-	driver.use_heuristic_ai = false  # 玩家路径下 AI 用 SimpleAi 即可（v1）
+	# 调用方按 chapter / difficulty / 节点类型决定:新手节点 SimpleAi(默认),
+	# 高难度/Boss/章 2+ 节点 HeuristicAi。之前硬编 false 让所有玩家路径的 AI
+	# 都是 SimpleAi(随机弃牌),老手体验不到挑战;但新手第 1 局也需要保护。
+	driver.use_heuristic_ai = use_heuristic_ai
 	# 让 GameDriver 用 PlayableBattleController（玩家可玩）
 	driver.bc_factory = func(s: int, dealer: int, useh: bool, wind: int):
 		return PlayableBattleController.new(s, dealer, useh, wind)

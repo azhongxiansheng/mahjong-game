@@ -8,9 +8,9 @@ class_name ContinuePrompt extends Control
 signal continue_run
 signal new_run
 
-@onready var _info: Label = $VBox/Info
-@onready var _continue_btn: Button = $VBox/Continue
-@onready var _new_btn: Button = $VBox/New
+@onready var _info: Label = $Panel/VBox/Info
+@onready var _continue_btn: Button = $Panel/VBox/Continue
+@onready var _new_btn: Button = $Panel/VBox/New
 
 var _save_summary_text: String = "（无存档摘要）"
 

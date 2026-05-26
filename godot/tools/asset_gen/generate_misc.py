@@ -92,6 +92,13 @@ def _gen(key: str, prompt: str, out_path: Path, size: str,
     if target is not None:
         raw = postprocess.fit_to_box(raw, target, pad_ratio=0.06)
     postprocess.save_png(raw, str(out_path))
+    # 透明背景资产兜底:gpt-image-2 经常把"transparent"画成灰白棋盘格
+    # (RGB 棋盘 + alpha=255),只有四角真透明。flood-fill 抠掉,主体保留。
+    if background == "transparent":
+        try:
+            postprocess.strip_checkerboard(str(out_path))
+        except Exception as e:
+            print(f"  warn strip_checkerboard failed: {e}")
     print(f"  ok  {out_path}")
 
 

@@ -7,18 +7,56 @@ class_name StarterPackPicker extends Control
 # 玩家点击可选卡片 → emit signal("pack_chosen", pack_id)。
 
 signal pack_chosen(pack_id: StringName)
+# daily 模式切换:玩家点"今日挑战"按钮 → RunFlow 用 DailySeed.today_seed()
+# 替代默认随机 seed,全服同 seed 可比通关时间/总分。
+signal daily_mode_toggled(enabled: bool)
 
 @onready var _hbox: HBoxContainer = $VBox/HBox
 
 var _packs: Array = []  # Array[Dictionary]，从 StarterPacks.all() 拿
+var _daily_mode: bool = false
+var _daily_btn: Button = null
 
 const LOGO_PATH := "res://assets/feifan_logo_transparent.png"
 
 func _ready() -> void:
 	RunUi.attach_background(self)
 	_attach_logo()
+	_attach_daily_toggle()
 	_packs = StarterPacks.all()
 	_rebuild()
+
+
+# 标题下方加一行"今日挑战 (2026-05-26)"toggle 按钮。点击切换 daily_mode,
+# UI 文案随之变化。社区驱动 retention 的钩子:同 seed 玩家可分享通关时间。
+func _attach_daily_toggle() -> void:
+	var vbox := $VBox as VBoxContainer
+	if vbox == null:
+		return
+	_daily_btn = Button.new()
+	_daily_btn.text = "🗓️ 今日挑战 #%s" % DailySeed.today_display()
+	_daily_btn.custom_minimum_size = Vector2(360, 36)
+	_daily_btn.flat = true
+	_daily_btn.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	_daily_btn.add_theme_color_override("font_color", DT.TEXT_MUTED)
+	_daily_btn.toggle_mode = true
+	_daily_btn.toggled.connect(_on_daily_toggled)
+	# 放在 Hint 之后,HBox(三张卡)之前
+	vbox.add_child(_daily_btn)
+	# Hint 在 idx 2 (Logo / Title / Hint),Daily toggle 插到 idx 3
+	vbox.move_child(_daily_btn, 3)
+
+
+func _on_daily_toggled(enabled: bool) -> void:
+	_daily_mode = enabled
+	if _daily_btn:
+		if enabled:
+			_daily_btn.text = "✅ 今日挑战 #%s (全服同 seed)" % DailySeed.today_display()
+			_daily_btn.add_theme_color_override("font_color", DT.TEXT_TITLE)
+		else:
+			_daily_btn.text = "🗓️ 今日挑战 #%s" % DailySeed.today_display()
+			_daily_btn.add_theme_color_override("font_color", DT.TEXT_MUTED)
+	emit_signal("daily_mode_toggled", enabled)
 
 # 顶部插品牌 logo,放在 Title 上方。资产缺失时跳过。
 func _attach_logo() -> void:
@@ -72,20 +110,6 @@ static func format_card_text(pack: Dictionary) -> String:
 	return "\n".join(lines)
 
 
-# 给 pack 按钮 4 态 stylebox 套打法色描边。disabled 也染色,玩家仍能看出取向。
-static func _apply_archetype_border(btn: Button, pack_id) -> void:
-	var col := archetype_color(pack_id)
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
-		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
-		sb.border_color = col
-		sb.border_width_left = 3
-		sb.border_width_top = 3
-		sb.border_width_right = 3
-		sb.border_width_bottom = 3
-		btn.add_theme_stylebox_override(state, sb)
-
-
 # ---- internal ----
 
 func _rebuild() -> void:
@@ -94,11 +118,12 @@ func _rebuild() -> void:
 	for child in _hbox.get_children():
 		child.queue_free()
 	for pack in _packs:
-		var btn := Button.new()
-		btn.text = format_card_text(pack)
-		btn.custom_minimum_size = Vector2(220, 280)
+		# DT.make_text_card_button 统一处理 Button+Label autowrap 防撑爆。
+		var btn := DT.make_text_card_button(
+				_hbox,
+				format_card_text(pack),
+				Vector2(DT.CARD_W, DT.CARD_H),
+				archetype_color(pack.get("id", &"")))
 		btn.disabled = not pack.get("available", false)
-		_apply_archetype_border(btn, pack.get("id", &""))
 		var pack_id_capture: StringName = pack.id
 		btn.pressed.connect(func(): emit_signal("pack_chosen", pack_id_capture))
-		_hbox.add_child(btn)

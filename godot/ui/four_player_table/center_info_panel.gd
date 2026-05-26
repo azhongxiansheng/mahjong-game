@@ -43,11 +43,11 @@ func _ready() -> void:
 	if vbox:
 		_riichi_sticks_row = HBoxContainer.new()
 		_riichi_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		_riichi_sticks_row.add_theme_constant_override("separation", 3)
+		_riichi_sticks_row.add_theme_constant_override("separation", DT.GAP_TIGHT)
 		vbox.add_child(_riichi_sticks_row)
 		_honba_sticks_row = HBoxContainer.new()
 		_honba_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		_honba_sticks_row.add_theme_constant_override("separation", 3)
+		_honba_sticks_row.add_theme_constant_override("separation", DT.GAP_TIGHT)
 		vbox.add_child(_honba_sticks_row)
 	_refresh_labels()
 	_rebuild_dora_tiles()

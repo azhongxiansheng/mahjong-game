@@ -8,6 +8,14 @@ extends SceneTree
 
 const SHOTS := [
 	["res://ui/run/starter_pack_picker.tscn", "starter_picker"],
+	["res://ui/run/character_picker.tscn", "character_picker"],
+	["res://ui/run/continue_prompt.tscn", "continue_prompt"],
+	["res://ui/run/chapter_map_view.tscn", "chapter_map"],
+	["res://ui/run/pack_open_view.tscn", "pack_open_view"],
+	["res://ui/run/shop_view.tscn", "shop_view"],
+	["res://ui/run/event_node.tscn", "event_node"],
+	["res://ui/run/camp_node.tscn", "camp_node"],
+	["res://ui/run/placeholder_node.tscn", "placeholder_node"],
 	["res://ui/run/run_summary.tscn", "run_summary"],
 	["res://ui/run/run_hud.tscn", "run_hud"],
 	["res://ui/four_player_table/four_player_table.tscn", "four_player_table"],
