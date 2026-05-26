@@ -119,29 +119,32 @@ func claim_reward(level: int, is_premium: bool) -> Dictionary:
 		return {}
 	if is_premium and not purchased_premium:
 		return {}
-	var key: int = level
-	var prev: String = String(claimed.get(key, ""))
 	var tag: String = "premium" if is_premium else "free"
-	if tag in prev:
-		return {}  # 已领
-	var new_tag: String
-	if prev == "":
-		new_tag = tag
-	else:
-		new_tag = "both"
-	claimed[key] = new_tag
+	# claimed[level] 是 Dictionary{"free": true, "premium": true},显式 key
+	# 避免之前 "free" in "both" 的 substring 检测 bug(P1 fix codex review):
+	# 旧逻辑用 string concat "free"→"both",再判 "free" in "both" = false,
+	# 导致领过 both 后仍能 re-claim 任意一边刷无限奖励。
+	var lane_dict: Dictionary = claimed.get(level, {})
+	if not (lane_dict is Dictionary):
+		lane_dict = {}
+	if bool(lane_dict.get(tag, false)):
+		return {}  # 该 lane 已领
+	lane_dict[tag] = true
+	claimed[level] = lane_dict
 	_save_to_disk()
 	var reward_idx: int = level - 1
 	if reward_idx >= REWARDS.size():
 		return {}
 	var bundle: Dictionary = REWARDS[reward_idx]
-	return bundle.get("premium" if is_premium else "free", {})
+	return bundle.get(tag, {})
 
 
 func is_claimed(level: int, is_premium: bool) -> bool:
-	var prev: String = String(claimed.get(level, ""))
+	var lane_dict = claimed.get(level, {})
+	if not (lane_dict is Dictionary):
+		return false
 	var tag: String = "premium" if is_premium else "free"
-	return tag in prev
+	return bool(lane_dict.get(tag, false))
 
 
 # Premium 购买入口。本地版本仅 set bool;接 IAP 时由 SDK 回调 set_premium(true)。
@@ -194,10 +197,24 @@ func _load_from_disk() -> void:
 	purchased_premium = bool(parsed.get("purchased_premium", false))
 	var cl = parsed.get("claimed", {})
 	if cl is Dictionary:
-		# JSON dict keys 是 string,转回 int
+		# JSON dict keys 是 string,转回 int。
+		# 兼容老 string 格式("free"/"premium"/"both") → 新 Dictionary 格式
+		# {"free": true, "premium": true},一次性迁移。次次启动会通过新格式直传。
 		claimed = {}
 		for k in cl.keys():
-			claimed[int(str(k))] = String(cl[k])
+			var level_key: int = int(str(k))
+			var v = cl[k]
+			if v is Dictionary:
+				claimed[level_key] = v.duplicate()
+			elif v is String:
+				var lane_dict: Dictionary = {}
+				match String(v):
+					"free": lane_dict["free"] = true
+					"premium": lane_dict["premium"] = true
+					"both":
+						lane_dict["free"] = true
+						lane_dict["premium"] = true
+				claimed[level_key] = lane_dict
 
 
 func _save_to_disk() -> void:

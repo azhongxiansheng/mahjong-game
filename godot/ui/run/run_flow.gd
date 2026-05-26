@@ -215,12 +215,18 @@ func _on_revive_requested() -> void:
 	_run_state.hp = 1  # 复活给 1 HP (起死回生,不是满血,保留紧迫感)
 	_run_state.finished = false
 	_run_state.won = false
+	# P1 fix (codex review): _on_run_failed 已经 finalize (清存档 + 加 renown +
+	# 记 ended)。如果不撤销,玩家"故意失败 + 复活"可重复刷 renown/runs_completed
+	# /runs_failed (每次失败都计一次)。撤销让计数恢复到 fail 之前的状态。
+	# 成就解锁不撤回(达成是真发生过)。
+	var mp = get_node_or_null("/root/MetaProgress")
+	if mp and mp.has_method("revert_last_run"):
+		mp.revert_last_run(false)
+	var sm = get_node_or_null("/root/StatsManager")
+	if sm and sm.has_method("revert_run_ended"):
+		sm.revert_run_ended(false)
 	_hud.bind_run_state(_run_state)
 	_save_run_state()
-	# 终身统计:复活算"防止 run_failed"事件,加个 hook 让 StatsManager 计数
-	var sm = get_node_or_null("/root/StatsManager")
-	if sm and sm.has_method("on_revive_used"):
-		sm.on_revive_used()
 	# 回到章节地图选下一节点 (失败的节点不重打,直接进下一选项)
 	_show_chapter_map()
 
@@ -692,6 +698,12 @@ func _reset() -> void:
 	_last_result = null
 	# Run 间种子不同
 	_seed_seed += 1
+	# P2 fix (codex review): _daily_mode 是 toggle 状态,不在 _reset 时清零会
+	# 让上次 daily run 默默继承到下次 run (玩家以为开 free run 却跑了 daily
+	# 同 seed)。下次进 starter picker 默认从"非 daily"开始,要 daily 主动 toggle。
+	_daily_mode = false
+	# _last_chapter 类似:残留会让回到主菜单后再开新 run 误判 chapter intro。
+	_last_chapter = 0
 	_hud._refresh_default()
 	_show_starter_picker()
 

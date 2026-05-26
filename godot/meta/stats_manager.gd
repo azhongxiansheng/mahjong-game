@@ -161,6 +161,17 @@ func record_run_ended(won: bool) -> void:
 	_save_to_disk()
 
 
+# 撤销最近一次 record_run_ended。RunFlow 复活时调:run_failed 已经计数,
+# 复活后实际"那场失败"被回滚,需要回滚计数避免刷 runs_failed/runs_won。
+# 成就解锁不撤回(达成是真发生过)。clamp ≥0 防御 partial save。
+func revert_run_ended(won_was: bool) -> void:
+	if won_was:
+		runs_won = max(0, runs_won - 1)
+	else:
+		runs_failed = max(0, runs_failed - 1)
+	_save_to_disk()
+
+
 # ---- 成就检测 ----
 
 # 扫所有未解锁成就,看是否达成 → emit + mark unlocked。
