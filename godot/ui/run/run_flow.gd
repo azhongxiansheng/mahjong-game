@@ -569,14 +569,25 @@ func _apply_gacha_to_deck(result: GachaResult) -> void:
 func _swap_panel(new_panel: Control) -> void:
 	if _current_panel:
 		_current_panel.queue_free()
-	# 用 anchor 让 panel 占满 HUD 下方,不再硬偏移 (HUD_H 来自 DT)。
-	# 子面板 .tscn 也都改成 anchors_preset=15 自适应,这样不论窗口尺寸都
-	# 正确占满。原本 position=(0,50) 在 panel 自带 anchor 时会跑位。
-	new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
-	new_panel.offset_top = DT.HUD_H
-	new_panel.offset_left = 0
-	new_panel.offset_right = 0
-	new_panel.offset_bottom = 0
+	# PlayableTable 内部用绝对坐标硬编 1280×800 (FourPlayerTable 720 + ActionPanel
+	# 80),不能跟 anchor 一起拉伸,否则 ActionPanel 落屏外或 SeatPanel 错位。
+	# 用 scale 整体缩放到可用 height,顶部留 HUD_H 给 HUD,水平居中。
+	# 其它面板 (starter picker / chapter map / shop ...) 走原 anchor 撑满路径。
+	if new_panel is PlayableTable:
+		new_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		new_panel.size = Vector2(DT.VIEW_W, DT.VIEW_H)
+		var avail_h: float = float(DT.VIEW_H - DT.HUD_H)
+		var scale_factor: float = avail_h / float(DT.VIEW_H)
+		new_panel.scale = Vector2(scale_factor, scale_factor)
+		new_panel.position = Vector2(
+			(DT.VIEW_W - DT.VIEW_W * scale_factor) / 2.0,
+			DT.HUD_H)
+	else:
+		new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		new_panel.offset_top = DT.HUD_H
+		new_panel.offset_left = 0
+		new_panel.offset_right = 0
+		new_panel.offset_bottom = 0
 	add_child(new_panel)
 	_current_panel = new_panel
 

@@ -93,7 +93,16 @@ static func from_dict(d: Dictionary) -> ChapterMap:
 		var n := NodeRef.from_dict(nd)
 		if n:
 			m.nodes.append(n)
-	m.edges = d.get("edges", []).duplicate(true)
+	# JSON 反序列化把数字统一变 float;edges 是 Array[Array[int]] 必须
+	# 显式 int() 回去,否则 BFS 里 dict key 类型 int/float 不一致导致
+	# "Out of bounds get index 'N' (on base: 'Dictionary')"。
+	var raw_edges: Array = d.get("edges", [])
+	m.edges = []
+	for row in raw_edges:
+		var int_row: Array = []
+		for v in row:
+			int_row.append(int(v))
+		m.edges.append(int_row)
 	m.entry_node = int(d.get("entry_node", 0))
 	m.boss_node = int(d.get("boss_node", -1))
 	m.current_node = int(d.get("current_node", -1))

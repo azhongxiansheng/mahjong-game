@@ -364,9 +364,20 @@ static func _pick_chi_companions(hand: Hand, discarded_id: int) -> Array:
 func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
 	if actor != PLAYER_SEAT or _action_panel == null or _seat_panel_player == null:
 		return true
-	# 玩家路径：可自摸 + 可切牌都开放，等玩家选
+	# 玩家路径：可自摸 + 可切牌 + 暗杠/加杠都开放,等玩家选。
+	# 暗杠/加杠跟 _get_discard_decision 一致 — 之前漏算让"碰过 PON 又摸到第 4 张
+	# 同 id" 时玩家看不到加杠按钮,只能 tsumo / 切牌。
+	var seat: Seat = state.seats[actor]
+	var can_ankan: bool = not ClaimValidator.ankan_candidates(seat.hand).is_empty()
+	var can_added: bool = false
+	if not seat.riichi.declared:
+		for m in seat.melds:
+			if m.kind == Meld.Kind.PON \
+					and ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
+				can_added = true
+				break
 	var _has_con: bool = has_usable_consumable()
-	_action_panel.enter_waiting_discard(true, false, false, _has_con)
+	_action_panel.enter_waiting_discard(true, can_ankan, can_added, _has_con)
 	_seat_panel_player.set_hand_clickable(true)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
@@ -381,7 +392,7 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 			if not usable.is_empty():
 				use_consumable(usable[0])
 			_has_con = has_usable_consumable()
-			_action_panel.enter_waiting_discard(true, false, false, _has_con)
+			_action_panel.enter_waiting_discard(true, can_ankan, can_added, _has_con)
 			_seat_panel_player.set_hand_clickable(true)
 			continue
 		elif action == "discard":
