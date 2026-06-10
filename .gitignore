@@ -17,4 +17,5 @@ build/
 *.swo
 *~
 .railway/
-
+.playwright-mcp/
+.worktrees/
