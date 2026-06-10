@@ -164,6 +164,7 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 	_hide_btn(_btn_chi)
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
+	_hide_btn(_btn_kyuusyu)
 	_hide_btn(_btn_skip)
 	if can_ankan:
 		_show_btn(_btn_ankan)
@@ -178,6 +179,11 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 	else:
 		_hide_btn(_btn_consumable)
 
+# 任意状态下更新提示文字（如喰い替え拒绝提示），不改按钮可见性。
+func set_status_text(text: String) -> void:
+	if _label_status:
+		_label_status.text = text
+
 # 进入"立直确认"状态：玩家刚切完牌，BC 算出可立直，弹按钮。
 func enter_waiting_riichi_confirm() -> void:
 	_state = State.WAITING_RIICHI_CONFIRM
@@ -188,6 +194,10 @@ func enter_waiting_riichi_confirm() -> void:
 	_hide_btn(_btn_chi)
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
+	_hide_btn(_btn_kyuusyu)
+	_hide_btn(_btn_ankan)
+	_hide_btn(_btn_added_kan)
+	_hide_btn(_btn_consumable)
 	_show_btn(_btn_skip)  # = "不立直"
 
 # 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和/吃/碰/杠或见逃。
@@ -226,6 +236,10 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 		_show_btn(_btn_minkan)
 	else:
 		_hide_btn(_btn_minkan)
+	_hide_btn(_btn_kyuusyu)
+	_hide_btn(_btn_ankan)
+	_hide_btn(_btn_added_kan)
+	_hide_btn(_btn_consumable)
 	_show_btn(_btn_skip)
 
 # 进入"九種九牌"宣告状态:第一巡摸完后 14 张含 ≥ 9 种幺九,玩家可选途中流局。
@@ -238,6 +252,9 @@ func enter_waiting_kyuusyu() -> void:
 	_hide_btn(_btn_chi)
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
+	_hide_btn(_btn_ankan)
+	_hide_btn(_btn_added_kan)
+	_hide_btn(_btn_consumable)
 	_show_btn(_btn_kyuusyu)
 	_show_btn(_btn_skip)
 

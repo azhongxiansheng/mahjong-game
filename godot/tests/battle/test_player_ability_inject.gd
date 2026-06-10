@@ -21,10 +21,10 @@ func test_known_ability_ids_includes_boss_and_player():
 	]:
 		assert_true(ids.has(needed), "ability id 缺失: %s" % needed)
 
-func test_known_boss_ids_only_returns_3():
-	# 严格只含 3 章 Boss（用于 chapter_config 校验）
+func test_known_boss_ids_only_returns_6():
+	# 严格只含 Boss id（3 章原版 + 3 变体）,不混入玩家能力
 	var ids := BossAbilityFactory.known_boss_ids()
-	assert_eq(ids.size(), 3)
+	assert_eq(ids.size(), 6)
 
 # ---- build for player abilities ----
 

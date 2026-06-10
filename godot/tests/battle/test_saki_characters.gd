@@ -1,7 +1,8 @@
 extends GutTest
 
-func test_character_pool_has_6_characters():
-	assert_eq(CharacterPool.all().size(), 6)
+func test_character_pool_has_12_characters():
+	# 6 初版 + 咲 6 角色
+	assert_eq(CharacterPool.all().size(), 12)
 
 func test_3_unlocked_at_zero_renown():
 	assert_eq(CharacterPool.unlocked(0).size(), 3)

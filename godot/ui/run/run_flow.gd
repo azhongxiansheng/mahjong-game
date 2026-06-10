@@ -520,7 +520,13 @@ func _show_node_pack_open() -> void:
 	view.show_rewards(options, rank)
 	view.reward_chosen.connect(func(result: GachaResult):
 		_run_state.pity_state.record_draw(result.rarity)
-		_apply_gacha_to_deck(result)
+		if not _apply_gacha_to_deck(result):
+			# 满仓装不下 → 按"跳过"补偿金币，玩家不白选
+			_run_state.gold += RewardPickView.SKIP_GOLD_REWARD
+			var toast = get_node_or_null("/root/SaveToast")
+			if toast and toast.has_method("show_message"):
+				toast.show_message("⚠️ %s — 已折算 +%d 金币" % [
+					_gacha_reject_reason(result), RewardPickView.SKIP_GOLD_REWARD])
 		_hud.bind_run_state(_run_state)
 		_save_run_state()
 		_show_chapter_map()
@@ -539,30 +545,50 @@ func _show_shop(node_ref: NodeRef) -> void:
 	var shop_seed: int = _run_state.run_seed * 1000 + node_ref.index + 7  # 偏移 7 避免与 pack 抽卡重复
 	view.set_seed_and_gold(shop_seed, _run_state.gold)
 	view.item_bought.connect(func(slot_index: int, result: GachaResult):
+		if not _apply_gacha_to_deck(result):
+			# 满仓 / 重复遗物 → 不扣钱，恢复槽位可再买
+			view.refund_slot(slot_index, _gacha_reject_reason(result))
+			view.update_gold(_run_state.gold)
+			return
 		_run_state.gold -= ShopView.price_for(result)
-		_apply_gacha_to_deck(result)
 		view.update_gold(_run_state.gold)
 		_hud.bind_run_state(_run_state)
+		# 购买立即落盘 — 之前只在"离开商店"时存,中途退出会丢已购内容
+		_save_run_state()
 	)
 	view.done.connect(func():
 		_last_result = BattleNodeRunner.placeholder_result()
 		_run_state.complete_node(_last_result)
 	)
 
-# 把 GachaResult 加进玩家 deck
-func _apply_gacha_to_deck(result: GachaResult) -> void:
+# 把 GachaResult 加进玩家 deck。返 false 表示没装下（消耗品/遗物/能力满仓，
+# 或重复遗物）— 调用方负责退款 / 补偿，否则玩家的钱和奖励就静默蒸发。
+func _apply_gacha_to_deck(result: GachaResult) -> bool:
 	if result == null or _run_state == null:
-		return
+		return false
 	if result.kind == GachaResult.KIND_TILE and result.tile_variant:
 		if _run_state.player_deck:
-			_run_state.player_deck.add_tile_variant(result.tile_variant)
+			return _run_state.player_deck.add_tile_variant(result.tile_variant)
+		return false
 	elif result.kind == GachaResult.KIND_ABILITY and result.ability:
 		if _run_state.player_deck:
-			_run_state.player_deck.add_ability(result.ability)
+			return _run_state.player_deck.add_ability(result.ability)
+		return false
 	elif result.kind == GachaResult.KIND_CONSUMABLE and result.consumable:
-		_run_state.add_consumable(result.consumable)
+		return _run_state.add_consumable(result.consumable)
 	elif result.kind == GachaResult.KIND_RELIC and result.relic:
-		_run_state.add_relic(result.relic)
+		return _run_state.add_relic(result.relic)
+	return false
+
+# 满仓 / 重复时的玩家可读原因。
+static func _gacha_reject_reason(result: GachaResult) -> String:
+	if result == null:
+		return "无效奖励"
+	match result.kind:
+		GachaResult.KIND_CONSUMABLE: return "消耗品已满（%d 上限）" % RunState.MAX_CONSUMABLES
+		GachaResult.KIND_RELIC: return "遗物已满或重复"
+		GachaResult.KIND_ABILITY: return "能力槽已满"
+	return "背包已满"
 
 # ---- helpers ----
 

@@ -18,8 +18,9 @@ func test_relic_serialization():
 	assert_eq(restored.display_name, "测试遗物")
 
 func test_card_pool_has_relics():
+	# 4 初版 + M12 8 个新遗物
 	var pool: Array = CardPool.all_relics()
-	assert_eq(pool.size(), 4, "应有 4 个遗物")
+	assert_eq(pool.size(), 12, "应有 12 个遗物")
 
 func test_relic_factory_build():
 	var sk: SkillResource = RelicFactory.build(&"relic_lucky_cat_v1")

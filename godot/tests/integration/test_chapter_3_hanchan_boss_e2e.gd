@@ -8,15 +8,16 @@ extends GutTest
 
 const BOSS_ID := &"boss3_kanmon_v1"
 
-# ---- 章 3 NodeRef 全部 hanchan ----
+# ---- 章 3 NodeRef：GAP-4 起普通/精英 speed，Boss 保留 hanchan ----
 
 func test_chapter_3_run_state_all_nodes_hanchan():
 	var rs := RunState.new(42)
 	rs.chapter = 3
 	rs._generate_chapter_map(3)
 	for n in rs.current_map.nodes:
-		assert_eq(n.session_kind, "hanchan",
-			"章 3 节点 %d 必 hanchan" % n.index)
+		var expected: String = "hanchan" if n.kind == NodeKind.Kind.BOSS else "speed"
+		assert_eq(n.session_kind, expected,
+			"章 3 节点 %d (kind=%d) 应 %s（GAP-4）" % [n.index, n.kind, expected])
 
 func test_chapter_3_boss_node_is_hanchan_and_kind_boss():
 	var rs := RunState.new(42)
@@ -73,12 +74,13 @@ func test_run_state_with_chapter_3_map_save_load_roundtrip():
 	assert_not_null(rs2)
 	assert_eq(rs2.chapter, 3)
 	assert_eq(rs2.history.size(), 1)
-	assert_eq(rs2.history[0].session_kind, "hanchan",
-		"章 3 history NodeRef session_kind hanchan")
-	# 章 3 map 全 hanchan
+	assert_eq(rs2.history[0].session_kind, rs.current_map.nodes[0].session_kind,
+		"章 3 history NodeRef session_kind roundtrip 保持")
+	# 章 3 map：GAP-4 起普通/精英 speed，Boss hanchan — roundtrip 不变形
 	for n in rs2.current_map.nodes:
-		assert_eq(n.session_kind, "hanchan",
-			"v2 重载后章 3 map 节点 %d 仍 hanchan" % n.index)
+		var expected: String = "hanchan" if n.kind == NodeKind.Kind.BOSS else "speed"
+		assert_eq(n.session_kind, expected,
+			"v2 重载后章 3 map 节点 %d 仍 %s" % [n.index, expected])
 
 # ---- M7 → M8 升级路径：v1 存档加载到章 3 后下一个节点仍正常 ----
 
@@ -107,5 +109,6 @@ func test_v1_save_load_into_chapter_3_then_next_node_is_hanchan():
 	# 这里简化：直接 _generate_chapter_map(3) 模拟跨章
 	rs._generate_chapter_map(3)
 	for n in rs.current_map.nodes:
-		assert_eq(n.session_kind, "hanchan",
-			"v1 存档加载后进入章 3 → 节点仍按 M8 章 3 配置生成 hanchan")
+		var expected: String = "hanchan" if n.kind == NodeKind.Kind.BOSS else "speed"
+		assert_eq(n.session_kind, expected,
+			"v1 存档加载后进入章 3 → 节点按当前章 3 配置生成（GAP-4: 普通 speed / Boss hanchan）")

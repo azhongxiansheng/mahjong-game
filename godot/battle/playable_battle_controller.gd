@@ -183,14 +183,8 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 			return picked_cached
 		# 缓存的 tile_id 不在手牌（异常）— 落到正常流程让玩家再选
 	# Check player self-kan availability
-	var can_ankan: bool = not ClaimValidator.ankan_candidates(seat.hand).is_empty()
-	var can_added: bool = false
-	if not seat.riichi.declared:
-		for m in seat.melds:
-			if m.kind == Meld.Kind.PON:
-				if ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
-					can_added = true
-					break
+	var can_ankan: bool = not _player_ankan_candidates(seat).is_empty()
+	var can_added: bool = _player_added_kan_tile_id(seat) >= 0
 	var _has_consumable: bool = has_usable_consumable()
 	_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_consumable)
 	_seat_panel_player.set_hand_clickable(true)
@@ -201,6 +195,11 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 			var tid: int = int(choice.get("tile_id", -1))
 			var picked: Tile = _find_tile_by_id(seat, tid)
 			if picked == null:
+				continue
+			# 喰い替え禁止（日麻 §4）：吃/碰后不能打出与所鸣组合等价替换的牌。
+			# AI 路径在父类 _get_discard_decision 已规避；玩家路径在此拒绝。
+			if state.kuikae_restricted[actor].has(tid):
+				_action_panel.set_status_text("喰い替え禁止 — 这张不能打，换一张")
 				continue
 			_seat_panel_player.set_hand_clickable(false)
 			_action_panel.enter_idle("AI 出牌中…")
@@ -216,31 +215,50 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 			_seat_panel_player.set_hand_clickable(true)
 			continue
 		elif action == "ankan":
-			var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
-			if not ankan_ids.is_empty():
-				if engine.apply_ankan(actor, ankan_ids[0]):
-					_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
-					_seat_panel_player.set_hand_clickable(false)
-					_action_panel.enter_idle("暗杠！")
-					return null
+			var ankan_ids: Array = _player_ankan_candidates(seat)
+			if not ankan_ids.is_empty() and engine.apply_ankan(actor, ankan_ids[0]):
+				_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
+				if await _resume_after_player_kan(seat):
+					return null  # 岭上开花已结算（_settled=true，caller 的 settle 一致）
+				var after_kan: Tile = _consume_pending_discard(seat)
+				if after_kan != null:
+					return after_kan  # 玩家在岭上自摸窗口里已选了切牌
+				can_ankan = not _player_ankan_candidates(seat).is_empty()
+				can_added = _player_added_kan_tile_id(seat) >= 0
+				_has_consumable = has_usable_consumable()
+				_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_consumable)
+				_seat_panel_player.set_hand_clickable(true)
 			continue
 		elif action == "added_kan":
-			for m in seat.melds:
-				if m.kind == Meld.Kind.PON:
-					var tid: int = m.tiles[0].id
-					if ClaimValidator.can_added_kan(seat.melds, seat.hand, tid):
-						if _try_chankan_ron(tid, actor):
-							_seat_panel_player.set_hand_clickable(false)
-							_action_panel.enter_idle("抢杠！")
-							return null
-						if engine.apply_added_kan(actor, tid):
-							_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": tid})
-							_seat_panel_player.set_hand_clickable(false)
-							_action_panel.enter_idle("加杠！")
-							return null
-						break
+			var added_tid: int = _player_added_kan_tile_id(seat)
+			if added_tid >= 0:
+				if _try_chankan_ron(added_tid, actor):
+					_seat_panel_player.set_hand_clickable(false)
+					_action_panel.enter_idle("被抢杠！")
+					return null  # 抢杠荣和已结算
+				if engine.apply_added_kan(actor, added_tid):
+					_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": added_tid})
+					if await _resume_after_player_kan(seat):
+						return null
+					var after_kan2: Tile = _consume_pending_discard(seat)
+					if after_kan2 != null:
+						return after_kan2
+					can_ankan = not _player_ankan_candidates(seat).is_empty()
+					can_added = _player_added_kan_tile_id(seat) >= 0
+					_has_consumable = has_usable_consumable()
+					_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_consumable)
+					_seat_panel_player.set_hand_clickable(true)
 			continue
 	return null  # unreachable
+
+# 取出 _pending_discard_tile_id 缓存的切牌（玩家在岭上自摸窗口里点了切牌时
+# 由内层 _should_accept_tsumo 写入）。没有缓存 / 缓存牌不在手牌返 null。
+func _consume_pending_discard(seat: Seat) -> Tile:
+	if _pending_discard_tile_id < 0:
+		return null
+	var cached: Tile = _find_tile_by_id(seat, _pending_discard_tile_id)
+	_pending_discard_tile_id = -1
+	return cached
 
 # 九種九牌覆写:玩家(seat 0)摸完牌触发条件时,弹按钮等选择;其它 seat AI 不主动 abort。
 func _should_declare_kyuusyu_kyuuhai(actor: int) -> bool:
@@ -368,14 +386,10 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 	# 暗杠/加杠跟 _get_discard_decision 一致 — 之前漏算让"碰过 PON 又摸到第 4 张
 	# 同 id" 时玩家看不到加杠按钮,只能 tsumo / 切牌。
 	var seat: Seat = state.seats[actor]
-	var can_ankan: bool = not ClaimValidator.ankan_candidates(seat.hand).is_empty()
-	var can_added: bool = false
-	if not seat.riichi.declared:
-		for m in seat.melds:
-			if m.kind == Meld.Kind.PON \
-					and ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
-				can_added = true
-				break
+	var can_ankan: bool = not _player_ankan_candidates(seat).is_empty()
+	var can_added: bool = _player_added_kan_tile_id(seat) >= 0
+	# 杠后原 tsumo 检测失效（手牌变了），用 can_tsumo 跟踪当前窗口是否还可自摸
+	var can_tsumo: bool = true
 	var _has_con: bool = has_usable_consumable()
 	_action_panel.enter_waiting_discard(true, can_ankan, can_added, _has_con)
 	_seat_panel_player.set_hand_clickable(true)
@@ -383,6 +397,8 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 		var choice: Dictionary = await _action_panel.player_action_chosen
 		var action: String = String(choice.get("action", ""))
 		if action == "tsumo":
+			if not can_tsumo:
+				continue
 			_seat_panel_player.set_hand_clickable(false)
 			_action_panel.enter_idle("自摸！")
 			return true
@@ -392,8 +408,43 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 			if not usable.is_empty():
 				use_consumable(usable[0])
 			_has_con = has_usable_consumable()
-			_action_panel.enter_waiting_discard(true, can_ankan, can_added, _has_con)
+			_action_panel.enter_waiting_discard(can_tsumo, can_ankan, can_added, _has_con)
 			_seat_panel_player.set_hand_clickable(true)
+			continue
+		elif action == "ankan":
+			var ankan_ids: Array = _player_ankan_candidates(seat)
+			if not ankan_ids.is_empty() and engine.apply_ankan(actor, ankan_ids[0]):
+				_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
+				if await _resume_after_player_kan(seat):
+					return false  # 岭上开花已结算；拒绝原 tsumo 防 caller 双重结算
+				if _pending_discard_tile_id >= 0:
+					return false  # 玩家在岭上窗口已选切牌 → 流到 _get_discard_decision 消费
+				can_tsumo = false
+				can_ankan = not _player_ankan_candidates(seat).is_empty()
+				can_added = _player_added_kan_tile_id(seat) >= 0
+				_has_con = has_usable_consumable()
+				_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_con)
+				_seat_panel_player.set_hand_clickable(true)
+			continue
+		elif action == "added_kan":
+			var added_tid: int = _player_added_kan_tile_id(seat)
+			if added_tid >= 0:
+				if _try_chankan_ron(added_tid, actor):
+					_seat_panel_player.set_hand_clickable(false)
+					_action_panel.enter_idle("被抢杠！")
+					return false  # 抢杠荣和已结算
+				if engine.apply_added_kan(actor, added_tid):
+					_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": added_tid})
+					if await _resume_after_player_kan(seat):
+						return false
+					if _pending_discard_tile_id >= 0:
+						return false  # 同 ankan：缓存交给 _get_discard_decision 消费
+					can_tsumo = false
+					can_ankan = not _player_ankan_candidates(seat).is_empty()
+					can_added = _player_added_kan_tile_id(seat) >= 0
+					_has_con = has_usable_consumable()
+					_action_panel.enter_waiting_discard(false, can_ankan, can_added, _has_con)
+					_seat_panel_player.set_hand_clickable(true)
 			continue
 		elif action == "discard":
 			var tid: int = int(choice.get("tile_id", -1))
@@ -404,6 +455,46 @@ func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> b
 			return false
 		# 其它 action 忽略
 	return true  # unreachable
+
+# ---- 玩家自杠（暗杠/加杠）helpers ----
+
+# 玩家可暗杠候选。立直中保守禁用（v1 不做"不变听暗杠"合法性判定，与 AI
+# decide_self_kan 的 riichi 跳过行为一致；待牌可能改变的暗杠在立直中非法）。
+func _player_ankan_candidates(seat: Seat) -> Array:
+	if seat.riichi.declared:
+		return []
+	return ClaimValidator.ankan_candidates(seat.hand)
+
+# 玩家可加杠的第一个 tile_id；不可加杠返 -1。立直锁手牌，立直中恒 -1。
+func _player_added_kan_tile_id(seat: Seat) -> int:
+	if seat.riichi.declared:
+		return -1
+	for m in seat.melds:
+		if m.kind == Meld.Kind.PON \
+				and ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
+			return m.tiles[0].id
+	return -1
+
+# 玩家杠成立后的共同收尾：engine.apply_* 已摸岭上 + 翻新 dora。
+# 检岭上开花（玩家可在弹窗里选自摸/放弃）；胡 → 返 true（_settled 已置）。
+# 不胡 → 清岭上标记返 false，调用方回到切牌等待循环。
+# 修复前：杠后直接 return null 被 _step_discard_async 当"本局结束"，
+# 玩家一开杠整局直接终止（P0）。
+func _resume_after_player_kan(seat: Seat) -> bool:
+	_action_panel.enter_idle("杠！岭上摸牌…")
+	if await _try_rinshan_tsumo_async(seat):
+		_seat_panel_player.set_hand_clickable(false)
+		return true
+	seat.last_draw_is_rinshan = false
+	return false
+
+# 玩家 seat 摸牌后不让 AI 替玩家自动开杠（HeuristicAi.decide_self_kan 是
+# "能杠就杠"）— 玩家的暗杠/加杠由 action panel 按钮决策。
+# 未 bind UI（纯 AI 仿真 / GUT 测试）时保留父类行为。
+func _try_ai_self_kan() -> void:
+	if state.current_seat == PLAYER_SEAT and _action_panel != null:
+		return
+	super()
 
 # ---- helpers ----
 

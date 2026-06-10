@@ -40,6 +40,22 @@ func set_seed_and_gold(seed: int, gold: int) -> void:
 	if is_inside_tree():
 		_rebuild()
 
+# 购买被外部拒绝（背包满 / 重复遗物）时回滚槽位:取消已购标记、恢复文案、
+# 按当前金币恢复可点状态。reason 显示在槽位文案尾行提示玩家原因。
+func refund_slot(index: int, reason: String = "") -> void:
+	if index < 0 or index >= _bought.size():
+		return
+	_bought[index] = false
+	_current_gold += price_for(_results[index])
+	if index < _slot_buttons.size():
+		var btn := _slot_buttons[index]
+		btn.disabled = _current_gold < price_for(_results[index])
+		var lbl := btn.get_child(0) as Label
+		if lbl:
+			lbl.text = format_slot_text(_results[index])
+			if reason != "":
+				lbl.text += "\n⚠️ %s" % reason
+
 # 玩家在外部扣金币后调用此方法，UI 同步显示
 func update_gold(gold: int) -> void:
 	_current_gold = gold

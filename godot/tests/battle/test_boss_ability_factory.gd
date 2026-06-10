@@ -2,12 +2,16 @@ extends GutTest
 
 # 麻将王 — M6 收尾：BossAbilityFactory 单测
 
-func test_known_boss_ids_are_3():
+func test_known_boss_ids_are_6():
+	# 3 章原版 Boss + M12 3 个变体（commit 77d1435）
 	var ids := BossAbilityFactory.known_boss_ids()
-	assert_eq(ids.size(), 3, "3 章 Boss")
+	assert_eq(ids.size(), 6, "3 章 Boss + 3 变体")
 	assert_true(ids.has(&"boss1_iron_curtain_v1"))
 	assert_true(ids.has(&"boss2_fortune_runner_v1"))
 	assert_true(ids.has(&"boss3_kanmon_v1"))
+	assert_true(ids.has(&"boss1_stealth_wall_v1"))
+	assert_true(ids.has(&"boss2_dora_thief_v1"))
+	assert_true(ids.has(&"boss3_yakuman_pressure_v1"))
 
 func test_build_boss1_returns_skill_with_ron_trigger():
 	var sk: SkillResource = BossAbilityFactory.build(&"boss1_iron_curtain_v1")

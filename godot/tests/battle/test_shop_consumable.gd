@@ -76,6 +76,30 @@ func test_consumable_serialization_round_trip():
 		assert_not_null(c)
 		assert_ne(String(c.id), "")
 
+# 满仓购买被 RunFlow 拒绝时 refund_slot 回滚槽位（修复"扣钱但消耗品蒸发"）：
+# 取消已购标记、恢复文案 + 显示原因、按金币恢复可点。
+func test_shop_refund_slot_restores_purchase_state():
+	var view: ShopView = load("res://ui/run/shop_view.tscn").instantiate()
+	add_child_autofree(view)
+	view.set_seed_and_gold(42, 9999)
+	view._on_slot_pressed(0)
+	assert_true(view._bought[0], "购买后标记已购")
+	view.refund_slot(0, "消耗品已满")
+	assert_false(view._bought[0], "回滚后槽位可再购")
+	assert_false(view._slot_buttons[0].disabled, "金币充足时按钮恢复可点")
+	var lbl := view._slot_buttons[0].get_child(0) as Label
+	assert_not_null(lbl)
+	assert_true(lbl.text.contains("消耗品已满"), "槽位提示拒绝原因")
+	assert_false(lbl.text.contains("(已购)"), "已购标记被清除")
+
+func test_shop_refund_slot_out_of_range_is_noop():
+	var view: ShopView = load("res://ui/run/shop_view.tscn").instantiate()
+	add_child_autofree(view)
+	view.set_seed_and_gold(42, 100)
+	view.refund_slot(99)  # 不崩
+	view.refund_slot(-1)
+	pass_test("越界 refund 不崩溃")
+
 func test_shop_5_seeds_all_produce_valid_results():
 	for seed_val in [42, 99, 200, 555, 1001]:
 		var results := Gacha.refresh_shop(seed_val)
