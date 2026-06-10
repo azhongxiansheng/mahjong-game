@@ -104,6 +104,9 @@ static func format_slot_text(result: GachaResult) -> String:
 # ---- internal ----
 
 func _rebuild() -> void:
+	# 槽位数跟 Gacha.refresh_shop 实际返回走，别信 tscn 里的死文案
+	if _title:
+		_title.text = "商店 — %d 个槽位（明牌可挑选）" % _results.size()
 	if _gold_label:
 		_gold_label.text = format_gold_text(_current_gold)
 	if _slots_box == null:

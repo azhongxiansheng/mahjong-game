@@ -134,6 +134,101 @@ func test_player_added_kan_blocked_during_riichi() -> void:
 	seat.riichi.declare(0, false)
 	assert_eq(_bc._player_added_kan_tile_id(seat), -1, "立直锁手牌，恒不可加杠")
 
+# ---- 吃搭子交互选择（多组合时点手牌选；修复前永远取第一组） ----
+
+# 玩家手 W1 W2 W4 W5，上家弃 W3 → 三组候选 [W1,W2]/[W2,W4]/[W4,W5]
+const HAND_CHI_MULTI: Array = [
+	TileId.W1, TileId.W2, TileId.W4, TileId.W5,
+	TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N,
+	TileId.HAKU, TileId.HATSU, TileId.CHUN, TileId.T1, TileId.S1,
+]
+
+func _setup_chi_claim(hand_ids: Array) -> Tile:
+	var seat: Seat = _bc.state.seats[0]
+	_set_hand(seat, hand_ids)
+	var discarded := Tile.new(TileId.W3)
+	# apply_chi 从 discards_per_seat[current_seat] pop 被鸣牌 → 模拟上家(3)刚弃
+	_bc.state.current_seat = 3
+	_bc.state.discards_per_seat[3].append(discarded)
+	return discarded
+
+func test_chi_multi_option_player_picks_companion() -> void:
+	var discarded := _setup_chi_claim(HAND_CHI_MULTI)
+	var done := {}
+	var runner := func():
+		await _bc._try_player_claim_async(discarded, 3)
+		done["finished"] = true
+	runner.call()
+	_panel.player_action_chosen.emit({"action": "chi"})
+	await wait_physics_frames(1)
+	assert_false(done.has("finished"), "多组候选应进入搭子选择,不直接成立")
+	# 点 W5 → 唯一含 W5 的组合 [W4,W5]
+	_panel.player_action_chosen.emit({"action": "claim_tile_pick", "tile_id": TileId.W5})
+	await wait_physics_frames(1)
+	assert_true(done.has("finished"))
+	var seat: Seat = _bc.state.seats[0]
+	assert_eq(seat.melds.size(), 1, "吃成立")
+	assert_eq(seat.melds[0].kind, Meld.Kind.CHI)
+	var meld_ids: Array = []
+	for t in seat.melds[0].tiles:
+		meld_ids.append(int(t.id))
+	meld_ids.sort()
+	assert_eq(meld_ids, [TileId.W3, TileId.W4, TileId.W5], "选定 [W4,W5] 组合而非第一组")
+	assert_false(_bc.state.kuikae_restricted[0].is_empty(), "喰い替え限制已设置")
+
+func test_chi_picker_rejects_non_candidate_then_accepts() -> void:
+	var discarded := _setup_chi_claim(HAND_CHI_MULTI)
+	var done := {}
+	var runner := func():
+		await _bc._try_player_claim_async(discarded, 3)
+		done["finished"] = true
+	runner.call()
+	_panel.player_action_chosen.emit({"action": "chi"})
+	# 点不是候选搭子的 E → 拒绝继续等
+	_panel.player_action_chosen.emit({"action": "claim_tile_pick", "tile_id": TileId.E})
+	await wait_physics_frames(1)
+	assert_false(done.has("finished"), "非候选牌不应选定")
+	_panel.player_action_chosen.emit({"action": "claim_tile_pick", "tile_id": TileId.W1})
+	await wait_physics_frames(1)
+	assert_true(done.has("finished"))
+	assert_eq(_bc.state.seats[0].melds.size(), 1, "改点 W1 → [W1,W2] 成立")
+
+func test_chi_picker_skip_cancels_back_to_claim_window() -> void:
+	var discarded := _setup_chi_claim(HAND_CHI_MULTI)
+	var done := {}
+	var runner := func():
+		await _bc._try_player_claim_async(discarded, 3)
+		done["finished"] = true
+	runner.call()
+	_panel.player_action_chosen.emit({"action": "chi"})
+	_panel.player_action_chosen.emit({"action": "skip"})  # 取消搭子选择 → 回鸣牌窗
+	await wait_physics_frames(1)
+	assert_false(done.has("finished"), "取消搭子选择应回到鸣牌窗口")
+	assert_eq(_bc.state.seats[0].melds.size(), 0)
+	_panel.player_action_chosen.emit({"action": "skip"})  # 鸣牌窗口跳过 → 结束
+	await wait_physics_frames(1)
+	assert_true(done.has("finished"))
+	assert_eq(_bc.state.seats[0].melds.size(), 0, "全程未吃")
+
+func test_chi_single_option_applies_directly() -> void:
+	# 只有 [W1,W2] 一组 → 不进选择模式直接成立
+	var discarded := _setup_chi_claim([
+		TileId.W1, TileId.W2,
+		TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N,
+		TileId.HAKU, TileId.HATSU, TileId.CHUN,
+		TileId.T1, TileId.T9, TileId.S1, TileId.S9,
+	])
+	var done := {}
+	var runner := func():
+		await _bc._try_player_claim_async(discarded, 3)
+		done["finished"] = true
+	runner.call()
+	_panel.player_action_chosen.emit({"action": "chi"})
+	await wait_physics_frames(1)
+	assert_true(done.has("finished"), "单组候选直接成立")
+	assert_eq(_bc.state.seats[0].melds.size(), 1)
+	assert_eq(_bc.state.seats[0].melds[0].kind, Meld.Kind.CHI)
+
 # ---- P1：喰い替え enforcement ----
 
 func test_player_kuikae_restricted_discard_rejected() -> void:

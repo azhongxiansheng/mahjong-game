@@ -21,6 +21,7 @@ signal player_action_chosen(choice: Dictionary)
 #   {"action": "minkan", "discarder_seat": int}  — 明杠
 #   {"action": "chi", "discarder_seat": int}     — 吃（仅下家）
 #   {"action": "skip"}                           — 见逃响应窗口
+#   {"action": "claim_tile_pick", "tile_id": int} — 吃搭子选择（WAITING_CLAIM 点手牌）
 
 enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM, WAITING_KYUUSYU }
 
@@ -322,6 +323,10 @@ func on_hand_tile_clicked(tile_id: int) -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
 		player_action_chosen.emit({"action": "discard", "tile_id": tile_id})
+	elif _state == State.WAITING_CLAIM:
+		# 吃搭子选择模式（多组合时 BC 把手牌设回 clickable 等玩家点搭子）
+		_click_sfx()
+		player_action_chosen.emit({"action": "claim_tile_pick", "tile_id": tile_id})
 
 # ---- 按钮回调 ----
 
