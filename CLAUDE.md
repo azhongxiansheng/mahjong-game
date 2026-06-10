@@ -86,6 +86,7 @@ docker build -t mahjong . # uses Dockerfile (golang:1.20)
 | `generate_tiles.py` | **逐张生成**(单牌精度最稳,style 略漂),`--workers N` 并行;失败可 `--only 8s,1z` 重做 |
 | `generate_sheets.py` | **按花色整排生成 + alpha 间隙切片**(同花色内 style 最一致);每 sheet 最多 4 次 retry 直到切到 expected;honor 牌总粘连切不开 → 现状用逐张 fallback |
 | `generate_misc.py` | 桌面背景 / run 背景 / 节点图标 / HUD 图标 / logo 等非牌资产,并行 |
+| `import_fluffystuff.py` | **当前牌面来源**:FluffyStuff/riichi-mahjong-tiles (CC0) 的 600×800 PNG 合成 Front+牌面 → 272×389;不走 AI 生成,无 style 漂移 |
 
 **约定路径**
 - 麻将牌:`godot/assets/mahjong_tiles_riichi/{1m..9m,1p..9p,1s..9s,1z..7z,0m,0p,0s,back}.png` —— 文件名严格不变(`TextureExtractor` 按名加载),统一 272×389 透明。
@@ -121,7 +122,7 @@ godot --headless --path godot --import
 ### Autoloads (singletons)
 Defined in `godot/project.godot` `[autoload]`:
 - **`GameManager`** (`scripts/game_manager.gd`) — holds user session (`user_data`, `is_logged_in`). Set after WeChat-style login.
-- **`TextureExtractor`** (`scripts/texture_extractor.gd`, v2) — runs at `_ready` of every scene. **不再走 FairyGUI atlas 切片**;改为按 riichi 标准命名(`1m..9m / 1p..9p / 1s..9s / 1z..7z / 0m / 0p / 0s / back`)直接 `load("res://assets/mahjong_tiles_riichi/<key>.png")`,共 **38 张 272×389 透明 PNG**,目前是 gpt-image-2 用 Akagi 风格重新生成的(详见上节"资产生成 (gpt-image-2)")。`get_tile_texture(key)` 是渲染层(`CardTileBack` / `SeatPanel` / `DiscardRiver` / `MeldArea`)的入口,缺图 fall-back 到 `null` 让调用方走 Label。
+- **`TextureExtractor`** (`scripts/texture_extractor.gd`, v2) — runs at `_ready` of every scene. **不再走 FairyGUI atlas 切片**;改为按 riichi 标准命名(`1m..9m / 1p..9p / 1s..9s / 1z..7z / 0m / 0p / 0s / back`)直接 `load("res://assets/mahjong_tiles_riichi/<key>.png")`,共 **38 张 272×389 透明 PNG**,目前来自 [FluffyStuff/riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles)(CC0 公有领域),用 `tools/asset_gen/import_fluffystuff.py` 合成牌底+牌面并缩放(早前的 gpt-image-2 Akagi 风格生成管线仍在 `tools/asset_gen/`,见上节"资产生成 (gpt-image-2)")。`get_tile_texture(key)` 是渲染层(`CardTileBack` / `SeatPanel` / `DiscardRiver` / `MeldArea`)的入口,缺图 fall-back 到 `null` 让调用方走 Label。
 - **`SaveSystem`** (`meta/save_system.gd`) — autoload,`save_run(rs)` / `load_run()` / `clear_run()` 走 `user://savegame.json`。
 - **`MetaProgress`** (`meta/meta_progress.gd`) — autoload,跨 Run 声望累计 + 战绩。
 
