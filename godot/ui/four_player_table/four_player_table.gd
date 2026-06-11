@@ -123,18 +123,23 @@ static func seat_position(seat_id: int) -> Vector2:
 
 # ---- internal ----
 
-const TABLE_BG_PATH := "res://assets/mahjong_table_bg.png"
+# T3(spec 2026-06-11 G3):烘焙毛毡 + 木框(bake_table_felt.py),
+# 1080×720 精确尺寸直贴;旧 AI 生成桌布作 fallback。
+const TABLE_BG_PATH := "res://assets/table_felt.png"
+const TABLE_BG_FALLBACK := "res://assets/mahjong_table_bg.png"
 
 func _build_layout() -> void:
-	# Bg 纯色块已在 .tscn；有桌布贴图资产时盖一张 TextureRect 上去。
-	if ResourceLoader.exists(TABLE_BG_PATH):
+	# Bg 纯色块已在 .tscn;有桌布贴图资产时盖一张 TextureRect 上去。
+	var bg_path: String = TABLE_BG_PATH if ResourceLoader.exists(TABLE_BG_PATH) \
+		else TABLE_BG_FALLBACK
+	if ResourceLoader.exists(bg_path):
 		var felt := TextureRect.new()
 		felt.name = "TableFelt"
-		felt.texture = load(TABLE_BG_PATH)
+		felt.texture = load(bg_path)
 		felt.position = Vector2(0, 0)
 		felt.size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
 		felt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		felt.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		felt.stretch_mode = TextureRect.STRETCH_SCALE
 		felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(felt)
 
