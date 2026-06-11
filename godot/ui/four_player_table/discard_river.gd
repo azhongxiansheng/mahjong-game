@@ -165,6 +165,15 @@ func _rebuild() -> void:
 
 func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
 		is_last: bool, is_dora: bool = false, is_new: bool = false) -> void:
+	# 投影垫底(StyleBox shadow 画在自身 rect 之外、其余子节点之下)
+	var shadow := Panel.new()
+	var shadow_sb := StyleBoxFlat.new()
+	shadow_sb.bg_color = Color(0, 0, 0, 0)
+	shadow_sb.shadow_color = Color(0, 0, 0, 0.32)
+	shadow_sb.shadow_size = 4
+	shadow_sb.shadow_offset = Vector2(0, 3)
+	shadow.add_theme_stylebox_override("panel", shadow_sb)
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tr := TextureRect.new()
 	tr.size = Vector2(TILE_W, TILE_H)
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -180,8 +189,11 @@ func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
 		tr.position = Vector2(x, y - (TILE_H - TILE_W))
 	else:
 		tr.position = Vector2(x, y)
-	add_child(tr)
 	var slot_size: Vector2 = Vector2(TILE_H, TILE_W) if is_riichi else Vector2(TILE_W, TILE_H)
+	shadow.position = Vector2(x, y) if not is_riichi else tr.position
+	shadow.size = slot_size
+	add_child(shadow)
+	add_child(tr)
 	# T2:河中宝牌金色描边
 	if is_dora:
 		add_child(_make_border(tr.position, slot_size, Color(0.85, 0.71, 0.36, 0.9), 2))

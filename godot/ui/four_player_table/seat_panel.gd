@@ -532,6 +532,10 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 	for child in _hand_tile_row.get_children():
 		child.queue_free()
 	var back_tex: Texture2D = _resolve_back_texture()
+	# 质感层:整行投影(对标参考作 .hand--top 的 row 级 drop-shadow)
+	if owners.size() > 0:
+		var row_w: float = owners.size() * (HAND_TILE_W + HAND_TILE_GAP) - HAND_TILE_GAP
+		_hand_tile_row.add_child(_make_row_shadow(Vector2(row_w, HAND_TILE_H)))
 	var x := 0.0
 	for owner_seat in owners:
 		var rect := TextureRect.new()
@@ -607,6 +611,21 @@ static func split_hand_for_display(hand: Hand, drawn_tile_id: int) -> Dictionary
 	all_ids.remove_at(drawn_idx)
 	all_ids.sort()
 	return {"sorted_ids": all_ids, "drawn_ids": [drawn_tile_id]}
+
+# 整行投影 helper(质感层):透明底 + 仅 shadow 的 Panel 垫在行底。
+static func _make_row_shadow(size_: Vector2) -> Panel:
+	var p := Panel.new()
+	p.position = Vector2.ZERO
+	p.size = size_
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 6
+	sb.shadow_offset = Vector2(0, 4)
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
 
 # 内部统一渲染：sorted_ids 在左，drawn_ids 在右（与 sorted 之间留 PLAYER_HAND_DRAWN_GAP 间距）
 func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array) -> void:

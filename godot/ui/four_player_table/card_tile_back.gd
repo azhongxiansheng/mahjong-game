@@ -366,6 +366,11 @@ func _refresh() -> void:
 	sb.border_width_left = BORDER_WIDTH
 	sb.border_width_right = BORDER_WIDTH
 	sb.border_color = Color.BLACK
+	# 质感层:投影(对标参考作 .tile 双层 box-shadow)。StyleBox 阴影画在
+	# 面板之下,牌"立"在毡上而非"浮"着。
+	sb.shadow_color = Color(0, 0, 0, 0.38)
+	sb.shadow_size = 5
+	sb.shadow_offset = Vector2(0, 4)
 
 	var atlas_tex: Texture2D = _resolve_atlas_texture(_tile_id)
 

@@ -41,10 +41,11 @@ def bake() -> None:
 
     # 中心提亮 + 四角暗角(径向渐变蒙版)
     radial = Image.radial_gradient("L").resize((W, H), Image.BILINEAR)  # 中心 0 → 边缘 255
-    bright = ImageEnhance.Brightness(img).enhance(1.12)
-    img = Image.composite(img, bright, radial.point(lambda v: min(255, int(v * 1.35))))
-    dark = ImageEnhance.Brightness(img).enhance(0.62)
-    img = Image.composite(dark, img, radial.point(lambda v: max(0, int((v - 135) * 2.2))))
+    bright = ImageEnhance.Brightness(img).enhance(1.16)
+    img = Image.composite(img, bright, radial.point(lambda v: min(255, int(v * 1.6))))
+    # 暗角加强:聚光灯打在桌心的舞台感(3D 倾斜视图下尤其需要)
+    dark = ImageEnhance.Brightness(img).enhance(0.52)
+    img = Image.composite(dark, img, radial.point(lambda v: max(0, int((v - 110) * 1.9))))
 
     # 木框:四边渐变色带 + 内缘暖白高光线 + 外缘压黑
     draw = ImageDraw.Draw(img)
