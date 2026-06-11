@@ -18,7 +18,7 @@ TextureExtractor 约定的 272x389(纵横比 0.75→0.699 有 ~7% 水平压缩,
 """
 import argparse
 import os
-from PIL import Image
+from PIL import Image, ImageDraw
 
 TILE_W, TILE_H = 272, 389
 
@@ -41,7 +41,22 @@ MAPPING = {
 }
 
 
-def convert(src_dir: str, out_dir: str) -> None:
+# Black 变体的白(Haku)是全黑空白面,与黑色牌背无法区分(白是常用役牌,
+# 实战致命)。实体黑牌套装的惯例是给白刻一圈描边 — 这里画白色圆角矩形框。
+def _draw_haku_frame(tile: Image.Image) -> Image.Image:
+    draw = ImageDraw.Draw(tile)
+    w, h = tile.size  # 600x800 源尺寸下 inset 90 / 线宽 14
+    inset_x, inset_y = int(w * 0.15), int(h * 0.15)
+    draw.rounded_rectangle(
+        [inset_x, inset_y, w - inset_x, h - inset_y],
+        radius=int(w * 0.06),
+        outline=(235, 235, 235, 230),
+        width=max(2, int(w * 0.023)),
+    )
+    return tile
+
+
+def convert(src_dir: str, out_dir: str, haku_frame: bool = False) -> None:
     os.makedirs(out_dir, exist_ok=True)
     front = Image.open(os.path.join(src_dir, "Front.png")).convert("RGBA")
     for key, name in sorted(MAPPING.items()):
@@ -52,6 +67,8 @@ def convert(src_dir: str, out_dir: str) -> None:
             if face.size != front.size:
                 face = face.resize(front.size, Image.LANCZOS)
             tile = Image.alpha_composite(front, face)
+        if key == "5z" and haku_frame:
+            tile = _draw_haku_frame(tile)
         tile = tile.resize((TILE_W, TILE_H), Image.LANCZOS)
         path = os.path.join(out_dir, f"{key}.png")
         tile.save(path)
@@ -63,5 +80,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", required=True, help="FluffyStuff Export/Regular 或 Export/Black 目录")
     ap.add_argument("--out", default="_staging_fluffystuff")
+    ap.add_argument("--haku-frame", action="store_true",
+                    help="给白(5z)画描边框 — Black 变体必开,否则与黑牌背无法区分")
     args = ap.parse_args()
-    convert(args.src, args.out)
+    convert(args.src, args.out, args.haku_frame)
