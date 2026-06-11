@@ -624,6 +624,53 @@ func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float) 
 	tile.set_face_up(int(tile_id))
 	tile.set_clickable(_hand_clickable)
 	tile.card_clicked.connect(_on_player_tile_clicked)
+	# T2:宝牌扫光(rebuild 后按当前 dora 集合重标,spec AC-G2-d)
+	if _dora_ids.has(int(tile_id)):
+		tile.set_dora(true)
+	# T2:同名联动 — 悬停时全手牌同 id 高亮
+	tile.mouse_entered.connect(_on_hand_tile_hover.bind(int(tile_id), true))
+	tile.mouse_exited.connect(_on_hand_tile_hover.bind(int(tile_id), false))
+
+# ---- T2 单牌状态接线(spec 2026-06-11 G2) ----
+
+var _dora_ids: Array = []
+
+# FourPlayerTable.bind_battle_state 注入当前局实宝牌 id 集合(指示牌的下一张)。
+# 在 bind_seat 重建手牌行之前调用。
+func set_dora_ids(ids: Array) -> void:
+	_dora_ids = ids
+
+# 悬停同名联动:同 id 的其它手牌叠蓝色蒙版。仅自家手牌行内生效(v1)。
+func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
+	if _seat_id != 0 or _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack and child._tile_id == tile_id:
+			child.set_hover_match(entered)
+
+# 吃牌选搭子模式:候选之外的手牌压暗。allowed 为可选搭子 tile_id 列表。
+func dim_hand_except(allowed: Array) -> void:
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack:
+			child.set_dim(not allowed.has(child._tile_id))
+
+func clear_hand_dim() -> void:
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack:
+			child.set_dim(false)
+
+# 和牌张脉冲:标记手牌行中第一张匹配 id 的牌(自摸/荣和宣告后、结算前)。
+func mark_win_tile(tile_id: int) -> void:
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack and child._tile_id == tile_id:
+			child.set_win_tile(true)
+			return
 
 # 切换玩家手牌点击响应。轮到玩家出牌时调 true，AI 回合或鸣牌响应窗口外调 false。
 # 仅 seat==0 有效；其它 seat 调用本方法无效（手牌行只有色块不 emit click）。

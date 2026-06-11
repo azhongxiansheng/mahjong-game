@@ -108,6 +108,142 @@ func _draw() -> void:
 		draw_texture_rect(_face_atlas_tex, rect, false, Color.WHITE)
 	elif _back_tex != null:
 		draw_texture_rect(_back_tex, rect, false, _back_tint)
+	# T2:选中态金圈(spec 2026-06-11 AC-G2-b)。画在牌面之上、遮罩之下。
+	if _is_lifted:
+		var gold := Color(0.85, 0.71, 0.36, 0.95)
+		draw_rect(Rect2(Vector2(1.5, 1.5),
+			Vector2(TILE_WIDTH - 3, TILE_HEIGHT - 3)), gold, false, 3.0)
+
+# ---- T2 单牌状态系统(spec 2026-06-11 G2) ----
+#
+# 五个独立可叠加状态,全部用 overlay 子节点 / _draw 实现,**不动 modulate**
+# (项目硬约束:非 WHITE modulate 会让贴图渲成纯色,见 CLAUDE.md)。
+# bind_battle_state 全量重建后状态丢失是预期 — 由 caller(SeatPanel /
+# DiscardRiver)在 rebuild 时按数据重新标记。
+
+var _is_dora: bool = false
+var _is_lifted: bool = false
+var _is_hover_match: bool = false
+var _is_win_tile: bool = false
+var _is_dim: bool = false
+
+var _dora_sweep: TextureRect = null
+var _dora_tween: Tween = null
+var _match_mask: ColorRect = null
+var _dim_mask: ColorRect = null
+var _win_tween: Tween = null
+var _win_base_scale: Vector2 = Vector2.ONE
+
+# 宝牌:斜向高光循环扫过(对标参考作 .tile--dora dora-shine,2.4s 周期)。
+# 只对正面牌有意义;牌背调用是 no-op。
+func set_dora(b: bool) -> void:
+	if _is_dora == b:
+		return
+	_is_dora = b and (_is_face_up or _is_revealed)
+	if _is_dora:
+		clip_contents = true
+		if _dora_sweep == null:
+			_dora_sweep = TextureRect.new()
+			_dora_sweep.texture = _make_sweep_gradient()
+			_dora_sweep.size = Vector2(TILE_WIDTH * 0.55, TILE_HEIGHT)
+			_dora_sweep.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			_dora_sweep.stretch_mode = TextureRect.STRETCH_SCALE
+			_dora_sweep.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(_dora_sweep)
+		_dora_sweep.visible = true
+		if _dora_tween and _dora_tween.is_valid():
+			_dora_tween.kill()
+		_dora_tween = create_tween().set_loops()
+		_dora_sweep.position = Vector2(-TILE_WIDTH * 0.7, 0)
+		_dora_tween.tween_property(_dora_sweep, "position:x",
+			float(TILE_WIDTH) * 1.2, 1.35).set_trans(Tween.TRANS_SINE)
+		_dora_tween.tween_callback(func():
+			if _dora_sweep:
+				_dora_sweep.position.x = -TILE_WIDTH * 0.7)
+		_dora_tween.tween_interval(1.05)
+	else:
+		if _dora_tween and _dora_tween.is_valid():
+			_dora_tween.kill()
+		if _dora_sweep:
+			_dora_sweep.visible = false
+
+# 选中态:金圈 + 上抬由调用方控制(hover lift 已有);此处只管圈。
+func set_lifted(b: bool) -> void:
+	if _is_lifted == b:
+		return
+	_is_lifted = b
+	queue_redraw()
+
+# 同名联动高亮:悬停某张时,同 id 的牌叠蓝色蒙版(对标 .tile--hover-match)。
+func set_hover_match(b: bool) -> void:
+	if _is_hover_match == b:
+		return
+	_is_hover_match = b
+	if b:
+		if _match_mask == null:
+			_match_mask = _make_mask(Color(0.24, 0.55, 0.75, 0.40))
+		_match_mask.visible = true
+	elif _match_mask:
+		_match_mask.visible = false
+
+# 和牌张:心跳脉冲循环(结算前的"就是这张"强调)。
+func set_win_tile(b: bool) -> void:
+	if _is_win_tile == b:
+		return
+	_is_win_tile = b
+	if b:
+		_win_base_scale = scale
+		pivot_offset = Vector2(TILE_WIDTH / 2.0, TILE_HEIGHT / 2.0)
+		if _win_tween and _win_tween.is_valid():
+			_win_tween.kill()
+		_win_tween = create_tween().set_loops()
+		_win_tween.tween_property(self, "scale", _win_base_scale * 1.07, 0.32) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		_win_tween.tween_property(self, "scale", _win_base_scale, 0.32) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+		_win_tween.tween_interval(0.25)
+	else:
+		if _win_tween and _win_tween.is_valid():
+			_win_tween.kill()
+		scale = _win_base_scale
+
+# 压暗(吃牌选搭子时非候选牌)。用黑色蒙版,不动 modulate。
+func set_dim(b: bool) -> void:
+	if _is_dim == b:
+		return
+	_is_dim = b
+	if b:
+		if _dim_mask == null:
+			_dim_mask = _make_mask(Color(0, 0, 0, 0.55))
+		_dim_mask.visible = true
+	elif _dim_mask:
+		_dim_mask.visible = false
+
+func is_dim() -> bool:
+	return _is_dim
+
+func _make_mask(color: Color) -> ColorRect:
+	var mask := ColorRect.new()
+	mask.color = color
+	mask.size = Vector2(TILE_WIDTH, TILE_HEIGHT)
+	mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(mask)
+	return mask
+
+# 斜向白色高光带渐变(transparent → 白 0.65 → transparent)
+static func _make_sweep_gradient() -> GradientTexture2D:
+	var g := Gradient.new()
+	g.set_color(0, Color(1, 1, 1, 0))
+	g.set_color(1, Color(1, 1, 1, 0))
+	g.add_point(0.5, Color(1, 1, 1, 0.65))
+	var tex := GradientTexture2D.new()
+	tex.gradient = g
+	tex.fill = GradientTexture2D.FILL_LINEAR
+	tex.fill_from = Vector2(0, 0)
+	tex.fill_to = Vector2(1, 0.45)
+	tex.width = 48
+	tex.height = 64
+	return tex
 
 func _on_gui_input(event: InputEvent) -> void:
 	if not _is_clickable:

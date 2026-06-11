@@ -21,6 +21,14 @@ const RIICHI_W_EXTRA: int = TILE_H - TILE_W
 
 var _tiles: Array = []
 var _riichi_index: int = -1
+# T2:实宝牌 id 集合(FourPlayerTable 注入);上次渲染张数,只在真正新增
+# 弃牌时播放入场 glow(全量 rebind 每事件都跑,不用计数会反复闪)。
+var _dora_ids: Array = []
+var _last_tile_count: int = 0
+
+
+func set_dora_ids(ids: Array) -> void:
+	_dora_ids = ids
 
 
 # riichi_idx < 0 表示本家未立直;>= 0 表示该索引的弃牌为立直宣告牌。
@@ -59,13 +67,16 @@ func _rebuild() -> void:
 			continue
 		var is_riichi: bool = (i == _riichi_index)
 		var is_last: bool = (i == n - 1)
-		_spawn_tile(tex, x, y, is_riichi, is_last)
+		var is_new: bool = is_last and n > _last_tile_count
+		_spawn_tile(tex, x, y, is_riichi, is_last, _dora_ids.has(tile.id), is_new)
 		# 累 x:立直牌旋转后视觉 48 宽,普通 32 宽
 		var slot_w: float = TILE_H if is_riichi else TILE_W
 		x += slot_w + TILE_GAP
+	_last_tile_count = n
 
 
-func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool, is_last: bool) -> void:
+func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
+		is_last: bool, is_dora: bool = false, is_new: bool = false) -> void:
 	var tr := TextureRect.new()
 	tr.size = Vector2(TILE_W, TILE_H)
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -84,18 +95,37 @@ func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool, is_last: b
 	else:
 		tr.position = Vector2(x, y)
 	add_child(tr)
+	var slot_size: Vector2 = Vector2(TILE_H, TILE_W) if is_riichi else Vector2(TILE_W, TILE_H)
+	# T2:河中宝牌金色描边(扫光在 32×48 上太碎,静态金边已足够醒目)
+	if is_dora:
+		add_child(_make_border(tr.position, slot_size, Color(0.85, 0.71, 0.36, 0.9), 2))
 	if is_last:
-		# 最近一张弃牌:加一层 1px 骨白描边 Panel,玩家立刻识别"这是本家最新弃"
-		var hl := Panel.new()
-		hl.position = tr.position
-		hl.size = Vector2(TILE_H, TILE_W) if is_riichi else Vector2(TILE_W, TILE_H)
-		hl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(0, 0, 0, 0)
-		sb.border_color = Color(1, 0.92, 0.55, 0.95)
-		sb.border_width_left = 2
-		sb.border_width_right = 2
-		sb.border_width_top = 2
-		sb.border_width_bottom = 2
-		hl.add_theme_stylebox_override("panel", sb)
+		# 最近一张弃牌:骨白描边 + 新增时入场 glow 衰减(对标 discard-glow)。
+		var hl := _make_border(tr.position, slot_size, Color(1, 0.92, 0.55, 0.95), 2)
 		add_child(hl)
+		if is_new:
+			# 入场:整张牌从 92% 缩放弹开 + 高亮层 alpha 衰减,1s 收敛
+			tr.pivot_offset = slot_size / 2.0 if not is_riichi else tr.pivot_offset
+			tr.scale = Vector2.ONE * 0.88
+			var tw := create_tween().set_parallel(true)
+			tw.tween_property(tr, "scale", Vector2.ONE, 0.22) \
+				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			hl.modulate = Color(1.6, 1.5, 1.2, 1.0)
+			tw.tween_property(hl, "modulate", Color.WHITE, 1.0) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+static func _make_border(pos: Vector2, size_: Vector2, color: Color, width: int) -> Panel:
+	var p := Panel.new()
+	p.position = pos
+	p.size = size_
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0, 0, 0, 0)
+	sb.border_color = color
+	sb.border_width_left = width
+	sb.border_width_right = width
+	sb.border_width_top = width
+	sb.border_width_bottom = width
+	p.add_theme_stylebox_override("panel", sb)
+	return p

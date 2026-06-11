@@ -376,13 +376,20 @@ func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
 # 修复前 v1 永远取 options[0]，玩家持 [1,2]/[2,4]/[4,5] 多组时无从选择。
 func _pick_chi_companions_interactive(options: Array, discarded_id: int) -> Array:
 	var opts_text: Array[String] = []
+	var allowed: Array = []
 	for o in options:
 		opts_text.append("%s+%s" % [
 			CardTileBack.tile_short_name(int(o[0])),
 			CardTileBack.tile_short_name(int(o[1]))])
+		for cid in o:
+			if not allowed.has(int(cid)):
+				allowed.append(int(cid))
 	_action_panel.set_status_text("吃 %s — 点手牌选搭子（%s）或跳过" % [
 		CardTileBack.tile_short_name(discarded_id), " / ".join(opts_text)])
 	_seat_panel_player.set_hand_clickable(true)
+	# T2(spec AC-G2-c):非候选搭子压暗,玩家一眼看到能点什么
+	if _seat_panel_player.has_method("dim_hand_except"):
+		_seat_panel_player.dim_hand_except(allowed)
 	while true:
 		var choice: Dictionary = await _action_panel.player_action_chosen
 		var action: String = String(choice.get("action", ""))
@@ -390,15 +397,21 @@ func _pick_chi_companions_interactive(options: Array, discarded_id: int) -> Arra
 			var tid: int = int(choice.get("tile_id", -1))
 			for o in options:
 				if o.has(tid):
+					_clear_chi_dim()
 					_seat_panel_player.set_hand_clickable(false)
 					return o
 			_action_panel.set_status_text("该牌不是候选搭子 — 再选或跳过")
 			continue
 		elif action == "skip":
+			_clear_chi_dim()
 			_seat_panel_player.set_hand_clickable(false)
 			return []
 		# 其它 action 忽略（chi/pon 按钮此时已无意义）
 	return []
+
+func _clear_chi_dim() -> void:
+	if _seat_panel_player and _seat_panel_player.has_method("clear_hand_dim"):
+		_seat_panel_player.clear_hand_dim()
 
 # 立直后是否强制 tsumogiri（弃刚摸的牌）。spec 2026-05-08 bug 1 fix。
 # 日麻规则：立直锁定手牌；玩家不能选切别的牌。条件：

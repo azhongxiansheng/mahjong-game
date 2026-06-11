@@ -459,6 +459,8 @@ var _last_event_count: int = 0
 var _polling_active: bool = false
 var _toast_label: Label = null
 var _toast_tween: Tween = null
+# T2:待标记的和牌张(rebind 后由 polling loop 应用,-1 = 无)
+var _pending_win_tile_id: int = -1
 
 func _attach_event_polling() -> void:
 	if _polling_active:
@@ -481,6 +483,10 @@ func _polling_loop() -> void:
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
+				# T2:rebind 重建完手牌行后应用和牌张脉冲标记
+				if _pending_win_tile_id >= 0 and _table.seat_panels.size() > 0:
+					_table.seat_panels[0].mark_win_tile(_pending_win_tile_id)
+					_pending_win_tile_id = -1
 		if n < _last_event_count:
 			_last_event_count = 0
 
@@ -546,6 +552,11 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			_play_call_announce(
 				&"tsumo" if ev.type == &"TSUMO_DECLARED" else &"ron",
 				int(ev.actor_seat))
+			# T2:玩家自摸时和牌张心跳脉冲。必须在 rebind 之后标
+			# (rebind 全量重建手牌行会清掉),挂 pending 由 polling loop 应用。
+			if ev.type == &"TSUMO_DECLARED" and int(ev.actor_seat) == 0 \
+					and ev.tile_instance != null and ev.tile_instance.tile != null:
+				_pending_win_tile_id = ev.tile_instance.tile.id
 			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
 			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
 			_set_seat_emote(int(ev.actor_seat), "winning")

@@ -41,9 +41,17 @@ func _ready() -> void:
 func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
+	# T2(spec 2026-06-11 G2):实宝牌 id 集合(指示牌的下一张),
+	# 手牌/河 rebuild 时按它标扫光/金边。
+	var dora_ids: Array = []
+	if state.dora_indicators:
+		for ind in state.dora_indicators.visible:
+			if ind != null:
+				dora_ids.append(DoraIndicator.dora_from_indicator(ind.id))
 	for i in range(seat_panels.size()):
 		var sp: SeatPanel = seat_panels[i]
 		var seat: Seat = state.seats[i]
+		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
 		sp.set_discards_count(state.discards_per_seat[i].size())
 		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
@@ -66,6 +74,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		# 立直宣告时该 seat 的 riichi.riichi_discard_index 标出"这张牌弹出时
 		# 同时声了立直" → DiscardRiver 渲染时把它旋 90° (日麻标志记号)。
 		var riichi_idx: int = state.seats[i].riichi.riichi_discard_index
+		dr.set_dora_ids(dora_ids)
 		dr.set_tiles(state.discards_per_seat[i], riichi_idx)
 	# spec 2026-05-08：每家副露视觉化（chi/pon/minkan/ankan/added_kan）
 	for i in range(meld_areas.size()):
