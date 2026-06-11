@@ -31,14 +31,14 @@ const HAND_TILE_H: float = 45.0
 const HAND_TILE_GAP: float = 3.0
 const HAND_ROW_OFFSET_X: float = -220.0  # 相对 panel 中心
 const HAND_ROW_OFFSET_Y: float = 30.0
-# 玩家自己 (seat 0) 手牌用真实 atlas 牌面，需要稍大尺寸才看清
-const PLAYER_HAND_TILE_W: float = 40.0
-const PLAYER_HAND_TILE_H: float = 60.0
-const PLAYER_HAND_ROW_OFFSET_X: float = -240.0
-# seat 0 手牌画在分数框(Bg offset_bottom=50)下方 + 8px 间隙,避免覆盖
-# 分数 Label。AI seat 用 HAND_ROW_OFFSET_Y(30)即可,因为它们的色块手牌
-# 是次要信息,可以跟分数框略叠。
-const PLAYER_HAND_ROW_OFFSET_Y: float = 58.0
+# 玩家自己 (seat 0) 手牌用真实 atlas 牌面。T3e 布局收敛(spec §2.4):
+# 40×60 → 48×68 贴桌底,牌是画面主角(参考作 lg 52×72 贴 bottom:30)。
+const PLAYER_HAND_TILE_W: float = 48.0
+const PLAYER_HAND_TILE_H: float = 68.0
+# 14 张(13 + 摸牌位)总宽 ≈ 13×51 + 16 + 48 ≈ 727,居中于 panel(x=540)
+const PLAYER_HAND_ROW_OFFSET_X: float = -360.0
+# panel y=570 → 牌 632..700,贴桌底(720)留 20px
+const PLAYER_HAND_ROW_OFFSET_Y: float = 62.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null
@@ -629,6 +629,22 @@ func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array) -> v
 			x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
 
 func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float) -> void:
+	# T3e:立牌错觉 — 牌顶两条棱(绿背边 + 灰白棱),对标参考作
+	# .seat-bottom-fixed .tile:before/:after。独立节点(不在 CardTileBack 内,
+	# 避免与 dora 扫光的 clip_contents 冲突),不随 hover 抬起(被抬起的牌
+	# "离开桌面"反而正确)。
+	var edge_back := ColorRect.new()
+	edge_back.color = Color(0.17, 0.36, 0.24)
+	edge_back.position = Vector2(x, -9)
+	edge_back.size = Vector2(PLAYER_HAND_TILE_W, 6)
+	edge_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_tile_row.add_child(edge_back)
+	var edge_face := ColorRect.new()
+	edge_face.color = Color(0.71, 0.71, 0.69)
+	edge_face.position = Vector2(x, -4.5)
+	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 4.5)
+	edge_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hand_tile_row.add_child(edge_face)
 	var tile := CardTileBack.new()
 	tile.position = Vector2(x, 0)
 	tile.scale = Vector2(scale_x, scale_y)

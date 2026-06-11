@@ -198,8 +198,9 @@ func _build_layout() -> void:
 # 6×34-2=202 宽，3×50-2=148 高。
 # Node2D rotation 把这套坐标转到 4 边方向。
 # 中央留 280×280（位置 (500..780, 220..500)）给 CenterInfoPanel + Dora 显示。
-const RIVER_W: float = 202.0
-const RIVER_H: float = 148.0
+# T3e:与 DiscardRiver 38×50 同步(6×38+5×2 = 238 / 3×50+2×2 = 154)
+const RIVER_W: float = 238.0
+const RIVER_H: float = 154.0
 static func _discard_river_layout(seat_id: int) -> Dictionary:
 	var cx := TABLE_WIDTH / 2.0
 	var cy := TABLE_HEIGHT / 2.0

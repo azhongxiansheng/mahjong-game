@@ -12,11 +12,13 @@ class_name DiscardRiver extends Node2D
 # (日麻标志记号),其后同一行的牌按"旋转后宽度 48"右移 16 px。
 # 最近一张弃牌(列表末)用骨白细描边强调"这是本家最新弃"。
 
-const TILE_W: int = 32
-const TILE_H: int = 48
+# T3e 布局收敛(spec 2026-06-11 §2.4):河牌 32×48 → 38×50,
+# 与参考作一致,弃牌读牌性显著提升。
+const TILE_W: int = 38
+const TILE_H: int = 50
 const TILE_GAP: int = 2
 const TILES_PER_ROW: int = 6
-# 立直牌旋转 90 后视觉宽度 = TILE_H = 48,比 TILE_W 多 16
+# 立直牌旋转 90 后视觉宽度 = TILE_H,比 TILE_W 多 12
 const RIICHI_W_EXTRA: int = TILE_H - TILE_W
 
 var _tiles: Array = []
