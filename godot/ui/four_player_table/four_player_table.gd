@@ -206,11 +206,15 @@ static func _discard_river_layout(seat_id: int) -> Dictionary:
 	var cy := TABLE_HEIGHT / 2.0
 	# inner = 河"内沿"到桌心的距离；让 4 河之间留中央 280×280
 	var inner := 140.0
+	# 玩家河内沿收紧:手牌放大贴底(顶端 ~631)后,inner=140 时第三行
+	# (604..654)会压进手牌区。116 → 河 476..630,上贴中心盘下缘(470)
+	# 留 6px、下距手牌顶留 1-3px,三行都不重叠。
+	var inner_self := 116.0
 	match seat_id:
 		0:
 			# 玩家：rotation=0；local (0,0) 在 visual 左上，6 张牌正面朝玩家。
-			# 让河顶部贴在 cy + inner（桌心下方一点开始）
-			return {"position": Vector2(cx - RIVER_W / 2.0, cy + inner), "rotation_degrees": 0.0}
+			# 让河顶部贴在 cy + inner_self（桌心下方一点开始）
+			return {"position": Vector2(cx - RIVER_W / 2.0, cy + inner_self), "rotation_degrees": 0.0}
 		1:
 			# 右家：rotation=-90（顺时针）。local +X 在 screen 上变 -Y（向上），
 			# local +Y 变 +X（向右）。所以 local (0,0) 在 visual 的 (position.x, position.y)，
