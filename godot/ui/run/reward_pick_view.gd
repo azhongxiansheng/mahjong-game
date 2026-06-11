@@ -46,10 +46,14 @@ func show_rewards(options: Array, battle_rank: int) -> void:
 	hbox.add_theme_constant_override("separation", DT.GAP_LOOSE)
 	vbox.add_child(hbox)
 
+	var cards: Array = []
 	for i in range(options.size()):
 		var r: GachaResult = options[i]
 		var card_panel := _build_card(r, i)
 		hbox.add_child(card_panel)
+		cards.append(card_panel)
+	# 3 张奖励卡错峰翻入 — 肉鸽循环最高频的"开奖"时刻
+	DT.stagger_in(cards, "fade_in_up", 0.3, 0.09)
 
 	vbox.add_child(HSeparator.new())
 

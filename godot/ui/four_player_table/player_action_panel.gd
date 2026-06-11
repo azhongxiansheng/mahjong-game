@@ -114,6 +114,7 @@ func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.
 	btn.add_theme_font_size_override("font_size", 16)
 	btn.disabled = true
 	btn.visible = false  # 雀魂式：只在触发时才显示
+	btn.pivot_offset = btn.size / 2.0  # pulse 缩放动效从中心起
 	# 用动作色覆盖 4 态 stylebox border,让玩家一眼分辨动作类型。
 	for state in ["normal", "hover", "pressed", "focus"]:
 		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
@@ -159,6 +160,8 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 	_hide_btn(_btn_riichi)
 	if can_tsumo:
 		_show_btn(_btn_tsumo)
+		# 自摸是最高价值决策,pulse 一次防玩家漏看
+		DT.attention(_btn_tsumo, "pulse", 0.45)
 	else:
 		_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
@@ -223,6 +226,8 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 	_hide_btn(_btn_tsumo)
 	if can_ron:
 		_show_btn(_btn_ron)
+		# 荣和窗口稍纵即逝,pulse 提示
+		DT.attention(_btn_ron, "pulse", 0.45)
 	else:
 		_hide_btn(_btn_ron)
 	if can_chi:

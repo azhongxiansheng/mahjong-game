@@ -49,6 +49,7 @@ func _ready() -> void:
 	panel.offset_right = PANEL_W / 2.0
 	panel.offset_bottom = PANEL_H / 2.0
 	add_child(panel)
+	DT.popin(panel)
 
 	# 标题
 	var title := Label.new()

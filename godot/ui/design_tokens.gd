@@ -165,19 +165,55 @@ static func make_text_card_button(
 	return btn
 
 
-# ---- 入场动效 (Anima 插件, addons/anima) ----
+# ---- 入场/强调动效 (Anima 插件, addons/anima) ----
 #
 # 模态面板/对话框统一入场。两档:
 #   popin(panel)   — zoom_in 0.25s,用于结算/确认等"重"弹窗
 #   fadein(panel)  — fade_in 0.18s,用于面板切换等"轻"过渡
 # single_shot:AnimaNode 播完自毁,不留孤儿;headless(GUT)下同样可跑。
 static func popin(panel: Node) -> void:
+	if panel == null or not panel.is_inside_tree():
+		return
+	# zoom_in 动画不自带 pivot,Control 默认从左上角缩放 — 手动设中心
+	if panel is Control:
+		(panel as Control).pivot_offset = (panel as Control).size / 2.0
 	Anima.begin_single_shot(panel).then(
 		Anima.Node(panel).anima_animation("zoom_in", 0.25)
 	).play()
 
 
 static func fadein(panel: Node) -> void:
+	if panel == null or not panel.is_inside_tree():
+		return
 	Anima.begin_single_shot(panel).then(
 		Anima.Node(panel).anima_animation("fade_in", 0.18)
+	).play()
+
+
+# 强调动效:对已可见节点播 attention seeker(pulse / tada / shake_x /
+# heartbeat / flash ...,详见 addons/anima/animations/attention_seeker)。
+# 役満结算 tada、放铳面板 shake_x、关键按钮 pulse 都走这里。
+static func attention(node: Node, anim: String = "pulse",
+		duration: float = 0.5, delay: float = 0.0) -> void:
+	if node == null or not node.is_inside_tree():
+		return
+	var anima_node := Anima.begin_single_shot(node).then(
+		Anima.Node(node).anima_animation(anim, duration)
+	)
+	if delay > 0.0:
+		anima_node.play_with_delay(delay)
+	else:
+		anima_node.play()
+
+
+# 一组同级节点错峰入场(奖励卡/商店槽位)。nodes 须已 add 进同一父节点。
+static func stagger_in(nodes: Array, anim: String = "fade_in_up",
+		duration: float = 0.3, item_delay: float = 0.06) -> void:
+	if nodes.is_empty():
+		return
+	var first = nodes[0]
+	if not (first is Node) or not (first as Node).is_inside_tree():
+		return
+	Anima.begin_single_shot((first as Node).get_parent()).then(
+		Anima.Nodes(nodes, item_delay).anima_animation(anim, duration)
 	).play()

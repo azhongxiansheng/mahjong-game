@@ -127,6 +127,8 @@ func _rebuild() -> void:
 		var captured_index: int = i
 		btn.pressed.connect(func(): _on_slot_pressed(captured_index))
 		_slot_buttons.append(btn)
+	# 槽位错峰入场,商品"摆上货架"的节奏感
+	DT.stagger_in(_slot_buttons, "fade_in_up", 0.25, 0.06)
 
 
 func _on_slot_pressed(index: int) -> void:

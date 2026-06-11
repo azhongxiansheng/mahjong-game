@@ -193,6 +193,14 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		else:
 			tier.add_theme_color_override("font_color", Color(0.82, 0.78, 0.55))
 		subtitle.text = "%s · %s" % [winner_name, win_kind]
+		# 分级强调:役満/三倍満 tier 大字 tada;玩家自己胡 heartbeat;
+		# 玩家放铳 → 整个 panel shake_x"挨了一拳"。延迟让 popin 先落地。
+		if yakuman_mul >= 1 or han >= 11:
+			DT.attention(tier, "tada", 0.8, 0.3)
+		elif winner_seat == 0:
+			DT.attention(tier, "heartbeat", 0.6, 0.3)
+		elif not is_tsumo and int(win_event.extra.get("discarder_seat", -1)) == 0:
+			DT.attention(panel, "shake_x", 0.5, 0.3)
 	elif last_event == "NAGASHI_MANGAN":
 		# 日麻 §6.5 流し満貫:流局时弃牌全幺九且无被鸣 → 满贯支付
 		tier.text = "流し満貫"
