@@ -514,10 +514,18 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 	if ev == null:
 		return
 	match ev.type:
+		&"PLAYER_ACTION":
+			# 鸣牌宣告演出(T1):吃/碰/杠书法大字从动作座位方向滑入。
+			# AI 的 pon/minkan 走 _resolve_claims、玩家的走 PlayableBC,
+			# 两边都 emit PLAYER_ACTION,此处统一接。
+			var kind := StringName(String(ev.extra.get("kind", "")))
+			if kind in [&"chi", &"pon", &"minkan", &"ankan", &"added_kan"]:
+				_play_call_announce(kind, int(ev.actor_seat))
 		&"RIICHI_DECLARED":
 			var shake := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
 			shake.start()
 			_flash_screen(0.18, Color(1, 1, 1, 0.35))
+			_play_call_announce(&"riichi", int(ev.actor_seat))
 			# AI 立直 → 该 seat 立绘转蓝调"决意"。actor_seat 越界 / seat 0 无立绘
 			# 时 set_emote 是 no-op,不会崩。
 			_set_seat_emote(int(ev.actor_seat), "riichi")
@@ -534,6 +542,10 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# 注意"这局白打了"。WinBurst 不触发(不是胡牌)。
 			_flash_screen(0.3, Color(1.0, 0.7, 0.7, 0.3))
 		&"TSUMO_DECLARED", &"RON_DECLARED":
+			# 胡牌宣告大字(T1)。役満升级版在 WIN_DECLARED 分支补刀。
+			_play_call_announce(
+				&"tsumo" if ev.type == &"TSUMO_DECLARED" else &"ron",
+				int(ev.actor_seat))
 			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
 			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
 			_set_seat_emote(int(ev.actor_seat), "winning")
@@ -542,10 +554,27 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 				if s != int(ev.actor_seat):
 					_set_seat_emote(s, "upset")
 					_say_for_seat(s, "upset")
+		&"WIN_DECLARED":
+			# 役満:在 tsumo/ron 宣告后 0.5s 追加「役満」更大字号演出
+			if int(ev.extra.get("yakuman_multiplier", 0)) >= 1:
+				var seat_c := int(ev.actor_seat)
+				get_tree().create_timer(0.5).timeout.connect(func():
+					if is_inside_tree():
+						_play_call_announce(&"yakuman", seat_c))
 		&"GAME_BEGIN":
 			# 新局开始 → 4 家 emote 重置 normal
 			for s in [0, 1, 2, 3]:
 				_set_seat_emote(s, "normal")
+
+
+# T1 宣告演出统一入口:大字 + 该座位立绘(有立绘时)。挂 self 让缩放跟桌面一致。
+func _play_call_announce(kind: StringName, seat_id: int) -> void:
+	var avatar: Texture2D = null
+	if _table != null and seat_id >= 0 and seat_id < _table.seat_panels.size():
+		var sp: SeatPanel = _table.seat_panels[seat_id]
+		if sp and sp.has_method("get_portrait_texture"):
+			avatar = sp.get_portrait_texture()
+	CallAnnounce.play(self, kind, seat_id, avatar)
 
 
 func _set_seat_emote(seat_id: int, emote: String) -> void:
@@ -796,12 +825,8 @@ static func _seat_short(actor_seat: int) -> String:
 
 static func _format_toast_text(ev: BattleEvent) -> String:
 	match ev.type:
-		&"RIICHI_DECLARED":
-			return "立直! %s" % _seat_short(ev.actor_seat)
-		&"TSUMO_DECLARED":
-			return "自摸! %s" % _seat_short(ev.actor_seat)
-		&"RON_DECLARED":
-			return "荣和! %s" % _seat_short(ev.actor_seat)
+		# 立直/自摸/荣和 已由 CallAnnounce 大字演出承担(T1),不再走 toast
+		# 双通道,避免同信息两处闪。
 		&"EXHAUSTIVE_DRAW":
 			return "流局"
 		&"NAGASHI_MANGAN":

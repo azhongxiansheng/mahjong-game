@@ -210,6 +210,13 @@ func set_emote(emote: String) -> void:
 	tw.tween_property(_portrait_rect, "modulate", target, 0.3)
 
 
+# 当前立绘纹理(CallAnnounce 宣告演出取头像用);无立绘返 null。
+func get_portrait_texture() -> Texture2D:
+	if _portrait_rect and is_instance_valid(_portrait_rect):
+		return _portrait_rect.texture
+	return null
+
+
 # 立绘节点懒创建。固定尺寸 64x80,位置在分数框上方(seat panel center 上 70px)。
 # seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
 func _ensure_portrait() -> void:

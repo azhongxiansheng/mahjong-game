@@ -31,22 +31,13 @@ func test_seat_short_unknown_fallback() -> void:
 
 # ---- _format_toast_text ----
 
-func test_riichi_toast_includes_seat() -> void:
-	var s := PT._format_toast_text(_make_event(&"RIICHI_DECLARED", 2))
-	assert_true(s.find("立直") >= 0)
-	assert_true(s.find("AI 2") >= 0)
-
-
-func test_tsumo_toast_player() -> void:
-	var s := PT._format_toast_text(_make_event(&"TSUMO_DECLARED", 0))
-	assert_true(s.find("自摸") >= 0)
-	assert_true(s.find("你") >= 0)
-
-
-func test_ron_toast() -> void:
-	var s := PT._format_toast_text(_make_event(&"RON_DECLARED", 1))
-	assert_true(s.find("荣和") >= 0)
-	assert_true(s.find("AI 1") >= 0)
+# T1(spec 2026-06-11 G1)起,立直/自摸/荣和由 CallAnnounce 大字演出承担,
+# toast 通道返空,避免同一信息双通道重复闪。
+func test_riichi_tsumo_ron_no_longer_use_toast() -> void:
+	assert_eq(PT._format_toast_text(_make_event(&"RIICHI_DECLARED", 2)), "",
+		"立直走 CallAnnounce,不再 toast")
+	assert_eq(PT._format_toast_text(_make_event(&"TSUMO_DECLARED", 0)), "")
+	assert_eq(PT._format_toast_text(_make_event(&"RON_DECLARED", 1)), "")
 
 
 func test_exhaustive_draw_toast() -> void:
