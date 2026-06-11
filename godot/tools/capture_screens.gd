@@ -73,5 +73,14 @@ func _capture_battle_with_state() -> void:
 	var out := "/tmp/shot_battle_live.png"
 	img.save_png(out)
 	print("[capture] saved ", out)
+	# 再来一张终局状态:跑完整局后 rebind,河牌满 / 副露 / 立直棒全亮,
+	# 验证 3D 倾斜视图下的中盘景观密度。
+	bc.run_to_end()
+	table._table.bind_battle_state(bc.state, 0, 4)
+	for _i in range(20):
+		await process_frame
+	var img2 := root.get_texture().get_image()
+	img2.save_png("/tmp/shot_battle_end.png")
+	print("[capture] saved /tmp/shot_battle_end.png")
 	table.queue_free()
 	await process_frame
