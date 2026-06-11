@@ -616,6 +616,8 @@ func _swap_panel(new_panel: Control) -> void:
 		new_panel.offset_bottom = 0
 	add_child(new_panel)
 	_current_panel = new_panel
+	# 面板切换统一轻量淡入 — 节点推进不再硬切
+	DT.fadein(new_panel)
 
 func _make_loading_label(text: String) -> Control:
 	var c := Control.new()

@@ -31,6 +31,7 @@ Log="*res://meta/log.gd"
 SaveToast="*res://meta/save_toast.gd"
 DailyQuest="*res://meta/daily_quest.gd"
 BattlePass="*res://meta/battle_pass.gd"
+ANIMA="*res://addons/anima/core/constants.gd"
 
 [display]
 
@@ -46,7 +47,7 @@ window/stretch/aspect="keep"
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/gut/plugin.cfg")
+enabled=PackedStringArray("res://addons/gut/plugin.cfg", "res://addons/anima/plugin.cfg")
 
 [gui]
 

@@ -124,15 +124,27 @@ static func make_text_card_button(
 	btn.custom_minimum_size = card_size
 	btn.text = ""
 	btn.clip_text = true
-	# 描边 4 态 stylebox
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
-		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
+	# 描边 stylebox — 显式构建暗底,不能 duplicate 主题 base:
+	# 主题已是 StyleBoxTexture,强转 StyleBoxFlat 得 null → 默认亮灰底
+	var state_bg := {
+		"normal": Color(0.13, 0.12, 0.15, 0.97),
+		"hover": Color(0.20, 0.17, 0.20, 0.97),
+		"pressed": Color(0.26, 0.14, 0.16, 0.97),
+		"focus": Color(0.20, 0.17, 0.20, 0.97),
+		"disabled": Color(0.10, 0.10, 0.11, 0.9),
+	}
+	for state in state_bg:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = state_bg[state]
 		sb.border_color = border_color
 		sb.border_width_left = 3
 		sb.border_width_top = 3
 		sb.border_width_right = 3
 		sb.border_width_bottom = 3
+		sb.corner_radius_top_left = 4
+		sb.corner_radius_top_right = 4
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
 		btn.add_theme_stylebox_override(state, sb)
 	# 内嵌 Label
 	var lbl := Label.new()
@@ -151,3 +163,21 @@ static func make_text_card_button(
 	btn.add_child(lbl)
 	parent.add_child(btn)
 	return btn
+
+
+# ---- 入场动效 (Anima 插件, addons/anima) ----
+#
+# 模态面板/对话框统一入场。两档:
+#   popin(panel)   — zoom_in 0.25s,用于结算/确认等"重"弹窗
+#   fadein(panel)  — fade_in 0.18s,用于面板切换等"轻"过渡
+# single_shot:AnimaNode 播完自毁,不留孤儿;headless(GUT)下同样可跑。
+static func popin(panel: Node) -> void:
+	Anima.begin_single_shot(panel).then(
+		Anima.Node(panel).anima_animation("zoom_in", 0.25)
+	).play()
+
+
+static func fadein(panel: Node) -> void:
+	Anima.begin_single_shot(panel).then(
+		Anima.Node(panel).anima_animation("fade_in", 0.18)
+	).play()

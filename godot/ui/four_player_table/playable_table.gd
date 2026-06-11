@@ -152,6 +152,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	panel.custom_minimum_size = Vector2(720, 560)
 	panel.size = Vector2(720, 560)
 	overlay.add_child(panel)
+	DT.popin(panel)
 
 	# tier 大字：役満 / 倍満 / 跳満 / 満貫 / N 飜 N 符
 	var tier := Label.new()
@@ -576,6 +577,7 @@ func _show_replay_log(parent_overlay: Control) -> void:
 	panel.position = Vector2(160, 60)
 	panel.size = Vector2(960, 660)
 	log_overlay.add_child(panel)
+	DT.popin(panel)
 	var title := Label.new()
 	title.text = "📜 本局牌谱"
 	title.position = Vector2(0, 16)

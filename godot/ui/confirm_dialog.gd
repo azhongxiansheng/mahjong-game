@@ -117,6 +117,8 @@ func _ready() -> void:
 	confirm_btn.pressed.connect(_on_confirm)
 	panel.add_child(confirm_btn)
 
+	DT.popin(panel)
+
 
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey:
