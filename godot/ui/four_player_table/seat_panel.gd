@@ -266,6 +266,25 @@ func _ensure_portrait() -> void:
 	var tex: Texture2D = load(_portrait_path) as Texture2D
 	if tex == null:
 		return
+	# 头像卡(对标参考截图):暗底圆角卡 + 微金描边垫在立绘后,
+	# 立绘从"裸贴在毡上"变成成型的座位头像卡。
+	var card := Panel.new()
+	card.name = "PortraitCard"
+	card.position = Vector2(-36, -134)
+	card.size = Vector2(72, 88)
+	card.pivot_offset = card.size / 2.0
+	card.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var card_sb := StyleBoxFlat.new()
+	card_sb.bg_color = Color(0.05, 0.07, 0.06, 0.85)
+	card_sb.border_color = Color(0.85, 0.71, 0.36, 0.55)
+	card_sb.set_border_width_all(2)
+	card_sb.set_corner_radius_all(8)
+	card_sb.shadow_color = Color(0, 0, 0, 0.45)
+	card_sb.shadow_size = 6
+	card_sb.shadow_offset = Vector2(0, 4)
+	card.add_theme_stylebox_override("panel", card_sb)
+	add_child(card)
 	_portrait_rect = TextureRect.new()
 	_portrait_rect.texture = tex
 	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
