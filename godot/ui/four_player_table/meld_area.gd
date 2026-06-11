@@ -87,6 +87,19 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node) -
 	var tex: Texture2D = extractor.get_tile_texture(key)
 	if tex == null:
 		return
+	# 质感层:投影垫底(与手牌/河一致,全桌牌都"立"在毡上)
+	var shadow := Panel.new()
+	var shadow_sb := StyleBoxFlat.new()
+	shadow_sb.bg_color = Color(0, 0, 0, 0)
+	shadow_sb.shadow_color = Color(0, 0, 0, 0.30)
+	shadow_sb.shadow_size = 4
+	shadow_sb.shadow_offset = Vector2(0, 3)
+	shadow.add_theme_stylebox_override("panel", shadow_sb)
+	shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var rotated_slot: bool = bool(slot["rotated"])
+	shadow.size = Vector2(TILE_H, TILE_W) if rotated_slot else Vector2(TILE_W, TILE_H)
+	shadow.position = Vector2(x, y_offset + (TILE_H - TILE_W if rotated_slot else 0.0))
+	add_child(shadow)
 	var tex_rect := TextureRect.new()
 	tex_rect.texture = tex
 	tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE

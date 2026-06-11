@@ -128,8 +128,35 @@ func set_seat_id(id: int) -> void:
 	if bg:
 		bg.visible = false
 	_counter_rotate_info_node(get_node_or_null("VBox"))
+	_ensure_info_chip()
 	if is_inside_tree():
 		_refresh_labels()
+
+# 名字行底条卡(对标参考作 seat-label):半透明暗底圆角小条垫在
+# SeatInfo 文字后,信息从"裸浮在毡上"变成成型的座位牌。
+# 与 VBox 同槽位同反向旋转,跟随文字恒正立。
+func _ensure_info_chip() -> void:
+	if get_node_or_null("InfoChip") != null:
+		return
+	var chip := Panel.new()
+	chip.name = "InfoChip"
+	# VBox 槽位 -110..110 × -40..40,SeatInfo 是第一行(高 ~22)
+	chip.position = Vector2(-100, -43)
+	chip.size = Vector2(200, 27)
+	chip.pivot_offset = chip.size / 2.0
+	chip.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
+	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.04, 0.06, 0.05, 0.62)
+	sb.border_color = Color(0.85, 0.71, 0.36, 0.28)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(13)
+	chip.add_theme_stylebox_override("panel", sb)
+	add_child(chip)
+	# 垫在 VBox(文字)之下
+	var vbox := get_node_or_null("VBox")
+	if vbox:
+		move_child(chip, vbox.get_index())
 
 # 把信息类 Control 绕自身中心反向旋转,抵消 SeatPanel 整体旋转 → 文字恒正立。
 # 牌(手牌行/河/副露)不在此列 — 牌的旋转是方位语义,必须保留。
