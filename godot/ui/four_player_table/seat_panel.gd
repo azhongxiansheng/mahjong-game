@@ -121,15 +121,24 @@ func set_seat_id(id: int) -> void:
 	assert(id >= 0 and id <= 3, "seat_id 必须 ∈ [0,3]")
 	_seat_id = id
 	rotation_degrees = SEAT_ROTATION_DEGREES[id]
-	# 按 seat 微调 Bg 色调:玩家(0)金/AI 1 红/AI 2 绿/AI 3 蓝,与 CardTileBack
-	# .tile_back_color 同色系。混入主题暗底 85% 让标识弱可见而不过艳。
+	# T3c(spec 2026-06-11 G3-c):瘦身 — 240×100 板条隐藏,桌面让给牌;
+	# 分数移中心盘;信息元素(文字/立绘/徽章/气泡)反向旋转保持正立,
+	# 修掉"对面分数倒置 / 左右立绘横躺"的老问题。
 	var bg := get_node_or_null("Bg") as ColorRect
 	if bg:
-		var seat_color: Color = CardTileBack.tile_back_color(id)
-		var base: Color = Color(0.08, 0.10, 0.16, 1.0)
-		bg.color = base.lerp(seat_color, 0.18)
+		bg.visible = false
+	_counter_rotate_info_node(get_node_or_null("VBox"))
 	if is_inside_tree():
 		_refresh_labels()
+
+# 把信息类 Control 绕自身中心反向旋转,抵消 SeatPanel 整体旋转 → 文字恒正立。
+# 牌(手牌行/河/副露)不在此列 — 牌的旋转是方位语义,必须保留。
+func _counter_rotate_info_node(node: Node) -> void:
+	if node == null or not (node is Control) or not is_instance_valid(node):
+		return
+	var ctrl := node as Control
+	ctrl.pivot_offset = ctrl.size / 2.0
+	ctrl.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 
 func set_seat_wind(wind_id: int) -> void:
 	_seat_wind = wind_id
@@ -182,6 +191,7 @@ func say(text: String) -> void:
 	_speech_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_speech_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_speech_label)
+	_counter_rotate_info_node(_speech_label)  # T3c:台词恒正立
 	# fade in 0.15 → hold 1.2 → fade out 0.4 → free
 	_speech_label.modulate.a = 0.0
 	var captured := _speech_label
@@ -238,6 +248,7 @@ func _ensure_portrait() -> void:
 	_portrait_rect.position = Vector2(-32, -130)
 	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_portrait_rect)
+	_counter_rotate_info_node(_portrait_rect)  # T3c:立绘恒正立(修左右家横躺)
 
 func set_score(s: int) -> void:
 	var prev := _score
@@ -355,6 +366,7 @@ func _set_badge(existing: Control, visible_: bool, text: String, color: Color,
 	sb.corner_radius_bottom_left = 3
 	sb.corner_radius_bottom_right = 3
 	p.add_theme_stylebox_override("panel", sb)
+	_counter_rotate_info_node(p)  # T3c:徽章字恒正立
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.size = Vector2(28, 20)
@@ -406,38 +418,28 @@ func set_active(b: bool) -> void:
 var _active: bool = false
 
 func _apply_active_visual() -> void:
-	var bg := get_node_or_null("Bg") as ColorRect
-	if bg == null:
-		return
+	# T3c:Bg 板条已隐藏 — 当前回合改为「立绘金圈 + 名字行金字」。
+	# 中心盘四方分数也会同步金色(CenterInfoPanel.set_seats_summary)。
+	if _label_seat_info:
+		_label_seat_info.add_theme_color_override("font_color",
+			DT.TEXT_TITLE if _active else Color(0.91, 0.88, 0.81))
 	if _active:
-		# 金色描边浮出来,Bg 本身保留底色,不破坏既有视觉
-		var glow := StyleBoxFlat.new()
-		glow.bg_color = bg.color  # 保持原底色
-		glow.border_color = DT.TEXT_TITLE
-		glow.border_width_left = 3
-		glow.border_width_top = 3
-		glow.border_width_right = 3
-		glow.border_width_bottom = 3
-		glow.corner_radius_top_left = 4
-		glow.corner_radius_top_right = 4
-		glow.corner_radius_bottom_left = 4
-		glow.corner_radius_bottom_right = 4
-		# ColorRect 没有 stylebox,改用 Panel 覆盖:在 Bg 旁加金边 Panel 仅做边框
-		if get_node_or_null("ActiveGlow") == null:
-			var glow_panel := Panel.new()
-			glow_panel.name = "ActiveGlow"
-			glow_panel.position = bg.position
-			glow_panel.size = bg.size
-			glow_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if get_node_or_null("ActiveGlow") == null and _portrait_rect \
+				and is_instance_valid(_portrait_rect):
+			var ring := Panel.new()
+			ring.name = "ActiveGlow"
+			ring.position = _portrait_rect.position - Vector2(4, 4)
+			ring.size = _portrait_rect.size + Vector2(8, 8)
+			ring.pivot_offset = ring.size / 2.0
+			ring.rotation_degrees = _portrait_rect.rotation_degrees
+			ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var sb := StyleBoxFlat.new()
-			sb.bg_color = Color(0, 0, 0, 0)  # 透明,仅显边
+			sb.bg_color = Color(0, 0, 0, 0)
 			sb.border_color = DT.TEXT_TITLE
-			sb.border_width_left = 3
-			sb.border_width_top = 3
-			sb.border_width_right = 3
-			sb.border_width_bottom = 3
-			glow_panel.add_theme_stylebox_override("panel", sb)
-			add_child(glow_panel)
+			sb.set_border_width_all(3)
+			sb.set_corner_radius_all(6)
+			ring.add_theme_stylebox_override("panel", sb)
+			add_child(ring)
 	else:
 		var existing := get_node_or_null("ActiveGlow")
 		if existing:
@@ -508,6 +510,8 @@ func _refresh_labels() -> void:
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
 	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	_label_score.text = "%d" % _score
+	# T3c:分数已移中心盘四方显示,SeatPanel 不再重复渲染(text 仍更新供测试断言)
+	_label_score.visible = false
 	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label
 	# 手牌张数 / 弃牌河张数也弃用：MeldArea + DiscardRiver 视觉自身已传达

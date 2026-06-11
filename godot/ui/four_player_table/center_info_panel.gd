@@ -34,6 +34,8 @@ var _wall_remaining: int = 70  # 一局起手 70 张 live wall
 var _riichi_sticks: int = 0
 
 func _ready() -> void:
+	_restyle_plate()
+	_build_seat_sides()
 	_dora_row = Node2D.new()
 	# 放在 panel 中心稍下，让"Dora:"label 上面，牌图在下面
 	_dora_row.position = Vector2(-60, 30)
@@ -53,6 +55,116 @@ func _ready() -> void:
 	_rebuild_dora_tiles()
 	_rebuild_riichi_sticks()
 	_rebuild_honba_sticks()
+
+# ---- T3b 中心盘四方分数 + 立直指示灯(spec 2026-06-11 G3-b) ----
+#
+# 对标参考作 .center:220×220 圆角深蓝盘 + 金边;四边各家 风位+分数
+# (全部正立文字,可读性优先于"面向各家"的旋转惯例);该家立直时其边
+# 亮金条+发光红点(对标 .center-stick--on)。分数从 SeatPanel 移此处后,
+# 桌面四角的黑板条即可瘦身(T3c)。
+
+const PLATE_HALF: float = 110.0
+
+# 每边一组节点:{wind: Label, score: Label, stick: Control}
+var _side_nodes: Array = []
+# 最近一次 bind 的座位摘要(测试可注入):[{wind, score, riichi, active}]
+var _seats_summary: Array = []
+
+func _restyle_plate() -> void:
+	# 把 .tscn 的方角 ColorRect Bg 换成 220×220 圆角金边深蓝盘
+	var bg := get_node_or_null("Bg")
+	if bg:
+		bg.visible = false
+	var plate := Panel.new()
+	plate.name = "CenterPlate"
+	plate.position = Vector2(-PLATE_HALF, -PLATE_HALF)
+	plate.size = Vector2(PLATE_HALF * 2, PLATE_HALF * 2)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.10, 0.13, 0.22)
+	sb.border_color = Color(0.85, 0.71, 0.36, 0.45)
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(16)
+	sb.shadow_color = Color(0, 0, 0, 0.55)
+	sb.shadow_size = 10
+	plate.add_theme_stylebox_override("panel", sb)
+	add_child(plate)
+	move_child(plate, 0)
+	# 顶部 1/3 微高光(参考作 radial 高光的近似):半透明白渐变条
+	var sheen := ColorRect.new()
+	sheen.color = Color(0.55, 0.62, 0.78, 0.08)
+	sheen.position = Vector2(-PLATE_HALF + 3, -PLATE_HALF + 3)
+	sheen.size = Vector2(PLATE_HALF * 2 - 6, 52)
+	sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(sheen)
+	move_child(sheen, 1)
+
+func _build_seat_sides() -> void:
+	_side_nodes = []
+	# seat 0 下 / 1 右 / 2 上 / 3 左。顶/底正立;左右旋 ∓90° 贴盘内缘
+	# (麻将客户端惯例,且不与中央 VBox 信息列打架)。
+	# [锚点, 旋转角]
+	var layouts: Array = [
+		[Vector2(0, PLATE_HALF - 18), 0.0],
+		[Vector2(PLATE_HALF - 18, 0), 90.0],
+		[Vector2(0, -PLATE_HALF + 18), 0.0],
+		[Vector2(-PLATE_HALF + 18, 0), -90.0],
+	]
+	for i in range(4):
+		var anchor: Vector2 = layouts[i][0]
+		var rot: float = layouts[i][1]
+		var lbl := Label.new()
+		lbl.size = Vector2(88, 18)
+		lbl.pivot_offset = Vector2(44, 9)
+		lbl.position = anchor + Vector2(-44, -9)
+		lbl.rotation_degrees = rot
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.add_theme_color_override("font_color", Color(0.92, 0.90, 0.82))
+		lbl.add_theme_constant_override("shadow_offset_y", 1)
+		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
+		add_child(lbl)
+		# 立直指示灯:金条 + 红点,declared 时亮(对标 center-stick--on)。
+		# 放标签内侧(更靠盘心一格)。
+		var stick := _make_riichi_indicator()
+		stick.pivot_offset = Vector2(21, 2.5)
+		stick.position = anchor + anchor.normalized() * -22 + Vector2(-21, -2.5)
+		stick.rotation_degrees = rot
+		stick.visible = false
+		add_child(stick)
+		_side_nodes.append({"label": lbl, "stick": stick})
+
+static func _make_riichi_indicator() -> Control:
+	var bar := ColorRect.new()
+	bar.color = Color(0.95, 0.88, 0.66)
+	bar.size = Vector2(42, 5)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dot := ColorRect.new()
+	dot.color = Color(0.91, 0.31, 0.31)
+	dot.size = Vector2(6, 5)
+	dot.position = Vector2(18, 0)
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bar.add_child(dot)
+	return bar
+
+# 四方摘要注入(bind_state 内部调;测试可直接调)。
+# seats_summary: [{wind: int, score: int, riichi: bool, active: bool}] × 4
+func set_seats_summary(seats_summary: Array) -> void:
+	_seats_summary = seats_summary
+	if not is_inside_tree() or _side_nodes.is_empty():
+		return
+	for i in range(mini(4, seats_summary.size())):
+		var info: Dictionary = seats_summary[i]
+		var nodes: Dictionary = _side_nodes[i]
+		(nodes.label as Label).text = "%s %d" % [
+			SeatPanel.wind_name(int(info.get("wind", -1))),
+			int(info.get("score", 0))]
+		(nodes.stick as Control).visible = bool(info.get("riichi", false))
+		# 当前回合边:金色;非当前回合骨白
+		var active: bool = bool(info.get("active", false))
+		(nodes.label as Label).add_theme_color_override("font_color",
+			Color(1.0, 0.85, 0.35) if active else Color(0.92, 0.90, 0.82))
 
 # ---- public setters ----
 
@@ -107,11 +219,22 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 	_dora_indicators = []
 	for ti in state.dora_indicators.visible:
 		_dora_indicators.append(ti.id)
+	# T3b:四方分数/风位/立直灯摘要
+	var summary: Array = []
+	for i in range(4):
+		var seat: Seat = state.seats[i]
+		summary.append({
+			"wind": seat.seat_wind,
+			"score": seat.points,
+			"riichi": seat.riichi.declared,
+			"active": i == state.current_seat,
+		})
 	if is_inside_tree():
 		_refresh_labels()
 		_rebuild_dora_tiles()
 		_rebuild_riichi_sticks()
 		_apply_wall_pulse(prev_wall, _wall_remaining)
+		set_seats_summary(summary)
 
 # ---- helpers ----
 
@@ -261,7 +384,9 @@ func _rebuild_dora_tiles() -> void:
 		child.queue_free()
 	var sx: float = DORA_TILE_W / float(CardTileBack.TILE_WIDTH)
 	var sy: float = DORA_TILE_H / float(CardTileBack.TILE_HEIGHT)
-	var x := 0.0
+	# T3b:按张数水平居中(_dora_row 挂在 (-60,30),补偿到盘中心)
+	var total_w: float = _dora_indicators.size() * (DORA_TILE_W + DORA_TILE_GAP) - DORA_TILE_GAP
+	var x: float = 60.0 - total_w / 2.0
 	for tid in _dora_indicators:
 		var card := CardTileBack.new()
 		card.position = Vector2(x, 0)
