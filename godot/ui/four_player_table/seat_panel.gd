@@ -581,13 +581,18 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 		x += HAND_TILE_W + HAND_TILE_GAP
 
 # 取牌背图（autoload TextureExtractor）。autoload 不在或缺图时返 null。
-# T3d:对手手牌优先用「站立牌背」贴图(白棱+牌背,bake_standing_back.py),
-# 视角语义正确;缺图 fallback 到平面 back.png。
+# T3d:对手手牌优先用「站立牌」贴图(bake_standing_back.py),视角语义正确;
+# 缺图 fallback 到平面 back.png。
+# 对面(seat 2)看到的是牌背(绿背+白棱);左右家(seat 1/3)看到的是
+# 牌的侧面体块(白厚身+绿顶,绿顶朝桌心)— 参考截图确认的真实立牌视角。
 const STANDING_BACK_PATH := "res://assets/tile_back_standing.png"
+const SIDE_BACK_PATH := "res://assets/tile_back_side.png"
 
 func _resolve_back_texture() -> Texture2D:
-	if ResourceLoader.exists(STANDING_BACK_PATH):
-		var tex: Texture2D = load(STANDING_BACK_PATH) as Texture2D
+	var path: String = SIDE_BACK_PATH if (_seat_id == 1 or _seat_id == 3) \
+		else STANDING_BACK_PATH
+	if ResourceLoader.exists(path):
+		var tex: Texture2D = load(path) as Texture2D
 		if tex != null:
 			return tex
 	if not is_inside_tree():
