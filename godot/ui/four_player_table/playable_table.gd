@@ -79,6 +79,12 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	# 开局 splash:"东 1 局 · AI 2 是庄家" 大字 1.3s。fade-in/out 让玩家
 	# 明确感知"新一局开始 + 谁是庄"。
 	await _show_hand_start_splash(bc.state)
+	# T5:发牌演出 — 52 张牌背从桌心轮发飞向四家;期间真手牌隐藏。
+	# SettingsManager.skip_deal_animation 可关。
+	if not DealAnimation.should_skip(get_tree()):
+		_set_hand_rows_visible(false)
+		await DealAnimation.play_async(self)
+		_set_hand_rows_visible(true)
 	var result: Dictionary = await bc.run_to_end_async()
 	if dbg:
 		dbg.unregister_battle_controller(bc)
@@ -663,6 +669,15 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# 新局开始 → 4 家 emote 重置 normal
 			for s in [0, 1, 2, 3]:
 				_set_seat_emote(s, "normal")
+
+
+# T5:发牌演出期间隐藏四家真手牌行(演出结束恢复)。
+func _set_hand_rows_visible(b: bool) -> void:
+	if _table == null:
+		return
+	for sp in _table.seat_panels:
+		if sp and sp.has_method("set_hand_row_visible"):
+			sp.set_hand_row_visible(b)
 
 
 # T1 宣告演出统一入口:大字 + 该座位立绘(有立绘时)。挂 self 让缩放跟桌面一致。

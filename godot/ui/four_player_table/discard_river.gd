@@ -9,11 +9,16 @@ class_name DiscardRiver extends Node2D
 # Node2D rotation 把这套坐标转到桌面 4 边方向。
 #
 # 立直牌:`set_tiles(tiles, riichi_idx)` 把指定索引的弃牌旋转 90°
-# (日麻标志记号),其后同一行的牌按"旋转后宽度 48"右移 16 px。
+# (日麻标志记号),其后同一行的牌按"旋转后宽度"右移。
 # 最近一张弃牌(列表末)用骨白细描边强调"这是本家最新弃"。
+#
+# T5(spec 2026-06-11 G5-b)增量渲染:bind_battle_state 每个 BC 事件都全量
+# 调 set_tiles,旧实现每次 queue_free 重建全部子节点 → 新弃牌的入场动画在
+# 下一事件(往往 <0.4s)就被销毁打断。现在 diff:
+#   前缀不变 + riichi 不回溯 + dora 集不变 → 只 append 新增牌(动画存活);
+#   否则(鸣牌取走 / 回放 / dora 翻新)→ 全量 rebuild(安全兜底)。
 
-# T3e 布局收敛(spec 2026-06-11 §2.4):河牌 32×48 → 38×50,
-# 与参考作一致,弃牌读牌性显著提升。
+# T3e 布局收敛(spec 2026-06-11 §2.4):河牌 38×50,与参考作一致。
 const TILE_W: int = 38
 const TILE_H: int = 50
 const TILE_GAP: int = 2
@@ -23,10 +28,19 @@ const RIICHI_W_EXTRA: int = TILE_H - TILE_W
 
 var _tiles: Array = []
 var _riichi_index: int = -1
-# T2:实宝牌 id 集合(FourPlayerTable 注入);上次渲染张数,只在真正新增
-# 弃牌时播放入场 glow(全量 rebind 每事件都跑,不用计数会反复闪)。
+# T2:实宝牌 id 集合(FourPlayerTable 注入)
 var _dora_ids: Array = []
-var _last_tile_count: int = 0
+
+# ---- 增量渲染簿记 ----
+# 已渲染牌的 id 序列(含 null 占位,与 _tiles 索引对齐)
+var _rendered_ids: Array = []
+var _rendered_riichi: int = -1
+var _rendered_dora_key: String = ""
+# 排版游标(append 从此续排)
+var _cursor_x: float = 0.0
+var _cursor_row: int = 0
+# 「最新弃牌」高亮节点(append 时旧的要撤掉)
+var _last_highlight: Panel = null
 
 
 func set_dora_ids(ids: Array) -> void:
@@ -37,30 +51,59 @@ func set_dora_ids(ids: Array) -> void:
 func set_tiles(tiles: Array, riichi_idx: int = -1) -> void:
 	_tiles = tiles
 	_riichi_index = riichi_idx
-	_rebuild()
-
-
-func _rebuild() -> void:
 	if not is_inside_tree():
 		return
-	for child in get_children():
-		child.queue_free()
+	if _can_append(tiles, riichi_idx):
+		_append_from(_rendered_ids.size())
+	else:
+		_rebuild()
+
+
+# 增量条件:新列表只在尾部增长、已渲染前缀的 id 逐一相同、
+# riichi 标记不落在已渲染区(新弃牌当立直牌 OK)、dora 集合没变。
+func _can_append(tiles: Array, riichi_idx: int) -> bool:
+	var prev_n: int = _rendered_ids.size()
+	if tiles.size() < prev_n:
+		return false
+	if riichi_idx != _rendered_riichi and riichi_idx < prev_n:
+		return false  # 立直标记回溯到旧牌(回放等)→ 全量
+	if _dora_key() != _rendered_dora_key:
+		return false  # 杠翻新 dora,旧牌的金边需要重算
+	# 前缀逐一比对(等长时同样要查 — 同一帧内"被鸣走+新弃"会出现
+	# 等长但末尾不同的批处理边界)
+	for i in range(prev_n):
+		var tid: int = _tiles_id_at(tiles, i)
+		if tid != int(_rendered_ids[i]):
+			return false
+	return true
+
+
+static func _tiles_id_at(tiles: Array, i: int) -> int:
+	var t = tiles[i]
+	return t.id if t != null else -1
+
+
+func _dora_key() -> String:
+	var ids := _dora_ids.duplicate()
+	ids.sort()
+	return ",".join(ids.map(func(v): return str(v)))
+
+
+# 从 start 起把 _tiles 的新增部分续排进河(保留既有子节点与动画)。
+func _append_from(start: int) -> void:
 	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
 	if extractor == null:
 		return
 	var n: int = _tiles.size()
-	# 每行独立累积 x,这样行末 wrap 后 x 重置;前一行的旋转不影响下一行。
-	var x: float = 0.0
-	var current_row: int = 0
-	for i in range(n):
+	for i in range(start, n):
 		var tile: Tile = _tiles[i]
+		_rendered_ids.append(_tiles_id_at(_tiles, i))
 		if tile == null:
 			continue
 		var row: int = i / TILES_PER_ROW
-		if row != current_row:
-			x = 0.0
-			current_row = row
-		var y: float = row * (TILE_H + TILE_GAP)
+		if row != _cursor_row:
+			_cursor_x = 0.0
+			_cursor_row = row
 		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id)
 		if key == "":
 			continue
@@ -69,12 +112,55 @@ func _rebuild() -> void:
 			continue
 		var is_riichi: bool = (i == _riichi_index)
 		var is_last: bool = (i == n - 1)
-		var is_new: bool = is_last and n > _last_tile_count
-		_spawn_tile(tex, x, y, is_riichi, is_last, _dora_ids.has(tile.id), is_new)
-		# 累 x:立直牌旋转后视觉 48 宽,普通 32 宽
+		# 撤旧高亮(它属于上一张"最新弃")
+		if is_last and _last_highlight and is_instance_valid(_last_highlight):
+			_last_highlight.queue_free()
+			_last_highlight = null
+		_spawn_tile(tex, _cursor_x, _cursor_row * (TILE_H + TILE_GAP),
+			is_riichi, is_last, _dora_ids.has(tile.id), true)
 		var slot_w: float = TILE_H if is_riichi else TILE_W
-		x += slot_w + TILE_GAP
-	_last_tile_count = n
+		_cursor_x += slot_w + TILE_GAP
+	_rendered_riichi = _riichi_index
+	_rendered_dora_key = _dora_key()
+
+
+# 全量重建(初始 / 鸣牌取走 / 立直回溯 / dora 翻新的兜底路径,无入场动画)。
+func _rebuild() -> void:
+	for child in get_children():
+		child.queue_free()
+	_rendered_ids = []
+	_rendered_riichi = -1
+	_rendered_dora_key = ""
+	_cursor_x = 0.0
+	_cursor_row = 0
+	_last_highlight = null
+	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
+	if extractor == null:
+		return
+	var n: int = _tiles.size()
+	for i in range(n):
+		var tile: Tile = _tiles[i]
+		_rendered_ids.append(_tiles_id_at(_tiles, i))
+		if tile == null:
+			continue
+		var row: int = i / TILES_PER_ROW
+		if row != _cursor_row:
+			_cursor_x = 0.0
+			_cursor_row = row
+		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id)
+		if key == "":
+			continue
+		var tex: Texture2D = extractor.get_tile_texture(key)
+		if tex == null:
+			continue
+		var is_riichi: bool = (i == _riichi_index)
+		var is_last: bool = (i == n - 1)
+		_spawn_tile(tex, _cursor_x, _cursor_row * (TILE_H + TILE_GAP),
+			is_riichi, is_last, _dora_ids.has(tile.id), false)
+		var slot_w: float = TILE_H if is_riichi else TILE_W
+		_cursor_x += slot_w + TILE_GAP
+	_rendered_riichi = _riichi_index
+	_rendered_dora_key = _dora_key()
 
 
 func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
@@ -88,30 +174,34 @@ func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if is_riichi:
 		# Control 用 pivot_offset + rotation_degrees 自转;pivot 设为左下角
-		# 让旋转后牌顶左下落在原 (x, y+TILE_H) 处,占用 slot 宽 48 高 32。
+		# 让旋转后牌顶左下落在原 (x, y+TILE_H) 处。
 		tr.pivot_offset = Vector2(0, TILE_H)
 		tr.rotation_degrees = -90
-		# 旋转后 tile 视觉:左下角在 (x, y+TILE_H);占 (x, y+TILE_H-48..y+TILE_H)
-		# 高 = TILE_W=32,顶在 y+TILE_H-32 = y+16,需要把整个下移让顶在 y。
 		tr.position = Vector2(x, y - (TILE_H - TILE_W))
 	else:
 		tr.position = Vector2(x, y)
 	add_child(tr)
 	var slot_size: Vector2 = Vector2(TILE_H, TILE_W) if is_riichi else Vector2(TILE_W, TILE_H)
-	# T2:河中宝牌金色描边(扫光在 32×48 上太碎,静态金边已足够醒目)
+	# T2:河中宝牌金色描边
 	if is_dora:
 		add_child(_make_border(tr.position, slot_size, Color(0.85, 0.71, 0.36, 0.9), 2))
 	if is_last:
-		# 最近一张弃牌:骨白描边 + 新增时入场 glow 衰减(对标 discard-glow)。
+		# 最近一张弃牌:骨白描边 + 新增时入场动画(增量渲染下不再被打断)
 		var hl := _make_border(tr.position, slot_size, Color(1, 0.92, 0.55, 0.95), 2)
 		add_child(hl)
+		_last_highlight = hl
 		if is_new:
-			# 入场:整张牌从 92% 缩放弹开 + 高亮层 alpha 衰减,1s 收敛
-			tr.pivot_offset = slot_size / 2.0 if not is_riichi else tr.pivot_offset
-			tr.scale = Vector2.ONE * 0.88
+			# 入场:从该家手方向(local -Y 上方)落下 + 弹缩 + 高亮衰减
+			if not is_riichi:
+				tr.pivot_offset = slot_size / 2.0
+			tr.scale = Vector2.ONE * 0.85
+			var land_y: float = tr.position.y
+			tr.position.y = land_y - 14.0
 			var tw := create_tween().set_parallel(true)
-			tw.tween_property(tr, "scale", Vector2.ONE, 0.22) \
+			tw.tween_property(tr, "scale", Vector2.ONE, 0.2) \
 				.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			tw.tween_property(tr, "position:y", land_y, 0.18) \
+				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 			hl.modulate = Color(1.6, 1.5, 1.2, 1.0)
 			tw.tween_property(hl, "modulate", Color.WHITE, 1.0) \
 				.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)

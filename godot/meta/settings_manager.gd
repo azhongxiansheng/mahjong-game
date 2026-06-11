@@ -25,6 +25,9 @@ var fullscreen: bool = false
 # 常用预设:60 / 120 / 144 / 0(unlimited)。
 var framerate_cap: int = 60
 
+# T5:跳过开局发牌演出(默认播放)
+var skip_deal_animation: bool = false
+
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
 
@@ -62,6 +65,11 @@ func set_fullscreen(b: bool) -> void:
 	_apply_fullscreen()
 	_save_to_disk()
 	settings_changed.emit()
+
+
+func set_skip_deal_animation(b: bool) -> void:
+	skip_deal_animation = b
+	_save_to_disk()
 
 
 func set_framerate_cap(fps: int) -> void:
@@ -112,6 +120,7 @@ func _load_from_disk() -> void:
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
 	tutorial_seen = bool(parsed.get("tutorial_seen", false))
 	fullscreen = bool(parsed.get("fullscreen", false))
+	skip_deal_animation = bool(parsed.get("skip_deal_animation", false))
 	var fps_v: int = int(parsed.get("framerate_cap", 60))
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
@@ -124,6 +133,7 @@ func _save_to_disk() -> void:
 		"bgm_volume": bgm_volume,
 		"tutorial_seen": tutorial_seen,
 		"fullscreen": fullscreen,
+		"skip_deal_animation": skip_deal_animation,
 		"framerate_cap": framerate_cap,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)

@@ -700,6 +700,12 @@ func mark_win_tile(tile_id: int) -> void:
 			child.set_win_tile(true)
 			return
 
+# T5:发牌演出期间整行隐藏/恢复。
+func set_hand_row_visible(b: bool) -> void:
+	if _hand_tile_row:
+		_hand_tile_row.visible = b
+
+
 # 切换玩家手牌点击响应。轮到玩家出牌时调 true，AI 回合或鸣牌响应窗口外调 false。
 # 仅 seat==0 有效；其它 seat 调用本方法无效（手牌行只有色块不 emit click）。
 func set_hand_clickable(b: bool) -> void:
