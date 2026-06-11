@@ -222,18 +222,11 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		tier.text = "本局结束"
 		subtitle.text = ""
 
-	# 役名列表（命中的役 + 各自飜数,空格分隔）
-	var yaku_lbl := Label.new()
-	yaku_lbl.position = Vector2(40, 160)
-	yaku_lbl.size = Vector2(640, 50)
-	yaku_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	yaku_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	yaku_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	yaku_lbl.add_theme_font_size_override("font_size", 18)
-	yaku_lbl.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
+	# 役名列表 — T4(spec AC-G4-a):逐条错峰入场替代整段文本。
+	# 双列 Grid 容纳 ≤8 条不与下方胡牌行打架;>8 条尾部聚合。
+	_result_anim_tweens.clear()
 	if win_event != null:
-		yaku_lbl.text = _format_yaku_list(win_event.extra.get("yaku_names", []))
-	panel.add_child(yaku_lbl)
+		_build_yaku_rows(panel, win_event.extra.get("yaku_names", []))
 
 	# 胡牌 14 张展示行(winning tile 单独右侧 + 金色调突出)
 	if win_event != null and win_event.tile_instance != null and win_event.tile_instance.tile != null:
@@ -242,10 +235,10 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		_render_winning_hand_strip(panel, win_event.actor_seat,
 			win_event.tile_instance.tile.id, is_tsumo, 220)
 
-	# 明细：番·符 + 得失分
+	# 明细：番·符 + 得失分(得分大数字由 _build_rolling_score 单独渲染)
 	var detail := Label.new()
-	detail.position = Vector2(48, 290)
-	detail.size = Vector2(624, 160)
+	detail.position = Vector2(48, 322)
+	detail.size = Vector2(624, 128)
 	detail.add_theme_font_size_override("font_size", 18)
 	detail.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -254,12 +247,15 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		var han2: int = int(win_event.extra.get("han", 0))
 		var winner_total: int = int(win_event.extra.get("winner_total", 0))
 		var payout: Dictionary = win_event.extra.get("payout", {})
+		# T4(spec AC-G4-b):胜者得分独立 Label 数字滚动(0→N,金/红辉光)
+		_build_rolling_score(panel, winner_total,
+			int(win_event.actor_seat) == 0
+			or int(win_event.extra.get("discarder_seat", -1)) != 0)
 		var lines: Array[String] = []
 		if int(win_event.extra.get("yakuman_multiplier", 0)) > 0:
 			lines.append("番数：—   符：—")
 		else:
 			lines.append("番数：%d 飜    符：%d" % [han2, fu2])
-		lines.append("胜利者得分：%d 点" % winner_total)
 		# 显式列出 dora 指示牌让玩家核对算番:visible + 立直胡时 hidden uradora。
 		if _bc != null and _bc.state != null:
 			var di = _bc.state.dora_indicators
@@ -309,13 +305,104 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	replay_btn.pressed.connect(func(): _show_replay_log(overlay))
 	panel.add_child(replay_btn)
 
-	# 点击空白处也能继续(保留旧的快速关闭)
+	# 点击空白处:动画未播完 → 先跳到终态(spec AC-G4-c);已完 → 关闭
 	overlay.gui_input.connect(func(ev: InputEvent):
 		if ev is InputEventMouseButton and ev.pressed:
+			if _skip_result_animations():
+				return
 			overlay.queue_free())
 	while is_instance_valid(overlay):
 		await get_tree().process_frame
 
+
+# ---- T4 结算编排(spec 2026-06-11 G4) ----
+
+# 正在播放的结算动画 [{tween, finish: Callable}];点击跳过时统一收尾。
+var _result_anim_tweens: Array = []
+
+# 役种双列逐条入场。每条「役名  N飜」,0.08s/条错峰,从左淡入滑入。
+func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.position = Vector2(80, 148)
+	grid.size = Vector2(560, 68)
+	grid.add_theme_constant_override("h_separation", 48)
+	grid.add_theme_constant_override("v_separation", 2)
+	panel.add_child(grid)
+	var shown: Array = yaku_names.slice(0, 8)
+	for i in range(shown.size()):
+		var item = shown[i]
+		if not (item is Dictionary):
+			continue
+		var nm: String = String(item.get("name", ""))
+		var mul: int = int(item.get("yakuman_multiplier", 0))
+		var suffix: String = ""
+		if mul > 0:
+			suffix = "役満 ×%d" % mul if mul > 1 else "役満"
+		else:
+			suffix = "%d 飜" % int(item.get("han", 0))
+		var row := Label.new()
+		row.text = "%s　%s" % [nm, suffix]
+		row.custom_minimum_size = Vector2(256, 22)
+		row.add_theme_font_size_override("font_size", 18)
+		row.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
+		grid.add_child(row)
+		# 错峰淡入(0.08s/条)。注:Grid 接管子节点 position,只动 modulate。
+		row.modulate = Color(1, 1, 1, 0)
+		var tw := create_tween()
+		tw.tween_interval(0.12 + i * 0.08)
+		tw.tween_property(row, "modulate:a", 1.0, 0.22)
+		var captured := row
+		var fin := func():
+			if is_instance_valid(captured):
+				captured.modulate = Color.WHITE
+		_result_anim_tweens.append({"tween": tw, "finish": fin})
+	if yaku_names.size() > 8:
+		var more := Label.new()
+		more.text = "…等 %d 役" % yaku_names.size()
+		more.add_theme_font_size_override("font_size", 16)
+		more.add_theme_color_override("font_color", Color(0.8, 0.74, 0.5))
+		grid.add_child(more)
+
+# 胜者得分大数字滚动(0→total,0.6s quad_out;金=玩家受益/红=玩家放铳)。
+func _build_rolling_score(panel: Control, total: int, is_up_for_player: bool) -> void:
+	var lbl := Label.new()
+	lbl.name = "RollingScore"
+	lbl.position = Vector2(48, 284)
+	lbl.size = Vector2(624, 34)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 30)
+	var color := Color(0.94, 0.84, 0.42) if is_up_for_player else Color(0.93, 0.42, 0.42)
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_constant_override("shadow_offset_y", 2)
+	lbl.add_theme_color_override("font_shadow_color",
+		Color(color.r, color.g, color.b, 0.35))
+	lbl.text = "0 点"
+	panel.add_child(lbl)
+	var update := func(v: float):
+		if is_instance_valid(lbl):
+			lbl.text = "%d 点" % int(v)
+	var tw := create_tween()
+	tw.tween_method(update, 0.0, float(total), 0.6) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	var fin := func():
+		if is_instance_valid(lbl):
+			lbl.text = "%d 点" % total
+	_result_anim_tweens.append({"tween": tw, "finish": fin})
+
+# 跳过结算动画到终态。有动画在播返 true(本次点击被消费),否则 false。
+func _skip_result_animations() -> bool:
+	var any_running := false
+	for entry in _result_anim_tweens:
+		var tw: Tween = entry.get("tween")
+		if tw != null and tw.is_valid() and tw.is_running():
+			any_running = true
+			tw.kill()
+		var fin: Callable = entry.get("finish")
+		if fin != null and fin.is_valid():
+			fin.call()
+	_result_anim_tweens.clear()
+	return any_running
 
 # 在 overlay panel 内画胡牌 14 张:13 张暗手升序 + 间隔 + winning tile(金调高亮)。
 # 副露不画(简化;副露已经在桌面 MeldArea 上看过)。
