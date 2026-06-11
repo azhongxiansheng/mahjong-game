@@ -33,12 +33,12 @@ const HAND_ROW_OFFSET_X: float = -220.0  # 相对 panel 中心
 const HAND_ROW_OFFSET_Y: float = 30.0
 # 玩家自己 (seat 0) 手牌用真实 atlas 牌面。T3e 布局收敛(spec §2.4):
 # 40×60 → 48×68 贴桌底,牌是画面主角(参考作 lg 52×72 贴 bottom:30)。
-const PLAYER_HAND_TILE_W: float = 48.0
-const PLAYER_HAND_TILE_H: float = 68.0
-# 14 张(13 + 摸牌位)总宽 ≈ 13×51 + 16 + 48 ≈ 727,居中于 panel(x=540)
-const PLAYER_HAND_ROW_OFFSET_X: float = -360.0
-# panel y=570 → 牌 632..700,贴桌底(720)留 20px
-const PLAYER_HAND_ROW_OFFSET_Y: float = 62.0
+const PLAYER_HAND_TILE_W: float = 54.0
+const PLAYER_HAND_TILE_H: float = 76.0
+# 14 张(13 + 摸牌位)总宽 ≈ 13×57 + 16 + 54 ≈ 811,居中于 panel(x=540)
+const PLAYER_HAND_ROW_OFFSET_X: float = -402.0
+# panel y=570 → 牌 640..716,贴桌底(720)
+const PLAYER_HAND_ROW_OFFSET_Y: float = 70.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null

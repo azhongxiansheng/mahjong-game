@@ -268,6 +268,11 @@ func _refresh_labels() -> void:
 	var honba_str := " %d 本场" % _honba if _honba > 0 else ""
 	_label_round.text = "%s%s" % [round_name(_hand_index, _hands_per_round), honba_str]
 	_label_dora.text = "Dora 指示牌:"
+	# dora 已移交左上 DoraWidget(对标参考截图),中心盘只留局数/余张/棒;
+	# label/牌行保留更新(测试断言用)但不显示。
+	_label_dora.visible = false
+	if _dora_row:
+		_dora_row.visible = false
 	_label_wall.text = "牌墙: %d / 70" % _wall_remaining
 	# 牌墙剩余分级配色:海底警戒(≤4 红) / 终盘(≤10 橙) / 中盘(≤30 黄) / 早盘(白)
 	_label_wall.add_theme_color_override("font_color", wall_color(_wall_remaining))

@@ -74,6 +74,12 @@ func _build_layout() -> void:
 	_action_panel.position = Vector2((_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, TABLE_HEIGHT)
 	add_child(_action_panel)
 
+	# 宝牌指示窗(平面层左上,对标参考截图):已翻 face-up + 未翻牌背槽
+	_dora_widget = DoraWidget.new()
+	_dora_widget.position = Vector2(16, 12)
+	add_child(_dora_widget)
+	_dora_widget.update_indicators([])
+
 
 func _build_tilted_table() -> void:
 	var tw_f: float = FourPlayerTable.TABLE_WIDTH
@@ -629,6 +635,7 @@ var _toast_label: Label = null
 var _toast_tween: Tween = null
 # T2:待标记的和牌张(rebind 后由 polling loop 应用,-1 = 无)
 var _pending_win_tile_id: int = -1
+var _dora_widget: DoraWidget = null
 
 func _attach_event_polling() -> void:
 	if _polling_active:
@@ -655,6 +662,13 @@ func _polling_loop() -> void:
 				if _pending_win_tile_id >= 0 and _table.seat_panels.size() > 0:
 					_table.seat_panels[0].mark_win_tile(_pending_win_tile_id)
 					_pending_win_tile_id = -1
+				# 宝牌指示窗同步(内部按 key 去重,无变化零开销)
+				if _dora_widget and _bc.state.dora_indicators:
+					var ind_ids: Array = []
+					for ti in _bc.state.dora_indicators.visible:
+						if ti != null:
+							ind_ids.append(ti.id)
+					_dora_widget.update_indicators(ind_ids)
 		if n < _last_event_count:
 			_last_event_count = 0
 
