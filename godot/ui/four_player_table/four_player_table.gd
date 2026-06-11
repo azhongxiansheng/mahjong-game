@@ -41,6 +41,14 @@ func _ready() -> void:
 func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
+		# 当前回合家显示名(「你」/AI persona 名)
+		if center_info.has_method("set_turn_name"):
+			var cur: int = state.current_seat
+			var turn_name: String = "你"
+			if cur != 0:
+				var persona: Array = ai_persona_for_seat(cur)
+				turn_name = String(persona[0]) if persona.size() >= 1 else "AI %d" % cur
+			center_info.set_turn_name(turn_name)
 	# T2(spec 2026-06-11 G2):实宝牌 id 集合(指示牌的下一张),
 	# 手牌/河 rebuild 时按它标扫光/金边。
 	var dora_ids: Array = []

@@ -35,8 +35,9 @@ const HAND_ROW_OFFSET_Y: float = 30.0
 # 40×60 → 48×68 贴桌底,牌是画面主角(参考作 lg 52×72 贴 bottom:30)。
 const PLAYER_HAND_TILE_W: float = 54.0
 const PLAYER_HAND_TILE_H: float = 76.0
-# 14 张(13 + 摸牌位)总宽 ≈ 13×57 + 16 + 54 ≈ 811,居中于 panel(x=540)
-const PLAYER_HAND_ROW_OFFSET_X: float = -402.0
+# 14 张(13 + 摸牌位)总宽 ≈ 811;右移给左侧玩家头像卡让位
+# (布局对齐参考截图:自家头像卡在手牌左侧)
+const PLAYER_HAND_ROW_OFFSET_X: float = -350.0
 # panel y=570 → 牌 640..716,贴桌底(720)
 const PLAYER_HAND_ROW_OFFSET_Y: float = 70.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
@@ -127,24 +128,22 @@ func set_seat_id(id: int) -> void:
 	var bg := get_node_or_null("Bg") as ColorRect
 	if bg:
 		bg.visible = false
-	_counter_rotate_info_node(get_node_or_null("VBox"))
+	# 名字+分数列钉在头像卡正下方(布局对齐:卡群 = 头像卡 + 名字条 + 分数)
+	var vbox := get_node_or_null("VBox") as Control
+	if vbox:
+		_pin_info_node(vbox, cluster_anchor() + Vector2(36 - vbox.size.x / 2.0, 92))
 	_ensure_info_chip()
 	if is_inside_tree():
 		_refresh_labels()
 
 # 名字行底条卡(对标参考作 seat-label):半透明暗底圆角小条垫在
-# SeatInfo 文字后,信息从"裸浮在毡上"变成成型的座位牌。
-# 与 VBox 同槽位同反向旋转,跟随文字恒正立。
+# SeatInfo 文字后,钉在头像卡正下方(与 VBox 第一行对位)。
 func _ensure_info_chip() -> void:
 	if get_node_or_null("InfoChip") != null:
 		return
 	var chip := Panel.new()
 	chip.name = "InfoChip"
-	# VBox 槽位 -110..110 × -40..40,SeatInfo 是第一行(高 ~22)
-	chip.position = Vector2(-100, -43)
 	chip.size = Vector2(200, 27)
-	chip.pivot_offset = chip.size / 2.0
-	chip.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.04, 0.06, 0.05, 0.62)
@@ -153,6 +152,7 @@ func _ensure_info_chip() -> void:
 	sb.set_corner_radius_all(13)
 	chip.add_theme_stylebox_override("panel", sb)
 	add_child(chip)
+	_pin_info_node(chip, cluster_anchor() + Vector2(36 - 100, 89))
 	# 垫在 VBox(文字)之下
 	var vbox := get_node_or_null("VBox")
 	if vbox:
@@ -166,6 +166,32 @@ func _counter_rotate_info_node(node: Node) -> void:
 	var ctrl := node as Control
 	ctrl.pivot_offset = ctrl.size / 2.0
 	ctrl.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
+
+# ---- 头像卡群锚位(布局完全对齐参考截图) ----
+#
+# 每家的「头像卡 + 名字条 + 分数」按参考截图比例钉在**屏幕坐标**:
+#   对面 = 其手牌右侧;左右家 = 手牌旁中部;自家 = 手牌左侧。
+# SeatPanel 整体被旋转,信息件又反向旋转 — _pin_info_node 做坐标换算:
+# 给定屏幕 top-left,反推出旋转空间里的 local position。
+const CLUSTER_ANCHORS: Dictionary = {
+	0: Vector2(60, 536),
+	1: Vector2(926, 282),
+	2: Vector2(742, 54),
+	3: Vector2(84, 282),
+}
+
+func cluster_anchor() -> Vector2:
+	return CLUSTER_ANCHORS.get(_seat_id, Vector2.ZERO)
+
+# 把 node 的**视觉 top-left** 钉到桌面屏幕坐标(node 同时被反向旋转恒正立)。
+func _pin_info_node(node: Control, screen_top_left: Vector2) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	var rot: float = deg_to_rad(SEAT_ROTATION_DEGREES[_seat_id])
+	var center_screen: Vector2 = screen_top_left + node.size / 2.0
+	node.position = (center_screen - position).rotated(-rot) - node.size / 2.0
+	node.pivot_offset = node.size / 2.0
+	node.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 
 func set_seat_wind(wind_id: int) -> void:
 	_seat_wind = wind_id
@@ -213,12 +239,12 @@ func say(text: String) -> void:
 	_speech_label.add_theme_constant_override("shadow_offset_x", 1)
 	_speech_label.add_theme_constant_override("shadow_offset_y", 1)
 	_speech_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.9))
-	_speech_label.position = Vector2(-60, -180)  # portrait 上方
 	_speech_label.size = Vector2(120, 30)
 	_speech_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_speech_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_speech_label)
-	_counter_rotate_info_node(_speech_label)  # T3c:台词恒正立
+	# 台词气泡钉在头像卡上方
+	_pin_info_node(_speech_label, cluster_anchor() + Vector2(-24, -36))
 	# fade in 0.15 → hold 1.2 → fade out 0.4 → free
 	_speech_label.modulate.a = 0.0
 	var captured := _speech_label
@@ -267,13 +293,11 @@ func _ensure_portrait() -> void:
 	if tex == null:
 		return
 	# 头像卡(对标参考截图):暗底圆角卡 + 微金描边垫在立绘后,
-	# 立绘从"裸贴在毡上"变成成型的座位头像卡。
+	# 整个卡群钉在 CLUSTER_ANCHORS 屏幕锚位。
+	var anchor: Vector2 = cluster_anchor()
 	var card := Panel.new()
 	card.name = "PortraitCard"
-	card.position = Vector2(-36, -134)
 	card.size = Vector2(72, 88)
-	card.pivot_offset = card.size / 2.0
-	card.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var card_sb := StyleBoxFlat.new()
 	card_sb.bg_color = Color(0.05, 0.07, 0.06, 0.85)
@@ -285,16 +309,15 @@ func _ensure_portrait() -> void:
 	card_sb.shadow_offset = Vector2(0, 4)
 	card.add_theme_stylebox_override("panel", card_sb)
 	add_child(card)
+	_pin_info_node(card, anchor)
 	_portrait_rect = TextureRect.new()
 	_portrait_rect.texture = tex
 	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_portrait_rect.size = Vector2(64, 80)
-	# 居中,放在分数框正上方(Bg offset_top=-50,留 +10 px 让 portrait 不贴边)
-	_portrait_rect.position = Vector2(-32, -130)
 	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_portrait_rect)
-	_counter_rotate_info_node(_portrait_rect)  # T3c:立绘恒正立(修左右家横躺)
+	_pin_info_node(_portrait_rect, anchor + Vector2(4, 4))
 
 func set_score(s: int) -> void:
 	var prev := _score
@@ -377,18 +400,17 @@ func set_ippatsu(b: bool) -> void:
 
 
 func _apply_status_badges() -> void:
-	# Bg 240×100,offset(-120..120, -50..50)。徽章在 Bg 顶右角并排,
-	# 顺序:振(红) → 听(金) → 一発(青),各 28×20。
-	# 振听 — 仅 _furiten=true 时显示。
+	# 徽章竖排钉在头像卡右侧:振(红) → 听(金) → 一発(青),各 28×20。
+	var anchor: Vector2 = cluster_anchor()
 	_badge_furiten = _set_badge(_badge_furiten, _furiten, "振",
-		Color(0.85, 0.18, 0.18), Vector2(30, -46))
+		Color(0.85, 0.18, 0.18), anchor + Vector2(78, 4))
 	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
 	var show_tenpai: bool = _tenpai and _seat_id == 0 and not _riichi
 	_badge_tenpai = _set_badge(_badge_tenpai, show_tenpai, "听",
-		DT.TEXT_TITLE, Vector2(60, -46))
+		DT.TEXT_TITLE, anchor + Vector2(78, 28))
 	# 一発(刚立直未轮回一圈)— 青底,所有 seat 都显(玩家需要算别家一发风险)。
 	_badge_ippatsu = _set_badge(_badge_ippatsu, _ippatsu, "発",
-		Color(0.30, 0.70, 0.90), Vector2(90, -46))
+		Color(0.30, 0.70, 0.90), anchor + Vector2(78, 52))
 
 
 # 创建/销毁徽章。返回当前 badge node 实例(下次 _apply 复用判断)。
@@ -402,8 +424,6 @@ func _set_badge(existing: Control, visible_: bool, text: String, color: Color,
 		return existing
 	var p := Panel.new()
 	p.size = Vector2(28, 20)
-	# 节点本地坐标(seat panel Node2D 已按 seat_id 旋转,徽章随旋转走)。
-	p.position = pos
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = color
@@ -412,7 +432,7 @@ func _set_badge(existing: Control, visible_: bool, text: String, color: Color,
 	sb.corner_radius_bottom_left = 3
 	sb.corner_radius_bottom_right = 3
 	p.add_theme_stylebox_override("panel", sb)
-	_counter_rotate_info_node(p)  # T3c:徽章字恒正立
+	_pin_info_node(p, pos)  # 钉屏幕锚位 + 恒正立(pos 是屏幕 top-left)
 	var lbl := Label.new()
 	lbl.text = text
 	lbl.size = Vector2(28, 20)
@@ -474,18 +494,16 @@ func _apply_active_visual() -> void:
 				and is_instance_valid(_portrait_rect):
 			var ring := Panel.new()
 			ring.name = "ActiveGlow"
-			ring.position = _portrait_rect.position - Vector2(4, 4)
-			ring.size = _portrait_rect.size + Vector2(8, 8)
-			ring.pivot_offset = ring.size / 2.0
-			ring.rotation_degrees = _portrait_rect.rotation_degrees
+			ring.size = Vector2(80, 96)
 			ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			var sb := StyleBoxFlat.new()
 			sb.bg_color = Color(0, 0, 0, 0)
 			sb.border_color = DT.TEXT_TITLE
 			sb.set_border_width_all(3)
-			sb.set_corner_radius_all(6)
+			sb.set_corner_radius_all(8)
 			ring.add_theme_stylebox_override("panel", sb)
 			add_child(ring)
+			_pin_info_node(ring, cluster_anchor() - Vector2(4, 4))
 	else:
 		var existing := get_node_or_null("ActiveGlow")
 		if existing:
@@ -555,9 +573,11 @@ func _refresh_labels() -> void:
 	var who: String = _persona_name if _persona_name != "" else seat_display_name(_seat_id)
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
 	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
+	# 布局对齐:分数回到头像卡下(参考截图「50 分」位),金色
 	_label_score.text = "%d" % _score
-	# T3c:分数已移中心盘四方显示,SeatPanel 不再重复渲染(text 仍更新供测试断言)
-	_label_score.visible = false
+	_label_score.visible = true
+	_label_score.add_theme_color_override("font_color", Color(0.94, 0.84, 0.42))
+	_label_score.add_theme_font_size_override("font_size", 15)
 	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label
 	# 手牌张数 / 弃牌河张数也弃用：MeldArea + DiscardRiver 视觉自身已传达

@@ -74,11 +74,49 @@ func _build_layout() -> void:
 	_action_panel.position = Vector2((_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, TABLE_HEIGHT)
 	add_child(_action_panel)
 
-	# 宝牌指示窗(平面层左上,对标参考截图):已翻 face-up + 未翻牌背槽
+	# 顶栏(对标参考截图):logo 左 + 规则/设置按钮右
+	_build_top_bar()
+
+	# 宝牌指示窗(平面层左上、顶栏之下):已翻 face-up + 未翻牌背槽
 	_dora_widget = DoraWidget.new()
-	_dora_widget.position = Vector2(16, 12)
+	_dora_widget.position = Vector2(16, 54)
 	add_child(_dora_widget)
 	_dora_widget.update_indicators([])
+
+
+# 顶栏:书法 logo + 右侧「规则/设置」主题按钮。
+func _build_top_bar() -> void:
+	var logo := Label.new()
+	logo.text = "麻 将 王"
+	logo.position = Vector2(18, 6)
+	logo.size = Vector2(180, 40)
+	logo.add_theme_font_size_override("font_size", 30)
+	logo.add_theme_color_override("font_color", Color(0.88, 0.74, 0.38))
+	logo.add_theme_constant_override("shadow_offset_x", 2)
+	logo.add_theme_constant_override("shadow_offset_y", 2)
+	logo.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
+	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(logo)
+	var rules_btn := Button.new()
+	rules_btn.text = "📖 规则"
+	rules_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 196, 10)
+	rules_btn.custom_minimum_size = Vector2(88, 36)
+	rules_btn.pressed.connect(_open_help_overlay)
+	add_child(rules_btn)
+	var settings_btn := Button.new()
+	settings_btn.text = "⚙ 设置"
+	settings_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 100, 10)
+	settings_btn.custom_minimum_size = Vector2(88, 36)
+	settings_btn.pressed.connect(_open_settings_overlay)
+	add_child(settings_btn)
+
+
+func _open_help_overlay() -> void:
+	if get_tree().root.get_node_or_null("_help_overlay_root") != null:
+		return
+	var overlay := HelpOverlay.new()
+	overlay.name = "_help_overlay_root"
+	get_tree().root.add_child(overlay)
 
 
 func _build_tilted_table() -> void:

@@ -63,7 +63,9 @@ func _ready() -> void:
 # 亮金条+发光红点(对标 .center-stick--on)。分数从 SeatPanel 移此处后,
 # 桌面四角的黑板条即可瘦身(T3c)。
 
-const PLATE_HALF: float = 110.0
+# 布局对齐参考截图:盘 170×170(分数移出到头像卡下,盘只留
+# 风字章 + 局数 + 余张 + 当前回合家)
+const PLATE_HALF: float = 85.0
 
 # 每边一组节点:{wind: Label, score: Label, stick: Control}
 var _side_nodes: Array = []
@@ -90,6 +92,13 @@ func _restyle_plate() -> void:
 	plate.add_theme_stylebox_override("panel", sb)
 	add_child(plate)
 	move_child(plate, 0)
+	# VBox 信息列适配 170 盘(原 .tscn 偏移按 240 盘设计)
+	var vbox := get_node_or_null("VBox") as Control
+	if vbox:
+		vbox.offset_left = -72
+		vbox.offset_right = 72
+		vbox.offset_top = -52
+		vbox.offset_bottom = 56
 	# 顶部 1/3 微高光(参考作 radial 高光的近似):半透明白渐变条
 	var sheen := ColorRect.new()
 	sheen.color = Color(0.55, 0.62, 0.78, 0.08)
@@ -101,39 +110,50 @@ func _restyle_plate() -> void:
 
 func _build_seat_sides() -> void:
 	_side_nodes = []
-	# seat 0 下 / 1 右 / 2 上 / 3 左。顶/底正立;左右旋 ∓90° 贴盘内缘
-	# (麻将客户端惯例,且不与中央 VBox 信息列打架)。
-	# [锚点, 旋转角]
+	# 布局对齐参考截图:四边各一个**风字章**(26×26 暗底圆角小章,
+	# 旋转朝向各自玩家),当前回合家的章亮红底。分数不再显示在盘内。
+	# [锚点(章中心), 旋转角(朝向该家)]
 	var layouts: Array = [
-		[Vector2(0, PLATE_HALF - 18), 0.0],
-		[Vector2(PLATE_HALF - 18, 0), 90.0],
-		[Vector2(0, -PLATE_HALF + 18), 0.0],
-		[Vector2(-PLATE_HALF + 18, 0), -90.0],
+		[Vector2(0, PLATE_HALF - 20), 0.0],
+		[Vector2(PLATE_HALF - 20, 0), -90.0],
+		[Vector2(0, -PLATE_HALF + 20), 180.0],
+		[Vector2(-PLATE_HALF + 20, 0), 90.0],
 	]
 	for i in range(4):
 		var anchor: Vector2 = layouts[i][0]
 		var rot: float = layouts[i][1]
+		var badge := Panel.new()
+		badge.size = Vector2(26, 26)
+		badge.position = anchor - Vector2(13, 13)
+		badge.pivot_offset = Vector2(13, 13)
+		badge.rotation_degrees = rot
+		badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_theme_stylebox_override("panel", _badge_style(false))
+		add_child(badge)
 		var lbl := Label.new()
-		lbl.size = Vector2(88, 18)
-		lbl.pivot_offset = Vector2(44, 9)
-		lbl.position = anchor + Vector2(-44, -9)
-		lbl.rotation_degrees = rot
+		lbl.size = Vector2(26, 26)
 		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.add_theme_font_size_override("font_size", 14)
+		lbl.add_theme_font_size_override("font_size", 15)
 		lbl.add_theme_color_override("font_color", Color(0.92, 0.90, 0.82))
-		lbl.add_theme_constant_override("shadow_offset_y", 1)
-		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.7))
-		add_child(lbl)
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		badge.add_child(lbl)
 		# 立直指示灯:金条 + 红点,declared 时亮(对标 center-stick--on)。
-		# 放标签内侧(更靠盘心一格)。
 		var stick := _make_riichi_indicator()
 		stick.pivot_offset = Vector2(21, 2.5)
-		stick.position = anchor + anchor.normalized() * -22 + Vector2(-21, -2.5)
+		stick.position = anchor + anchor.normalized() * -20 + Vector2(-21, -2.5)
 		stick.rotation_degrees = rot
 		stick.visible = false
 		add_child(stick)
-		_side_nodes.append({"label": lbl, "stick": stick})
+		_side_nodes.append({"badge": badge, "label": lbl, "stick": stick})
+
+static func _badge_style(active: bool) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.72, 0.16, 0.14, 0.95) if active else Color(0.03, 0.05, 0.10, 0.8)
+	sb.border_color = Color(0.85, 0.71, 0.36, 0.6 if active else 0.3)
+	sb.set_border_width_all(1)
+	sb.set_corner_radius_all(5)
+	return sb
 
 static func _make_riichi_indicator() -> Control:
 	var bar := ColorRect.new()
@@ -148,6 +168,28 @@ static func _make_riichi_indicator() -> Control:
 	bar.add_child(dot)
 	return bar
 
+var _turn_name: String = ""
+var _turn_label: Label = null
+
+# 当前回合家显示名(FourPlayerTable.bind 注入;"你"/AI persona 名)
+func set_turn_name(name_: String) -> void:
+	_turn_name = name_
+	if is_inside_tree():
+		_refresh_labels()
+
+func _ensure_turn_label() -> void:
+	if _turn_label and is_instance_valid(_turn_label):
+		return
+	var vbox := get_node_or_null("VBox")
+	if vbox == null:
+		return
+	_turn_label = Label.new()
+	_turn_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_turn_label.add_theme_font_size_override("font_size", 13)
+	_turn_label.add_theme_color_override("font_color", Color(1.0, 0.85, 0.35))
+	vbox.add_child(_turn_label)
+	vbox.move_child(_turn_label, 1)  # 局数行之后
+
 # 四方摘要注入(bind_state 内部调;测试可直接调)。
 # seats_summary: [{wind: int, score: int, riichi: bool, active: bool}] × 4
 func set_seats_summary(seats_summary: Array) -> void:
@@ -157,14 +199,11 @@ func set_seats_summary(seats_summary: Array) -> void:
 	for i in range(mini(4, seats_summary.size())):
 		var info: Dictionary = seats_summary[i]
 		var nodes: Dictionary = _side_nodes[i]
-		(nodes.label as Label).text = "%s %d" % [
-			SeatPanel.wind_name(int(info.get("wind", -1))),
-			int(info.get("score", 0))]
+		(nodes.label as Label).text = SeatPanel.wind_name(int(info.get("wind", -1)))
 		(nodes.stick as Control).visible = bool(info.get("riichi", false))
-		# 当前回合边:金色;非当前回合骨白
+		# 当前回合家:风字章红底(对标参考截图)
 		var active: bool = bool(info.get("active", false))
-		(nodes.label as Label).add_theme_color_override("font_color",
-			Color(1.0, 0.85, 0.35) if active else Color(0.92, 0.90, 0.82))
+		(nodes.badge as Panel).add_theme_stylebox_override("panel", _badge_style(active))
 
 # ---- public setters ----
 
@@ -273,10 +312,14 @@ func _refresh_labels() -> void:
 	_label_dora.visible = false
 	if _dora_row:
 		_dora_row.visible = false
-	_label_wall.text = "牌墙: %d / 70" % _wall_remaining
+	_label_wall.text = "余 %d 张" % _wall_remaining
 	# 牌墙剩余分级配色:海底警戒(≤4 红) / 终盘(≤10 橙) / 中盘(≤30 黄) / 早盘(白)
 	_label_wall.add_theme_color_override("font_color", wall_color(_wall_remaining))
 	_label_riichi.text = "立直棒: %d" % _riichi_sticks
+	# 当前回合家名(参考截图「北原 回合」行)
+	_ensure_turn_label()
+	if _turn_label:
+		_turn_label.text = "%s 回合" % _turn_name if _turn_name != "" else ""
 	# 池里有立直棒时高亮金色,强调"赢家可独吞"。
 	if _riichi_sticks > 0:
 		_label_riichi.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
