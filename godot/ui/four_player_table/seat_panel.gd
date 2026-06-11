@@ -550,7 +550,15 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 		x += HAND_TILE_W + HAND_TILE_GAP
 
 # 取牌背图（autoload TextureExtractor）。autoload 不在或缺图时返 null。
+# T3d:对手手牌优先用「站立牌背」贴图(白棱+牌背,bake_standing_back.py),
+# 视角语义正确;缺图 fallback 到平面 back.png。
+const STANDING_BACK_PATH := "res://assets/tile_back_standing.png"
+
 func _resolve_back_texture() -> Texture2D:
+	if ResourceLoader.exists(STANDING_BACK_PATH):
+		var tex: Texture2D = load(STANDING_BACK_PATH) as Texture2D
+		if tex != null:
+			return tex
 	if not is_inside_tree():
 		return null
 	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
