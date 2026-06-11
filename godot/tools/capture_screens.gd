@@ -57,15 +57,16 @@ func _run() -> void:
 
 
 func _capture_battle_with_state() -> void:
-	var packed := load("res://ui/four_player_table/four_player_table.tscn") as PackedScene
-	if packed == null:
-		return
-	var table = packed.instantiate()
+	# 走 PlayableTable(真实游戏视图,含 3D 倾斜桌面管线),
+	# 不再裸实例化 FourPlayerTable(那会绕过透视渲染)。
+	# 注意:必须运行时 load — -s 脚本的编译闭包先于 autoload 注册,
+	# 静态引用 PlayableTable 会把 Anima(依赖 ANIMA autoload)拖进早期编译。
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
 	root.add_child(table)
 	# BattleController 跑一个确定 seed 起手,state 立刻有 4 家 13 张手牌 + 庄家
 	var bc := BattleController.new(42, 0, false, TileId.E)
 	# bind 桌面到这个 state,seat 0 可见手牌、dora 指示牌、立直棒 0、当前 seat 高亮
-	table.bind_battle_state(bc.state, 0, 4)
+	table._table.bind_battle_state(bc.state, 0, 4)
 	for _i in range(40):
 		await process_frame
 	var img := root.get_texture().get_image()
