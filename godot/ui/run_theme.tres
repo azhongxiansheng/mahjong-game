@@ -1,88 +1,72 @@
-[gd_resource type="Theme" load_steps=8 format=3]
+[gd_resource type="Theme" load_steps=14 format=3]
 
 ; 麻将王 — 斗牌传说(Akagi)风统一 UI 主题。
 ; 设为 project.godot 的 gui/theme/custom，全 run-flow 面板默认换肤：
-; 暗底、猩红描边、骨白字。各处显式 StyleBox override 仍优先。
+; 暗底、猩红回纹描边(Kenney Fantasy UI Borders CC0 烘焙,见
+; tools/asset_gen/bake_ui_borders.py)、霞鹜文楷(LXGW WenKai, OFL)。
+; 各处显式 StyleBox override 仍优先。
 
-[sub_resource type="StyleBoxFlat" id="SB_btn_normal"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.15, 0.14, 0.17, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.5, 0.13, 0.15, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
+[ext_resource type="FontFile" path="res://assets/fonts/LXGWWenKai-Regular.ttf" id="font_wenkai"]
+[ext_resource type="Texture2D" path="res://assets/ui/panel_ornate.png" id="tex_panel"]
+[ext_resource type="Texture2D" path="res://assets/ui/btn_normal.png" id="tex_btn_normal"]
+[ext_resource type="Texture2D" path="res://assets/ui/btn_hover.png" id="tex_btn_hover"]
+[ext_resource type="Texture2D" path="res://assets/ui/btn_pressed.png" id="tex_btn_pressed"]
+[ext_resource type="Texture2D" path="res://assets/ui/btn_disabled.png" id="tex_btn_disabled"]
 
-[sub_resource type="StyleBoxFlat" id="SB_btn_hover"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.25, 0.18, 0.2, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.85, 0.2, 0.22, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_pressed"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.42, 0.1, 0.12, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.95, 0.32, 0.25, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="SB_btn_disabled"]
-content_margin_left = 14.0
-content_margin_top = 9.0
-content_margin_right = 14.0
-content_margin_bottom = 9.0
-bg_color = Color(0.11, 0.11, 0.12, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.28, 0.28, 0.3, 1)
-corner_radius_top_left = 3
-corner_radius_top_right = 3
-corner_radius_bottom_right = 3
-corner_radius_bottom_left = 3
-
-[sub_resource type="StyleBoxFlat" id="SB_panel"]
+[sub_resource type="StyleBoxTexture" id="SB_btn_normal"]
 content_margin_left = 16.0
-content_margin_top = 16.0
+content_margin_top = 9.0
 content_margin_right = 16.0
-content_margin_bottom = 16.0
-bg_color = Color(0.1, 0.09, 0.12, 1)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.55, 0.15, 0.16, 1)
-corner_radius_top_left = 5
-corner_radius_top_right = 5
-corner_radius_bottom_right = 5
-corner_radius_bottom_left = 5
+content_margin_bottom = 9.0
+texture = ExtResource("tex_btn_normal")
+texture_margin_left = 20.0
+texture_margin_top = 20.0
+texture_margin_right = 20.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_hover"]
+content_margin_left = 16.0
+content_margin_top = 9.0
+content_margin_right = 16.0
+content_margin_bottom = 9.0
+texture = ExtResource("tex_btn_hover")
+texture_margin_left = 20.0
+texture_margin_top = 20.0
+texture_margin_right = 20.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_pressed"]
+content_margin_left = 16.0
+content_margin_top = 9.0
+content_margin_right = 16.0
+content_margin_bottom = 9.0
+texture = ExtResource("tex_btn_pressed")
+texture_margin_left = 20.0
+texture_margin_top = 20.0
+texture_margin_right = 20.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="SB_btn_disabled"]
+content_margin_left = 16.0
+content_margin_top = 9.0
+content_margin_right = 16.0
+content_margin_bottom = 9.0
+texture = ExtResource("tex_btn_disabled")
+texture_margin_left = 20.0
+texture_margin_top = 20.0
+texture_margin_right = 20.0
+texture_margin_bottom = 20.0
+
+[sub_resource type="StyleBoxTexture" id="SB_panel"]
+content_margin_left = 24.0
+content_margin_top = 24.0
+content_margin_right = 24.0
+content_margin_bottom = 24.0
+texture = ExtResource("tex_panel")
+texture_margin_left = 32.0
+texture_margin_top = 32.0
+texture_margin_right = 32.0
+texture_margin_bottom = 32.0
 
 [sub_resource type="StyleBoxFlat" id="SB_pbar_bg"]
 bg_color = Color(0.08, 0.08, 0.09, 1)
@@ -104,6 +88,8 @@ corner_radius_bottom_right = 4
 corner_radius_bottom_left = 4
 
 [resource]
+default_font = ExtResource("font_wenkai")
+default_font_size = 18
 Button/colors/font_color = Color(0.91, 0.88, 0.81, 1)
 Button/colors/font_hover_color = Color(1, 0.96, 0.87, 1)
 Button/colors/font_pressed_color = Color(1, 0.92, 0.8, 1)
