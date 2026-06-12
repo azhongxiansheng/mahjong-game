@@ -70,8 +70,11 @@ func _build_layout() -> void:
 	_build_tilted_table()
 
 	_action_panel = PLAYER_ACTION_PANEL.instantiate()
-	# ActionPanel 在桌底 y=TABLE_HEIGHT 起 80 px（独立区域不跟玩家手牌 y=640-700 重叠）
-	_action_panel.position = Vector2((_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, TABLE_HEIGHT)
+	# 操作栏浮在手牌正上方(按钮带底,y 578..626,手牌顶 631)— 鸣牌/自摸
+	# 窗口是全局等待点,按钮必须出现在玩家视线焦点处(对标参考作 action-bar)。
+	# 旧位置在桌外底部黑条,玩家注意不到,以为游戏卡死。
+	_action_panel.position = Vector2(
+		(_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, 550)
 	add_child(_action_panel)
 
 	# 顶栏(对标参考截图):logo 左 + 规则/设置按钮右

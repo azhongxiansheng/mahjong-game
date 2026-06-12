@@ -46,8 +46,11 @@ var _btn_ankan: Button = null      # WAITING_DISCARD 用 — "暗杠"
 var _btn_added_kan: Button = null  # WAITING_DISCARD 用 — "加杠"
 var _btn_consumable: Button = null # WAITING_DISCARD 用 — "道具"（主动消耗品）
 
-const PANEL_W: float = 672.0  # 容纳 10 个按钮
-const PANEL_H: float = 80.0   # 紧凑：status 8-28 + buttons 32-72
+# 2026-06-13 重做:按钮 60×40→84×48、20 号字,操作栏从桌外底条上移到
+# 手牌正上方(PlayableTable 定位)— 鸣牌窗口打开时全局在等玩家,旧版小按钮
+# 在视线外,玩家以为卡死(对标参考作 action-bar 浮在手牌上方)。
+const PANEL_W: float = 1036.0  # 11 槽 × 92 间距
+const PANEL_H: float = 84.0    # status 4-24 + buttons 28-76
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
@@ -65,8 +68,8 @@ func _build_ui() -> void:
 
 	# Status 文字浮在桌面（无 bg），所有状态都可见
 	_label_status = Label.new()
-	_label_status.position = Vector2(12, 8)
-	_label_status.size = Vector2(PANEL_W - 24, 24)
+	_label_status.position = Vector2(12, 2)
+	_label_status.size = Vector2(PANEL_W - 24, 22)
 	_label_status.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
 	_label_status.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	# 加文字阴影让浮在桌面上更易读
@@ -79,20 +82,17 @@ func _build_ui() -> void:
 	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过（PANEL_H 80 紧凑版）
 	# 按动作类型染色,玩家从一组按钮中第一眼分辨"什么动作":
 	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、紫=途中流局(规则牌)、灰=跳过(中性)
-	_btn_riichi = _make_btn("立直", 12, 32, Color(0.30, 0.55, 0.85))
-	_btn_tsumo = _make_btn("自摸", 12 + 66, 32, DT.TEXT_TITLE)
-	_btn_ron = _make_btn("荣和", 12 + 132, 32, DT.TEXT_TITLE)
-	_btn_chi = _make_btn("吃", 12 + 198, 32, DT.TEXT_DANGER)
-	_btn_pon = _make_btn("碰", 12 + 264, 32, DT.TEXT_DANGER)
-	_btn_minkan = _make_btn("杠", 12 + 330, 32, DT.TEXT_DANGER)
-	_btn_kyuusyu = _make_btn("九種", 12 + 396, 32, Color(0.65, 0.30, 0.85))
-	_btn_ankan = _make_btn("暗杠", 12 + 462, 32, Color(0.85, 0.50, 0.15))
-	_btn_added_kan = _make_btn("加杠", 12 + 528, 32, Color(0.85, 0.50, 0.15))
-	_btn_skip = _make_btn("跳过", 12 + 594, 32, DT.TEXT_MUTED)
-
-	_btn_consumable = _make_btn("道具", 12 + 594, 32, Color(0.95, 0.60, 0.15))
-	# Shift skip button right to make room for consumable button
-	_btn_skip.position.x = 12 + 660
+	_btn_riichi = _make_btn("立直", 12, 28, Color(0.30, 0.55, 0.85))
+	_btn_tsumo = _make_btn("自摸", 12 + 92, 28, DT.TEXT_TITLE)
+	_btn_ron = _make_btn("荣和", 12 + 184, 28, DT.TEXT_TITLE)
+	_btn_chi = _make_btn("吃", 12 + 276, 28, DT.TEXT_DANGER)
+	_btn_pon = _make_btn("碰", 12 + 368, 28, DT.TEXT_DANGER)
+	_btn_minkan = _make_btn("杠", 12 + 460, 28, DT.TEXT_DANGER)
+	_btn_kyuusyu = _make_btn("九種", 12 + 552, 28, Color(0.65, 0.30, 0.85))
+	_btn_ankan = _make_btn("暗杠", 12 + 644, 28, Color(0.85, 0.50, 0.15))
+	_btn_added_kan = _make_btn("加杠", 12 + 736, 28, Color(0.85, 0.50, 0.15))
+	_btn_consumable = _make_btn("道具", 12 + 828, 28, Color(0.95, 0.60, 0.15))
+	_btn_skip = _make_btn("跳过", 12 + 920, 28, DT.TEXT_MUTED)
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -110,8 +110,8 @@ func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.
 	var btn := Button.new()
 	btn.text = text
 	btn.position = Vector2(x, y)
-	btn.size = Vector2(60, 40)  # 紧凑：高 40 适配 PANEL_H 80
-	btn.add_theme_font_size_override("font_size", 16)
+	btn.size = Vector2(84, 48)  # 大按钮:鸣牌窗口是全局等待点,必须一眼看到
+	btn.add_theme_font_size_override("font_size", 20)
 	btn.disabled = true
 	btn.visible = false  # 雀魂式：只在触发时才显示
 	btn.pivot_offset = btn.size / 2.0  # pulse 缩放动效从中心起
@@ -222,6 +222,9 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 		_label_status.text = "可 %s — 选择" % "/".join(hints)
 	else:
 		_label_status.text = "等待响应窗口…"
+	# 鸣牌窗口 = 全局停下等玩家,整栏脉冲一次确保被看到
+	pivot_offset = Vector2(PANEL_W / 2.0, PANEL_H / 2.0)
+	DT.attention(self, "pulse", 0.45)
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	if can_ron:
