@@ -97,6 +97,17 @@ func _build_top_bar() -> void:
 	logo.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(logo)
+	# Run HUD 内联(RunFlow 战斗时隐藏自身 HUD,HP/金币挂这里)
+	_run_hud_label = Label.new()
+	_run_hud_label.position = Vector2(212, 14)
+	_run_hud_label.size = Vector2(360, 28)
+	_run_hud_label.add_theme_font_size_override("font_size", 18)
+	_run_hud_label.add_theme_color_override("font_color", Color(0.92, 0.90, 0.82))
+	_run_hud_label.add_theme_constant_override("shadow_offset_y", 1)
+	_run_hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_run_hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_run_hud_label.visible = false
+	add_child(_run_hud_label)
 	var rules_btn := Button.new()
 	rules_btn.text = "📖 规则"
 	rules_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 196, 10)
@@ -674,6 +685,15 @@ var _toast_tween: Tween = null
 # T2:待标记的和牌张(rebind 后由 polling loop 应用,-1 = 无)
 var _pending_win_tile_id: int = -1
 var _dora_widget: DoraWidget = null
+var _run_hud_label: Label = null
+
+
+# RunFlow 战斗时注入 run 级 HUD(HP/金币/章),内联进顶栏。
+func set_run_hud(hp: int, max_hp: int, gold: int, chapter: int) -> void:
+	if _run_hud_label == null:
+		return
+	_run_hud_label.text = "♥ %d/%d    金 %d    第 %d 章" % [hp, max_hp, gold, chapter]
+	_run_hud_label.visible = true
 
 func _attach_event_polling() -> void:
 	if _polling_active:

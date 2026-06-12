@@ -597,20 +597,24 @@ static func _gacha_reject_reason(result: GachaResult) -> String:
 func _swap_panel(new_panel: Control) -> void:
 	if _current_panel:
 		_current_panel.queue_free()
-	# PlayableTable 内部用绝对坐标硬编 1280×800 (FourPlayerTable 720 + ActionPanel
-	# 80),不能跟 anchor 一起拉伸,否则 ActionPanel 落屏外或 SeatPanel 错位。
-	# 用 scale 整体缩放到可用 height,顶部留 HUD_H 给 HUD,水平居中。
-	# 其它面板 (starter picker / chapter map / shop ...) 走原 anchor 撑满路径。
+	# PlayableTable 是完整的 1280×800 游戏视图,自带顶栏 + 桌面 + 手牌 + 操作栏。
+	# 战斗时**全屏铺满不缩放**,并隐藏 run HUD —— 否则 run HUD(顶 56px)与
+	# PlayableTable 自己的顶栏叠成双栏,桌面被压小、四周留黑边(玩家反馈
+	# "显示不全")。HP/金币改由 PlayableTable 顶栏承载(set_run_hud)。
+	# 其它面板(starter picker / chapter map / shop ...)照旧留 HUD 空间。
 	if new_panel is PlayableTable:
-		new_panel.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
+		new_panel.scale = Vector2.ONE
+		new_panel.position = Vector2.ZERO
 		new_panel.size = Vector2(DT.VIEW_W, DT.VIEW_H)
-		var avail_h: float = float(DT.VIEW_H - DT.HUD_H)
-		var scale_factor: float = avail_h / float(DT.VIEW_H)
-		new_panel.scale = Vector2(scale_factor, scale_factor)
-		new_panel.position = Vector2(
-			(DT.VIEW_W - DT.VIEW_W * scale_factor) / 2.0,
-			DT.HUD_H)
+		if _hud:
+			_hud.visible = false
+		if new_panel.has_method("set_run_hud") and _run_state:
+			new_panel.set_run_hud(_run_state.hp, _run_state.max_hp,
+				_run_state.gold, _run_state.chapter)
 	else:
+		if _hud:
+			_hud.visible = true
 		new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 		new_panel.offset_top = DT.HUD_H
 		new_panel.offset_left = 0
