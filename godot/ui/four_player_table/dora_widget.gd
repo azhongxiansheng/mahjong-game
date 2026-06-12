@@ -9,7 +9,9 @@ const SLOT_H: float = 48.0
 const SLOT_GAP: float = 3.0
 const SLOTS: int = 5
 
-var _rendered_key: String = ""
+# 初始哨兵值非空串:否则 update_indicators([]) 的 key="" 与初始值相同,
+# 首次空状态被去重 early-return,5 个牌背槽压根不渲染。
+var _rendered_key: String = "__unset__"
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
