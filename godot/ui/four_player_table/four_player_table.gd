@@ -99,11 +99,13 @@ func bind_cumulative_scores(scores: Array) -> void:
 # AI 性格化映射:seat_id → (角色名, 打法风格, 立绘路径)。
 # seat 1/2/3 各挂固定 persona。立绘资产已就位(round 1 任务 12),情绪由
 # SeatPanel.set_emote 通过 modulate 调色表达(RIICHI=蓝、WIN=金、被胡=灰)。
+# 牌桌三家 AI 用原创角色(2026-06-12 起):凌夜/阿烈/金老,
+# 立绘为 gpt-image-2 原创生成(统一暗绿金调麻将馆光影)。
 static func ai_persona_for_seat(seat_id: int) -> Array:
 	match seat_id:
-		1: return ["赤木", "激进", "res://assets/roguelike/characters/char_akagi.png"]
-		2: return ["开司", "速胡", "res://assets/roguelike/characters/char_kaiji.png"]
-		3: return ["鹫巣", "防守", "res://assets/roguelike/characters/char_washizu.png"]
+		1: return ["凌夜", "激进", "res://assets/roguelike/characters/char_lingye.png"]
+		2: return ["阿烈", "速胡", "res://assets/roguelike/characters/char_alie.png"]
+		3: return ["金老", "防守", "res://assets/roguelike/characters/char_jinlao.png"]
 	return []  # seat 0 玩家自家不挂 AI persona
 
 

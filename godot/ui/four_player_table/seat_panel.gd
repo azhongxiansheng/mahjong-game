@@ -72,17 +72,17 @@ var _speech_label: Label = null
 # 各 persona 的台词池。key = persona_name(set_ai_persona 时设),value =
 # Dictionary{event → Array[String]}。无对应 persona 用 GENERIC fallback。
 const SPEECH_POOL: Dictionary = {
-	"赤木": {
+	"凌夜": {
 		"riichi": ["立直。", "看你怎么躲。", "无路可退了。"],
 		"winning": ["自摸。", "如我所料。", "这就是差距。"],
 		"upset": ["啧。", "下一把。", "意料之中。"],
 	},
-	"开司": {
+	"阿烈": {
 		"riichi": ["立直——！", "全押了！", "命运的一手！"],
 		"winning": ["胡了——！", "成功了!", "再赢一把!"],
 		"upset": ["啊啊啊不!", "怎么会！", "再来再来！"],
 	},
-	"鹫巣": {
+	"金老": {
 		"riichi": ["立直。可笑。", "回响吧, 我的牌。", "看清了。"],
 		"winning": ["和。", "不过尔尔。", "随便玩玩。"],
 		"upset": ["哼。", "运气罢了。", "无趣。"],
