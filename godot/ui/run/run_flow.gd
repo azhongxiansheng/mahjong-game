@@ -77,7 +77,9 @@ func _maybe_show_tutorial() -> void:
 		return
 	var t := TutorialOverlay.new()
 	t.name = "_tutorial_overlay_root"
-	get_tree().root.add_child(t)
+	# _ready 期 root 还在 setup children,直接 add_child 会被引擎拒绝
+	# (启动日志 "Parent node is busy setting up children"),教程压根没弹。
+	get_tree().root.add_child.call_deferred(t)
 
 
 # ESC 唤起设置 overlay,H 唤起帮助 overlay。BattleNode 在战斗内有自己的 ESC,
