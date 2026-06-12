@@ -606,7 +606,7 @@ func _swap_panel(new_panel: Control) -> void:
 		new_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
 		new_panel.scale = Vector2.ONE
 		new_panel.position = Vector2.ZERO
-		new_panel.size = Vector2(DT.VIEW_W, DT.VIEW_H)
+		# size 由 FULL_RECT 锚点接管,显式设值会触发引擎警告且被覆盖
 		if _hud:
 			_hud.visible = false
 		if new_panel.has_method("set_run_hud") and _run_state:
@@ -642,23 +642,24 @@ static func _loading_text_for_battle(node_ref: NodeRef) -> String:
 	var label := node_ref.display_name() if node_ref else "战斗"
 	return "%s 进行中…\n（v1 v1 同步跑完整场东风战，无 4 人桌动画；M5/M6 视觉化）" % label
 
-func _show_battle_prep(table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array, node_ref: NodeRef = null) -> void:
+func _show_battle_prep(_table: Control, boss_id: StringName, ability_ids: Array, tile_variants: Dictionary, consumable_ids: Array, node_ref: NodeRef = null) -> void:
+	# 挂 RunFlow 自身(矩形可靠),面板用显式坐标 — 之前挂 table + 居中锚点,
+	# 战斗路径下 table 矩形异常时面板被推出窗口右缘,「开战」按钮够不到
+	# → 玩家完全卡死(2026-06-13 截图复盘)。
 	var overlay := Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	table.add_child(overlay)
+	overlay.z_index = 50
+	add_child(overlay)
 	var bg := ColorRect.new()
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, DT.MODAL_BG_DIM)
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	overlay.add_child(bg)
 	var panel := VBoxContainer.new()
-	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.custom_minimum_size = Vector2(600, 500)
-	panel.offset_left = -300
-	panel.offset_top = -250
-	panel.offset_right = 300
-	panel.offset_bottom = 250
+	panel.position = Vector2((DT.VIEW_W - 600) / 2.0, 110)
+	panel.custom_minimum_size = Vector2(600, 520)
+	panel.size = Vector2(600, 520)
 	panel.add_theme_constant_override("separation", DT.GAP_NORMAL)
 	overlay.add_child(panel)
 	var title := Label.new()
