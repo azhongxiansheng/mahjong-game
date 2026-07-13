@@ -143,7 +143,7 @@ Tile-rendering invariants worth knowing:
   - `yaku/` — 38 个役判定（`yaku/pattern/` 形式役、`yaku/yakuman/` 役満、`yaku/state/` 状态役），`YakuEvaluator` 入口、`YakuEntries` 互斥规则
   - 顶层有 `ScoreCalc`（结算入口）、`WinContext` aka `ScoreContext`（结算上下文）、`YakuList`（dict 累计简版）
 - **`core/turn_engine/`** — `TurnEngine` 状态机（draw / discard / advance / declare_riichi / apply_chi/pon/minkan/ankan/added_kan/ron/tsumo）、`ClaimValidator` 鸣牌合法性、`RiichiValidator` 立直触发、`DrawDetector` 流局触发。
-- **`battle/`** — 运行时数据：`BattleState`（seats / wall / phase / dora_indicators / current_seat / honba / riichi_sticks）、`Seat`（hand / melds / points / riichi / furiten / discards）、`SkillScheduler` 调度器（owner/holder 分组 + rarity 排序 + 链路深度防护）、`BattleEvent`、`SkillCtx`、`TileInstance`。
+- **`battle/`** — 运行时数据：`BattleState`（seats / wall / phase / dora_indicators / current_seat / honba / riichi_sticks）、`Seat`（hand / melds / points / riichi / furiten / discards）、`SkillScheduler` 调度器（owner/holder 分组 + rarity 排序 + 链路深度防护）、`BattleEvent`、`SkillCtx`、`TileInstance`。玩家输入通过 `PlayerDecisionPort` 接入；`PlayableBattleController` 不依赖具体 UI 控件。
 - **`skills/`** — `SkillResource` / `SkillRegistry` / `SkillHook` 接口；`skills/hooks/` 含 6 个 demo（`thunder_5w` 增番、`seal_chun` 阻胡、`soul_drain_hatsu` 抓马、`xray_1w` 透明牌、`unfuriten_5p` 解振听、`seabed_hunter` 角色能力）。
 
 里程碑进度详见 `docs/superpowers/plans/`：0a-0e（规则引擎全栈）+ 里程碑 1（技能框架）已完成；里程碑 2（单局对战 vs 1 AI）进行中。

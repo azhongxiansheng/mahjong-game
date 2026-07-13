@@ -321,7 +321,7 @@ func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> 
 #
 # 这些钩子是同步默认实现：返当前 AI / RiichiValidator 计算的决策，与原来直
 # 接 inline 调用 ai.decide_* 的行为完全一致。PlayableBattleController 子类
-# 覆写这些钩子改成 await PlayerActionPanel signal，配合 run_to_end_async()。
+# 覆写这些钩子改成 await PlayerDecisionPort，配合 run_to_end_async()。
 # 默认 sync 路径下 await 一个非 coroutine 值是 no-op，所以两条路径可共用。
 
 # 决定 actor 切哪张牌；默认 = ai.decide_discard(seat)。

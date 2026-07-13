@@ -17,6 +17,7 @@ const ACTION_PANEL_HEIGHT: float = 80.0
 var _table: FourPlayerTable = null
 var _action_panel: PlayerActionPanel = null
 var _bc: PlayableBattleController = null
+var _decision_adapter: TableDecisionAdapter = null
 
 var _seat_panel_player: SeatPanel = null
 
@@ -195,9 +196,10 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 		_seat_panel_player = _table.seat_panels[0]
 		if not _seat_panel_player.player_card_clicked.is_connected(_on_player_tile_clicked):
 			_seat_panel_player.player_card_clicked.connect(_on_player_tile_clicked)
-	_bc.bind_ui(_action_panel, _seat_panel_player, get_tree())
+	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
+	_bc.bind_decision_port(_decision_adapter, get_tree())
 	_table.bind_battle_state(bc.state, 0, 4)
-	_action_panel.enter_idle("准备开局…")
+	_decision_adapter.present(&"idle", {"text": "准备开局…"})
 	_attach_event_polling()
 	# 注册到 DebugOverlay (F3 调试面板) — 让运行时可观测 BC state。
 	var dbg = get_node_or_null("/root/DebugOverlay")
@@ -223,7 +225,7 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 		dbg.unregister_battle_controller(bc)
 	if log_node:
 		log_node.info("battle", "hand end last_event=%s" % str(result.get("last_event", "")))
-	_action_panel.enter_idle("本局结束")
+	_decision_adapter.present(&"idle", {"text": "本局结束"})
 	_table.bind_battle_state(bc.state, 0, 4)
 	# 记终身统计 + 检测成就解锁(发 achievement_unlocked signal,toast 在 _on_achievement_unlocked)
 	_record_hand_stats(bc)
@@ -1120,8 +1122,8 @@ func _exit_tree() -> void:
 	_polling_active = false
 
 func _on_player_tile_clicked(tile_id: int) -> void:
-	if _action_panel != null:
-		_action_panel.on_hand_tile_clicked(tile_id)
+	if _decision_adapter != null:
+		_decision_adapter.on_hand_tile_clicked(tile_id)
 
 # 键盘 helper：D=切第一张牌；S=跳过；R=立直 yes — 备用调试入口
 func _input(event: InputEvent) -> void:
@@ -1132,16 +1134,16 @@ func _input(event: InputEvent) -> void:
 		return
 	match k.keycode:
 		KEY_D:
-			if _bc != null and _action_panel != null:
+			if _bc != null and _decision_adapter != null:
 				var hand_ids: Array = _bc.state.seats[0].hand.to_id_array()
 				if hand_ids.size() > 0:
-					_action_panel.on_hand_tile_clicked(int(hand_ids[0]))
+					_decision_adapter.on_hand_tile_clicked(int(hand_ids[0]))
 		KEY_S:
-			if _action_panel != null:
-				_action_panel.player_action_chosen.emit({"action": "skip"})
+			if _decision_adapter != null:
+				_decision_adapter.submit_action({"action": "skip"})
 		KEY_R:
-			if _action_panel != null:
-				_action_panel.player_action_chosen.emit({"action": "riichi_yes"})
+			if _decision_adapter != null:
+				_decision_adapter.submit_action({"action": "riichi_yes"})
 		KEY_ESCAPE:
 			# 唤起设置 overlay(SFX 音量调节);overlay 自己 ESC 关
 			_open_settings_overlay()

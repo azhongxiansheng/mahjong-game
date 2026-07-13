@@ -8,7 +8,7 @@ class_name PlayerActionPanel extends Control
 #   WAITING_RIICHI_CONFIRM 玩家刚切完牌，BC 算出可立直，问"立直/不立直"
 #   WAITING_CLAIM          别家切牌，玩家可荣和/见逃（v1 不支持吃碰杠）
 #
-# 上层（PlayableTable）订阅 player_action_chosen，await 后拿 dict 决定下一步。
+# TableDecisionAdapter 订阅 player_action_chosen，转成 PlayerDecisionPort 响应。
 
 signal player_action_chosen(choice: Dictionary)
 # choice schema:
@@ -150,7 +150,7 @@ func _refresh_bg() -> void:
 			break
 	_bg.visible = any_btn_visible
 
-# ---- 公开 API（PlayableTable / PlayableBattleController 调） ----
+# ---- 公开 API（TableDecisionAdapter 调） ----
 
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
 # 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
@@ -205,7 +205,7 @@ func enter_waiting_riichi_confirm() -> void:
 	_show_btn(_btn_skip)  # = "不立直"
 
 # 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和/吃/碰/杠或见逃。
-# 4 个 can_* 标志由 PlayableBattleController 算出（ClaimValidator）。
+# 4 个 can_* 标志由战斗层算出，经 TableDecisionAdapter 传入。
 func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan: bool, discarder_seat: int) -> void:
 	_state = State.WAITING_CLAIM
 	_claim_discarder_seat = discarder_seat
