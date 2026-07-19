@@ -25,8 +25,10 @@ func _ready() -> void:
 	RunUi.attach_background(self)
 	RunUi.attach_panel_icon($VBox, "res://assets/run_icons/node_camp.png")
 	if _heal_btn:
+		DT.apply_button_role(_heal_btn, DT.BtnRole.PRIMARY)
 		_heal_btn.pressed.connect(_on_heal_pressed)
 	if _leave_btn:
+		DT.apply_button_role(_leave_btn, DT.BtnRole.SECONDARY)
 		_leave_btn.pressed.connect(_on_leave_pressed)
 	_refresh()
 

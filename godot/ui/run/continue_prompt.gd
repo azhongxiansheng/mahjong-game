@@ -17,8 +17,10 @@ var _save_summary_text: String = "（无存档摘要）"
 func _ready() -> void:
 	RunUi.attach_background(self)
 	if _continue_btn:
+		DT.apply_button_role(_continue_btn, DT.BtnRole.PRIMARY)
 		_continue_btn.pressed.connect(func(): emit_signal("continue_run"))
 	if _new_btn:
+		DT.apply_button_role(_new_btn, DT.BtnRole.SECONDARY)
 		_new_btn.pressed.connect(func(): emit_signal("new_run"))
 	if _info:
 		_info.text = _save_summary_text

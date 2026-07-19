@@ -23,12 +23,11 @@ const REVIVE_GOLD_COST: int = 50
 func _ready() -> void:
 	RunUi.attach_background(self)
 	if _back_btn:
+		DT.apply_button_role(_back_btn, DT.BtnRole.PRIMARY)
 		_back_btn.pressed.connect(func(): emit_signal("back_to_menu"))
 	# "查看战绩" + "复活" 共用 _back_btn 父容器,横向并列在结算页底部。
 	if _back_btn != null and _back_btn.get_parent() != null:
-		var stats_btn := Button.new()
-		stats_btn.text = "查看战绩"
-		stats_btn.custom_minimum_size = Vector2(160, DT.BUTTON_H)
+		var stats_btn := DT.make_button("查看战绩", DT.BtnRole.SECONDARY, Vector2(160, DT.BUTTON_H))
 		stats_btn.pressed.connect(_on_stats_pressed)
 		_back_btn.get_parent().add_child(stats_btn)
 
@@ -46,18 +45,17 @@ func _maybe_add_revive_button(rs: RunState) -> void:
 		return
 	if _back_btn == null or _back_btn.get_parent() == null:
 		return
-	var revive_btn := Button.new()
-	revive_btn.name = "ReviveBtn"
-	revive_btn.custom_minimum_size = Vector2(220, DT.BUTTON_H)
 	var afford: bool = rs.gold >= REVIVE_GOLD_COST
+	var revive_btn := DT.make_button(
+		"💰 花 %d gold 复活" % REVIVE_GOLD_COST if afford \
+			else "复活需要 %d gold (你有 %d)" % [REVIVE_GOLD_COST, rs.gold],
+		DT.BtnRole.PRIMARY if afford else DT.BtnRole.SECONDARY,
+		Vector2(240, DT.BUTTON_H))
+	revive_btn.name = "ReviveBtn"
 	if afford:
-		revive_btn.text = "💰 花 %d gold 复活" % REVIVE_GOLD_COST
-		revive_btn.add_theme_color_override("font_color", DT.TEXT_TITLE)
 		revive_btn.pressed.connect(func(): emit_signal("revive_requested"))
 	else:
-		revive_btn.text = "复活需要 %d gold (你有 %d)" % [REVIVE_GOLD_COST, rs.gold]
 		revive_btn.disabled = true
-		revive_btn.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	# 放在第一位 (主推这个 CTA),让"再来一把"成为失败页面的视觉重点
 	var parent := _back_btn.get_parent()
 	parent.add_child(revive_btn)

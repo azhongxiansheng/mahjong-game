@@ -79,36 +79,16 @@ func _ready() -> void:
 	panel.add_child(msg_lbl)
 
 	# Cancel 在左,Confirm 在右 — Windows/macOS 通用习惯
-	var cancel_btn := Button.new()
-	cancel_btn.text = _cancel_text
+	var cancel_btn := DT.make_button(_cancel_text, DT.BtnRole.SECONDARY, Vector2(140, 40))
 	cancel_btn.position = Vector2(40, PANEL_H - 60)
-	cancel_btn.custom_minimum_size = Vector2(140, 40)
 	cancel_btn.pressed.connect(_on_cancel)
 	panel.add_child(cancel_btn)
 
-	var confirm_btn := Button.new()
-	confirm_btn.text = _confirm_text
+	var conf_role: int = DT.BtnRole.DANGER if _destructive else DT.BtnRole.PRIMARY
+	var confirm_btn := DT.make_button(_confirm_text, conf_role, Vector2(140, 40))
 	confirm_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
-	confirm_btn.custom_minimum_size = Vector2(140, 40)
-	if _destructive:
-		# 猩红 styling 强调"不可逆"
-		var sb_normal := StyleBoxFlat.new()
-		sb_normal.bg_color = Color(DT.TEXT_DANGER.r * 0.6, DT.TEXT_DANGER.g * 0.2, DT.TEXT_DANGER.b * 0.2)
-		sb_normal.border_color = DT.TEXT_DANGER
-		sb_normal.border_width_left = 2
-		sb_normal.border_width_right = 2
-		sb_normal.border_width_top = 2
-		sb_normal.border_width_bottom = 2
-		sb_normal.corner_radius_top_left = 4
-		sb_normal.corner_radius_top_right = 4
-		sb_normal.corner_radius_bottom_left = 4
-		sb_normal.corner_radius_bottom_right = 4
-		confirm_btn.add_theme_stylebox_override("normal", sb_normal)
-		confirm_btn.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	confirm_btn.pressed.connect(_on_confirm)
 	panel.add_child(confirm_btn)
-
-	DT.popin(panel)
 
 
 func _input(event: InputEvent) -> void:

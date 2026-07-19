@@ -5,6 +5,16 @@ class_name DesignTokens extends Node
 #
 # 改动这里 = 一处改全局生效,避免 9+ 处近似金色 / 13+ 种背景色 / 字号
 # 14~36 七档不规范 的乱象。新增 UI 严禁硬编码颜色/字号,必须走 DT。
+#
+# _ready 会把 HSlider / OptionButton / CheckButton / LineEdit / PopupMenu
+# 等控件样式补进 project Theme，避免设置页等仍是 Godot 默认灰控件。
+
+var _theme_patched: bool = false
+
+
+func _ready() -> void:
+	patch_project_theme()
+
 
 # ---- 基准 viewport (所有面板设计基准) ----
 
@@ -210,6 +220,253 @@ static func make_centered_panel(width: float, height: float) -> Panel:
 	sb.shadow_size = 16
 	panel.add_theme_stylebox_override("panel", sb)
 	return panel
+
+
+# ---- 交互控件样式（按钮角色 / 滑条 / 下拉 / 开关）----
+
+enum BtnRole { PRIMARY, SECONDARY, DANGER, GHOST }
+
+
+static func _flat_sb(bg: Color, border: Color, bw: int = 2, radius: int = 8,
+		pad_h: int = 14, pad_v: int = 8) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.border_color = border
+	sb.set_border_width_all(bw)
+	sb.set_corner_radius_all(radius)
+	sb.content_margin_left = pad_h
+	sb.content_margin_right = pad_h
+	sb.content_margin_top = pad_v
+	sb.content_margin_bottom = pad_v
+	return sb
+
+
+# 给已有 Button 套角色外观（不改 text / 信号）
+static func apply_button_role(btn: Button, role: int = BtnRole.PRIMARY) -> void:
+	if btn == null:
+		return
+	var bg_n: Color
+	var bg_h: Color
+	var bg_p: Color
+	var bg_d: Color
+	var border: Color
+	var font_c: Color = TEXT_PRIMARY
+	match role:
+		BtnRole.DANGER:
+			bg_n = Color(0.42, 0.12, 0.12, 0.96)
+			bg_h = Color(0.55, 0.16, 0.16, 0.98)
+			bg_p = Color(0.32, 0.08, 0.08, 0.98)
+			bg_d = Color(0.18, 0.10, 0.10, 0.85)
+			border = TEXT_DANGER
+			font_c = Color(1.0, 0.88, 0.88)
+		BtnRole.SECONDARY:
+			bg_n = Color(0.12, 0.13, 0.17, 0.96)
+			bg_h = Color(0.18, 0.17, 0.22, 0.98)
+			bg_p = Color(0.10, 0.10, 0.14, 0.98)
+			bg_d = Color(0.08, 0.08, 0.09, 0.85)
+			border = BORDER_GOLD_SOFT
+		BtnRole.GHOST:
+			bg_n = Color(0, 0, 0, 0)
+			bg_h = Color(1, 1, 1, 0.06)
+			bg_p = Color(1, 1, 1, 0.10)
+			bg_d = Color(0, 0, 0, 0)
+			border = Color(0, 0, 0, 0)
+			font_c = TEXT_MUTED
+		_:  # PRIMARY — 金边暗底
+			bg_n = Color(0.16, 0.13, 0.10, 0.97)
+			bg_h = Color(0.24, 0.18, 0.10, 0.98)
+			bg_p = Color(0.12, 0.10, 0.08, 0.98)
+			bg_d = Color(0.10, 0.09, 0.08, 0.85)
+			border = BORDER_GOLD
+			font_c = TEXT_TITLE
+	btn.add_theme_stylebox_override("normal", _flat_sb(bg_n, border))
+	btn.add_theme_stylebox_override("hover", _flat_sb(bg_h, border.lightened(0.15)))
+	btn.add_theme_stylebox_override("pressed", _flat_sb(bg_p, border.darkened(0.1)))
+	btn.add_theme_stylebox_override("focus", _flat_sb(bg_h, border.lightened(0.2)))
+	btn.add_theme_stylebox_override("disabled", _flat_sb(bg_d, Color(0.3, 0.3, 0.32, 0.5)))
+	btn.add_theme_color_override("font_color", font_c)
+	btn.add_theme_color_override("font_hover_color", font_c.lightened(0.1))
+	btn.add_theme_color_override("font_pressed_color", font_c)
+	btn.add_theme_color_override("font_disabled_color", TEXT_MUTED)
+	btn.add_theme_font_size_override("font_size", FONT_BODY)
+	if btn.custom_minimum_size.y < BUTTON_H:
+		btn.custom_minimum_size.y = BUTTON_H
+
+
+static func make_button(text: String, role: int = BtnRole.PRIMARY,
+		min_size: Vector2 = Vector2(140, BUTTON_H)) -> Button:
+	var btn := Button.new()
+	btn.text = text
+	btn.custom_minimum_size = min_size
+	apply_button_role(btn, role)
+	return btn
+
+
+static func style_hslider(slider: HSlider) -> void:
+	if slider == null:
+		return
+	# 轨道
+	var grabber_area := _flat_sb(Color(0.12, 0.12, 0.14, 1), BORDER_GOLD_SOFT, 1, 6, 0, 0)
+	grabber_area.content_margin_top = 6
+	grabber_area.content_margin_bottom = 6
+	var grabber_area_hl := _flat_sb(Color(0.18, 0.15, 0.12, 1), BORDER_GOLD, 1, 6, 0, 0)
+	grabber_area_hl.content_margin_top = 6
+	grabber_area_hl.content_margin_bottom = 6
+	slider.add_theme_stylebox_override("slider", grabber_area)
+	slider.add_theme_stylebox_override("grabber_area", grabber_area_hl)
+	slider.add_theme_stylebox_override("grabber_area_highlight", grabber_area_hl)
+	# 滑块用小 StyleBox 圆角方块（无自定义 icon 时用 style）
+	var grab := _flat_sb(TEXT_TITLE, Color(0.4, 0.3, 0.1, 1), 1, 8, 0, 0)
+	grab.content_margin_left = 0
+	grab.content_margin_right = 0
+	# Godot 4 HSlider grabber 主要靠 icon；style 侧用 theme color 辅助
+	slider.add_theme_constant_override("grabber_offset", 0)
+	slider.custom_minimum_size.y = 28
+
+
+static func style_option_button(opt: OptionButton) -> void:
+	if opt == null:
+		return
+	apply_button_role(opt, BtnRole.SECONDARY)
+	opt.custom_minimum_size.y = maxf(opt.custom_minimum_size.y, 36.0)
+	# 下拉 PopupMenu 在 theme 层由 patch_project_theme 统一
+
+
+static func style_check_button(cb: CheckButton) -> void:
+	if cb == null:
+		return
+	cb.add_theme_color_override("font_color", TEXT_PRIMARY)
+	cb.add_theme_color_override("font_pressed_color", TEXT_TITLE)
+	cb.add_theme_color_override("font_hover_color", TEXT_TITLE)
+	cb.add_theme_font_size_override("font_size", FONT_BODY)
+
+
+static func style_line_edit(le: LineEdit) -> void:
+	if le == null:
+		return
+	var n := _flat_sb(Color(0.08, 0.09, 0.12, 0.98), BORDER_GOLD_SOFT, 1, 6, 10, 8)
+	var f := _flat_sb(Color(0.10, 0.11, 0.15, 0.98), BORDER_GOLD, 2, 6, 10, 8)
+	var r := _flat_sb(Color(0.06, 0.07, 0.09, 0.9), Color(0.3, 0.3, 0.32), 1, 6, 10, 8)
+	le.add_theme_stylebox_override("normal", n)
+	le.add_theme_stylebox_override("focus", f)
+	le.add_theme_stylebox_override("read_only", r)
+	le.add_theme_color_override("font_color", TEXT_PRIMARY)
+	le.add_theme_color_override("font_placeholder_color", TEXT_MUTED)
+	le.add_theme_color_override("caret_color", TEXT_TITLE)
+	le.add_theme_color_override("selection_color", Color(0.85, 0.65, 0.25, 0.35))
+	le.add_theme_font_size_override("font_size", FONT_BODY)
+	le.custom_minimum_size.y = maxf(le.custom_minimum_size.y, 36.0)
+
+
+# 把缺失的控件类型样式写进 project Theme（全局生效）
+func patch_project_theme() -> void:
+	if _theme_patched:
+		return
+	var theme: Theme = ThemeDB.get_project_theme()
+	if theme == null:
+		# 兜底：从资源加载
+		if ResourceLoader.exists("res://ui/run_theme.tres"):
+			theme = load("res://ui/run_theme.tres") as Theme
+	if theme == null:
+		return
+	_apply_controls_to_theme(theme)
+	# 确保当前树用的是这份 theme
+	if ThemeDB.get_project_theme() == null:
+		pass  # project.godot 已设 custom theme
+	_theme_patched = true
+
+
+static func _apply_controls_to_theme(theme: Theme) -> void:
+	if theme == null:
+		return
+	# --- HSlider ---
+	var track := _flat_sb(Color(0.12, 0.12, 0.15, 1), BORDER_GOLD_SOFT, 1, 6, 0, 0)
+	track.content_margin_top = 5
+	track.content_margin_bottom = 5
+	var fill := _flat_sb(Color(0.55, 0.42, 0.15, 1), BORDER_GOLD, 1, 6, 0, 0)
+	fill.content_margin_top = 5
+	fill.content_margin_bottom = 5
+	theme.set_stylebox("slider", "HSlider", track)
+	theme.set_stylebox("grabber_area", "HSlider", fill)
+	theme.set_stylebox("grabber_area_highlight", "HSlider", fill)
+	# --- OptionButton 字体色 ---
+	theme.set_color("font_color", "OptionButton", TEXT_PRIMARY)
+	theme.set_color("font_hover_color", "OptionButton", TEXT_TITLE)
+	theme.set_color("font_pressed_color", "OptionButton", TEXT_TITLE)
+	theme.set_color("font_disabled_color", "OptionButton", TEXT_MUTED)
+	var opt_n := _flat_sb(Color(0.12, 0.13, 0.17, 0.96), BORDER_GOLD_SOFT, 2, 8, 12, 8)
+	var opt_h := _flat_sb(Color(0.18, 0.17, 0.22, 0.98), BORDER_GOLD, 2, 8, 12, 8)
+	theme.set_stylebox("normal", "OptionButton", opt_n)
+	theme.set_stylebox("hover", "OptionButton", opt_h)
+	theme.set_stylebox("pressed", "OptionButton", opt_h)
+	theme.set_stylebox("disabled", "OptionButton",
+		_flat_sb(Color(0.08, 0.08, 0.09, 0.85), Color(0.3, 0.3, 0.32, 0.5), 1, 8, 12, 8))
+	theme.set_stylebox("focus", "OptionButton", opt_h)
+	# --- PopupMenu（OptionButton 下拉）---
+	var pop_panel := _flat_sb(SURFACE_PANEL, BORDER_GOLD, 2, 8, 8, 8)
+	pop_panel.shadow_size = 10
+	pop_panel.shadow_color = Color(0, 0, 0, 0.5)
+	theme.set_stylebox("panel", "PopupMenu", pop_panel)
+	theme.set_stylebox("hover", "PopupMenu",
+		_flat_sb(Color(0.22, 0.18, 0.12, 0.95), BORDER_GOLD_SOFT, 0, 4, 8, 6))
+	theme.set_color("font_color", "PopupMenu", TEXT_PRIMARY)
+	theme.set_color("font_hover_color", "PopupMenu", TEXT_TITLE)
+	theme.set_color("font_accelerator_color", "PopupMenu", TEXT_MUTED)
+	theme.set_color("font_separator_color", "PopupMenu", TEXT_MUTED)
+	# --- CheckButton / CheckBox ---
+	theme.set_color("font_color", "CheckButton", TEXT_PRIMARY)
+	theme.set_color("font_pressed_color", "CheckButton", TEXT_TITLE)
+	theme.set_color("font_hover_color", "CheckButton", TEXT_TITLE)
+	theme.set_color("font_hover_pressed_color", "CheckButton", TEXT_TITLE)
+	theme.set_color("font_disabled_color", "CheckButton", TEXT_MUTED)
+	theme.set_color("font_color", "CheckBox", TEXT_PRIMARY)
+	theme.set_color("font_pressed_color", "CheckBox", TEXT_TITLE)
+	theme.set_color("font_hover_color", "CheckBox", TEXT_TITLE)
+	# --- LineEdit ---
+	var le_n := _flat_sb(Color(0.08, 0.09, 0.12, 0.98), BORDER_GOLD_SOFT, 1, 6, 10, 8)
+	var le_f := _flat_sb(Color(0.10, 0.11, 0.15, 0.98), BORDER_GOLD, 2, 6, 10, 8)
+	theme.set_stylebox("normal", "LineEdit", le_n)
+	theme.set_stylebox("focus", "LineEdit", le_f)
+	theme.set_stylebox("read_only", "LineEdit",
+		_flat_sb(Color(0.06, 0.07, 0.09, 0.9), Color(0.3, 0.3, 0.32), 1, 6, 10, 8))
+	theme.set_color("font_color", "LineEdit", TEXT_PRIMARY)
+	theme.set_color("font_placeholder_color", "LineEdit", TEXT_MUTED)
+	theme.set_color("caret_color", "LineEdit", TEXT_TITLE)
+	theme.set_color("selection_color", "LineEdit", Color(0.85, 0.65, 0.25, 0.35))
+	# --- TextEdit ---
+	theme.set_stylebox("normal", "TextEdit", le_n)
+	theme.set_stylebox("focus", "TextEdit", le_f)
+	theme.set_color("font_color", "TextEdit", TEXT_PRIMARY)
+	theme.set_color("caret_color", "TextEdit", TEXT_TITLE)
+	theme.set_color("selection_color", "TextEdit", Color(0.85, 0.65, 0.25, 0.35))
+	# --- HSeparator / VSeparator ---
+	var sep := StyleBoxLine.new()
+	sep.color = BORDER_GOLD_SOFT
+	sep.thickness = 1
+	sep.vertical = false
+	theme.set_stylebox("separator", "HSeparator", sep)
+	var vsep := StyleBoxLine.new()
+	vsep.color = BORDER_GOLD_SOFT
+	vsep.thickness = 1
+	vsep.vertical = true
+	theme.set_stylebox("separator", "VSeparator", vsep)
+	# --- ScrollBar ---
+	var scroll_bg := _flat_sb(Color(0.06, 0.07, 0.09, 0.9), Color(0, 0, 0, 0), 0, 4, 0, 0)
+	var scroll_grab := _flat_sb(Color(0.35, 0.30, 0.18, 0.9), BORDER_GOLD_SOFT, 1, 4, 0, 0)
+	theme.set_stylebox("scroll", "VScrollBar", scroll_bg)
+	theme.set_stylebox("grabber", "VScrollBar", scroll_grab)
+	theme.set_stylebox("grabber_highlight", "VScrollBar",
+		_flat_sb(Color(0.55, 0.45, 0.22, 0.95), BORDER_GOLD, 1, 4, 0, 0))
+	theme.set_stylebox("grabber_pressed", "VScrollBar",
+		_flat_sb(Color(0.65, 0.52, 0.25, 1), BORDER_GOLD, 1, 4, 0, 0))
+	theme.set_stylebox("scroll", "HScrollBar", scroll_bg)
+	theme.set_stylebox("grabber", "HScrollBar", scroll_grab)
+	# --- TooltipPanel ---
+	var tip := _flat_sb(Color(0.08, 0.09, 0.12, 0.97), BORDER_GOLD, 1, 6, 10, 8)
+	tip.shadow_size = 6
+	theme.set_stylebox("panel", "TooltipPanel", tip)
+	theme.set_color("font_color", "TooltipLabel", TEXT_PRIMARY)
+	theme.set_font_size("font_size", "TooltipLabel", FONT_CAPTION)
 
 
 # ---- 入场/强调动效 (Anima 插件, addons/anima) ----

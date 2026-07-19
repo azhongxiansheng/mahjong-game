@@ -26,6 +26,7 @@ func _ready() -> void:
 	RunUi.attach_background(self)
 	RunUi.attach_panel_icon($VBox, "res://assets/run_icons/node_shop.png")
 	if _next_btn:
+		DT.apply_button_role(_next_btn, DT.BtnRole.PRIMARY)
 		_next_btn.pressed.connect(func(): emit_signal("done"))
 
 # ---- public setters ----
