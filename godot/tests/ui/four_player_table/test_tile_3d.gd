@@ -54,3 +54,42 @@ func test_tile_animate_to_sets_base() -> void:
 	t.animate_to(Vector3(0.2, 0.02, 0.3), Vector3(0, 90, 0), 0.01)
 	await get_tree().create_timer(0.05).timeout
 	assert_almost_eq(t._base_y, 0.02, 0.001)
+
+
+func test_live_wall_and_dead_wall() -> void:
+	var table := MahjongTable3D.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var state := BattleState.for_east_round(42, 0, 1, 0, 0)
+	var live: int = state.wall.live_wall_size()
+	assert_gt(live, 0, "开局应有 live wall")
+	table.bind_battle_state(state, 0, 4)
+	assert_eq(table._wall_tiles.size(), live, "牌山 mesh 数应等于 live wall")
+	assert_eq(table._dead_wall_tiles.size(), 14, "王牌区视觉 14 张")
+
+
+func test_center_sides_and_riichi_sticks() -> void:
+	var table := MahjongTable3D.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var state := BattleState.for_east_round(7, 0, 1, 2, 3)
+	state.seats[1].riichi.declared = true
+	table.bind_battle_state(state, 0, 4)
+	assert_eq(table._center_side_labels.size(), 4, "四方分数标签")
+	assert_true(table._center_label.text.contains("本场"), "中心应显示本场")
+	# 池 3 根 + seat1 立直 1 根
+	assert_eq(table._riichi_stick_meshes.size(), 4, "立直棒 = 池 + 已立直家")
+	assert_not_null(table._active_marker, "当前家高亮条")
+
+
+func test_active_marker_moves_with_current_seat() -> void:
+	var table := MahjongTable3D.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var state := BattleState.for_east_round(3, 0, 1, 0, 0)
+	state.current_seat = 0
+	table.bind_battle_state(state, 0, 4)
+	var z0: float = table._active_marker.position.z
+	state.current_seat = 2
+	table.bind_battle_state(state, 0, 4)
+	assert_lt(table._active_marker.position.z, z0, "current=2 时高亮应移向对家侧")
