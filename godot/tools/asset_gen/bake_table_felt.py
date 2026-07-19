@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""烘焙麻将桌面:毛毡纹理 + 木质边框(T3,spec 2026-06-11 G3)。
+"""烘焙麻将桌面:毛毡纹理 + 木质边框(雀魂式满桌舞台)。
 
-对标参考作的 .table-felt(#1f5132 + feTurbulence 噪声)与 .table-rail
-(木纹渐变 + 暖白高光线)。输出单张 1080×720 PNG,FourPlayerTable 的
-TableFelt TextureRect 直接整图贴,无需布局代码改动。
+对标 .table-felt + .table-rail(木纹 + 暖白高光)。
+输出 1280×720 PNG,与 TableLayout.TABLE_W/H 一致。
 
 用法:
     python3 godot/tools/asset_gen/bake_table_felt.py
@@ -12,14 +11,14 @@ TableFelt TextureRect 直接整图贴,无需布局代码改动。
 import random
 from PIL import Image, ImageDraw, ImageFilter, ImageEnhance
 
-W, H = 1080, 720
-FRAME = 26          # 木框宽
-# 参考作 #1f5132 压暗 ~20%(我们无 3D 暗场,Akagi 氛围靠基色自己扛)
-FELT = (24, 64, 40)
+W, H = 1280, 720
+FRAME = 36          # 木框加宽,满桌更有「台」的重量
+# 深绿毡 + 略冷,对标雀魂/麻将馆
+FELT = (18, 58, 38)
 OUT = "godot/assets/table_felt.png"
 
-# 木纹色带(外→内):深红褐 → 焦黑
-WOOD = [(78, 29, 17), (62, 23, 9), (42, 14, 7), (14, 4, 2)]
+# 木纹色带(外→内):暖褐 → 焦黑
+WOOD = [(96, 42, 22), (78, 32, 14), (54, 20, 8), (28, 10, 4), (10, 4, 2)]
 
 
 def _noise_layer(w: int, h: int, sigma: int, scale: int) -> Image.Image:

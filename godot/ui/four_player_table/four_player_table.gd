@@ -149,25 +149,9 @@ static func seat_position(seat_id: int) -> Vector2:
 
 # ---- internal ----
 
-# T3(spec 2026-06-11 G3):烘焙毛毡 + 木框(bake_table_felt.py),
-# 1080×720 精确尺寸直贴;旧 AI 生成桌布作 fallback。
-const TABLE_BG_PATH := "res://assets/table_felt.png"
-const TABLE_BG_FALLBACK := "res://assets/mahjong_table_bg.png"
-
 func _build_layout() -> void:
-	# Bg 纯色块已在 .tscn;有桌布贴图资产时盖一张 TextureRect 上去。
-	var bg_path: String = TABLE_BG_PATH if ResourceLoader.exists(TABLE_BG_PATH) \
-		else TABLE_BG_FALLBACK
-	if ResourceLoader.exists(bg_path):
-		var felt := TextureRect.new()
-		felt.name = "TableFelt"
-		felt.texture = load(bg_path)
-		felt.position = Vector2(0, 0)
-		felt.size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
-		felt.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		felt.stretch_mode = TextureRect.STRETCH_SCALE
-		felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		add_child(felt)
+	# 整桌舞台（毡 + 木框烘焙图 + 暗角/中心光）
+	TableStage.build(self, TABLE_WIDTH, TABLE_HEIGHT)
 
 	var table := Node2D.new()
 	table.name = "Table"
@@ -212,42 +196,11 @@ func _build_layout() -> void:
 	center_info.position = TableLayout.center()
 	table.add_child(center_info)
 
-	# AbilityPanel：P0 隐藏，能力展示走 PlayableTable 顶栏 loadout
+	# AbilityPanel：隐藏，能力走顶栏 loadout
 	ability_panel = ABILITY_PANEL_SCENE.instantiate()
 	ability_panel.visible = false
 	ability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ability_panel)
-
-	# 木框暗角：四边内阴影，让毡不「贴屏幕边」
-	_add_table_frame()
-
-
-func _add_table_frame() -> void:
-	var frame := Control.new()
-	frame.name = "TableFrame"
-	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
-	# 四边暗条
-	for edge in [
-		[Vector2(0, 0), Vector2(TABLE_WIDTH, 18)],
-		[Vector2(0, TABLE_HEIGHT - 18), Vector2(TABLE_WIDTH, 18)],
-		[Vector2(0, 0), Vector2(18, TABLE_HEIGHT)],
-		[Vector2(TABLE_WIDTH - 18, 0), Vector2(18, TABLE_HEIGHT)],
-	]:
-		var r := ColorRect.new()
-		r.color = Color(0.04, 0.03, 0.02, 0.55)
-		r.position = edge[0]
-		r.size = edge[1]
-		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		frame.add_child(r)
-	# 内金线
-	var gold := ColorRect.new()
-	gold.color = Color(0.75, 0.62, 0.32, 0.22)
-	gold.position = Vector2(16, 16)
-	gold.size = Vector2(TABLE_WIDTH - 32, 2)
-	gold.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	frame.add_child(gold)
-	add_child(frame)
 
 
 const RIVER_W: float = TableLayout.RIVER_W
