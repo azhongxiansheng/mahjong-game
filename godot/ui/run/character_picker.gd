@@ -100,10 +100,7 @@ func _build_char_card(c: Character) -> PanelContainer:
 	stats.add_theme_color_override("font_color", DT.TEXT_SUCCESS)
 	vbox.add_child(stats)
 
-	var pick_btn := Button.new()
-	pick_btn.text = "出战"
-	pick_btn.custom_minimum_size = Vector2(140, DT.BUTTON_H)
-	pick_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	var pick_btn := DT.make_button("出战", DT.BtnRole.PRIMARY, Vector2(140, DT.BUTTON_H))
 	var cid: StringName = c.id
 	pick_btn.pressed.connect(func(): emit_signal("character_chosen", cid))
 	var btn_center := HBoxContainer.new()

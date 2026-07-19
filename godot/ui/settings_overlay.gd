@@ -69,6 +69,7 @@ func _ready() -> void:
 	_sfx_slider.step = 0.01
 	_sfx_slider.value = _sm().sfx_volume
 	_sfx_slider.value_changed.connect(_on_sfx_changed)
+	DT.style_hslider(_sfx_slider)
 	panel.add_child(_sfx_slider)
 
 	_sfx_value_label = Label.new()
@@ -81,10 +82,8 @@ func _ready() -> void:
 	panel.add_child(_sfx_value_label)
 
 	# 试听按钮 — 点了奏 button_click,玩家立刻听到当前音量
-	var test_btn := Button.new()
-	test_btn.text = "试听"
+	var test_btn := DT.make_button("试听", DT.BtnRole.SECONDARY, Vector2(100, 36))
 	test_btn.position = Vector2(40, 174)
-	test_btn.custom_minimum_size = Vector2(100, 36)
 	test_btn.pressed.connect(_on_test_pressed)
 	panel.add_child(test_btn)
 
@@ -92,9 +91,10 @@ func _ready() -> void:
 	var fs_btn := CheckButton.new()
 	fs_btn.text = "全屏"
 	fs_btn.position = Vector2(330, 174)
-	fs_btn.custom_minimum_size = Vector2(90, 36)
+	fs_btn.custom_minimum_size = Vector2(100, 36)
 	fs_btn.button_pressed = _sm().fullscreen
 	fs_btn.toggled.connect(_on_fullscreen_toggled)
+	DT.style_check_button(fs_btn)
 	panel.add_child(fs_btn)
 
 	# 帧率上限 — OptionButton 5 个预设
@@ -102,12 +102,12 @@ func _ready() -> void:
 	fps_label.text = "帧率上限"
 	fps_label.position = Vector2(40, 224)
 	fps_label.size = Vector2(160, 28)
-	fps_label.add_theme_font_size_override("font_size", 18)
-	fps_label.add_theme_color_override("font_color", Color(0.95, 0.92, 0.78))
+	fps_label.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	fps_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	panel.add_child(fps_label)
 	_fps_option = OptionButton.new()
 	_fps_option.position = Vector2(180, 222)
-	_fps_option.custom_minimum_size = Vector2(160, 32)
+	_fps_option.custom_minimum_size = Vector2(180, 36)
 	for i in range(FPS_PRESETS.size()):
 		_fps_option.add_item(String(FPS_LABELS[i]))
 	# 选当前 saved 值匹配的项;不在预设里就选 60 (idx 1) 兜底
@@ -116,6 +116,7 @@ func _ready() -> void:
 		cur_idx = 1
 	_fps_option.selected = cur_idx
 	_fps_option.item_selected.connect(_on_fps_selected)
+	DT.style_option_button(_fps_option)
 	panel.add_child(_fps_option)
 
 	# 雀魂式鸣牌响应倒计时（秒）
@@ -134,6 +135,7 @@ func _ready() -> void:
 	_claim_slider.step = 0.5
 	_claim_slider.value = float(_sm().claim_timeout_sec)
 	_claim_slider.value_changed.connect(_on_claim_timeout_changed)
+	DT.style_hslider(_claim_slider)
 	panel.add_child(_claim_slider)
 	_claim_value_label = Label.new()
 	_claim_value_label.position = Vector2(PANEL_W - 90, 298)
@@ -144,51 +146,27 @@ func _ready() -> void:
 	_claim_value_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(_claim_value_label)
 
-	# 重看新手引导按钮(清 tutorial_seen 标志 + 立刻弹 TutorialOverlay)
-	var tut_btn := Button.new()
-	tut_btn.text = "重看新手引导"
+	# 重看新手引导
+	var tut_btn := DT.make_button("重看新手引导", DT.BtnRole.SECONDARY, Vector2(160, 36))
 	tut_btn.position = Vector2(160, 174)
-	tut_btn.custom_minimum_size = Vector2(160, 36)
 	tut_btn.pressed.connect(_on_tutorial_pressed)
 	panel.add_child(tut_btn)
 
-	# 查看战绩按钮(开 StatsView overlay)
-	var stats_btn := Button.new()
-	stats_btn.text = "查看战绩"
+	# 底部操作行
+	var stats_btn := DT.make_button("查看战绩", DT.BtnRole.SECONDARY, Vector2(120, 40))
 	stats_btn.position = Vector2(40, PANEL_H - 60)
-	stats_btn.custom_minimum_size = Vector2(120, 40)
 	stats_btn.pressed.connect(_on_stats_pressed)
 	panel.add_child(stats_btn)
 
-	# 放弃本场 Run 按钮 — 仅当当前有进行中的 run 时可见(SaveSystem.has_save)
 	var ss = get_node_or_null("/root/SaveSystem")
 	if ss and ss.has_save():
-		var quit_btn := Button.new()
-		quit_btn.text = "放弃本场"
+		var quit_btn := DT.make_button("放弃本场", DT.BtnRole.DANGER, Vector2(120, 40))
 		quit_btn.position = Vector2(170, PANEL_H - 60)
-		quit_btn.custom_minimum_size = Vector2(120, 40)
-		# 猩红 styling 警示
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = Color(DT.TEXT_DANGER.r * 0.5, DT.TEXT_DANGER.g * 0.2, DT.TEXT_DANGER.b * 0.2)
-		sb.border_color = DT.TEXT_DANGER
-		sb.border_width_left = 2
-		sb.border_width_right = 2
-		sb.border_width_top = 2
-		sb.border_width_bottom = 2
-		sb.corner_radius_top_left = 4
-		sb.corner_radius_top_right = 4
-		sb.corner_radius_bottom_left = 4
-		sb.corner_radius_bottom_right = 4
-		quit_btn.add_theme_stylebox_override("normal", sb)
-		quit_btn.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 		quit_btn.pressed.connect(_on_quit_run_pressed)
 		panel.add_child(quit_btn)
 
-	# 关闭按钮
-	var close_btn := Button.new()
-	close_btn.text = "关闭 (ESC)"
+	var close_btn := DT.make_button("关闭 (ESC)", DT.BtnRole.PRIMARY, Vector2(140, 40))
 	close_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
-	close_btn.custom_minimum_size = Vector2(140, 40)
 	close_btn.pressed.connect(_on_close)
 	panel.add_child(close_btn)
 

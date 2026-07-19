@@ -150,11 +150,11 @@ func _build_pack_card(pack: Dictionary) -> PanelContainer:
 	desc.custom_minimum_size = Vector2(0, 80)
 	vbox.add_child(desc)
 
-	var pick := Button.new()
-	pick.text = "选择" if available else "未开放"
+	var pick := DT.make_button(
+		"选择" if available else "未开放",
+		DT.BtnRole.PRIMARY if available else DT.BtnRole.SECONDARY,
+		Vector2(140, DT.BUTTON_H))
 	pick.disabled = not available
-	pick.custom_minimum_size = Vector2(140, DT.BUTTON_H)
-	pick.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	if available:
 		var pack_id_capture: StringName = pack.id
 		pick.pressed.connect(func(): emit_signal("pack_chosen", pack_id_capture))

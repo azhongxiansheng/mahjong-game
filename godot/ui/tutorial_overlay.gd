@@ -94,10 +94,8 @@ func _ready() -> void:
 	panel.add_child(_body_lbl)
 
 	# 底部按钮组
-	_prev_btn = Button.new()
-	_prev_btn.text = "← 上一页"
+	_prev_btn = DT.make_button("← 上一页", DT.BtnRole.SECONDARY, Vector2(140, 40))
 	_prev_btn.position = Vector2(40, PANEL_H - 60)
-	_prev_btn.custom_minimum_size = Vector2(140, 40)
 	_prev_btn.pressed.connect(_on_prev)
 	panel.add_child(_prev_btn)
 
@@ -109,17 +107,13 @@ func _ready() -> void:
 	_page_indicator.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	panel.add_child(_page_indicator)
 
-	_next_btn = Button.new()
-	_next_btn.text = "下一页 →"
+	_next_btn = DT.make_button("下一页 →", DT.BtnRole.PRIMARY, Vector2(140, 40))
 	_next_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
-	_next_btn.custom_minimum_size = Vector2(140, 40)
 	_next_btn.pressed.connect(_on_next)
 	panel.add_child(_next_btn)
 
-	_skip_btn = Button.new()
-	_skip_btn.text = "跳过引导"
+	_skip_btn = DT.make_button("跳过引导", DT.BtnRole.GHOST, Vector2(120, 32))
 	_skip_btn.position = Vector2(PANEL_W - 40 - 120, 32)
-	_skip_btn.custom_minimum_size = Vector2(120, 32)
 	_skip_btn.pressed.connect(_on_skip)
 	panel.add_child(_skip_btn)
 

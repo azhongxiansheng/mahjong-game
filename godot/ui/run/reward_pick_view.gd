@@ -57,10 +57,8 @@ func show_rewards(options: Array, battle_rank: int) -> void:
 
 	vbox.add_child(HSeparator.new())
 
-	var skip_btn := Button.new()
-	skip_btn.text = "跳过（+%d 金币）" % SKIP_GOLD_REWARD
-	skip_btn.custom_minimum_size = Vector2(240, DT.BUTTON_H)
-	skip_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	var skip_btn := DT.make_button("跳过（+%d 金币）" % SKIP_GOLD_REWARD,
+		DT.BtnRole.SECONDARY, Vector2(240, DT.BUTTON_H))
 	skip_btn.pressed.connect(func(): emit_signal("skipped"))
 	var center := HBoxContainer.new()
 	center.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -88,10 +86,7 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 		100,
 	)
 	var vbox: VBoxContainer = panel.get_child(0) as VBoxContainer
-	var pick_btn := Button.new()
-	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(140, DT.BUTTON_H)
-	pick_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	var pick_btn := DT.make_button("选择", DT.BtnRole.PRIMARY, Vector2(140, DT.BUTTON_H))
 	var captured_result: GachaResult = r
 	pick_btn.pressed.connect(func(): emit_signal("reward_chosen", captured_result))
 	var btn_center := HBoxContainer.new()

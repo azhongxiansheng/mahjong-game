@@ -216,9 +216,8 @@ func _refresh() -> void:
 	for child in _options_box.get_children():
 		child.queue_free()
 	if _resolved:
-		var done_btn := Button.new()
-		done_btn.text = "继续 →"
-		done_btn.custom_minimum_size = Vector2(0, DT.BUTTON_H)
+		var done_btn := DT.make_button("继续 →", DT.BtnRole.PRIMARY, Vector2(200, DT.BUTTON_H))
+		done_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		done_btn.pressed.connect(func(): emit_signal("done"))
 		_options_box.add_child(done_btn)
 		return
@@ -226,15 +225,15 @@ func _refresh() -> void:
 	for i in range(options.size()):
 		var opt: Dictionary = options[i]
 		# 选项 Button 用 DT.make_text_card_button 防 minimum_size 被多行文字撑爆。
-		# 宽度按容器自适应,卡片 0 宽 + 80 高,内嵌 Label autowrap。
 		var delta_line: String = format_option_delta(opt)
 		var label_text: String = opt.get("label", "选项 %d" % (i + 1))
 		var card_text: String = label_text if delta_line == "" else "%s\n[%s]" % [label_text, delta_line]
+		var border: Color = DT.BORDER_GOLD if can_apply(opt, _run_state) else DT.TEXT_MUTED
 		var btn := DT.make_text_card_button(
 				_options_box,
 				card_text,
-				Vector2(0, 80),
-				DT.TEXT_MUTED)
+				Vector2(0, 88),
+				border)
 		btn.disabled = not can_apply(opt, _run_state)
 		var captured_opt: Dictionary = opt
 		btn.pressed.connect(func(): _on_option_chosen(captured_opt))

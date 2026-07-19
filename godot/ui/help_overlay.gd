@@ -96,10 +96,8 @@ func _ready() -> void:
 			String(section.get("title", "")),
 			section.get("rows", [])))
 
-	var close_btn := Button.new()
-	close_btn.text = "关闭 (H / ESC)"
-	close_btn.position = Vector2((PANEL_W - 180) / 2, PANEL_H - 48)
-	close_btn.custom_minimum_size = Vector2(180, 36)
+	var close_btn := DT.make_button("关闭 (H / ESC)", DT.BtnRole.PRIMARY, Vector2(180, 40))
+	close_btn.position = Vector2((PANEL_W - 180) / 2.0, PANEL_H - 52)
 	close_btn.pressed.connect(_on_close)
 	panel.add_child(close_btn)
 

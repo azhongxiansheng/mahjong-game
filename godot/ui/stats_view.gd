@@ -43,10 +43,8 @@ func _ready() -> void:
 	_build_achievements_column(panel, PANEL_W - 460 - 20, 80, 460)
 
 	# 关闭按钮
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.position = Vector2((PANEL_W - 140) / 2, PANEL_H - 56)
-	close_btn.custom_minimum_size = Vector2(140, 40)
+	var close_btn := DT.make_button("关闭", DT.BtnRole.PRIMARY, Vector2(140, 40))
+	close_btn.position = Vector2((PANEL_W - 140) / 2.0, PANEL_H - 56)
 	close_btn.pressed.connect(_on_close)
 	panel.add_child(close_btn)
 
