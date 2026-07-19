@@ -91,6 +91,12 @@ func _build_card(r: GachaResult, index: int) -> PanelContainer:
 	vbox.add_theme_constant_override("separation", DT.GAP_TIGHT)
 	panel.add_child(vbox)
 
+	var icon_path: String = RunUi.resolve_gacha_icon_path(r)
+	var icon := RunUi.make_item_icon(icon_path, 80)
+	if icon:
+		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vbox.add_child(icon)
+
 	var kind_label := Label.new()
 	DT.apply_caption_style(kind_label)
 	match r.kind:

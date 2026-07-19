@@ -29,6 +29,7 @@ signal card_clicked(tile_id: int)
 
 var _owner_seat: int = 0
 var _tile_id: int = -1
+var _is_red_dora: bool = false
 var _is_revealed: bool = false
 # face_up 与 revealed 的区分：
 #   face_up=true  → 玩家自己的手牌 / 弃牌河 / 宝牌指示牌，完全不透明 atlas 纹理正面
@@ -274,9 +275,11 @@ func set_tile_instance(ti: TileInstance) -> void:
 	if ti == null:
 		_owner_seat = -1
 		_tile_id = -1
+		_is_red_dora = false
 	else:
 		_owner_seat = ti.owner_seat
 		_tile_id = ti.tile.id if ti.tile else -1
+		_is_red_dora = ti.tile.is_red_dora if ti.tile else false
 	if is_inside_tree():
 		_refresh()
 
@@ -299,8 +302,10 @@ func set_revealed(b: bool) -> void:
 
 # face_up：玩家自己手牌 / 弃牌河 / 宝牌指示牌的不透明正面渲染。
 # 调用此方法等价于 set_tile_id(tid) + 启用 face_up 模式。
-func set_face_up(tile_id: int) -> void:
+# is_red_dora：赤宝五 走 0m/0p/0s 真图（勿用粉红 modulate 凑合）。
+func set_face_up(tile_id: int, is_red_dora: bool = false) -> void:
 	_tile_id = tile_id
+	_is_red_dora = is_red_dora
 	_is_face_up = true
 	_is_revealed = false
 	if is_inside_tree():
@@ -309,13 +314,19 @@ func set_face_up(tile_id: int) -> void:
 # ---- helpers (static, 测试可用) ----
 
 # TileId → TextureExtractor atlas key 映射（v2：标准日麻 riichi notation）。
-#   万 W1..W9 → 1m..9m
-#   筒 T1..T9 → 1p..9p
-#   条 S1..S9 → 1s..9s
+#   万 W1..W9 → 1m..9m；赤 5 万 → 0m
+#   筒 T1..T9 → 1p..9p；赤 5 筒 → 0p
+#   条 S1..S9 → 1s..9s；赤 5 索 → 0s
 #   字   E/S_WIND/W_WIND/N/HAKU/HATSU/CHUN → 1z..7z
-static func tile_id_to_atlas_key(tile_id: int) -> String:
+static func tile_id_to_atlas_key(tile_id: int, is_red_dora: bool = false) -> String:
 	if tile_id < 0:
 		return ""
+	# 赤宝：仅 5 万/筒/索有独立贴图
+	if is_red_dora:
+		match tile_id:
+			TileId.W5: return "0m"
+			TileId.T5: return "0p"
+			TileId.S5: return "0s"
 	if tile_id <= TileId.W9:
 		return "%dm" % (tile_id + 1)
 	if tile_id <= TileId.T9:
@@ -421,7 +432,7 @@ func _resolve_atlas_texture(tile_id: int) -> Texture2D:
 		return null
 	if not is_inside_tree():
 		return null
-	var key: String = tile_id_to_atlas_key(tile_id)
+	var key: String = tile_id_to_atlas_key(tile_id, _is_red_dora)
 	if key == "":
 		return null
 	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")

@@ -50,7 +50,7 @@ func refund_slot(index: int, reason: String = "") -> void:
 	if index < _slot_buttons.size():
 		var btn := _slot_buttons[index]
 		btn.disabled = _current_gold < price_for(_results[index])
-		var lbl := btn.get_child(0) as Label
+		var lbl := _find_slot_label(btn)
 		if lbl:
 			lbl.text = format_slot_text(_results[index])
 			if reason != "":
@@ -76,6 +76,18 @@ static func price_for(result: GachaResult) -> int:
 
 static func format_gold_text(gold: int) -> String:
 	return "金币: %d" % gold
+
+static func _find_slot_label(btn: Button) -> Label:
+	if btn == null:
+		return null
+	var named := btn.find_child("SlotLabel", true, false)
+	if named is Label:
+		return named
+	# 兼容旧 make_text_card_button：直接子 Label
+	if btn.get_child_count() > 0 and btn.get_child(0) is Label:
+		return btn.get_child(0) as Label
+	return null
+
 
 static func format_slot_text(result: GachaResult) -> String:
 	if result == null:
@@ -116,19 +128,68 @@ func _rebuild() -> void:
 	_slot_buttons.clear()
 	for i in range(_results.size()):
 		var r: GachaResult = _results[i]
-		# DT.make_text_card_button 防 4 行文字撑爆 minimum_size。
 		var border := Rarity.color(r.rarity) if r else DT.TEXT_MUTED
-		var btn := DT.make_text_card_button(
-				_slots_box,
-				format_slot_text(r),
-				Vector2(220, 260),
-				border)
+		var btn := _make_shop_slot_button(r, border)
+		_slots_box.add_child(btn)
 		btn.disabled = _current_gold < price_for(r)
 		var captured_index: int = i
 		btn.pressed.connect(func(): _on_slot_pressed(captured_index))
 		_slot_buttons.append(btn)
 	# 槽位错峰入场,商品"摆上货架"的节奏感
 	DT.stagger_in(_slot_buttons, "fade_in_up", 0.25, 0.06)
+
+
+# 商店槽：图标 + 文案，仍是 Button（兼容 refund/disabled 逻辑）
+func _make_shop_slot_button(r: GachaResult, border_color: Color) -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(220, 280)
+	btn.text = ""
+	btn.clip_contents = true
+	var state_bg := {
+		"normal": Color(0.13, 0.12, 0.15, 0.97),
+		"hover": Color(0.20, 0.17, 0.20, 0.97),
+		"pressed": Color(0.26, 0.14, 0.16, 0.97),
+		"focus": Color(0.20, 0.17, 0.20, 0.97),
+		"disabled": Color(0.10, 0.10, 0.11, 0.9),
+	}
+	for state in state_bg:
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = state_bg[state]
+		sb.border_color = border_color
+		sb.border_width_left = 3
+		sb.border_width_top = 3
+		sb.border_width_right = 3
+		sb.border_width_bottom = 3
+		sb.corner_radius_top_left = 4
+		sb.corner_radius_top_right = 4
+		sb.corner_radius_bottom_left = 4
+		sb.corner_radius_bottom_right = 4
+		sb.content_margin_left = 8
+		sb.content_margin_right = 8
+		sb.content_margin_top = 8
+		sb.content_margin_bottom = 8
+		btn.add_theme_stylebox_override(state, sb)
+	var vbox := VBoxContainer.new()
+	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.add_theme_constant_override("separation", 6)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(vbox)
+	var icon_path: String = RunUi.resolve_gacha_icon_path(r)
+	var icon := RunUi.make_item_icon(icon_path, 72)
+	if icon:
+		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		vbox.add_child(icon)
+	var lbl := Label.new()
+	lbl.name = "SlotLabel"
+	lbl.text = format_slot_text(r)
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(lbl)
+	return btn
 
 
 func _on_slot_pressed(index: int) -> void:
@@ -142,7 +203,7 @@ func _on_slot_pressed(index: int) -> void:
 	_current_gold -= price
 	_slot_buttons[index].disabled = true
 	# 把"(已购)"追加到内嵌 Label,而不是 Button.text(text 是空的)
-	var lbl := _slot_buttons[index].get_child(0) as Label
+	var lbl := _find_slot_label(_slot_buttons[index])
 	if lbl:
 		lbl.text += "\n(已购)"
 	emit_signal("item_bought", index, result)

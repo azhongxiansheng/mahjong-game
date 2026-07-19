@@ -81,7 +81,8 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node) -
 		bg.color = Color(0.15, 0.15, 0.20)
 		add_child(bg)
 		return
-	var key: String = CardTileBack.tile_id_to_atlas_key(int(slot["tile_id"]))
+	var key: String = CardTileBack.tile_id_to_atlas_key(
+		int(slot["tile_id"]), bool(slot.get("is_red_dora", false)))
 	if key == "":
 		return
 	var tex: Texture2D = extractor.get_tile_texture(key)
@@ -105,9 +106,7 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node) -
 	tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tex_rect.stretch_mode = TextureRect.STRETCH_SCALE
 	tex_rect.size = Vector2(TILE_W, TILE_H)
-	# 红 dora 用 modulate 染微红（spec §14 赤 dora）；alpha 不动避免暗化
-	if bool(slot.get("is_red_dora", false)):
-		tex_rect.modulate = Color(1.0, 0.7, 0.7, 1.0)
+	# 赤宝走 0m/0p/0s 真图，保持 WHITE modulate（项目硬约束）
 	if bool(slot["rotated"]):
 		# 旋转 90°（CW）；pivot 居中防位移；旋转后实际占 TILE_H 横 × TILE_W 纵
 		# 视觉对齐：让旋转后的牌左上角与 (x, y_offset) 一致 → position 偏移
