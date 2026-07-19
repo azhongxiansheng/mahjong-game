@@ -1,12 +1,15 @@
 class_name MahjongTable3D extends Control
 
-# 雀魂式 3D 牌桌 M2：副露 + 摸切动画 + 光照/中心盘 + 六面材质
+# 雀魂式 3D 牌桌 M3：牌山 + 中心盘四方分/风 + 立直棒 + 当前家高亮
 
 signal player_card_clicked(tile_id: int)
 signal hand_tile_hover(tile_id: int, entered: bool)
 
 const TABLE_W: float = 2.5
 const TABLE_D: float = 2.5
+const WALL_RADIUS: float = 0.76
+const WALL_GAP: float = 0.042
+const PLATE_HALF: float = 0.22
 
 var seat_panels: Array = []
 var discard_rivers: Array = []
@@ -23,12 +26,25 @@ var _river_tiles: Array = [[], [], [], []]
 var _opp_tiles: Array = [[], [], [], []]
 var _meld_tiles: Array = [[], [], [], []]
 var _dora_tiles: Array = []
+var _wall_tiles: Array = []
+var _dead_wall_tiles: Array = []
+var _riichi_stick_meshes: Array = []
+var _center_side_labels: Array = []
 var _hand_clickable: bool = false
 var _state: BattleState = null
 var _center_label: Label3D = null
 var _center_plate: MeshInstance3D = null
+var _active_marker: MeshInstance3D = null
+var _active_light: OmniLight3D = null
+var _wall_mesh: BoxMesh = null
+var _wall_mat: StandardMaterial3D = null
+var _stick_mesh: BoxMesh = null
+var _stick_mat: StandardMaterial3D = null
+var _stick_glow_mat: StandardMaterial3D = null
 var _prev_hand_count: int = -1
 var _prev_river_count: Array = [0, 0, 0, 0]
+var _prev_wall_count: int = -1
+var _scores_override: Array = []
 
 
 func _ready() -> void:
@@ -110,30 +126,90 @@ func _build_3d() -> void:
 	_add_rail(Vector3(-TABLE_W * 0.5 - 0.055, 0.025, 0), Vector3(0.11, 0.10, TABLE_D))
 	_add_rail(Vector3(TABLE_W * 0.5 + 0.055, 0.025, 0), Vector3(0.11, 0.10, TABLE_D))
 
-	# 中心盘（3D 圆角近似方块 + 金字）
+	# 共享牌山 / 立直棒 mesh
+	_wall_mesh = BoxMesh.new()
+	_wall_mesh.size = Vector3(Tile3D.TILE_W * 0.92, Tile3D.TILE_D, Tile3D.TILE_H * 0.92)
+	_wall_mat = StandardMaterial3D.new()
+	_wall_mat.albedo_color = Color(0.10, 0.36, 0.24)
+	_wall_mat.roughness = 0.55
+	var back_tex: Texture2D = _try_back_tex()
+	if back_tex != null:
+		_wall_mat.albedo_texture = back_tex
+		_wall_mat.albedo_color = Color.WHITE
+		_wall_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+
+	_stick_mesh = BoxMesh.new()
+	_stick_mesh.size = Vector3(0.055, 0.008, 0.012)
+	_stick_mat = StandardMaterial3D.new()
+	_stick_mat.albedo_color = Color(0.96, 0.95, 0.92)
+	_stick_mat.roughness = 0.4
+	_stick_glow_mat = StandardMaterial3D.new()
+	_stick_glow_mat.albedo_color = Color(1.0, 0.92, 0.55)
+	_stick_glow_mat.emission_enabled = true
+	_stick_glow_mat.emission = Color(0.95, 0.75, 0.2)
+	_stick_glow_mat.emission_energy_multiplier = 0.55
+	_stick_glow_mat.roughness = 0.35
+
+	# 中心盘
 	_center_plate = MeshInstance3D.new()
 	var plate_mesh := BoxMesh.new()
-	plate_mesh.size = Vector3(0.42, 0.02, 0.42)
+	plate_mesh.size = Vector3(PLATE_HALF * 2.0, 0.02, PLATE_HALF * 2.0)
 	_center_plate.mesh = plate_mesh
 	_center_plate.position = Vector3(0, 0.012, 0)
 	var pmat := StandardMaterial3D.new()
-	pmat.albedo_color = Color(0.08, 0.10, 0.18)
-	pmat.metallic = 0.35
-	pmat.roughness = 0.35
+	pmat.albedo_color = Color(0.07, 0.09, 0.16)
+	pmat.metallic = 0.4
+	pmat.roughness = 0.32
 	_center_plate.material_override = pmat
 	_world_root.add_child(_center_plate)
 
 	_center_label = Label3D.new()
 	_center_label.text = "东 1 局"
-	_center_label.font_size = 42
+	_center_label.font_size = 34
 	_center_label.modulate = Color(0.98, 0.88, 0.45)
 	_center_label.position = Vector3(0, 0.035, 0)
 	_center_label.rotation_degrees = Vector3(-90, 0, 0)
 	_center_label.outline_size = 10
 	_center_label.outline_modulate = Color(0, 0, 0, 0.85)
+	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_world_root.add_child(_center_label)
 
-	# 相机：更俯、更近，接近雀魂桌感
+	# 四方风位+分数
+	_center_side_labels.clear()
+	for s in range(4):
+		var lab := Label3D.new()
+		lab.font_size = 20
+		lab.modulate = Color(0.92, 0.9, 0.82)
+		lab.outline_size = 6
+		lab.outline_modulate = Color(0, 0, 0, 0.85)
+		lab.rotation_degrees = Vector3(-90, 0, 0)
+		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lab.position = _side_label_pos(s)
+		_world_root.add_child(lab)
+		_center_side_labels.append(lab)
+
+	# 当前家高亮条 + 灯
+	_active_marker = MeshInstance3D.new()
+	var am := BoxMesh.new()
+	am.size = Vector3(0.16, 0.006, 0.02)
+	_active_marker.mesh = am
+	var amat := StandardMaterial3D.new()
+	amat.albedo_color = Color(0.98, 0.82, 0.28)
+	amat.emission_enabled = true
+	amat.emission = Color(1.0, 0.78, 0.2)
+	amat.emission_energy_multiplier = 0.9
+	_active_marker.material_override = amat
+	_active_marker.position = Vector3(0, 0.028, PLATE_HALF - 0.01)
+	_world_root.add_child(_active_marker)
+
+	_active_light = OmniLight3D.new()
+	_active_light.light_energy = 0.35
+	_active_light.omni_range = 0.85
+	_active_light.light_color = Color(1.0, 0.9, 0.55)
+	_active_light.position = Vector3(0, 0.45, 0.55)
+	_world_root.add_child(_active_light)
+
+	# 相机
 	_camera = Camera3D.new()
 	_camera.fov = 34.0
 	_camera.position = Vector3(0, 2.05, 1.72)
@@ -142,10 +218,20 @@ func _build_3d() -> void:
 	_camera.look_at(Vector3(0, 0, 0.12), Vector3.UP)
 
 
-func _add_rail(pos: Vector3, size: Vector3) -> void:
+func _try_back_tex() -> Texture2D:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		return null
+	var ext: Node = tree.root.get_node_or_null("TextureExtractor")
+	if ext == null or not ext.has_method("get_tile_texture"):
+		return null
+	return ext.get_tile_texture("back")
+
+
+func _add_rail(pos: Vector3, rail_size: Vector3) -> void:
 	var m := MeshInstance3D.new()
 	var box := BoxMesh.new()
-	box.size = size
+	box.size = rail_size
 	m.mesh = box
 	m.position = pos
 	var mat := StandardMaterial3D.new()
@@ -155,15 +241,24 @@ func _add_rail(pos: Vector3, size: Vector3) -> void:
 	_world_root.add_child(m)
 
 
+func _side_label_pos(seat_id: int) -> Vector3:
+	var r: float = PLATE_HALF - 0.04
+	match seat_id:
+		0: return Vector3(0, 0.032, r)
+		1: return Vector3(r, 0.032, 0)
+		2: return Vector3(0, 0.032, -r)
+		3: return Vector3(-r, 0.032, 0)
+	return Vector3.ZERO
+
+
 # ---- API ----
 
 func bind_battle_state(state: BattleState, hand_index: int = 0, _hpr: int = 4) -> void:
 	_state = state
 	if state == null:
 		return
-	if _center_label:
-		var wall_n: int = state.wall.live_wall_size() if state.wall else 0
-		_center_label.text = "东 %d 局\n余 %d" % [hand_index + 1, wall_n]
+	_update_center_info(state, hand_index)
+	_update_active_seat(state.current_seat)
 	var hand_n: int = state.seats[0].hand.size()
 	var animate_draw: bool = _prev_hand_count >= 0 and hand_n == _prev_hand_count + 1
 	_rebuild_player_hand(state.seats[0], animate_draw)
@@ -177,10 +272,19 @@ func bind_battle_state(state: BattleState, hand_index: int = 0, _hpr: int = 4) -
 	for s in range(1, 4):
 		_rebuild_opponent_backs(s, state.seats[s].hand.size())
 	_rebuild_dora(state)
+	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
+	# 张数变化才重建牌山，避免每帧 70 mesh 重建
+	if wall_n != _prev_wall_count:
+		_rebuild_live_wall(wall_n)
+		_rebuild_dead_wall(state)
+		_prev_wall_count = wall_n
+	_rebuild_riichi_sticks(state)
 
 
-func bind_cumulative_scores(_scores: Array) -> void:
-	pass
+func bind_cumulative_scores(scores: Array) -> void:
+	_scores_override = scores.duplicate() if scores != null else []
+	if _state != null:
+		_update_center_info(_state, maxi(_state.hand_number - 1, 0))
 
 
 func highlight_tile_id(_tile_id: int) -> void:
@@ -295,6 +399,206 @@ func _free_arr(arr: Array) -> void:
 	arr.clear()
 
 
+func _wind_char(wind: int) -> String:
+	match wind:
+		TileId.E: return "东"
+		TileId.S_WIND: return "南"
+		TileId.W_WIND: return "西"
+		TileId.N: return "北"
+	return "?"
+
+
+func _round_wind_char(wind: int) -> String:
+	return "东" if wind == TileId.E else "南"
+
+
+func _seat_points(state: BattleState, seat_id: int) -> int:
+	if _scores_override.size() > seat_id:
+		return int(_scores_override[seat_id])
+	if state.seats.size() > seat_id:
+		return int(state.seats[seat_id].points)
+	return 25000
+
+
+func _update_center_info(state: BattleState, hand_index: int) -> void:
+	if _center_label == null:
+		return
+	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
+	var hn: int = state.hand_number if state.hand_number > 0 else hand_index + 1
+	_center_label.text = "%s %d 局\n本场 %d · 棒 %d\n余 %d" % [
+		_round_wind_char(state.round_wind), hn, state.honba, state.riichi_sticks, wall_n
+	]
+	for s in range(4):
+		if s >= _center_side_labels.size() or s >= state.seats.size():
+			continue
+		var seat: Seat = state.seats[s]
+		var lab: Label3D = _center_side_labels[s]
+		var mark: String = "▶" if s == state.current_seat else ""
+		lab.text = "%s%s\n%d" % [mark, _wind_char(seat.seat_wind), _seat_points(state, s)]
+		if seat.riichi.declared:
+			lab.modulate = Color(1.0, 0.86, 0.35)
+		elif s == state.current_seat:
+			lab.modulate = Color(1.0, 0.95, 0.65)
+		else:
+			lab.modulate = Color(0.9, 0.88, 0.8)
+
+
+func _update_active_seat(seat_id: int) -> void:
+	if _active_marker == null:
+		return
+	var r: float = PLATE_HALF - 0.01
+	var pos: Vector3
+	var rot_y: float = 0.0
+	match seat_id:
+		0:
+			pos = Vector3(0, 0.028, r)
+			rot_y = 0.0
+		1:
+			pos = Vector3(r, 0.028, 0)
+			rot_y = 90.0
+		2:
+			pos = Vector3(0, 0.028, -r)
+			rot_y = 0.0
+		3:
+			pos = Vector3(-r, 0.028, 0)
+			rot_y = 90.0
+		_:
+			pos = Vector3(0, 0.028, r)
+	_active_marker.position = pos
+	_active_marker.rotation_degrees = Vector3(0, rot_y, 0)
+	if _active_light:
+		var dir: Vector3 = _seat_in_dir(seat_id)
+		_active_light.position = dir * 0.55 + Vector3(0, 0.5, 0)
+
+
+func _make_wall_piece() -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _wall_mesh
+	mi.material_override = _wall_mat
+	_world_root.add_child(mi)
+	return mi
+
+
+func _rebuild_live_wall(live: int) -> void:
+	_free_arr(_wall_tiles)
+	if live <= 0 or _wall_mesh == null:
+		return
+	# 双层叠堆；余数奇数时顶层少一张
+	var stacks: int = int(ceili(float(live) / 2.0))
+	var per: Array = [0, 0, 0, 0]
+	var base_n: int = stacks / 4
+	var rem: int = stacks % 4
+	for s in range(4):
+		per[s] = base_n + (1 if s < rem else 0)
+	var placed: int = 0
+	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
+	for seat_id in range(4):
+		var n: int = int(per[seat_id])
+		if n <= 0:
+			continue
+		for i in range(n):
+			var t_along: float = (i - (n - 1) * 0.5) * WALL_GAP
+			for layer in range(2):
+				if placed >= live:
+					return
+				var mi := _make_wall_piece()
+				var pos: Vector3
+				var yaw: float = 0.0
+				match seat_id:
+					0:
+						pos = Vector3(t_along, y0 + layer * Tile3D.TILE_D, WALL_RADIUS)
+						yaw = 0.0
+					1:
+						pos = Vector3(WALL_RADIUS, y0 + layer * Tile3D.TILE_D, -t_along)
+						yaw = -90.0
+					2:
+						pos = Vector3(-t_along, y0 + layer * Tile3D.TILE_D, -WALL_RADIUS)
+						yaw = 180.0
+					3:
+						pos = Vector3(-WALL_RADIUS, y0 + layer * Tile3D.TILE_D, t_along)
+						yaw = 90.0
+					_:
+						pos = Vector3(t_along, y0, WALL_RADIUS)
+				mi.position = pos
+				mi.rotation_degrees = Vector3(0, yaw, 0)
+				_wall_tiles.append(mi)
+				placed += 1
+
+
+func _rebuild_dead_wall(state: BattleState) -> void:
+	_free_arr(_dead_wall_tiles)
+	if state == null or state.wall == null or _wall_mesh == null:
+		return
+	# 王牌区固定 14 张视觉（7 叠 × 2），靠宝牌侧
+	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
+	var stacks: int = 7
+	var gap: float = WALL_GAP
+	var base_x: float = 0.14
+	var base_z: float = -0.12
+	for i in range(stacks):
+		for layer in range(2):
+			var mi := _make_wall_piece()
+			mi.position = Vector3(base_x + i * gap, y0 + layer * Tile3D.TILE_D, base_z)
+			mi.rotation_degrees = Vector3(0, 0, 0)
+			# 略压暗与 live wall 区分
+			var dm := _wall_mat.duplicate() as StandardMaterial3D
+			dm.albedo_color = Color(0.08, 0.28, 0.18)
+			if dm.albedo_texture != null:
+				dm.albedo_color = Color(0.85, 0.9, 0.88)
+			mi.material_override = dm
+			_dead_wall_tiles.append(mi)
+
+
+func _make_stick(glow: bool) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = _stick_mesh
+	mi.material_override = _stick_glow_mat if glow else _stick_mat
+	_world_root.add_child(mi)
+	# 红点识别条
+	var tip := MeshInstance3D.new()
+	var tip_mesh := BoxMesh.new()
+	tip_mesh.size = Vector3(0.012, 0.009, 0.013)
+	tip.mesh = tip_mesh
+	var tmat := StandardMaterial3D.new()
+	tmat.albedo_color = Color(0.85, 0.12, 0.12)
+	if glow:
+		tmat.emission_enabled = true
+		tmat.emission = Color(0.9, 0.2, 0.15)
+		tmat.emission_energy_multiplier = 0.4
+	tip.material_override = tmat
+	tip.position = Vector3(0, 0.001, 0)
+	mi.add_child(tip)
+	return mi
+
+
+func _rebuild_riichi_sticks(state: BattleState) -> void:
+	_free_arr(_riichi_stick_meshes)
+	if state == null or _stick_mesh == null:
+		return
+	# 桌上供托立直棒（池）
+	var pool: int = mini(state.riichi_sticks, 8)
+	for i in range(pool):
+		var stick := _make_stick(true)
+		stick.position = Vector3(-0.07 + i * 0.028, 0.026, 0.06)
+		stick.rotation_degrees = Vector3(0, 12.0 * (i % 3 - 1), 0)
+		_riichi_stick_meshes.append(stick)
+	# 各家已立直：面前放一根
+	for s in range(4):
+		if s >= state.seats.size():
+			continue
+		if not state.seats[s].riichi.declared:
+			continue
+		var stick2 := _make_stick(true)
+		var r: float = PLATE_HALF + 0.06
+		match s:
+			0: stick2.position = Vector3(0.1, 0.026, r)
+			1: stick2.position = Vector3(r, 0.026, -0.1)
+			2: stick2.position = Vector3(-0.1, 0.026, -r)
+			3: stick2.position = Vector3(-r, 0.026, 0.1)
+		stick2.rotation_degrees = Vector3(0, 90.0 if s % 2 == 1 else 0.0, 0)
+		_riichi_stick_meshes.append(stick2)
+
+
 func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	_free_arr(_hand_tiles)
 	if seat == null or seat.hand == null:
@@ -309,8 +613,8 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 			sorted_ids.remove_at(idx)
 			drawn_ids.append(drawn_id)
 	sorted_ids.sort()
-	var show: Array = sorted_ids + drawn_ids
-	var n: int = show.size()
+	var show_ids: Array = sorted_ids + drawn_ids
+	var n: int = show_ids.size()
 	if n == 0:
 		return
 	var gap: float = Tile3D.TILE_W + 0.005
@@ -320,7 +624,7 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var y: float = Tile3D.TILE_D * 0.5 + 0.002
 	var x_cursor: float = x0
 	for i in range(n):
-		var tid: int = int(show[i])
+		var tid: int = int(show_ids[i])
 		var is_red := false
 		for t in seat.hand._tiles:
 			if t.id == tid and t.is_red_dora:
@@ -361,7 +665,6 @@ func _rebuild_river(seat_id: int, tiles: Array, riichi_idx: int, animate_last: b
 		var row: int = int(i / 6.0)
 		var lr: Dictionary = _river_pose(seat_id, col, row, i == riichi_idx and riichi_idx >= 0)
 		if animate_last and i == last_i:
-			# 从该 seat 手牌方向飞入
 			var from: Vector3 = lr.pos + _seat_in_dir(seat_id) * 0.35 + Vector3(0, 0.12, 0)
 			tile.position = from
 			tile.rotation_degrees = lr.rot + Vector3(-40, 0, 0)
@@ -442,10 +745,9 @@ func _rebuild_melds(seat_id: int, melds: Array) -> void:
 	var y: float = Tile3D.TILE_D * 0.5 + 0.002
 	var gap: float = Tile3D.TILE_W + 0.004
 	var group_gap: float = 0.028
-	# 各 seat 副露锚点（面前右侧）
 	var cursor: Vector3
 	var yaw: float = 0.0
-	var along: Vector3  # 牌并排方向
+	var along: Vector3
 	match seat_id:
 		0:
 			cursor = Vector3(0.55, y, 0.72)
@@ -475,16 +777,13 @@ func _rebuild_melds(seat_id: int, melds: Array) -> void:
 			var tt: Tile = tiles[j]
 			var tile := Tile3D.new()
 			_world_root.add_child(tile)
-			# 暗杠：两端背朝上
 			var face: bool = true
 			if m.kind == Meld.Kind.ANKAN and (j == 0 or j == 3):
 				face = false
 			tile.setup(tt.id, face, tt.is_red_dora)
 			var pos: Vector3 = cursor + along * (j * gap)
-			# 加杠第 4 张叠在中间
 			if m.kind == Meld.Kind.ADDED_KAN and j == 3:
 				pos = cursor + along * (1.0 * gap) + Vector3(0, Tile3D.TILE_D + 0.002, 0)
-			# 叫牌来源略横放（简化：碰/明杠第一张横）
 			var rot := Vector3(0, yaw, 0)
 			if m.from_seat != Meld.NO_SOURCE_SEAT and j == 0 and m.kind != Meld.Kind.ANKAN:
 				rot.y += 90.0
@@ -506,7 +805,8 @@ func _rebuild_dora(state: BattleState) -> void:
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
 		tile.setup(ti.id, true, false)
-		tile.set_base_position(Vector3(-0.12 + i * (Tile3D.TILE_W + 0.006), y, -0.02))
+		# 略偏王牌区左侧，避免与 dead wall 重叠
+		tile.set_base_position(Vector3(-0.18 + i * (Tile3D.TILE_W + 0.006), y, -0.12))
 		tile.rotation_degrees = Vector3(0, 0, 0)
 		_dora_tiles.append(tile)
 		i += 1
