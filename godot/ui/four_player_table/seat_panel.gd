@@ -746,11 +746,21 @@ func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array,
 		x += PLAYER_HAND_DRAWN_GAP - HAND_TILE_GAP
 		for i in range(drawn_ids.size()):
 			var is_red_d: bool = i < drawn_reds.size() and bool(drawn_reds[i])
-			_spawn_player_tile(int(drawn_ids[i]), x, scale_x, scale_y, is_red_d)
+			var drawn_tile: CardTileBack = _spawn_player_tile(
+				int(drawn_ids[i]), x, scale_x, scale_y, is_red_d)
+			# 摸牌位：自上滑入 + 淡入，减轻全量 rebuild 的"闪一下"
+			if drawn_tile != null and is_inside_tree():
+				var target_y: float = drawn_tile.position.y
+				drawn_tile.position.y = target_y - 28.0
+				drawn_tile.modulate.a = 0.0
+				var tw := create_tween().set_parallel(true)
+				tw.tween_property(drawn_tile, "position:y", target_y, 0.18)\
+					.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+				tw.tween_property(drawn_tile, "modulate:a", 1.0, 0.16)
 			x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
 
 func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float,
-		is_red_dora: bool = false) -> void:
+		is_red_dora: bool = false) -> CardTileBack:
 	# T3e:立牌错觉 — 牌顶两条棱(绿背边 + 灰白棱),对标参考作
 	# .seat-bottom-fixed .tile:before/:after。独立节点(不在 CardTileBack 内,
 	# 避免与 dora 扫光的 clip_contents 冲突),不随 hover 抬起(被抬起的牌
@@ -780,6 +790,7 @@ func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float,
 	# T2:同名联动 — 悬停时全手牌同 id 高亮
 	tile.mouse_entered.connect(_on_hand_tile_hover.bind(int(tile_id), true))
 	tile.mouse_exited.connect(_on_hand_tile_hover.bind(int(tile_id), false))
+	return tile
 
 # ---- T2 单牌状态接线(spec 2026-06-11 G2) ----
 

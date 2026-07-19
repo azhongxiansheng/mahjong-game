@@ -46,53 +46,67 @@ var _btn_ankan: Button = null      # WAITING_DISCARD 用 — "暗杠"
 var _btn_added_kan: Button = null  # WAITING_DISCARD 用 — "加杠"
 var _btn_consumable: Button = null # WAITING_DISCARD 用 — "道具"（主动消耗品）
 
-# 2026-06-13 重做:按钮 60×40→84×48、20 号字,操作栏从桌外底条上移到
-# 手牌正上方(PlayableTable 定位)— 鸣牌窗口打开时全局在等玩家,旧版小按钮
-# 在视线外,玩家以为卡死(对标参考作 action-bar 浮在手牌上方)。
-const PANEL_W: float = 1036.0  # 11 槽 × 92 间距
-const PANEL_H: float = 84.0    # status 4-24 + buttons 28-76
+# 合法动作气泡栏：仅显示当前可点按钮，HBox 居中（对标雀魂/参考作）。
+# PlayableTable 定位在手牌正上方。
+const PANEL_W: float = 720.0
+const PANEL_H: float = 96.0
+const BTN_W: float = 108.0
+const BTN_H: float = 52.0
+
+var _btn_bar: HBoxContainer = null
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
+	size = Vector2(PANEL_W, PANEL_H)
 	_build_ui()
 	_apply_state(State.IDLE)
 
 func _build_ui() -> void:
-	# Bg 半透明仅在有按钮时显示，避免空状态遮挡桌面
+	# 居中胶囊底：只在有合法按钮时显示
 	_bg = ColorRect.new()
-	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.9)
-	_bg.size = Vector2(PANEL_W, PANEL_H)
+	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.88)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bg.visible = false  # IDLE/WAITING_DISCARD 默认隐藏
+	_bg.visible = false
 	add_child(_bg)
 
-	# Status 文字浮在桌面（无 bg），所有状态都可见
 	_label_status = Label.new()
-	_label_status.position = Vector2(12, 2)
-	_label_status.size = Vector2(PANEL_W - 24, 22)
-	_label_status.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	_label_status.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_label_status.offset_left = 8
+	_label_status.offset_right = -8
+	_label_status.offset_top = 2
+	_label_status.offset_bottom = 26
+	_label_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label_status.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	_label_status.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
-	# 加文字阴影让浮在桌面上更易读
 	_label_status.add_theme_constant_override("shadow_offset_x", 1)
 	_label_status.add_theme_constant_override("shadow_offset_y", 1)
-	_label_status.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
+	_label_status.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	_label_status.text = "等待 AI..."
 	add_child(_label_status)
 
-	# 7 个按钮一排：立直 / 自摸 / 荣和 / 吃 / 碰 / 杠 / 跳过（PANEL_H 80 紧凑版）
-	# 按动作类型染色,玩家从一组按钮中第一眼分辨"什么动作":
-	# 蓝=立直(策略宣告)、金=自摸/荣和(胜利)、红=鸣牌(进攻)、紫=途中流局(规则牌)、灰=跳过(中性)
-	_btn_riichi = _make_btn("立直", 12, 28, Color(0.30, 0.55, 0.85))
-	_btn_tsumo = _make_btn("自摸", 12 + 92, 28, DT.TEXT_TITLE)
-	_btn_ron = _make_btn("荣和", 12 + 184, 28, DT.TEXT_TITLE)
-	_btn_chi = _make_btn("吃", 12 + 276, 28, DT.TEXT_DANGER)
-	_btn_pon = _make_btn("碰", 12 + 368, 28, DT.TEXT_DANGER)
-	_btn_minkan = _make_btn("杠", 12 + 460, 28, DT.TEXT_DANGER)
-	_btn_kyuusyu = _make_btn("九種", 12 + 552, 28, Color(0.65, 0.30, 0.85))
-	_btn_ankan = _make_btn("暗杠", 12 + 644, 28, Color(0.85, 0.50, 0.15))
-	_btn_added_kan = _make_btn("加杠", 12 + 736, 28, Color(0.85, 0.50, 0.15))
-	_btn_consumable = _make_btn("道具", 12 + 828, 28, Color(0.95, 0.60, 0.15))
-	_btn_skip = _make_btn("跳过", 12 + 920, 28, DT.TEXT_MUTED)
+	# 合法动作 HBox 居中
+	_btn_bar = HBoxContainer.new()
+	_btn_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	_btn_bar.add_theme_constant_override("separation", 12)
+	_btn_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_btn_bar.offset_top = -BTN_H - 8
+	_btn_bar.offset_bottom = -8
+	_btn_bar.offset_left = 8
+	_btn_bar.offset_right = -8
+	add_child(_btn_bar)
+
+	# 蓝=立直 / 金=自摸荣和 / 红=鸣牌 / 紫=九种 / 橙=杠道具 / 灰=跳过
+	_btn_riichi = _make_btn("立直", Color(0.30, 0.55, 0.85))
+	_btn_tsumo = _make_btn("自摸", DT.TEXT_TITLE)
+	_btn_ron = _make_btn("荣和", DT.TEXT_TITLE)
+	_btn_chi = _make_btn("吃", DT.TEXT_DANGER)
+	_btn_pon = _make_btn("碰", DT.TEXT_DANGER)
+	_btn_minkan = _make_btn("杠", DT.TEXT_DANGER)
+	_btn_kyuusyu = _make_btn("九種", Color(0.65, 0.30, 0.85))
+	_btn_ankan = _make_btn("暗杠", Color(0.85, 0.50, 0.15))
+	_btn_added_kan = _make_btn("加杠", Color(0.85, 0.50, 0.15))
+	_btn_consumable = _make_btn("道具", Color(0.95, 0.60, 0.15))
+	_btn_skip = _make_btn("跳过", DT.TEXT_MUTED)
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -106,26 +120,36 @@ func _build_ui() -> void:
 	_btn_consumable.pressed.connect(_on_btn_consumable)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
-func _make_btn(text: String, x: float, y: float = 20.0, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
+func _make_btn(text: String, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
 	var btn := Button.new()
 	btn.text = text
-	btn.position = Vector2(x, y)
-	btn.size = Vector2(84, 48)  # 大按钮:鸣牌窗口是全局等待点,必须一眼看到
-	btn.add_theme_font_size_override("font_size", 20)
+	btn.custom_minimum_size = Vector2(BTN_W, BTN_H)
+	btn.add_theme_font_size_override("font_size", 22)
 	btn.disabled = true
-	btn.visible = false  # 雀魂式：只在触发时才显示
-	btn.pivot_offset = btn.size / 2.0  # pulse 缩放动效从中心起
-	# 用动作色覆盖 4 态 stylebox border,让玩家一眼分辨动作类型。
-	for state in ["normal", "hover", "pressed", "focus"]:
-		var base: StyleBoxFlat = btn.get_theme_stylebox(state) as StyleBoxFlat
-		var sb: StyleBoxFlat = base.duplicate() if base else StyleBoxFlat.new()
+	btn.visible = false
+	btn.pivot_offset = Vector2(BTN_W / 2.0, BTN_H / 2.0)
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		var sb := StyleBoxFlat.new()
+		match state:
+			"hover":
+				sb.bg_color = Color(0.18, 0.16, 0.20, 0.97)
+			"pressed":
+				sb.bg_color = Color(0.24, 0.14, 0.16, 0.97)
+			"disabled":
+				sb.bg_color = Color(0.10, 0.10, 0.11, 0.85)
+			_:
+				sb.bg_color = Color(0.12, 0.11, 0.14, 0.97)
 		sb.border_color = accent
 		sb.border_width_left = 3
 		sb.border_width_right = 3
 		sb.border_width_top = 3
 		sb.border_width_bottom = 3
+		sb.corner_radius_top_left = 8
+		sb.corner_radius_top_right = 8
+		sb.corner_radius_bottom_left = 8
+		sb.corner_radius_bottom_right = 8
 		btn.add_theme_stylebox_override(state, sb)
-	add_child(btn)
+	_btn_bar.add_child(btn)
 	return btn
 
 # 显示一个按钮（同时 enable）；其它代码用 enable_btn 替代 .disabled = false。
@@ -139,16 +163,22 @@ func _hide_btn(btn: Button) -> void:
 	btn.visible = false
 	_refresh_bg()
 
-# 任意按钮 visible 时显示 bg，全 invisible 时隐藏避免遮挡桌面
+# 任意按钮 visible 时显示居中胶囊底；按可见按钮数量收缩宽度。
 func _refresh_bg() -> void:
 	if _bg == null:
 		return
-	var any_btn_visible := false
+	var n_vis := 0
 	for btn in [_btn_riichi, _btn_tsumo, _btn_ron, _btn_chi, _btn_pon, _btn_minkan, _btn_kyuusyu, _btn_ankan, _btn_added_kan, _btn_consumable, _btn_skip]:
 		if btn != null and btn.visible:
-			any_btn_visible = true
-			break
-	_bg.visible = any_btn_visible
+			n_vis += 1
+	_bg.visible = n_vis > 0
+	if n_vis <= 0:
+		return
+	# 胶囊包住按钮区：status 行 + 按钮行
+	var bar_w: float = n_vis * BTN_W + maxi(n_vis - 1, 0) * 12.0 + 32.0
+	bar_w = clampf(bar_w, 160.0, PANEL_W)
+	_bg.size = Vector2(bar_w, PANEL_H - 4)
+	_bg.position = Vector2((PANEL_W - bar_w) / 2.0, 2)
 
 # ---- 公开 API（TableDecisionAdapter 调） ----
 
