@@ -2,177 +2,357 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Agent 工作流、编码纪律、闸门、TDD、Git/发布原则详见 [`AGENTS.md`](./AGENTS.md)。本文件只描述项目结构与技术事实；行为约束以 `AGENTS.md` 为准。**
+> **本文件承载项目技术事实，并在文首给硬约束红线摘要、文末内联 [`AGENTS.md`](./AGENTS.md) 全文。**
+> `AGENTS.md` 为规范的权威源文件；`agent.md` 是 AI agent 轻量入口。
+> **改规则时先改 `AGENTS.md`，再回灌本文件与 `agent.md`。**
+> 优先级：**用户显式指令 > AGENTS.md / 本文件（行为条款同一内容）> 默认行为**。
+
+## 硬约束红线（不可违反 · 完整条款见文末内联的 AGENTS.md）
+
+- **沟通**：默认中文；PR / Issue 默认中文。
+- **Worktree First**：业务代码在 `git worktree` 内改，不直接在主工作区改业务代码；纯文档/agent 说明可例外。
+- **分支与 PR**：默认从最新 `main` 建任务分支；验证后 commit、默认 push，按需开合并到 `main` 的中文 PR。
+- **简单优先 + 外科手术式修改**：最小改动，不顺手重构无关代码。
+- **计划与 UI 确认**：实现前给可执行计划；UI 分档 —— 简单 ASCII / 复杂草图+取舍（可选截图）/ 复杂流程 Mermaid。
+- **验证驱动**：功能/缺陷优先 TDD + GUT；改 class/资产后必须 `godot --headless --path godot --import`；声称完成须附命令与结果。禁止 mock 顶替核心规则逻辑。
+- **主路径**：`ui/run/run_flow.tscn` + `ui/four_player_table/`；勿接中式 `game_ui` / 微信登录遗留为主路径。
+- **牌面契约**：`mahjong_tiles_riichi` 文件名 + 272×389；WHITE modulate；赤宝 `0m/0p/0s`；滤波 LINEAR_WITH_MIPMAPS。
+- **不扩张 `main.go`**；不新增根目录状态报告 markdown；不信根目录 200+ 陈旧笔记。
+- **提交即推送**：本地已 commit 默认尽快 push，除非用户明确要求只留本地。
+- **意外文件**：影响运行/构建的非己方变更 → 暂停询问；纯文档/元数据可忽略。
+
+---
 
 ## Repository shape (read this first — README.md is misleading)
 
 This repo contains **two unrelated trees** that share a directory but not a build:
 
-1. **`godot/`** — a Godot 4.5 client (verified on 4.6.1) written in GDScript. Main scene: `scenes/wechat_login_final.tscn` (set in `godot/project.godot`). Tree layout:
-   - `scripts/` (~110 .gd files) — legacy 中式麻将 implementation, login flow, networking sketch, UI helpers. **Flat, no subdirs.** Some files (e.g. `win_pattern.gd`, `hu_rule.gd`, `mahjong_deck.gd`) are no longer in the active development path; the new 日式麻将 engine lives under `core/` and `battle/`.
-   - `core/` — pure-logic 日麻 engine, organized by concern:
-     - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall` (含 dead wall API)
-     - `core/rules_japanese/` — `WinPattern.detect`, `StandardDecomposer`, `ChiitoiDetector`, `KokushiDetector`, `WaitCalculator`, `FuritenChecker`, `DoraIndicator`, `ExhaustiveDraw`, `AbortiveDraw`, plus subpackages `fu/` (符算)、`score/` (基本点+点数公式)、`yaku/` (38 个役判定 + `YakuEvaluator`)
-     - `core/turn_engine/` — `TurnEngine` 状态机 + `ClaimValidator` / `RiichiValidator` / `DrawDetector`
-   - `battle/` — 一局对战的运行时数据与调度器：`BattleState`、`Seat`、`BattlePhase`、`RiichiState`、`FuritenState`、`DoraIndicators`、`TileInstance`、`SkillCtx`、`SkillScheduler`、`BattleEvent`
-   - `skills/` — 技能框架：`SkillResource`、`SkillRegistry`、`SkillHook` 接口；`skills/hooks/` 含 6 个 demo hook
-   - `tests/` — GUT 单元测试，按模块分子目录（`tests/core/`、`tests/core/yaku/`、`tests/battle/`、`tests/skills/`、`tests/scenes/skills/` F6 手测场景、`tests/_fixtures/`）。当前 ~94 个测试文件，全部走 GUT
-   - `addons/gut/` — GUT 9.x 测试框架（已通过 `[editor_plugins]` 启用）
-   - `assets/` — 美术资源（含 `mahjong_tiles/` 三张图集 PNG）
-   - `scenes/` — 游戏场景（`wechat_login_final.tscn` 主入口、`main_simple_new.tscn`、`game_ui.tscn` 等）
-2. **`main.go` + `Dockerfile` + `start.sh`** at the repo root — a **stub Go HTTP server** that only serves `/` and `/api/health` returning `{"status":"ok"}`. It exists solely to satisfy Railway's healthcheck. **There is no real backend in this repo.** The README's references to a `backend/` directory, `/auth/...` and `/game/...` endpoints, JWT, ELO, achievements, "20,000+ lines of production code," etc. do not match the code on disk — treat the README as marketing copy, not architecture documentation.
+1. **`godot/`** — a Godot 4.5 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/run/run_flow.tscn`** (set in `godot/project.godot`). Tree layout:
+   - `ui/run/` — 肉鸽 Run 主路径（角色选择、章节地图、商店、奖励、事件等）
+   - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
+   - `core/` — pure-logic 日麻 engine：
+     - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall`（含 dead wall API）
+     - `core/rules_japanese/` — 和牌、听牌、振听、Dora、流局；`fu/` `score/` `yaku/`（约 38 役）
+     - `core/turn_engine/` — `TurnEngine` + `ClaimValidator` / `RiichiValidator` / `DrawDetector`
+   - `battle/` — 对战运行时：`BattleState`、`Seat`、`PlayableBattleController`、`SkillScheduler` 等
+   - `skills/` — 技能框架 + hooks
+   - `meta/` — Run 状态、存档、抽卡、角色池等
+   - `tests/` — **GUT 9.x** 单元测试（`tests/core/`、`tests/battle/`、`tests/ui/` 等；全量约 250+ 脚本 / 1800+ 用例）
+   - `addons/gut/`、`addons/anima/` — 测试与动效
+   - `assets/` — 牌面 `mahjong_tiles_riichi/`（38 张）、Run 图标、桌布、立绘等
+   - `scripts/` — **legacy** 中式麻将 / 登录 / 网络草图（平铺）；**新代码不要再加进 `scripts/`**
+   - `scenes/` — 遗留场景（`wechat_login_final.tscn`、`game_ui.tscn` 等，**非** main_scene）
+   - `tools/asset_gen/` — 资产生成与导入管线
+2. **`main.go` + `Dockerfile` + `start.sh`** at the repo root — a **stub Go HTTP server** that only serves `/` and `/api/health` returning `{"status":"ok"}`. It exists solely to satisfy Railway's healthcheck. **There is no real backend in this repo.** The README's references to a `backend/` directory, JWT, ELO, etc. do not match the code on disk — treat the README as marketing copy, not architecture documentation.
 
-设计文档与里程碑 plan 在 **`docs/superpowers/{specs,plans}/`** —— 例如 `specs/2026-05-01-mahjong-king-design.md` 是当前总体设计，`plans/2026-05-01-{rule-engine-foundation,yaku-detection,fu-and-score,furiten-dora-draw,turn-engine,skill-framework}.md` 是里程碑 0a-0e + 里程碑 1 的 implementation plans（追溯文档）。新增计划应放此目录，**不要**新增根目录 markdown。
+设计文档与里程碑 plan 在 **`docs/superpowers/{specs,plans}/`**。新增计划放此目录，**不要**新增根目录 markdown。
 
-The Godot client's `network_manager.gd` connects to `ws://localhost:8080` over WebSocket and expects a server that does not exist in this repo. Networking-related work in the client cannot be end-to-end tested against this tree alone.
+Networking: client may expect WebSocket at `ws://localhost:8080`; **no matching server in this repo**. Network work cannot be fully e2e-tested here — declare that explicitly.
 
-The 200+ root-level markdown files (`PHASE*.md`, `RAILWAY_*.md`, `*_FINAL_*.md`, `项目*.md`, etc.) are historical status/progress notes, mostly in Chinese, often contradictory, and **not authoritative**. Read code before trusting any doc here.
+The 200+ root-level markdown files (`PHASE*.md`, `RAILWAY_*.md`, `*_FINAL_*.md`, etc.) are historical and **not authoritative**. Read code before trusting them.
 
 ## Common commands
 
 ### Godot client
 ```bash
-# Open editor (run from repo root or godot/)
 godot -e --path godot
-
-# Run the project headlessly (main scene = wechat_login_final.tscn)
+# main scene = ui/run/run_flow.tscn
 godot --path godot
-
-# Run a specific scene (e.g. the texture-extractor smoke test)
-godot --path godot scenes/test_texture.tscn
+godot --path godot -s tools/capture_screens.gd   # /tmp/shot_*.png
 ```
 
 ### GDScript 单元测试（GUT）
 
-新引擎与技能框架的代码用 **GUT 9.x**（`godot/addons/gut/`）跑 headless 单测，无 CI 但本地验证完整：
-
 ```bash
-# 首次/拉新分支后必须先重建 class cache
 godot --headless --path godot --import
 
-# 跑全套（~94 个测试文件，应当 0 fail / 0 parse error）
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests -ginclude_subdirs -gexit
 
-# 只跑某个文件
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests/battle -gselect=test_skill_scheduler -gexit
 ```
 
-`godot/scripts/test_*.gd`（少数旧文件如 `test_mahjong_display.gd`、`test_texture_extractor.gd`）是**早期遗留的 scene 驱动手测**，不走 GUT；`godot/tests/scenes/skills/skill_*_test.tscn` 是**里程碑 1 的 F6 手测场景**，在编辑器中按 F6 跑。生产代码新增测试一律放 `godot/tests/<module>/test_*.gd` 用 GUT 写。
+生产代码新增测试一律放 `godot/tests/<module>/test_*.gd`。遗留 `godot/scripts/test_*.gd` 为 scene 手测，不走 GUT。
 
 ### Stub Go server
 ```bash
-go run main.go            # listens on $PORT (default 8080)
-go build -o app main.go   # build binary
-docker build -t mahjong . # uses Dockerfile (golang:1.20)
+go run main.go            # $PORT default 8080
+go build -o app main.go
+docker build -t mahjong .
 ```
-`go test ./...` will report "no test files" — there are none.
+`go test ./...` reports "no test files" unless you add some.
 
-### 资产生成 (gpt-image-2)
+### 资产生成
 
-通过 OpenAI 兼容 API 调用 `gpt-image-2` 生成游戏资产(Akagi/斗牌传说风),管线在 **`godot/tools/asset_gen/`**。
+管线在 **`godot/tools/asset_gen/`**。当前牌面主力来源：**FluffyStuff CC0**（`import_fluffystuff.py` → 272×389）；gpt-image-2 管线仍可用作风格实验。
 
-**凭证 / 网关**
-- 从 `~/.zshrc` 读 `OPENAI_BASE_URL` + `OPENAI_API_KEY`(脚本 `gen_client._gateways()` 自动取两组配置 fallback)。**凭证不入仓库**。
-- 两个 gateway 都提供 `gpt-image-2`,但 `size` 参数会被偶尔忽略(请求 `1536x1024` 实际返回 `1024x768`)。脚本对此有 retry 兜底。
-
-**工具**
-| 脚本 | 作用 |
-|------|-----|
-| `tile_specs.py` | Akagi 风格 prompt 前后缀 + 38 张牌(34 标准 + 0m/0p/0s 赤宝 + back)逐张 prompt builder |
-| `gen_client.py` | `POST /v1/images/generations` 调用 gpt-image-2,b64_json 解码,3 重试 × 2 gateway fallback |
-| `postprocess.py` | Pillow 裁透明边 + 缩放到 `TILE_SIZE` 272×389;`slice_row(png, expected)` 按列 alpha>60 切水平整排,粘连时返回不足张数触发上游重试 |
-| `generate_tiles.py` | **逐张生成**(单牌精度最稳,style 略漂),`--workers N` 并行;失败可 `--only 8s,1z` 重做 |
-| `generate_sheets.py` | **按花色整排生成 + alpha 间隙切片**(同花色内 style 最一致);每 sheet 最多 4 次 retry 直到切到 expected;honor 牌总粘连切不开 → 现状用逐张 fallback |
-| `generate_misc.py` | 桌面背景 / run 背景 / 节点图标 / HUD 图标 / logo 等非牌资产,并行 |
-| `import_fluffystuff.py` | **当前牌面来源**:FluffyStuff/riichi-mahjong-tiles (CC0) 的 600×800 PNG 合成 Front+牌面 → 272×389;不走 AI 生成,无 style 漂移 |
-
-**约定路径**
-- 麻将牌:`godot/assets/mahjong_tiles_riichi/{1m..9m,1p..9p,1s..9s,1z..7z,0m,0p,0s,back}.png` —— 文件名严格不变(`TextureExtractor` 按名加载),统一 272×389 透明。
-- 节点 / HUD 图标:`godot/assets/run_icons/{node_normal,node_elite,node_camp,node_shop,node_event,node_boss,icon_hp,icon_gold}.png` 透明 128–256 px。
-- 背景:`godot/assets/{run_bg,mahjong_table_bg}.png` 不透明 1536×1024。
-- Logo:`godot/assets/feifan_logo_transparent.png` 透明 512×512。
-
-**工作流**
-```bash
-# 1) smoke test 锁风格(4 张)
-python3 godot/tools/asset_gen/generate_tiles.py --smoke
-
-# 2a) 按花色整排(推荐;同花色内 style 一致)
-python3 godot/tools/asset_gen/generate_sheets.py --all
-# 切到 _staging_sheets/,人工 QA 后 cp 到 godot/assets/mahjong_tiles_riichi/
-
-# 2b) 逐张兜底(整排切不开 / 单牌坏)
-python3 godot/tools/asset_gen/generate_tiles.py --only 8s,1z --out _staging
-
-# 3) 其余资产
-python3 godot/tools/asset_gen/generate_misc.py --all
-
-# 4) 必须刷缓存,否则下次启动报 "Unable to open file ctex"
-godot --headless --path godot --import
-```
-
-**输入产物(.gitignore)**:`_raw_*/`、`_staging*/`、`_samples/`、`__pycache__/`。**只入库**:`*.py` 脚本和最终 PNG。
-
-**视觉核对**:`godot --path godot -s tools/capture_screens.gd` 渲染主要场景到 `/tmp/shot_*.png`(macOS CLI 启动的 Godot 窗口会被 compositor 截屏过滤,这条工具直接走视口 `get_texture().get_image().save_png()` 规避此问题)。
+- 凭证：环境变量 / `~/.zshrc`（`OPENAI_BASE_URL` + `OPENAI_API_KEY`），**不入仓库**。
+- 约定：`godot/assets/mahjong_tiles_riichi/{1m..9m,1p..9p,1s..9s,1z..7z,0m,0p,0s,back}.png`
+- 工作流：smoke → staging QA → `cp` → **`godot --headless --path godot --import`**
+- 中间产物 `_raw_*` / `_staging*` / `_samples` 已 gitignore，**不入库**
 
 ## Godot architecture
 
-### Autoloads (singletons)
-Defined in `godot/project.godot` `[autoload]`:
-- **`GameManager`** (`scripts/game_manager.gd`) — holds user session (`user_data`, `is_logged_in`). Set after WeChat-style login.
-- **`TextureExtractor`** (`scripts/texture_extractor.gd`, v2) — runs at `_ready` of every scene. **不再走 FairyGUI atlas 切片**;改为按 riichi 标准命名(`1m..9m / 1p..9p / 1s..9s / 1z..7z / 0m / 0p / 0s / back`)直接 `load("res://assets/mahjong_tiles_riichi/<key>.png")`,共 **38 张 272×389 透明 PNG**,目前来自 [FluffyStuff/riichi-mahjong-tiles](https://github.com/FluffyStuff/riichi-mahjong-tiles)(CC0 公有领域),用 `tools/asset_gen/import_fluffystuff.py` 合成牌底+牌面并缩放(早前的 gpt-image-2 Akagi 风格生成管线仍在 `tools/asset_gen/`,见上节"资产生成 (gpt-image-2)")。`get_tile_texture(key)` 是渲染层(`CardTileBack` / `SeatPanel` / `DiscardRiver` / `MeldArea`)的入口,缺图 fall-back 到 `null` 让调用方走 Label。
-- **`SaveSystem`** (`meta/save_system.gd`) — autoload,`save_run(rs)` / `load_run()` / `clear_run()` 走 `user://savegame.json`。
-- **`MetaProgress`** (`meta/meta_progress.gd`) — autoload,跨 Run 声望累计 + 战绩。
+### Autoloads（见 `project.godot`）
+含 `DT`、`GameManager`、`TextureExtractor`、`SaveSystem`、`MetaProgress`、`AudioManager`、`SettingsManager`、`DebugOverlay`、`StatsManager`、`Log`、`ANIMA` 等。
 
-Tile-rendering invariants worth knowing:
-- `assets/mahjong_tiles_riichi/<key>.png` **文件名严格不变** —— TextureExtractor 按名加载;重生成资产时 `--out` 到 staging 目录人工 QA 后再 `cp` 覆盖,不要换文件名。
-- 资产改完必须 `godot --headless --path godot --import` 刷 `.godot/imported/*.ctex`,否则启动报"Unable to open file ctex"一连串错。
-- Sprites must be modulated `WHITE` — anything else (including default theme tints) makes tiles render as solid color (commit `6090d26`).
-- Texture filter is `TEXTURE_FILTER_NEAREST` for pixel-perfect rendering. **Set via project setting** `rendering/textures/canvas_textures/default_texture_filter=1` in `project.godot`。
+**`TextureExtractor`**：按名加载 `res://assets/mahjong_tiles_riichi/<key>.png`（38 张），`get_tile_texture(key)` 供牌桌渲染。
 
-### 日麻引擎与技能框架（active development）
+### Tile-rendering invariants
+- 文件名严格不变；源尺寸 **272×389**
+- face 用 **WHITE** modulate（dim 用遮罩，勿用非白 RGB modulate 整牌）
+- 赤宝：`is_red_dora` → atlas key **`0m` / `0p` / `0s`**
+- 滤波：`rendering/textures/canvas_textures/default_texture_filter=3`（**LINEAR_WITH_MIPMAPS**）
+- 改 PNG 后必须 `--import`，否则 ctex 失效界面全黑
+- Viewport 设计基准 **1280×800**
 
-新代码的组织（按里程碑 0a-0e + 1）：
+### 日麻引擎与技能（active）
+见 `core/`、`battle/`、`skills/`。玩家输入：`PlayerDecisionPort` + `TableDecisionAdapter` + `PlayerActionPanel`。
+里程碑与差距：`docs/superpowers/specs/`（含牌桌 overhaul、gap analysis 等）。
 
-- **`core/tile/`** — `TileId` 枚举（含字牌、E_WIND/S_WIND/...）、`Tile`（带 `owner_seat` 字段）、`Hand`、`Meld`（CHI/PON/MINKAN/ANKAN/ADDED_KAN）、`Wall`（含 dead wall API：`reserve_dead_wall(14)` / `take_rinshan()` / `peek_dora_indicator(n)` / `peek_uradora_indicator(n)`）。
-- **`core/rules_japanese/`** — 和牌识别（`WinPattern.detect`）、分解（`StandardDecomposer`）、`ChiitoiDetector` / `KokushiDetector` / `WaitCalculator` / `FuritenChecker` / `DoraIndicator` / `ExhaustiveDraw` / `AbortiveDraw`；含子包：
-  - `fu/` — 符算（`MeldFu` / `PairFu` / `WaitFu` / `FuCalculator`）
-  - `score/` — 点数（`ScoreFormula` / `PayoutCalculator`）
-  - `yaku/` — 38 个役判定（`yaku/pattern/` 形式役、`yaku/yakuman/` 役満、`yaku/state/` 状态役），`YakuEvaluator` 入口、`YakuEntries` 互斥规则
-  - 顶层有 `ScoreCalc`（结算入口）、`WinContext` aka `ScoreContext`（结算上下文）、`YakuList`（dict 累计简版）
-- **`core/turn_engine/`** — `TurnEngine` 状态机（draw / discard / advance / declare_riichi / apply_chi/pon/minkan/ankan/added_kan/ron/tsumo）、`ClaimValidator` 鸣牌合法性、`RiichiValidator` 立直触发、`DrawDetector` 流局触发。
-- **`battle/`** — 运行时数据：`BattleState`（seats / wall / phase / dora_indicators / current_seat / honba / riichi_sticks）、`Seat`（hand / melds / points / riichi / furiten / discards）、`SkillScheduler` 调度器（owner/holder 分组 + rarity 排序 + 链路深度防护）、`BattleEvent`、`SkillCtx`、`TileInstance`。玩家输入通过 `PlayerDecisionPort` 接入；`PlayableBattleController` 不依赖具体 UI 控件。
-- **`skills/`** — `SkillResource` / `SkillRegistry` / `SkillHook` 接口；`skills/hooks/` 含 6 个 demo（`thunder_5w` 增番、`seal_chun` 阻胡、`soul_drain_hatsu` 抓马、`xray_1w` 透明牌、`unfuriten_5p` 解振听、`seabed_hunter` 角色能力）。
+### Class_name
+全局 `class_name` **不可重复**。新增前 `grep -rn 'class_name <Name>' godot/`。
 
-里程碑进度详见 `docs/superpowers/plans/`：0a-0e（规则引擎全栈）+ 里程碑 1（技能框架）已完成；里程碑 2（单局对战 vs 1 AI）进行中。
-
-### Class_name 注意事项（GUT 集成的硬约束）
-
-GDScript 全局 `class_name` 在仓库内**不可重复**——重复会让其中一个被 hide，引用方拿到错版本，整条编译链断裂导致 GUT 测试 Parse error 雪崩（参见 PR #11 修复的 `WinPattern` / `WinContext` / `YakuList` 三处冲突）。新增 `class_name` 前先 `grep -rn 'class_name <Name>' godot/` 全局排重。
-
-### Game-logic clusters in `godot/scripts/`（legacy）
-
-`scripts/` 是**旧中式麻将实现**，平铺无子目录。新代码不要再加进 `scripts/`，按上述子树规划；`scripts/` 内的旧文件除非影响新引擎工作（如 `class_name` 冲突），否则**不要顺手重构**。
-
-旧代码大致分组：
-- **Mahjong rules / state（旧中式）**: `mahjong_deck.gd`, `card_deck.gd`, `card_hand.gd`, `card_tile.gd`, `card_data.gd`, `hu_rule.gd`, `win_checker.gd`, `special_win_checker.gd`, `debug_win_checker.gd`. 与 `core/` 下的日麻代码并存但接口完全不同。
-- **Ting (听牌) detection（旧）**: `ting_checker.gd`, `async_ting_checker.gd`, `ting_cache.gd`, `ting_result.gd`. 日麻听牌走 `core/rules_japanese/wait_calculator.gd`。
-- **Display / UI**: `hand_display.gd`, `hand_display_manager.gd`, `game_ui.tscn`/`.gd`, `card_animator.gd`, `card_animation.gd`, `main_menu_ui.gd`, `animated_title.gd`.
-- **Networking (client side, no server present)**: `network_manager.gd` (WebSocket lifecycle), `network_client.gd`, `network_message.gd`, `message_protocol.gd`, `network_debugger.gd`, `network_tester.gd`, `network_test_suite.gd`.
-- **Achievements / leaderboard / AI**: `achievement_*.gd`, `leaderboard.tscn`, `ai_player.gd`. Client-only sketches without persistence.
-- **FairyGUI reverse-engineering helpers**: `bin_analyzer.gd`, `bin_dump.gd`, `texture_extractor.gd` (autoload), plus root-level `reverse_fairygui_bin.py`, `analyze_atlas.py`, `extract_mahjong_tiles*.{py,ps1,bat}`.
-
-### Scenes
-Boot scene is `wechat_login_final.tscn`. After login it transitions to `main.tscn` / `main_simple_new.tscn`. `test_*.tscn` scenes 是手测 harness —— 别把生产代码连到它们。`godot/tests/scenes/skills/*.tscn` 是技能框架的 F6 手测场景（每张技能/能力一个 .tscn）。
+### Legacy
+`scripts/` 中式实现、`scenes/game_ui`、微信登录场景等**不要接生产主路径**；除非 `class_name` 冲突，不要顺手重构 legacy。
 
 ## Working in this repo
 
-- **Don't add new top-level markdown status reports.** The repo already drowns in them; updates belong in code, commit messages, or — at most — `docs/`.
-- **Don't trust the README's API surface.** If you need to know what an endpoint or feature actually does, grep the code; if the code isn't there, the feature isn't there.
-- **Be wary of `.uid` files.** Every `.gd` has a sibling `.gd.uid` Godot generates; edit the `.gd`, leave the `.uid` alone, and don't delete one without the other.
-- **Tile rendering is a known sore spot.** Recent commits (see `git log`) are all texture/atlas fixes. If sprites render blank, solid-colored, or misaligned, check: AtlasTexture region, WHITE modulation, NEAREST filter (project setting), and that `TextureExtractor` actually finished `_ready` before the consumer ran.
-- **Networking changes can't be verified locally** without bringing up a separate WebSocket server matching `message_protocol.gd`. State this explicitly when reporting completion of network-related work.
-- **GUT 跑测前必须 `--import` 一次** to refresh class cache，否则 `class_name` 改动后 Godot 仍按旧 cache 解析，会出现 "Identifier X not declared" / "Static function not found" 之类的 Parse error。
-- **`class_name` 全局重复会让一边被 hide。** 新增 `class_name` 前 `grep -rn 'class_name <Name>' godot/`；命名冲突时优先重命名引用方少的一侧，避免破坏多文件依赖链。
+- 不要新增根目录状态报告 markdown。
+- 不要相信 README 的 API 宣传。
+- 每个 `.gd` 旁有 Godot 生成的 `.gd.uid`：改 `.gd` 时保留配对，勿单独乱删。
+- 网络改动完成时声明「未端到端验证」。
+- GUT 前 `--import`；插件默认只保留 GUT + Anima，新插件先评估 ROI。
+
+---
+
+# Agent 开发原则 / 工作流（AGENTS.md 全文内联，与 AGENTS.md 保持同步）
+
+# AGENTS.md
+
+> 本文件是 mahjong-game 的 **Agent 开发原则 / 工作流唯一权威源**。
+> `CLAUDE.md` 描述项目技术事实，并在文首给红线摘要、文末内联本文件全文。
+> `agent.md` 是 Codex / Grok / Claude 等 AI agent 的**轻量入口**，关键规则必须与本文件同步。
+>
+> **改规则时：先改本文件 → 再回灌 `CLAUDE.md` 与 `agent.md`。**
+>
+> 原则对齐 `~/project/lov-video/AGENTS.md` 的结构与纪律，并按本仓库现状适配
+> （Godot 4.5/4.6 客户端 + GUT 9.x + 肉鸽 Run + 日麻引擎 + 根目录 Go 健康检查桩）。
+
+## 优先级
+
+当本文件与 `CLAUDE.md`、`agent.md`、用户即时指令、系统默认行为冲突时：
+
+1. **用户即时指令** —— 最高
+2. **本文件**（与内联到 `CLAUDE.md` 的同一内容）—— 高
+3. 默认系统行为 —— 最低
+
+本文件内部条款冲突时，以**更具体、约束更强**者为准。
+发布、安全、版本兼容、资产文件名契约等硬约束不因本文件之外的便利说法而放松。
+
+---
+
+## 沟通语言
+
+- 与用户沟通默认使用**中文**；用户明确指定其他语言时再切换。
+- 代码注释、日志、commit message 优先中文（既有英文文件可保持英文）。
+- **PR / Issue 的标题、正文、评论、检查说明默认中文**；除非用户明确要求其他语言。
+
+---
+
+## 编码四条硬纪律
+
+### 1. 先思考，再编码
+
+- 实现前**显式写出关键假设**；不确定的事情不得假装确定。
+- 需求有多种合理解释时，**必须先列出分歧与取舍**，不能静默选择其一。
+- 若存在更简单、范围更小的实现路径，先说明并优先采用。
+- 关键信息不足或存在真实歧义时，**暂停并向用户确认**，不要硬猜。
+
+### 2. 简单优先
+
+- 只写解决当前问题所需的**最小代码或最小改动**。
+- 不做未被请求的功能、抽象、配置化、「顺便支持以后」。
+- 不为单次需求引入一次性之外的通用层；若 200 行能压到 50 行且不损失清晰度，优先简化。
+- **不为不可能发生的场景增加防御性错误处理**。
+
+### 3. 外科手术式修改
+
+- 只修改完成当前任务**所必需的**文件、代码、注释与格式。
+- 不顺手「优化」邻近代码；保持既有风格与结构。
+- 只清理**由本次改动直接造成的**废弃 import、变量、函数、注释；已有无关死代码只报告，不擅自删除。
+- 每一处修改都必须能直接追溯到当前需求；不能追溯的，默认不改。
+
+### 4. 目标驱动执行
+
+- 把任务改写为**可验证目标**再实施，避免「做到差不多」为止。
+- 多步骤任务先给出简短计划：步骤、验证方式、成功标准。
+- 能用测试验证的改动，优先先写失败用例或复现步骤，再实现通过。
+- 无法合理自动化测试的微小任务也必须给出最小可执行的验证方式，**不能跳过验证**。
+
+---
+
+## 实现前强制闸门
+
+### 闸门 A：意外文件处理
+
+发现「我没有主动创建/修改」的异常文件或变更时：
+
+| 类型 | 处理 |
+|------|------|
+| **影响运行/构建/测试的代码、脚本、配置、锁文件、业务资源** | **立刻暂停** → 向用户报告发现了什么 → 询问（忽略 / 删除 / 纳入 / 其他）→ **获明确指令后再继续**。绝不擅自删除或纳入。 |
+| **纯文档、agent 说明、本地元数据**（如 `.DS_Store`、会话缓存、无关 `.uid` 孤儿若不确定则仍报告） | 可忽略并继续；**不擅自删除或纳入提交**。 |
+
+典型需报告的例子：未知临时文件、非预期 diff、Godot 孤儿 `.uid`、根目录又冒出来的状态报告 markdown。
+
+### 闸门 B：计划输出
+
+进入实现前，先给出**可执行计划**，至少包含：
+
+- 关键假设 / 歧义
+- 改动范围（哪些文件）
+- 验证方式（怎么证明改对了）
+- 风险点
+- 成功标准
+
+存在多种解释或更简单方案时必须在计划中先说明取舍，不能直接静默实现。
+
+### 闸门 C：UI / 交互确认（分档）
+
+涉及 Godot 场景布局、UI 控件、动画方向、操作栏、牌桌/Run 壳视觉时，实现前按复杂度取得用户确认：
+
+| 档位 | 判定 | 确认物 |
+|------|------|--------|
+| **简单** | 局部调整、不改整体布局、变化点 ≤5 | **ASCII 草图** + 用户确认 |
+| **复杂 UI** | 新面板/弹层、布局重构、多方案 | ASCII + 方案取舍说明；有条件时用 `tools/capture_screens.gd` 做前后截图对比 |
+| **复杂流程** | 跨步骤 ≥3、多模块联动、状态机/异常分支 | 计划中提供 **Mermaid** 流程或状态图 |
+
+同时涉及多种屏幕形态（横竖屏等）时分别给草图。
+
+### 闸门 D：需求与实现一致性
+
+- 实现与既有约束/设计冲突时，优先暂停并请用户确认，不自行偏离。
+- 默认最小必要改动，不为单次需求引入抽象层、配置项或前瞻性扩展。
+
+---
+
+## TDD 与验证规范（强制）
+
+### TDD 顺序
+
+默认对**功能开发 / 缺陷修复**采用 TDD（Red → Green → Refactor），除非用户明确允许跳过：
+
+1. **Red**：先写测试并运行到失败；
+2. **Green**：再写最小实现使测试通过；
+3. **Refactor**：最后重构并保持测试持续通过。
+
+**禁止先写业务实现再补测试**；发现偏离立即停止回到 Red。
+
+文档更新、纯发布执行、纯配置搬运、无法合理自动化的微小改动可采用更轻量验证，但**必须先说明理由**并执行最小可验证检查。
+
+### 真实测试约束
+
+- 测试核心行为基于**真实逻辑与真实资产加载路径**（GUT + 仓库内资源）。
+- mock 仅用于隔离不可控外部副作用（第三方网络、不存在的 WebSocket 服等），**不得用 mock 顶替被测对象的核心规则逻辑**（胡牌、符算、TurnEngine、鸣牌等）。
+- 任何「已完成 / 已修复 / 测试通过」的结论必须附**可执行验证方式与结果**。
+
+### 本仓库验证门禁
+
+```bash
+# 1) class_name / 纹理缓存（改 class 或资产后必跑）
+godot --headless --path godot --import
+
+# 2) GUT 全量（应 0 fail / 0 parse error；当前约 250+ 脚本 / 1800+ 用例）
+godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
+    -gdir=res://tests -ginclude_subdirs -gexit
+
+# 3) 局部（开发中）
+godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
+    -gdir=res://tests/<module> -gselect=<test_name> -gexit
+
+# 4) UI 截图（非 headless；输出 /tmp/shot_*.png）
+godot --path godot -s tools/capture_screens.gd
+```
+
+| 改动类型 | 验证 |
+|----------|------|
+| `core/` / `battle/` / 规则 / AI | GUT 相关目录 + 全量回归优先 |
+| `ui/` 布局与交互 | GUT UI 测 + 手测主路径；复杂改动 `capture_screens` |
+| 资产 PNG / 新 `class_name` | `--import` + 相关 GUT + 启动主场景目视 |
+| 纯文档 / agent 说明 | `git diff --check` + 人工通读 |
+| 网络 / WebSocket 客户端 | **必须声明「未端到端验证」**（本仓无对战服） |
+| Go 桩 `main.go` | 如修改则先写 `_test.go`；**默认不扩张职责** |
+
+生产代码新增测试一律放 `godot/tests/<module>/test_*.gd`（GUT）。
+`godot/scripts/test_*.gd` / 部分 `scenes/test_*.tscn` 是遗留 scene 手测，不新增生产逻辑到该路径。
+`godot/tests/scenes/**/*.tscn` 供编辑器 F6 手测。
+
+### 声称完成的最低标准
+
+- 提交/PR 必须包含：与本次改动相关的测试或验证步骤 + **命令与结果摘要**。
+- UI 改动尽量附截图路径或前后对比说明。
+
+---
+
+## 第三方接口对接顺序（强制）
+
+对接 Godot 引擎 API、外部 HTTP/WS、资产生成 gateway、SDK、OS API 前：
+
+1. **先查阅并记录官方资料 / 仓库内已有正确用法**，不得凭印象开发。训练数据可能与 Godot 4.5/4.6 不一致，**怀疑印象，验证文档**。
+2. 写业务实现前用**最小请求/最小场景测通**，确认参数、返回、错误与限制。
+3. 测通后**先按真实行为写/更新测试**，再进入业务实现。
+4. 无法在本地实际调用时，先说明原因、记录替代验证方式，**经用户确认后再继续**。
+
+---
+
+## Git 工作流
+
+### Worktree First
+
+- **业务代码**（功能 / 缺陷 / 影响运行的配置与资源）默认：`git worktree` + 任务分支，**不直接在主工作区改业务代码**。
+- 若当前已在非 `main` 的任务分支或本身就是该任务 worktree → **直接继续**，不重复新建。
+- 新任务默认基于最新 `main` / `origin/main`；合并目标默认是创建 worktree 时的基分支（通常 `main`），不擅自改目标。
+- 分支名可用 `feat/` `fix/` `docs/` `refactor/` `chore/`，也可用 `codex/` 前缀；Conventional Commits。
+- **纯文档 / 纯 agent 规范**微调：可在当前分支或 `docs/*` 小分支提交，可不强求 worktree。
+- **纯打包发布**（不改仓库跟踪内容）：可在主工作区执行。若发布任务要改版本/脚本/业务文件，仍先 worktree。
+- 合并完成且不再需要时清理：`git worktree remove .worktrees/<task-name>`。
+
+```bash
+git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
+```
+
+### 提交、推送与 PR
+
+- 每个 commit 应独立可构建；避免把不相关的 Godot 与 Go 改动混在一起。
+- **本地一旦 `git commit`，默认尽快 `git push`**；暂不推送须用户明确说明。
+- 任务结束后：若有需纳入版本的改动 → commit + push 任务分支，并**按需创建 PR**；回报 PR 链接 + 一句中文摘要。纯探索/只读无改动则跳过并说明。
+- PR 描述（中文）须含：改动摘要、影响模块、验证方式与结果；涉及 UI 时附截图或手测说明。
+
+---
+
+## 记忆与文档固化
+
+- 不依赖对话短期记忆；重要上下文与决策固化到 **`AGENTS.md` / `CLAUDE.md` / `docs/superpowers/`**，而非只留在对话里。
+- 关键行为变更同步更新对应文档。
+- 发现 `CLAUDE.md` 与代码事实不符时，**先更新文档，再继续工作**。
+- **禁止新增根目录状态/进度/完成总结类 markdown**（仓库已有 200+ 历史噪音）。总结写进 commit message 或 `docs/`。
+
+---
+
+## 本仓库红线（行为约束）
+
+> 详细技术事实见 `CLAUDE.md`。此处只列 agent 不得违反的约束。
+
+1. **不信根目录 200+ 历史 markdown** —— 先看代码与 `CLAUDE.md` / `docs/superpowers/`，最后才谨慎参考根目录陈旧笔记。
+2. **不扩张 `main.go`** —— 仅 Railway 健康检查桩；新后端须先与用户对齐。
+3. **不新增根目录进度报告 markdown**。
+4. **`class_name` 全局唯一** —— 新增前 `grep -rn 'class_name <Name>' godot/`；冲突优先改引用少的一侧。
+5. **改 PNG / 新 `class_name` 后必须** `godot --headless --path godot --import` —— 否则 ctex 全黑或 Parse Error 雪崩。
+6. **牌面契约**：`assets/mahjong_tiles_riichi/<key>.png` 文件名不变；**272×389**；face 用 **WHITE** modulate（dim 用遮罩）；赤宝走 **`0m/0p/0s`** 真图。
+7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
+8. **主路径**：`ui/run/run_flow.tscn` + `ui/four_player_table/`。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
+9. **网络改动**须显式声明未端到端验证。
+10. **资产生成**：`godot/tools/asset_gen/`；先 smoke 锁风格；staging QA 后 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。可用 Grok 内置 game-asset skills 补图标，仍遵守文件名与 import 纪律。
+11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。
+12. **Autoload / 纹理隐式契约** —— 改 `TextureExtractor`、牌尺寸、调制规则前先查最近相关 commit。
