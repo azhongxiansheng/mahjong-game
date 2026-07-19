@@ -3,6 +3,8 @@ class_name SeatPanel extends Node2D
 # seat 0 (玩家) 自家手牌被点击时转发给上层（PlayerActionPanel / PlayableTable）。
 # 其它 seat 永不 emit（手牌色块本身不 clickable）。
 signal player_card_clicked(tile_id: int)
+# 雀魂式：悬停手牌时通知桌面做全桌同名高亮
+signal hand_tile_hover(tile_id: int, entered: bool)
 
 # 麻将王 — 里程碑 3 第 2 步：单 seat 面板（plan-3 D4）
 #
@@ -925,13 +927,29 @@ func _on_hand_tile_hover_slot(slot: Control, entered: bool) -> void:
 	if _seat_id != 0 or slot == null:
 		return
 	var tid: int = int(slot.get_meta("hand_id", -1))
+	highlight_hand_tile_id(tid if entered else -1)
+	hand_tile_hover.emit(tid, entered)
+
+
+# tid < 0 清除手牌同名高亮
+func highlight_hand_tile_id(tid: int) -> void:
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
-		if int(s.get_meta("hand_id", -2)) == tid:
-			var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
-			if tile:
-				tile.set_hover_match(entered)
+		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+		if tile == null:
+			continue
+		var on: bool = tid >= 0 and int(s.get_meta("hand_id", -2)) == tid
+		tile.set_hover_match(on)
+
+
+func get_hand_slot_global_center(tile_id: int) -> Vector2:
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		if int(s.get_meta("hand_id", -2)) == tile_id:
+			return s.get_global_rect().get_center()
+	return Vector2.ZERO
 
 # ---- T2 单牌状态接线(spec 2026-06-11 G2) ----
 

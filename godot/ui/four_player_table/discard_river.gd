@@ -41,10 +41,52 @@ var _cursor_x: float = 0.0
 var _cursor_row: int = 0
 # 「最新弃牌」高亮节点(append 时旧的要撤掉)
 var _last_highlight: Panel = null
+# 雀魂式同名高亮：tile_id → TextureRect 列表
+var _tile_nodes: Array = []  # Array[{id:int, node:TextureRect}]
+var _last_tile_local_center: Vector2 = Vector2.ZERO
+var _hover_match_id: int = -1
 
 
 func set_dora_ids(ids: Array) -> void:
 	_dora_ids = ids
+
+
+func count_hover_matched() -> int:
+	var n := 0
+	for e in _tile_nodes:
+		var tr: TextureRect = e.get("node")
+		if tr != null and is_instance_valid(tr) and bool(tr.get_meta("hover_match", false)):
+			n += 1
+	return n
+
+
+func set_hover_match_id(tile_id: int) -> void:
+	_hover_match_id = tile_id
+	_apply_hover_match()
+
+
+func clear_hover_match() -> void:
+	_hover_match_id = -1
+	_apply_hover_match()
+
+
+func _apply_hover_match() -> void:
+	for e in _tile_nodes:
+		var tr: TextureRect = e.get("node")
+		if tr == null or not is_instance_valid(tr):
+			continue
+		var match_id: int = int(e.get("id", -2))
+		var on: bool = _hover_match_id >= 0 and match_id == _hover_match_id
+		tr.set_meta("hover_match", on)
+		# 蓝半透明蒙版感：不改 WHITE 主体，用 modulate 叠蓝（河牌非 atlas WHITE 硬约束同牌桌 face）
+		if on:
+			tr.modulate = Color(0.55, 0.75, 1.0, 1.0)
+		else:
+			tr.modulate = Color.WHITE
+
+
+func get_last_tile_local_center() -> Vector2:
+	return _last_tile_local_center
 
 
 # riichi_idx < 0 表示本家未立直;>= 0 表示该索引的弃牌为立直宣告牌。
@@ -117,11 +159,12 @@ func _append_from(start: int) -> void:
 			_last_highlight.queue_free()
 			_last_highlight = null
 		_spawn_tile(tex, _cursor_x, _cursor_row * (TILE_H + TILE_GAP),
-			is_riichi, is_last, _dora_ids.has(tile.id), true)
+			is_riichi, is_last, _dora_ids.has(tile.id), true, tile.id)
 		var slot_w: float = TILE_H if is_riichi else TILE_W
 		_cursor_x += slot_w + TILE_GAP
 	_rendered_riichi = _riichi_index
 	_rendered_dora_key = _dora_key()
+	_apply_hover_match()
 
 
 # 全量重建(初始 / 鸣牌取走 / 立直回溯 / dora 翻新的兜底路径,无入场动画)。
@@ -134,6 +177,7 @@ func _rebuild() -> void:
 	_cursor_x = 0.0
 	_cursor_row = 0
 	_last_highlight = null
+	_tile_nodes.clear()
 	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
 	if extractor == null:
 		return
@@ -156,15 +200,17 @@ func _rebuild() -> void:
 		var is_riichi: bool = (i == _riichi_index)
 		var is_last: bool = (i == n - 1)
 		_spawn_tile(tex, _cursor_x, _cursor_row * (TILE_H + TILE_GAP),
-			is_riichi, is_last, _dora_ids.has(tile.id), false)
+			is_riichi, is_last, _dora_ids.has(tile.id), false, tile.id)
 		var slot_w: float = TILE_H if is_riichi else TILE_W
 		_cursor_x += slot_w + TILE_GAP
 	_rendered_riichi = _riichi_index
 	_rendered_dora_key = _dora_key()
+	_apply_hover_match()
 
 
 func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
-		is_last: bool, is_dora: bool = false, is_new: bool = false) -> void:
+		is_last: bool, is_dora: bool = false, is_new: bool = false,
+		tile_id: int = -1) -> void:
 	# 投影垫底(StyleBox shadow 画在自身 rect 之外、其余子节点之下)
 	var shadow := Panel.new()
 	var shadow_sb := StyleBoxFlat.new()
@@ -181,6 +227,7 @@ func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
 	tr.texture = tex
 	tr.modulate = Color.WHITE
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.set_meta("tile_id", tile_id)
 	if is_riichi:
 		# Control 用 pivot_offset + rotation_degrees 自转;pivot 设为左下角
 		# 让旋转后牌顶左下落在原 (x, y+TILE_H) 处。
@@ -194,6 +241,8 @@ func _spawn_tile(tex: Texture2D, x: float, y: float, is_riichi: bool,
 	shadow.size = slot_size
 	add_child(shadow)
 	add_child(tr)
+	_tile_nodes.append({"id": tile_id, "node": tr})
+	_last_tile_local_center = tr.position + slot_size * 0.5
 	# T2:河中宝牌金色描边
 	if is_dora:
 		add_child(_make_border(tr.position, slot_size, Color(0.85, 0.71, 0.36, 0.9), 2))

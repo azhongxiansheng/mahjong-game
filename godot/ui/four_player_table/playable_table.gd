@@ -196,12 +196,18 @@ func _build_tilted_table() -> void:
 	if sp0:
 		move_child(sp0, get_child_count() - 1)
 
+var _pending_discard_fly: Dictionary = {}  # {from: Vector2, tile_id: int, is_red: bool}
+
+
 func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_bc = bc
 	if _table.seat_panels.size() >= 1:
 		_seat_panel_player = _table.seat_panels[0]
 		if not _seat_panel_player.player_card_clicked.is_connected(_on_player_tile_clicked):
 			_seat_panel_player.player_card_clicked.connect(_on_player_tile_clicked)
+		if _seat_panel_player.has_signal("hand_tile_hover") \
+				and not _seat_panel_player.hand_tile_hover.is_connected(_on_hand_tile_hover):
+			_seat_panel_player.hand_tile_hover.connect(_on_hand_tile_hover)
 	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
 	_bc.bind_decision_port(_decision_adapter, get_tree())
 	_table.bind_battle_state(bc.state, 0, 4)
@@ -737,13 +743,20 @@ func _polling_loop() -> void:
 		var n: int = _bc.events.size()
 		if n != _last_event_count:
 			# Diff: 新 emit 的事件全过一遍 toast handler;再 rebind 桌面视觉
+			var player_discarded := false
 			for i in range(_last_event_count, n):
-				_handle_event_toast(_bc.events[i])
-				_play_event_sfx(_bc.events[i])
-				_handle_event_dramatic(_bc.events[i])
+				var ev: BattleEvent = _bc.events[i]
+				_handle_event_toast(ev)
+				_play_event_sfx(ev)
+				_handle_event_dramatic(ev)
+				if ev != null and ev.type == &"TILE_DISCARDED" and int(ev.actor_seat) == 0:
+					player_discarded = true
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
+				# 雀魂式：玩家切牌后飞入河（rebind 后河末位已落地）
+				if player_discarded and not _pending_discard_fly.is_empty():
+					_play_discard_fly_to_river()
 				# T2:rebind 重建完手牌行后应用和牌张脉冲标记
 				if _pending_win_tile_id >= 0 and _table.seat_panels.size() > 0:
 					_table.seat_panels[0].mark_win_tile(_pending_win_tile_id)
@@ -1145,8 +1158,92 @@ func _exit_tree() -> void:
 	_polling_active = false
 
 func _on_player_tile_clicked(tile_id: int) -> void:
+	# 记录起点：弃牌执行前手牌槽仍在
+	if _seat_panel_player:
+		var from: Vector2 = _seat_panel_player.get_hand_slot_global_center(tile_id)
+		var is_red := false
+		for s in _seat_panel_player._hand_slots:
+			if s != null and is_instance_valid(s) and int(s.get_meta("hand_id", -2)) == tile_id:
+				is_red = bool(s.get_meta("hand_red", false))
+				break
+		if from != Vector2.ZERO:
+			_pending_discard_fly = {"from": from, "tile_id": tile_id, "is_red": is_red}
 	if _decision_adapter != null:
 		_decision_adapter.on_hand_tile_clicked(tile_id)
+
+
+func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
+	if _table == null:
+		return
+	if entered:
+		_table.highlight_tile_id(tile_id)
+	else:
+		_table.clear_tile_highlight()
+
+
+# 雀魂式切牌飞行：手牌全局坐标 → 河末位（经 SubViewport 缩放映射到平面贴图）
+func _play_discard_fly_to_river() -> void:
+	var info: Dictionary = _pending_discard_fly
+	_pending_discard_fly = {}
+	if info.is_empty() or _table == null:
+		return
+	var from_g: Vector2 = info.get("from", Vector2.ZERO)
+	var tile_id: int = int(info.get("tile_id", -1))
+	var is_red: bool = bool(info.get("is_red", false))
+	if from_g == Vector2.ZERO or tile_id < 0:
+		return
+	var to_g: Vector2 = _estimate_river_end_global(0)
+	if to_g == Vector2.ZERO:
+		return
+	var key: String = CardTileBack.tile_id_to_atlas_key(tile_id, is_red)
+	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
+	var tex: Texture2D = null
+	if extractor and key != "":
+		tex = extractor.get_tile_texture(key)
+	var fly := TextureRect.new()
+	fly.texture = tex
+	fly.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fly.stretch_mode = TextureRect.STRETCH_SCALE
+	fly.size = Vector2(48, 68)
+	fly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fly.z_index = 80
+	# 全局 → playable_table 本地
+	var from_local: Vector2 = from_g - global_position
+	var to_local: Vector2 = to_g - global_position
+	fly.position = from_local - fly.size * 0.5
+	add_child(fly)
+	var mid: Vector2 = (from_local + to_local) * 0.5 + Vector2(0, -48)
+	var start_p: Vector2 = from_local - fly.size * 0.5
+	var mid_p: Vector2 = mid - fly.size * 0.5
+	var end_p: Vector2 = to_local - fly.size * 0.5
+	fly.position = start_p
+	var tw := create_tween()
+	tw.set_parallel(true)
+	# 路径：手牌 → 弧顶 → 河末位（雀魂式抛物）
+	var path_tw := create_tween()
+	path_tw.tween_property(fly, "position", mid_p, 0.11)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	path_tw.tween_property(fly, "position", end_p, 0.13)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(fly, "scale", Vector2(0.72, 0.72), 0.24)
+	path_tw.finished.connect(func():
+		if is_instance_valid(fly):
+			fly.queue_free())
+
+
+func _estimate_river_end_global(seat_id: int) -> Vector2:
+	if _table == null or seat_id >= _table.discard_rivers.size():
+		return Vector2.ZERO
+	var dr: DiscardRiver = _table.discard_rivers[seat_id]
+	if dr == null:
+		return Vector2.ZERO
+	# SubViewport 内全局坐标（含超采样 scale）
+	var local_c: Vector2 = dr.get_last_tile_local_center()
+	var vp_global: Vector2 = dr.to_global(local_c)
+	# 映射到 TiltedTableView 贴图像素（取消 TABLE_RES_SCALE）
+	var screen: Vector2 = vp_global / TABLE_RES_SCALE
+	# TextureRect 在 playable_table 原点；再转全局
+	return global_position + screen
 
 # 键盘 helper：D=切第一张牌；S=跳过；R=立直 yes — 备用调试入口
 func _input(event: InputEvent) -> void:
