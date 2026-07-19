@@ -2,15 +2,22 @@ extends GutTest
 
 # T1 宣告演出(spec 2026-06-11 G1)— CallAnnounce 生命周期与配置测试。
 
-func test_kind_style_covers_all_9_kinds():
+func test_kind_style_covers_all_kinds():
 	for kind in [&"chi", &"pon", &"minkan", &"ankan", &"added_kan",
-			&"riichi", &"tsumo", &"ron", &"yakuman"]:
+			&"riichi", &"tsumo", &"ron", &"yakuman", &"kyuusyu", &"ryuukyoku"]:
 		assert_true(CallAnnounce.KIND_STYLE.has(kind), "缺 kind: %s" % kind)
 		var style: Array = CallAnnounce.KIND_STYLE[kind]
 		assert_eq(style.size(), 3, "%s 应有 [文案, 描边色, 字号]" % kind)
 		assert_true(style[0] is String and (style[0] as String).length() > 0)
 		assert_true(style[1] is Color)
 		assert_true(int(style[2]) >= 72, "%s 字号应 ≥72(spec AC-G1-a)" % kind)
+
+
+func test_kyuusyu_kind_style_purple():
+	var style: Array = CallAnnounce.KIND_STYLE[&"kyuusyu"]
+	assert_eq(style[0], "九種")
+	assert_true((style[1] as Color).r > 0.5 and (style[1] as Color).b > 0.5,
+		"九種应用紫系描边")
 
 func test_seat_layout_covers_4_seats_with_distinct_directions():
 	var dirs := {}

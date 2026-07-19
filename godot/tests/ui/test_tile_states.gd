@@ -142,3 +142,24 @@ func test_seat_panel_reveal_hand_face_up():
 	assert_eq(sp.count_revealed_face_up(), 4, "应翻开 4 张正面")
 	sp.clear_hand_reveal()
 	assert_eq(sp.count_revealed_face_up(), 0, "clear 后计数清零")
+
+
+# 听牌候补条：仅 seat 0 + tenpai 时显示
+func test_seat_panel_wait_tiles_strip():
+	var sp := SeatPanel.new()
+	sp.set_seat_id(0)
+	add_child_autofree(sp)
+	await get_tree().process_frame
+	sp.set_tenpai(true)
+	sp.set_wait_tiles([TileId.W1, TileId.W4, TileId.W7])
+	assert_eq(sp.count_wait_tiles_shown(), 3, "应显示 3 张候补")
+	sp.set_tenpai(false)
+	assert_eq(sp.count_wait_tiles_shown(), 0, "非听应隐藏候补")
+	# 对手 seat 不显示
+	var sp2 := SeatPanel.new()
+	sp2.set_seat_id(1)
+	add_child_autofree(sp2)
+	await get_tree().process_frame
+	sp2.set_tenpai(true)
+	sp2.set_wait_tiles([TileId.CHUN])
+	assert_eq(sp2.count_wait_tiles_shown(), 0, "对手不露候补")

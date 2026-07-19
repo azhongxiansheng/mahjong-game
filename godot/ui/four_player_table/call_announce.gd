@@ -29,6 +29,9 @@ const KIND_STYLE: Dictionary = {
 	&"tsumo": ["自摸", Color("e63a28"), 108],
 	&"ron": ["荣和", Color("e63a28"), 108],
 	&"yakuman": ["役満", Color("c41e1e"), 124],
+	# 途中流局：九種单独紫系大字；其它 reason 走「流局」
+	&"kyuusyu": ["九種", Color("a050d0"), 100],
+	&"ryuukyoku": ["流局", Color("8a7aa8"), 96],
 }
 
 # seat → [锚点位置(1280×800), 滑入方向单位向量]

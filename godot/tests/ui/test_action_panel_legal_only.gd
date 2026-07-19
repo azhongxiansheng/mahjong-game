@@ -47,3 +47,15 @@ func test_riichi_confirm_shows_two() -> void:
 	assert_true(p._btn_riichi.visible)
 	assert_true(p._btn_skip.visible)
 	assert_eq(_count_visible(p), 2)
+
+
+func test_kyuusyu_shows_dedicated_button_and_status() -> void:
+	var p: PlayerActionPanel = ACTION_PANEL.instantiate()
+	add_child_autofree(p)
+	await get_tree().process_frame
+	p.enter_waiting_kyuusyu()
+	assert_true(p._btn_kyuusyu.visible, "九種按钮应显示")
+	assert_true(p._btn_skip.visible, "可跳过继续对局")
+	assert_eq(p._btn_kyuusyu.text, "九種九牌")
+	assert_true(p._label_status.text.find("九種") >= 0)
+	assert_eq(_count_visible(p), 2)

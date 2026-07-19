@@ -155,7 +155,9 @@ func _build_ui() -> void:
 	_btn_chi = _make_btn("吃", DT.TEXT_DANGER)
 	_btn_pon = _make_btn("碰", DT.TEXT_DANGER)
 	_btn_minkan = _make_btn("杠", DT.TEXT_DANGER)
-	_btn_kyuusyu = _make_btn("九種", Color(0.65, 0.30, 0.85))
+	_btn_kyuusyu = _make_btn("九種九牌", Color(0.78, 0.42, 0.95))
+	_btn_kyuusyu.custom_minimum_size = Vector2(132, BTN_H)
+	_btn_kyuusyu.pivot_offset = Vector2(66, BTN_H / 2.0)
 	_btn_ankan = _make_btn("暗杠", Color(0.85, 0.50, 0.15))
 	_btn_added_kan = _make_btn("加杠", Color(0.85, 0.50, 0.15))
 	_btn_consumable = _make_btn("道具", Color(0.95, 0.60, 0.15))
@@ -412,7 +414,7 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 # 进入"九種九牌"宣告状态:第一巡摸完后 14 张含 ≥ 9 种幺九,玩家可选途中流局。
 func enter_waiting_kyuusyu() -> void:
 	_state = State.WAITING_KYUUSYU
-	_label_status.text = "可宣告九種九牌(途中流局)— 选择"
+	_label_status.text = "九種九牌 — 宣告途中流局？"
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
@@ -424,6 +426,9 @@ func enter_waiting_kyuusyu() -> void:
 	_hide_btn(_btn_consumable)
 	_show_btn(_btn_kyuusyu)
 	_show_btn(_btn_skip)
+	# 雀魂式：紫色大按钮脉冲，避免和普通鸣牌抢注意力
+	if _btn_kyuusyu:
+		DT.attention(_btn_kyuusyu, "pulse", 0.5)
 	_start_countdown(KYUUSYU_TIMEOUT_SEC, &"kyuusyu")
 
 
