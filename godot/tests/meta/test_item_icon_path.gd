@@ -29,6 +29,12 @@ func test_default_icon_path_missing_returns_empty() -> void:
 	assert_eq(RelicItem.default_icon_path(&"relic_no_such_thing_v1"), "")
 	assert_eq(ConsumableItem.default_icon_path(&"no_such_consumable_v1"), "")
 
+func test_newly_added_pool_icons_resolve() -> void:
+	assert_true(ResourceLoader.exists(RelicItem.default_icon_path(&"relic_red_string_v1")))
+	assert_true(ResourceLoader.exists(RelicItem.default_icon_path(&"relic_pity_breaker_v1")))
+	assert_true(ResourceLoader.exists(ConsumableItem.default_icon_path(&"hp_potion_v1")))
+	assert_true(ResourceLoader.exists(ConsumableItem.default_icon_path(&"tsubame_v1")))
+
 func test_run_ui_resolve_gacha_icon() -> void:
 	var r := GachaResult.new()
 	r.kind = GachaResult.KIND_RELIC
