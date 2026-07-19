@@ -70,7 +70,23 @@ func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
 	size = Vector2(PANEL_W, PANEL_H)
 	_build_ui()
+	_sync_timeouts_from_settings()
+	var sm = get_node_or_null("/root/SettingsManager")
+	if sm and sm.has_signal("settings_changed"):
+		if not sm.settings_changed.is_connected(_sync_timeouts_from_settings):
+			sm.settings_changed.connect(_sync_timeouts_from_settings)
 	_apply_state(State.IDLE)
+
+
+func _sync_timeouts_from_settings() -> void:
+	var sm = get_node_or_null("/root/SettingsManager")
+	if sm == null:
+		return
+	if "claim_timeout_sec" in sm:
+		CLAIM_TIMEOUT_SEC = float(sm.claim_timeout_sec)
+		KYUUSYU_TIMEOUT_SEC = CLAIM_TIMEOUT_SEC
+	if "riichi_timeout_sec" in sm:
+		RIICHI_TIMEOUT_SEC = float(sm.riichi_timeout_sec)
 
 func _build_ui() -> void:
 	# 居中胶囊底：只在有合法按钮时显示

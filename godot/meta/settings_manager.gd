@@ -28,6 +28,10 @@ var framerate_cap: int = 60
 # T5:跳过开局发牌演出(默认播放)
 var skip_deal_animation: bool = false
 
+# 雀魂式响应倒计时秒数（鸣牌/立直确认；九种跟鸣牌）
+var claim_timeout_sec: float = 5.0
+var riichi_timeout_sec: float = 6.0
+
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
 
@@ -70,6 +74,18 @@ func set_fullscreen(b: bool) -> void:
 func set_skip_deal_animation(b: bool) -> void:
 	skip_deal_animation = b
 	_save_to_disk()
+
+
+func set_claim_timeout_sec(sec: float) -> void:
+	claim_timeout_sec = clampf(sec, 1.0, 30.0)
+	_save_to_disk()
+	settings_changed.emit()
+
+
+func set_riichi_timeout_sec(sec: float) -> void:
+	riichi_timeout_sec = clampf(sec, 1.0, 30.0)
+	_save_to_disk()
+	settings_changed.emit()
 
 
 func set_framerate_cap(fps: int) -> void:
@@ -121,6 +137,8 @@ func _load_from_disk() -> void:
 	tutorial_seen = bool(parsed.get("tutorial_seen", false))
 	fullscreen = bool(parsed.get("fullscreen", false))
 	skip_deal_animation = bool(parsed.get("skip_deal_animation", false))
+	claim_timeout_sec = clampf(float(parsed.get("claim_timeout_sec", claim_timeout_sec)), 1.0, 30.0)
+	riichi_timeout_sec = clampf(float(parsed.get("riichi_timeout_sec", riichi_timeout_sec)), 1.0, 30.0)
 	var fps_v: int = int(parsed.get("framerate_cap", 60))
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
@@ -135,6 +153,8 @@ func _save_to_disk() -> void:
 		"fullscreen": fullscreen,
 		"skip_deal_animation": skip_deal_animation,
 		"framerate_cap": framerate_cap,
+		"claim_timeout_sec": claim_timeout_sec,
+		"riichi_timeout_sec": riichi_timeout_sec,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:

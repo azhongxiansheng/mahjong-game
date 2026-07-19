@@ -519,6 +519,11 @@ func set_hand_tile_owners(owners: Array) -> void:
 		_rebuild_hand_tile_row(owners)
 		_refresh_labels()
 
+# 胡牌结算前：强制显示该 seat 手牌正面（雀魂翻牌）
+var _force_reveal_hand: bool = false
+var _revealed_hand: Hand = null
+
+
 # 一次注入 Seat 全部状态（含手牌色块归属）
 # seat 0 时若传入 hand 则同时渲染真实 atlas 牌面（玩家自家可见），
 # 其它 seat 仍用 owner 着色色块（对手牌不可见，符合规则）。
@@ -531,12 +536,79 @@ func bind_seat(seat: Seat) -> void:
 	_furiten = seat.furiten.is_furiten() if seat.furiten else false
 	# discards 数量需外部传入（Seat 自身不持，BattleState.discards_per_seat[i] 持）
 	if is_inside_tree():
-		if _seat_id == 0:
+		if _force_reveal_hand and _revealed_hand != null:
+			_rebuild_revealed_hand_row(_revealed_hand)
+		elif _seat_id == 0:
 			# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右
 			_rebuild_player_hand_row_with_drawn(seat.hand, seat.last_drawn_tile_id)
 		else:
 			_rebuild_hand_tile_row(seat.hand.to_owner_array())
 		_refresh_labels()
+
+
+# 雀魂式：结算前翻开对手手牌（face-up 小牌横排 + 错峰入场）
+func reveal_hand_face_up(hand: Hand, animate: bool = true) -> void:
+	_force_reveal_hand = true
+	_revealed_hand = hand
+	if not is_inside_tree() or hand == null:
+		return
+	_rebuild_revealed_hand_row(hand, animate)
+
+
+func clear_hand_reveal() -> void:
+	_force_reveal_hand = false
+	_revealed_hand = null
+
+
+func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
+	if _hand_tile_row == null or hand == null:
+		return
+	_apply_hand_row_offset()
+	for child in _hand_tile_row.get_children():
+		child.queue_free()
+	_hand_slots.clear()
+	var ids: Array = hand.to_id_array()
+	ids.sort()
+	# 自家用大牌尺寸，对手用小牌（与日常手牌行一致）
+	var tw: float = PLAYER_HAND_TILE_W if _seat_id == 0 else HAND_TILE_W
+	var th: float = PLAYER_HAND_TILE_H if _seat_id == 0 else HAND_TILE_H
+	var gap: float = HAND_TILE_GAP if _seat_id != 0 else 4.0
+	var scale_x: float = tw / float(CardTileBack.TILE_WIDTH)
+	var scale_y: float = th / float(CardTileBack.TILE_HEIGHT)
+	var x := 0.0
+	var i := 0
+	for tid in ids:
+		var is_red := false
+		for t in hand._tiles:
+			if t.id == int(tid) and t.is_red_dora:
+				is_red = true
+				break
+		var tile := CardTileBack.new()
+		tile.position = Vector2(x, 0)
+		tile.scale = Vector2(scale_x, scale_y)
+		_hand_tile_row.add_child(tile)
+		tile.set_face_up(int(tid), is_red)
+		tile.set_clickable(false)
+		if animate and is_inside_tree():
+			tile.modulate.a = 0.0
+			tile.scale = Vector2(scale_x * 0.7, scale_y * 0.7)
+			var twen := create_tween().set_parallel(true)
+			twen.tween_property(tile, "modulate:a", 1.0, 0.18).set_delay(i * 0.04)
+			twen.tween_property(tile, "scale", Vector2(scale_x, scale_y), 0.2)\
+				.set_delay(i * 0.04).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		x += tw + gap
+		i += 1
+
+
+# 测试/调试：翻开后手牌正面张数
+func count_revealed_face_up() -> int:
+	if not _force_reveal_hand or _hand_tile_row == null:
+		return 0
+	var n := 0
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack:
+			n += 1
+	return n
 
 # ---- helpers ----
 

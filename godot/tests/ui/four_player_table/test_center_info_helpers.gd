@@ -58,3 +58,20 @@ func test_dora_summary_matches_card_tile_back_for_all_kinds() -> void:
 		var summary := CenterInfoPanel.dora_summary([tid])
 		assert_true(summary.find(expected) >= 0,
 			"%s 牌名 '%s' 应出现在 dora_summary 中" % [tid, expected])
+
+
+# 桌上立直棒 >0 时视觉棒 + 金光呼吸
+func test_riichi_sticks_visual_and_glow() -> void:
+	var panel: CenterInfoPanel = load(
+		"res://ui/four_player_table/center_info_panel.tscn").instantiate()
+	add_child_autofree(panel)
+	await get_tree().process_frame
+	panel.set_riichi_sticks(0)
+	assert_eq(panel.count_riichi_stick_visuals(), 0)
+	assert_false(panel.is_riichi_stick_glow_active(), "0 棒无发光")
+	panel.set_riichi_sticks(2)
+	assert_eq(panel.count_riichi_stick_visuals(), 2, "应画 2 根棒")
+	assert_true(panel.is_riichi_stick_glow_active(), "有棒应启发光 tween")
+	panel.set_riichi_sticks(0)
+	assert_eq(panel.count_riichi_stick_visuals(), 0)
+	assert_false(panel.is_riichi_stick_glow_active())

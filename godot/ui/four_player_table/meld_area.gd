@@ -12,6 +12,8 @@ const MELD_GAP: int = 8       # 多组 meld 之间间距
 
 var _seat_id: int = -1
 var _melds: Array = []        # Array[Meld]
+var _tile_nodes: Array = []   # [{id, node}] 同名高亮
+var _hover_match_id: int = -1
 
 # claimant_seat = self._seat_id；分开存便于后续 polling 模式
 func set_melds(melds: Array, claimant_seat: int) -> void:
@@ -19,12 +21,47 @@ func set_melds(melds: Array, claimant_seat: int) -> void:
 	_melds = melds
 	_rebuild()
 
+
+func set_hover_match_id(tile_id: int) -> void:
+	_hover_match_id = tile_id
+	_apply_hover_match()
+
+
+func clear_hover_match() -> void:
+	_hover_match_id = -1
+	_apply_hover_match()
+
+
+func count_hover_matched() -> int:
+	var n := 0
+	for e in _tile_nodes:
+		var tr: TextureRect = e.get("node")
+		if tr != null and is_instance_valid(tr) and bool(tr.get_meta("hover_match", false)):
+			n += 1
+	return n
+
+
+func _apply_hover_match() -> void:
+	for e in _tile_nodes:
+		var tr: TextureRect = e.get("node")
+		if tr == null or not is_instance_valid(tr):
+			continue
+		var on: bool = _hover_match_id >= 0 and int(e.get("id", -2)) == _hover_match_id
+		tr.set_meta("hover_match", on)
+		if on:
+			tr.modulate = Color(0.55, 0.75, 1.0, 1.0)
+		elif bool(e.get("was_red_tint", false)):
+			tr.modulate = Color(1.0, 0.7, 0.7, 1.0)  # 旧粉红赤宝 fallback 已少用
+		else:
+			tr.modulate = Color.WHITE
+
 func _rebuild() -> void:
 	if not is_inside_tree():
 		return
 	# 清空旧 children
 	for child in get_children():
 		child.queue_free()
+	_tile_nodes.clear()
 	if _melds.is_empty():
 		return
 	var extractor: Node = get_tree().root.get_node_or_null("TextureExtractor")
@@ -37,6 +74,7 @@ func _rebuild() -> void:
 		var slots: Array = MeldLayout.compute(meld, _seat_id)
 		x_cursor = _render_meld(slots, x_cursor, extractor)
 		x_cursor -= MELD_GAP
+	_apply_hover_match()
 
 # 在 x_start 起点（最右侧）从右往左渲染 1 组 meld；返新 x_cursor（更靠左）
 # 整组 meld 占的最左 x 通过 return 报上层。
@@ -119,3 +157,9 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node) -
 	else:
 		tex_rect.position = Vector2(x, y_offset)
 	add_child(tex_rect)
+	# 同名高亮登记（face_down 不入列）
+	_tile_nodes.append({
+		"id": int(slot["tile_id"]),
+		"node": tex_rect,
+		"was_red_tint": false,
+	})

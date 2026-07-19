@@ -8,7 +8,7 @@ class_name SettingsOverlay extends Control
 signal closed
 
 const PANEL_W: int = 460
-const PANEL_H: int = 380
+const PANEL_H: int = 460
 
 # FPS 预设 — 30/60/120/144/0(unlimited)
 const FPS_PRESETS: Array = [30, 60, 120, 144, 0]
@@ -17,6 +17,8 @@ const FPS_LABELS: Array = ["30 FPS", "60 FPS", "120 FPS", "144 FPS", "不限制"
 var _sfx_slider: HSlider = null
 var _sfx_value_label: Label = null
 var _fps_option: OptionButton = null
+var _claim_slider: HSlider = null
+var _claim_value_label: Label = null
 
 
 func _init() -> void:
@@ -127,6 +129,32 @@ func _ready() -> void:
 	_fps_option.item_selected.connect(_on_fps_selected)
 	panel.add_child(_fps_option)
 
+	# 雀魂式鸣牌响应倒计时（秒）
+	var claim_label := Label.new()
+	claim_label.text = "鸣牌倒计时"
+	claim_label.position = Vector2(40, 268)
+	claim_label.size = Vector2(160, 28)
+	claim_label.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	claim_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	panel.add_child(claim_label)
+	_claim_slider = HSlider.new()
+	_claim_slider.position = Vector2(40, 300)
+	_claim_slider.size = Vector2(PANEL_W - 80 - 60, 28)
+	_claim_slider.min_value = 1.0
+	_claim_slider.max_value = 15.0
+	_claim_slider.step = 0.5
+	_claim_slider.value = float(_sm().claim_timeout_sec)
+	_claim_slider.value_changed.connect(_on_claim_timeout_changed)
+	panel.add_child(_claim_slider)
+	_claim_value_label = Label.new()
+	_claim_value_label.position = Vector2(PANEL_W - 90, 298)
+	_claim_value_label.size = Vector2(60, 30)
+	_claim_value_label.text = "%.1fs" % float(_sm().claim_timeout_sec)
+	_claim_value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_claim_value_label.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	_claim_value_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	panel.add_child(_claim_value_label)
+
 	# 重看新手引导按钮(清 tutorial_seen 标志 + 立刻弹 TutorialOverlay)
 	var tut_btn := Button.new()
 	tut_btn.text = "重看新手引导"
@@ -197,6 +225,14 @@ func _on_sfx_changed(v: float) -> void:
 	_sm().set_sfx_volume(v)
 	if _sfx_value_label:
 		_sfx_value_label.text = "%d%%" % int(v * 100)
+
+
+func _on_claim_timeout_changed(v: float) -> void:
+	_sm().set_claim_timeout_sec(v)
+	# 立直确认略长 1s（雀魂体感）
+	_sm().set_riichi_timeout_sec(v + 1.0)
+	if _claim_value_label:
+		_claim_value_label.text = "%.1fs" % v
 
 
 func _on_test_pressed() -> void:

@@ -95,11 +95,14 @@ func bind_cumulative_scores(scores: Array) -> void:
 		seat_panels[i].set_score(int(scores[i]))
 
 
-# 雀魂式全桌同名高亮：河 + 自家手牌（手牌内 hover 仍由 SeatPanel 处理，这里补河/副露）
+# 雀魂式全桌同名高亮：河 + 副露 + 自家手牌
 func highlight_tile_id(tile_id: int) -> void:
 	for dr in discard_rivers:
 		if dr is DiscardRiver:
 			dr.set_hover_match_id(tile_id)
+	for ma in meld_areas:
+		if ma is MeldArea:
+			ma.set_hover_match_id(tile_id)
 	# 自家手牌槽
 	if seat_panels.size() > 0 and seat_panels[0]:
 		seat_panels[0].highlight_hand_tile_id(tile_id)
@@ -109,6 +112,9 @@ func clear_tile_highlight() -> void:
 	for dr in discard_rivers:
 		if dr is DiscardRiver:
 			dr.clear_hover_match()
+	for ma in meld_areas:
+		if ma is MeldArea:
+			ma.clear_hover_match()
 	if seat_panels.size() > 0 and seat_panels[0]:
 		seat_panels[0].highlight_hand_tile_id(-1)
 

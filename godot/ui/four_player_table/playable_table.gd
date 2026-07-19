@@ -284,10 +284,12 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		if ev.type == &"WIN_DECLARED":
 			win_event = ev
 			break
-	# 胡牌 → 先放粒子 + 震动,再弹 overlay。让玩家先体验冲击再看结算细节。
+	# 胡牌 → 先翻开胜者手牌（雀魂式）+ 粒子震动，再弹 overlay。
 	if win_event != null:
+		_reveal_winner_hand(win_event)
 		_play_win_effects(win_event)
-		await get_tree().create_timer(0.45).timeout
+		# 错峰翻牌约 0.04*13 + 0.2 ≈ 0.7s，给玩家看清再进结算
+		await get_tree().create_timer(0.7).timeout
 	var overlay := Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -854,9 +856,28 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 					if is_inside_tree():
 						_play_call_announce(&"yakuman", seat_c))
 		&"GAME_BEGIN":
-			# 新局开始 → 4 家 emote 重置 normal
+			# 新局开始 → 4 家 emote 重置 normal；清掉上局结算翻牌
 			for s in [0, 1, 2, 3]:
 				_set_seat_emote(s, "normal")
+				if _table != null and s < _table.seat_panels.size() \
+						and _table.seat_panels[s] != null:
+					_table.seat_panels[s].clear_hand_reveal()
+
+
+# 雀魂式：结算前把胜者手牌翻成正面（对手从牌背 → face-up 错峰入场）
+func _reveal_winner_hand(win_event: BattleEvent) -> void:
+	if win_event == null or _table == null or _bc == null or _bc.state == null:
+		return
+	var seat_id: int = int(win_event.actor_seat)
+	if seat_id < 0 or seat_id >= _table.seat_panels.size():
+		return
+	if seat_id >= _bc.state.seats.size():
+		return
+	var seat: Seat = _bc.state.seats[seat_id]
+	var sp: SeatPanel = _table.seat_panels[seat_id]
+	if sp == null or seat == null or seat.hand == null:
+		return
+	sp.reveal_hand_face_up(seat.hand, true)
 
 
 # T5:发牌演出期间隐藏四家真手牌行(演出结束恢复)。
