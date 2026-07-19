@@ -101,11 +101,25 @@ var _discards_count: int = 0
 var _riichi: bool = false
 var _furiten: bool = false
 
+# 听牌候补条（仅 seat 0）：小牌面横排显示 wait tiles
+const WAIT_TILE_W: float = 28.0
+const WAIT_TILE_H: float = 40.0
+const WAIT_TILE_GAP: float = 3.0
+var _wait_row: Node2D = null
+var _wait_ids: Array = []  # Array[int]
+
+
 func _ready() -> void:
 	_hand_tile_row = Node2D.new()
 	# 偏移在 _rebuild_*_row 之前会按 seat_id 调整（seat 0 用更宽的偏移给真实牌面留位）
 	_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 	add_child(_hand_tile_row)
+	_wait_row = Node2D.new()
+	_wait_row.name = "WaitRow"
+	# 贴在自家手牌上方（PLAYER_HAND_ROW_OFFSET 上方约 48px）
+	_wait_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y - 48.0)
+	_wait_row.visible = false
+	add_child(_wait_row)
 	_refresh_labels()
 
 # 切换 seat 0 / 其它 seat 时切换 hand_tile_row 的水平偏移。
@@ -393,6 +407,66 @@ func set_tenpai(b: bool) -> void:
 	_tenpai = b
 	if is_inside_tree():
 		_apply_status_badges()
+		# 非听时清候补；听时重刷（可能已有 wait ids）
+		if not b:
+			set_wait_tiles([])
+		else:
+			_rebuild_wait_row()
+
+
+# 听牌候补张（日麻 wait tiles）。仅 seat 0 渲染；空数组隐藏。
+func set_wait_tiles(ids: Array) -> void:
+	_wait_ids = ids.duplicate() if ids != null else []
+	if is_inside_tree():
+		_rebuild_wait_row()
+
+
+func clear_wait_tiles() -> void:
+	set_wait_tiles([])
+
+
+func count_wait_tiles_shown() -> int:
+	if _wait_row == null or not _wait_row.visible:
+		return 0
+	var n := 0
+	for child in _wait_row.get_children():
+		if child is CardTileBack and not child.is_queued_for_deletion():
+			n += 1
+	return n
+
+
+func _rebuild_wait_row() -> void:
+	if _wait_row == null:
+		return
+	for child in _wait_row.get_children():
+		child.queue_free()
+	# 仅自家、且确有候补时显示
+	if _seat_id != 0 or _wait_ids.is_empty() or not _tenpai:
+		_wait_row.visible = false
+		return
+	_wait_row.visible = true
+	_wait_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y - 48.0)
+	# 「听」小标签
+	var tag := Label.new()
+	tag.text = "听"
+	tag.position = Vector2(0, 8)
+	tag.add_theme_font_size_override("font_size", 16)
+	tag.add_theme_color_override("font_color", Color(1.0, 0.88, 0.40))
+	tag.add_theme_constant_override("outline_size", 3)
+	tag.add_theme_color_override("font_outline_color", Color(0.15, 0.08, 0.02, 0.9))
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wait_row.add_child(tag)
+	var scale_x: float = WAIT_TILE_W / float(CardTileBack.TILE_WIDTH)
+	var scale_y: float = WAIT_TILE_H / float(CardTileBack.TILE_HEIGHT)
+	var x: float = 28.0
+	for tid in _wait_ids:
+		var tile := CardTileBack.new()
+		tile.position = Vector2(x, 0)
+		tile.scale = Vector2(scale_x, scale_y)
+		_wait_row.add_child(tile)
+		tile.set_face_up(int(tid), false)
+		tile.set_clickable(false)
+		x += WAIT_TILE_W + WAIT_TILE_GAP
 
 
 func set_ippatsu(b: bool) -> void:

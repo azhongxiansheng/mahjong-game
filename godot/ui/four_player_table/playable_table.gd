@@ -284,12 +284,13 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		if ev.type == &"WIN_DECLARED":
 			win_event = ev
 			break
-	# 胡牌 → 先翻开胜者手牌（雀魂式）+ 粒子震动，再弹 overlay。
+	# 胡牌 → 翻手牌 + 粒子 + 役名横幅，再弹 overlay。
 	if win_event != null:
 		_reveal_winner_hand(win_event)
 		_play_win_effects(win_event)
-		# 错峰翻牌约 0.04*13 + 0.2 ≈ 0.7s，给玩家看清再进结算
-		await get_tree().create_timer(0.7).timeout
+		# 错峰翻牌约 0.04*13 + 0.2 ≈ 0.7s
+		await get_tree().create_timer(0.55).timeout
+		await _play_yaku_banner(win_event.extra.get("yaku_names", []))
 	var overlay := Control.new()
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -475,14 +476,14 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 # 正在播放的结算动画 [{tween, finish: Callable}];点击跳过时统一收尾。
 var _result_anim_tweens: Array = []
 
-# 役种双列逐条入场。每条「役名  N飜」,0.08s/条错峰,从左淡入滑入。
+# 役种双列逐条入场。每条左侧金条 +「役名  N飜」,0.08s/条错峰。
 func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.position = Vector2(80, 148)
 	grid.size = Vector2(560, 68)
 	grid.add_theme_constant_override("h_separation", 48)
-	grid.add_theme_constant_override("v_separation", 2)
+	grid.add_theme_constant_override("v_separation", 4)
 	panel.add_child(grid)
 	var shown: Array = yaku_names.slice(0, 8)
 	for i in range(shown.size()):
@@ -496,11 +497,7 @@ func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
 			suffix = "役満 ×%d" % mul if mul > 1 else "役満"
 		else:
 			suffix = "%d 飜" % int(item.get("han", 0))
-		var row := Label.new()
-		row.text = "%s　%s" % [nm, suffix]
-		row.custom_minimum_size = Vector2(256, 22)
-		row.add_theme_font_size_override("font_size", 18)
-		row.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
+		var row := _make_yaku_row_label(nm, suffix)
 		grid.add_child(row)
 		# 错峰淡入(0.08s/条)。注:Grid 接管子节点 position,只动 modulate。
 		row.modulate = Color(1, 1, 1, 0)
@@ -518,6 +515,80 @@ func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
 		more.add_theme_font_size_override("font_size", 16)
 		more.add_theme_color_override("font_color", Color(0.8, 0.74, 0.5))
 		grid.add_child(more)
+
+
+# 雀魂式：结算面板前的全屏役名横幅（错峰飞入后淡出）。
+# yaku_names: [{name, han, yakuman_multiplier}, ...]
+func _play_yaku_banner(yaku_names: Array) -> void:
+	if yaku_names.is_empty() or not is_inside_tree():
+		return
+	var host := Control.new()
+	host.name = "YakuBanner"
+	host.set_anchors_preset(Control.PRESET_FULL_RECT)
+	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	host.z_index = 180
+	add_child(host)
+	var shown: Array = yaku_names.slice(0, 6)
+	var base_y: float = 280.0
+	for i in range(shown.size()):
+		var item = shown[i]
+		if not (item is Dictionary):
+			continue
+		var nm: String = String(item.get("name", ""))
+		if nm == "":
+			continue
+		var mul: int = int(item.get("yakuman_multiplier", 0))
+		var han: int = int(item.get("han", 0))
+		var text: String = nm
+		if mul > 0:
+			text = "%s  役満" % nm
+		elif han > 0:
+			text = "%s  %d飜" % [nm, han]
+		var lbl := Label.new()
+		lbl.text = text
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.position = Vector2(200, base_y + i * 36)
+		lbl.size = Vector2(880, 34)
+		lbl.add_theme_font_size_override("font_size", 28 if i == 0 else 22)
+		lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.72))
+		lbl.add_theme_constant_override("outline_size", 6)
+		lbl.add_theme_color_override("font_outline_color", Color(0.55, 0.18, 0.12, 0.9))
+		lbl.add_theme_constant_override("shadow_offset_y", 2)
+		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
+		lbl.modulate.a = 0.0
+		lbl.position.x = 260.0  # 从右滑入
+		host.add_child(lbl)
+		var tw := create_tween()
+		tw.tween_interval(0.05 + i * 0.10)
+		tw.tween_property(lbl, "modulate:a", 1.0, 0.18)
+		tw.parallel().tween_property(lbl, "position:x", 200.0, 0.22)\
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var hold: float = 0.35 + mini(shown.size(), 6) * 0.10
+	await get_tree().create_timer(hold).timeout
+	if is_instance_valid(host):
+		var fade := create_tween()
+		fade.tween_property(host, "modulate:a", 0.0, 0.2)
+		await fade.finished
+		if is_instance_valid(host):
+			host.queue_free()
+
+
+static func _make_yaku_row_label(nm: String, suffix: String) -> Control:
+	var box := HBoxContainer.new()
+	box.custom_minimum_size = Vector2(256, 24)
+	box.add_theme_constant_override("separation", 8)
+	var bar := ColorRect.new()
+	bar.custom_minimum_size = Vector2(4, 20)
+	bar.color = Color(0.95, 0.78, 0.32)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	box.add_child(bar)
+	var row := Label.new()
+	row.text = "%s　%s" % [nm, suffix]
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_theme_font_size_override("font_size", 18)
+	row.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
+	box.add_child(row)
+	return box
 
 # 胜者得分大数字滚动(0→total,0.6s quad_out;金=玩家受益/红=玩家放铳)。
 func _build_rolling_score(panel: Control, total: int, is_up_for_player: bool) -> void:
@@ -827,9 +898,13 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			shake2.start()
 			_flash_screen(0.22, Color(0.7, 0.85, 1.0, 0.45))
 		&"ABORTIVE_DRAW":
-			# 途中流局(四风连打/四家立直/九種九牌/三家和了等):红闪让玩家
-			# 注意"这局白打了"。WinBurst 不触发(不是胡牌)。
+			# 途中流局(四风连打/四家立直/九種九牌/三家和了等):红闪 + 书法大字。
 			_flash_screen(0.3, Color(1.0, 0.7, 0.7, 0.3))
+			var reason := String(ev.extra.get("reason", ""))
+			if reason == "kyuusyu_kyuuhai":
+				_play_call_announce(&"kyuusyu", int(ev.actor_seat))
+			else:
+				_play_call_announce(&"ryuukyoku", int(ev.actor_seat) if int(ev.actor_seat) >= 0 else 0)
 		&"TSUMO_DECLARED", &"RON_DECLARED":
 			# 胡牌宣告大字(T1)。役満升级版在 WIN_DECLARED 分支补刀。
 			_play_call_announce(

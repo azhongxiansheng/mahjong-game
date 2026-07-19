@@ -26,9 +26,10 @@ func test_yaku_rows_built_and_staggered():
 			grid = child
 	assert_not_null(grid, "役列表用 Grid 容器")
 	assert_eq(grid.get_child_count(), 3, "3 役 3 行")
-	# 错峰入场:初始全透明(动画起点)
+	# 错峰入场:初始全透明(动画起点)；行是带金条的 HBox
 	for row in grid.get_children():
-		assert_eq((row as Label).modulate.a, 0.0, "入场前透明")
+		assert_true(row is HBoxContainer or row is Label, "役行应为 HBox/Label")
+		assert_eq((row as CanvasItem).modulate.a, 0.0, "入场前透明")
 	assert_eq(_pt._result_anim_tweens.size(), 3, "每行一条动画登记")
 
 func test_yaku_rows_overflow_aggregated():
@@ -59,9 +60,31 @@ func test_skip_jumps_to_final_state():
 	for child in _panel.get_children():
 		if child is GridContainer:
 			for row in child.get_children():
-				assert_eq((row as Label).modulate.a, 1.0, "役行跳到不透明")
+				assert_eq((row as CanvasItem).modulate.a, 1.0, "役行跳到不透明")
 	# 第二次点击:无动画 → 返 false(调用方关面板)
 	assert_false(_pt._skip_result_animations())
+
+
+func test_yaku_banner_builds_labels_then_frees():
+	# 横幅应创建 YakuBanner 节点、写役名、结束后自毁
+	var yaku: Array = [
+		{"name": "立直", "han": 1},
+		{"name": "一发", "han": 1},
+	]
+	_pt._play_yaku_banner(yaku)
+	await get_tree().process_frame
+	var banner := _pt.get_node_or_null("YakuBanner")
+	assert_not_null(banner, "应有 YakuBanner 临时节点")
+	var lbl_count := 0
+	for c in banner.get_children():
+		if c is Label:
+			lbl_count += 1
+			assert_true((c as Label).text.find("立直") >= 0
+				or (c as Label).text.find("一发") >= 0)
+	assert_eq(lbl_count, 2)
+	# hold ~0.55 + fade 0.2
+	await wait_seconds(1.2)
+	assert_null(_pt.get_node_or_null("YakuBanner"), "横幅结束后应销毁")
 
 func test_rolling_score_color_by_player_benefit():
 	_pt._build_rolling_score(_panel, 8000, true)

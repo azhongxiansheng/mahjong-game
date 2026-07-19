@@ -69,12 +69,19 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		# 不在这里跳)。对家不曝光听牌状态(只在玩家自家显示)。
 		if i == 0:
 			var is_tenpai := false
+			var waits: Array = []
 			if seat.hand.size() == 13:
 				var typed_melds: Array[Meld] = []
 				for m in seat.melds:
 					typed_melds.append(m)
-				is_tenpai = WaitCalculator.is_tenpai(seat.hand, typed_melds)
+				waits = WaitCalculator.wait_tiles(seat.hand, typed_melds)
+				is_tenpai = waits.size() > 0
 			sp.set_tenpai(is_tenpai)
+			# 雀魂式听牌候补：13 张听牌时在手牌上方画 wait tiles
+			if is_tenpai:
+				sp.set_wait_tiles(waits)
+			else:
+				sp.clear_wait_tiles()
 		# 一发窗口(刚立直未轮一圈)— 所有 seat 都显(玩家算对家一发风险)。
 		sp.set_ippatsu(seat.riichi.declared and seat.riichi.ippatsu_window)
 	for i in range(discard_rivers.size()):
