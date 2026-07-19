@@ -131,15 +131,31 @@ func _rebuild() -> void:
 			child.queue_free()
 	# 视觉地图模式（有 ChapterMap 数据 + MapView 容器）
 	if _chapter_map != null and _map_view != null:
-		_render_visual_map()
+		# 首帧 size 常为 0 → 子按钮点不中；等布局后再画
+		if _map_view.size.y < 80.0:
+			call_deferred("_render_visual_map_when_ready")
+		else:
+			_render_visual_map()
 		return
 	# Fallback: 文本按钮（向后兼容）
+	_rebuild_text_options()
+
+
+func _render_visual_map_when_ready() -> void:
+	if not is_inside_tree() or _map_view == null or _chapter_map == null:
+		return
+	# 再清一次，避免 deferred 与二次 rebuild 叠两套节点
+	for child in _map_view.get_children():
+		child.queue_free()
+	_render_visual_map()
+
+
+func _rebuild_text_options() -> void:
 	for i in range(_options.size()):
 		var node_ref: NodeRef = _options[i]
-		var btn := Button.new()
-		btn.text = format_option_text(i + 1, node_ref)
-		btn.custom_minimum_size = Vector2(0, DT.BUTTON_H)
-		btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
+		var btn := DT.make_button(format_option_text(i + 1, node_ref),
+			DT.BtnRole.PRIMARY, Vector2(0, DT.BUTTON_H))
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var index_capture: int = node_ref.index
 		btn.pressed.connect(func(): emit_signal("node_chosen", index_capture))
 		_options_box.add_child(btn)
@@ -162,6 +178,10 @@ static func compute_layers(map: ChapterMap) -> Dictionary:
 
 # 视觉 DAG 渲染：节点圆+图标 + 路径 + 当前/可达/已过三态
 func _render_visual_map() -> void:
+	if _map_view == null or _chapter_map == null:
+		return
+	_map_view.mouse_filter = Control.MOUSE_FILTER_STOP
+	_map_view.clip_contents = false
 	var depth: Dictionary = compute_layers(_chapter_map)
 	var layers: Dictionary = {}  # layer → Array[node_index]
 	for n in depth.keys():
@@ -175,23 +195,27 @@ func _render_visual_map() -> void:
 	var max_layer: int = 0
 	for d in layers.keys():
 		max_layer = max(max_layer, int(d))
-	# 地图区域高度随 MapView 实际尺寸居中
+	# 用地图像素高度居中；未布局时用稳定 fallback
 	var map_h: float = _map_view.size.y if _map_view.size.y > 80 else 520.0
-	var center_y: float = map_h * 0.48
+	var map_w: float = _map_view.size.x if _map_view.size.x > 80 else 1200.0
+	var center_y: float = map_h * 0.42
+	# 横向居中整条 DAG
+	var total_w: float = max_layer * COLUMN_WIDTH
+	var x0: float = maxf(MAP_PADDING_LEFT, (map_w - total_w) * 0.5 - COLUMN_WIDTH * 0.25)
 	for d in layers.keys():
 		var di: int = int(d)
 		var nodes_in_layer: Array = layers[d]
 		var n_count: int = nodes_in_layer.size()
 		for i in range(n_count):
 			var ni: int = int(nodes_in_layer[i])
-			var x: float = MAP_PADDING_LEFT + di * COLUMN_WIDTH
+			var x: float = x0 + di * COLUMN_WIDTH
 			var y_offset: float = (i - (n_count - 1) / 2.0) * ROW_HEIGHT
 			var y: float = MAP_PADDING_TOP + center_y + y_offset
 			positions[ni] = Vector2(x, y)
 	var available: Dictionary = {}
 	for opt in _options:
 		available[int(opt.index)] = true
-	# 边：可达支路亮金，其余暗灰
+	# 边：可达支路亮金，其余暗灰（Node2D 不挡点击）
 	var edges_root := Node2D.new()
 	edges_root.name = "Edges"
 	_map_view.add_child(edges_root)
@@ -215,9 +239,19 @@ func _render_visual_map() -> void:
 				line.width = 2.5
 				line.default_color = Color(DT.TEXT_MUTED.r, DT.TEXT_MUTED.g, DT.TEXT_MUTED.b, 0.45)
 			edges_root.add_child(line)
+	# 先画不可点，再画可达（可达在上层，避免被挡）
+	var order: Array = []
 	for n in range(_chapter_map.node_count()):
-		if not positions.has(n):
-			continue
+		if positions.has(n):
+			order.append(n)
+	order.sort_custom(func(a, b):
+		var aa: bool = available.has(int(a))
+		var bb: bool = available.has(int(b))
+		if aa == bb:
+			return int(a) < int(b)
+		return not aa and bb  # 不可点在前，可达后加 = 更上
+	)
+	for n in order:
 		var node_ref: NodeRef = _chapter_map.nodes[n]
 		var pos: Vector2 = positions[n]
 		var is_current: bool = (n == _chapter_map.current_node)
@@ -226,11 +260,26 @@ func _render_visual_map() -> void:
 			and _chapter_map.current_node >= 0
 			and int(depth.get(n, 9999)) <= int(depth.get(_chapter_map.current_node, -1)))
 		_add_node_button(node_ref, pos, is_current, is_available, is_visited)
+	# 底部再列可达节点文字按钮，避免只靠圆点点不中
+	if _options_box and not _options.is_empty():
+		for child in _options_box.get_children():
+			child.queue_free()
+		var hint := Label.new()
+		hint.text = "可进入："
+		hint.add_theme_color_override("font_color", DT.TEXT_MUTED)
+		hint.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+		_options_box.add_child(hint)
+		for opt in _options:
+			var nr: NodeRef = opt
+			var b := DT.make_button(nr.display_name(), DT.BtnRole.PRIMARY, Vector2(160, 40))
+			var idx: int = nr.index
+			b.pressed.connect(func(): emit_signal("node_chosen", idx))
+			_options_box.add_child(b)
 
 
 func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_available: bool, is_visited: bool) -> void:
 	var diameter: float = NODE_RADIUS * 2.0
-	# 当前节点外环脉冲
+	# 当前节点外环（不挡点）
 	if is_current:
 		var ring := Panel.new()
 		ring.position = pos - Vector2(NODE_RADIUS + 8, NODE_RADIUS + 8)
@@ -248,10 +297,12 @@ func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_avai
 		rtw.tween_property(ring, "modulate:a", 1.0, 0.55).set_trans(Tween.TRANS_SINE)
 
 	var btn := Button.new()
+	btn.focus_mode = Control.FOCUS_NONE
 	btn.custom_minimum_size = Vector2(diameter, diameter)
 	btn.size = Vector2(diameter, diameter)
 	btn.position = pos - Vector2(NODE_RADIUS, NODE_RADIUS)
 	btn.clip_text = true
+	btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	var icon: Texture2D = node_icon(node_ref.kind)
 	if icon != null:
 		btn.icon = icon
@@ -276,9 +327,9 @@ func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_avai
 		sb.border_color = DT.TEXT_TITLE
 		sb.set_border_width_all(3)
 	elif is_available:
-		sb.border_color = Color(1, 1, 1, 0.9)
-		sb.set_border_width_all(2)
-		sb.shadow_color = Color(base.r, base.g, base.b, 0.45)
+		sb.border_color = Color(1, 1, 1, 0.95)
+		sb.set_border_width_all(3)
+		sb.shadow_color = Color(base.r, base.g, base.b, 0.5)
 		sb.shadow_size = 12
 	else:
 		sb.border_color = Color(base.r, base.g, base.b, 0.5)
@@ -286,20 +337,21 @@ func _add_node_button(node_ref: NodeRef, pos: Vector2, is_current: bool, is_avai
 	for state in ["normal", "hover", "pressed", "disabled"]:
 		var sbc := sb.duplicate() as StyleBoxFlat
 		if state == "hover" and is_available:
-			sbc.bg_color = sbc.bg_color.lightened(0.12)
+			sbc.bg_color = sbc.bg_color.lightened(0.15)
 		btn.add_theme_stylebox_override(state, sbc)
 	btn.disabled = not is_available
 	if is_available:
 		var idx_capture: int = node_ref.index
 		btn.pressed.connect(func(): emit_signal("node_chosen", idx_capture))
-		# 可达节点轻微呼吸
+		# 呼吸只用 modulate，避免 scale 破坏点击命中
 		var ptw := create_tween().set_loops()
-		ptw.tween_property(btn, "scale", Vector2(1.06, 1.06), 0.7).set_trans(Tween.TRANS_SINE)
-		ptw.tween_property(btn, "scale", Vector2.ONE, 0.7).set_trans(Tween.TRANS_SINE)
-		btn.pivot_offset = Vector2(NODE_RADIUS, NODE_RADIUS)
+		ptw.tween_property(btn, "modulate", Color(1.15, 1.1, 0.95, 1.0), 0.65)\
+			.set_trans(Tween.TRANS_SINE)
+		ptw.tween_property(btn, "modulate", Color.WHITE, 0.65)\
+			.set_trans(Tween.TRANS_SINE)
 	btn.tooltip_text = "%s (#%d)" % [node_ref.display_name(), node_ref.index]
 	_map_view.add_child(btn)
-	# 脚下短名
+	# 脚下短名（IGNORE，不挡点）
 	var name_lbl := Label.new()
 	name_lbl.text = node_ref.display_name()
 	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
