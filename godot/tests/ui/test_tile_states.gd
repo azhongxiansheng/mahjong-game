@@ -127,3 +127,18 @@ func test_seat_panel_mark_win_tile():
 			marked += 1
 			assert_eq(tile._tile_id, TileId.CHUN)
 	assert_eq(marked, 1)
+
+
+# 雀魂式：结算前翻开对手手牌
+func test_seat_panel_reveal_hand_face_up():
+	var sp := SeatPanel.new()
+	sp.set_seat_id(2)  # 对手
+	add_child_autofree(sp)
+	await get_tree().process_frame
+	var hand := Hand.new()
+	for tid in [TileId.W1, TileId.W2, TileId.T5, TileId.S9]:
+		hand.add(Tile.new(tid))
+	sp.reveal_hand_face_up(hand, false)
+	assert_eq(sp.count_revealed_face_up(), 4, "应翻开 4 张正面")
+	sp.clear_hand_reveal()
+	assert_eq(sp.count_revealed_face_up(), 0, "clear 后计数清零")

@@ -66,3 +66,29 @@ func test_set_bgm_volume_clamps_and_emits() -> void:
 	sm.set_bgm_volume(0.33)
 	assert_eq(sm.bgm_volume, 0.33)
 	sm.set_bgm_volume(saved)
+
+
+# 雀魂式鸣牌/立直倒计时秒数
+func test_claim_timeout_default_and_clamp() -> void:
+	var sm: Node = _sm()
+	var saved_c: float = float(sm.claim_timeout_sec)
+	var saved_r: float = float(sm.riichi_timeout_sec)
+	sm.set_claim_timeout_sec(7.5)
+	assert_almost_eq(float(sm.claim_timeout_sec), 7.5, 0.01)
+	sm.set_claim_timeout_sec(0.1)
+	assert_almost_eq(float(sm.claim_timeout_sec), 1.0, 0.01, "下限 1s")
+	sm.set_claim_timeout_sec(99.0)
+	assert_almost_eq(float(sm.claim_timeout_sec), 30.0, 0.01, "上限 30s")
+	sm.set_riichi_timeout_sec(8.0)
+	assert_almost_eq(float(sm.riichi_timeout_sec), 8.0, 0.01)
+	sm.set_claim_timeout_sec(saved_c)
+	sm.set_riichi_timeout_sec(saved_r)
+
+
+func test_claim_timeout_emits_settings_changed() -> void:
+	var sm: Node = _sm()
+	var saved: float = float(sm.claim_timeout_sec)
+	watch_signals(sm)
+	sm.set_claim_timeout_sec(4.0)
+	assert_signal_emitted(sm, "settings_changed")
+	sm.set_claim_timeout_sec(saved)

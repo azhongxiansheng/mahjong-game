@@ -363,6 +363,10 @@ func _apply_wall_pulse(prev: int, new_n: int) -> void:
 		_wall_pulse_tween = null
 		_label_wall.modulate.a = 1.0
 
+# 立直棒行脉冲（桌上有棒时金光呼吸，强调"赢家可独吞"）
+var _riichi_glow_tween: Tween = null
+
+
 # 重建立直棒视觉行(N 根白底红点的迷你棒;N>STICK_MAX_SHOW 时尾部 "+N" 文字)。
 func _rebuild_riichi_sticks() -> void:
 	if _riichi_sticks_row == null:
@@ -371,29 +375,82 @@ func _rebuild_riichi_sticks() -> void:
 		child.queue_free()
 	var shown: int = mini(_riichi_sticks, STICK_MAX_SHOW)
 	for i in range(shown):
-		_riichi_sticks_row.add_child(_make_riichi_stick())
+		_riichi_sticks_row.add_child(_make_riichi_stick(true))
 	if _riichi_sticks > STICK_MAX_SHOW:
 		var extra := Label.new()
 		extra.text = "+%d" % (_riichi_sticks - STICK_MAX_SHOW)
 		extra.add_theme_font_size_override("font_size", 11)
 		extra.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
 		_riichi_sticks_row.add_child(extra)
+	_apply_riichi_stick_glow(_riichi_sticks > 0)
 
 
-# 1 根迷你立直棒:24x6 骨白底 + 中央 8x6 红点(模拟真实棒上的红色识别条)。
-static func _make_riichi_stick() -> Control:
+# 测试用：当前视觉棒节点数（不含 "+N" 标签；跳过 queue_free 中的节点）
+func count_riichi_stick_visuals() -> int:
+	if _riichi_sticks_row == null:
+		return 0
+	var n := 0
+	for child in _riichi_sticks_row.get_children():
+		if child is Control and child.has_meta("riichi_stick") \
+				and not child.is_queued_for_deletion():
+			n += 1
+	return n
+
+
+func is_riichi_stick_glow_active() -> bool:
+	return _riichi_glow_tween != null and _riichi_glow_tween.is_valid()
+
+
+func _apply_riichi_stick_glow(on: bool) -> void:
+	if _riichi_sticks_row == null:
+		return
+	if _riichi_glow_tween != null and _riichi_glow_tween.is_valid():
+		_riichi_glow_tween.kill()
+	_riichi_glow_tween = null
+	_riichi_sticks_row.modulate = Color.WHITE
+	if not on:
+		return
+	# 金白呼吸：alpha 1.0 ↔ 0.72，周期约 0.9s
+	_riichi_glow_tween = create_tween().set_loops()
+	_riichi_glow_tween.tween_property(_riichi_sticks_row, "modulate",
+		Color(1.15, 1.05, 0.75, 1.0), 0.45).set_trans(Tween.TRANS_SINE)
+	_riichi_glow_tween.tween_property(_riichi_sticks_row, "modulate",
+		Color(1.0, 0.95, 0.8, 0.85), 0.45).set_trans(Tween.TRANS_SINE)
+
+
+# 1 根迷你立直棒:骨白底 + 中央红点 + 可选金边外发光(桌上有棒时更醒目)。
+static func _make_riichi_stick(with_glow: bool = false) -> Control:
+	var wrap := Control.new()
+	wrap.custom_minimum_size = Vector2(STICK_W + 4, STICK_H + 4)
+	wrap.size = Vector2(STICK_W + 4, STICK_H + 4)
+	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.set_meta("riichi_stick", true)
+	if with_glow:
+		var glow := Panel.new()
+		var gsb := StyleBoxFlat.new()
+		gsb.bg_color = Color(0, 0, 0, 0)
+		gsb.shadow_color = Color(1.0, 0.85, 0.35, 0.55)
+		gsb.shadow_size = 6
+		gsb.shadow_offset = Vector2.ZERO
+		gsb.set_corner_radius_all(2)
+		glow.add_theme_stylebox_override("panel", gsb)
+		glow.position = Vector2(2, 2)
+		glow.size = Vector2(STICK_W, STICK_H)
+		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		wrap.add_child(glow)
 	var stick := ColorRect.new()
-	stick.color = Color(0.95, 0.93, 0.85)
-	stick.custom_minimum_size = Vector2(STICK_W, STICK_H)
+	stick.color = Color(0.98, 0.95, 0.82)
+	stick.position = Vector2(2, 2)
 	stick.size = Vector2(STICK_W, STICK_H)
 	stick.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	wrap.add_child(stick)
 	var dot := ColorRect.new()
-	dot.color = Color(0.85, 0.18, 0.18)
+	dot.color = Color(0.90, 0.16, 0.16)
 	dot.size = Vector2(8, STICK_H)
-	dot.position = Vector2((STICK_W - 8) / 2, 0)
+	dot.position = Vector2(2 + (STICK_W - 8) / 2.0, 2)
 	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	stick.add_child(dot)
-	return stick
+	wrap.add_child(dot)
+	return wrap
 
 
 # 重建本场棒行:连庄棒(100-pt 棒,日麻视觉上比立直棒略短的红色棒)。
