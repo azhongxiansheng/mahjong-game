@@ -123,34 +123,63 @@ func set_base_position(pos: Vector3) -> void:
 func set_dim(b: bool) -> void:
 	if _mesh == null:
 		return
-	# Area3D 无 modulate；用 mesh 透明度近似压暗
 	_mesh.transparency = 0.4 if b else 0.0
+
+
+# 平滑飞到目标位姿（切牌入河 / 摸牌落下）
+func animate_to(pos: Vector3, rot_deg: Vector3, duration: float = 0.22) -> void:
+	_base_y = pos.y
+	if not is_inside_tree():
+		position = pos
+		rotation_degrees = rot_deg
+		return
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(self, "position", pos, duration)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(self, "rotation_degrees", rot_deg, duration)\
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+func animate_draw_drop(from_y_extra: float = 0.12, duration: float = 0.2) -> void:
+	var target := position
+	position.y = target.y + from_y_extra
+	if is_inside_tree():
+		var tw := create_tween()
+		tw.tween_property(self, "position:y", target.y, duration)\
+			.set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
 
 
 func _apply_materials() -> void:
 	_ensure_mesh()
+	# 雀魂感：正面牌图、侧面牙白、底/背深绿
 	var mat_face := _make_face_mat()
 	var mat_side := StandardMaterial3D.new()
-	mat_side.albedo_color = Color(0.94, 0.92, 0.88)
-	mat_side.roughness = 0.5
+	mat_side.albedo_color = Color(0.96, 0.94, 0.90)
+	mat_side.roughness = 0.42
+	mat_side.metallic = 0.05
 	var mat_bottom := StandardMaterial3D.new()
-	mat_bottom.albedo_color = Color(0.10, 0.38, 0.24)
-	mat_bottom.roughness = 0.65
-	# surface 0 = face, 1 = bottom, 2-5 = sides
+	mat_bottom.albedo_color = Color(0.08, 0.32, 0.20)
+	mat_bottom.roughness = 0.7
+	var mat_back_face := _make_back_mat()
+	# 0=+Y 正面, 1=-Y 底, 2..5 侧
 	if _mesh.mesh.get_surface_count() >= 6:
-		_mesh.set_surface_override_material(0, mat_face)
-		_mesh.set_surface_override_material(1, mat_bottom)
+		if face_up:
+			_mesh.set_surface_override_material(0, mat_face)
+			_mesh.set_surface_override_material(1, mat_bottom)
+		else:
+			_mesh.set_surface_override_material(0, mat_back_face)
+			_mesh.set_surface_override_material(1, mat_face if tile_id >= 0 else mat_bottom)
 		for s in range(2, 6):
 			_mesh.set_surface_override_material(s, mat_side)
 	else:
-		_mesh.material_override = mat_face
+		_mesh.material_override = mat_face if face_up else mat_back_face
 
 
 func _make_face_mat() -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
-	m.roughness = 0.4
+	m.roughness = 0.38
 	m.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
-	if face_up and tile_id >= 0:
+	if tile_id >= 0:
 		var key: String = CardTileBack.tile_id_to_atlas_key(tile_id, is_red_dora)
 		var tex: Texture2D = _get_tex(key)
 		if tex != null:
@@ -158,12 +187,20 @@ func _make_face_mat() -> StandardMaterial3D:
 			m.albedo_color = Color.WHITE
 			m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 			return m
+	m.albedo_color = Color(0.95, 0.94, 0.9)
+	return m
+
+
+func _make_back_mat() -> StandardMaterial3D:
+	var m := StandardMaterial3D.new()
+	m.roughness = 0.55
 	var back: Texture2D = _get_tex("back")
 	if back != null:
 		m.albedo_texture = back
 		m.albedo_color = Color.WHITE
+		m.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	else:
-		m.albedo_color = Color(0.12, 0.42, 0.28)
+		m.albedo_color = Color(0.10, 0.38, 0.24)
 	return m
 
 
