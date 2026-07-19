@@ -33,3 +33,13 @@ func test_four_player_table_min_size_no_ability_gutter() -> void:
 	await get_tree().process_frame
 	assert_eq(t.custom_minimum_size.x, 1280.0)
 	assert_false(t.ability_panel.visible, "右栏能力板应隐藏")
+
+
+func test_table_stage_builds_under_table() -> void:
+	var t: FourPlayerTable = load("res://ui/four_player_table/four_player_table.tscn").instantiate()
+	add_child_autofree(t)
+	await get_tree().process_frame
+	var stage := t.get_node_or_null("TableStage")
+	assert_not_null(stage, "应有 TableStage 舞台根")
+	assert_true(stage.get_child_count() > 0, "舞台应有子层")
+	assert_not_null(stage.get_node_or_null("TableFelt"), "应有 TableFelt")

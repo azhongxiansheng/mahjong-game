@@ -28,20 +28,17 @@ const SEAT_ROTATION_DEGREES := [0.0, -90.0, 180.0, 90.0]
 
 # 手牌色块行：M3 收尾 — 13 个 (或 ≤13) 小 ColorRect 显示 owner_seat 着色，
 # 实现 plan-3 D2/D5 归属可视化（看一家手牌区的"色块拼盘"知道牌从哪 4 家来）。
-const HAND_TILE_W: float = 30.0
-const HAND_TILE_H: float = 45.0
-const HAND_TILE_GAP: float = 3.0
-const HAND_ROW_OFFSET_X: float = -220.0  # 相对 panel 中心
-const HAND_ROW_OFFSET_Y: float = 30.0
-# 玩家自己 (seat 0) 手牌用真实 atlas 牌面。T3e 布局收敛(spec §2.4):
-# 40×60 → 48×68 贴桌底,牌是画面主角(参考作 lg 52×72 贴 bottom:30)。
-const PLAYER_HAND_TILE_W: float = 54.0
-const PLAYER_HAND_TILE_H: float = 76.0
-# 14 张(13 + 摸牌位)总宽 ≈ 811;右移给左侧玩家头像卡让位
-# (布局对齐参考截图:自家头像卡在手牌左侧)
-const PLAYER_HAND_ROW_OFFSET_X: float = -380.0
-# seat 锚点 ~TABLE_H-95 → 手牌贴底略上，给操作条留空
-const PLAYER_HAND_ROW_OFFSET_Y: float = 48.0
+# 对家手牌（背/侧视）— 略加大间距，更有「立牌」体积
+const HAND_TILE_W: float = 34.0
+const HAND_TILE_H: float = 50.0
+const HAND_TILE_GAP: float = 2.0
+const HAND_ROW_OFFSET_X: float = -240.0
+const HAND_ROW_OFFSET_Y: float = 28.0
+# 自家手牌：画面主角，雀魂级大牌
+const PLAYER_HAND_TILE_W: float = 58.0
+const PLAYER_HAND_TILE_H: float = 82.0
+const PLAYER_HAND_ROW_OFFSET_X: float = -400.0
+const PLAYER_HAND_ROW_OFFSET_Y: float = 42.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null
@@ -736,9 +733,7 @@ func _refresh_labels() -> void:
 	_label_discards.text = ""
 	_label_discards.visible = false
 
-# 重建非玩家 seat 的手牌行：按 owners 数组生成 TextureRect 显示 back.png，
-# 用 owner_seat 颜色作 modulate 保留归属可视化（plan-3 D2/D5）。
-# 比纯 ColorRect 更接近真实牌背视觉，玩家立刻能识别"这是牌背"。
+# 对家手牌行：立背/侧视 + 行影 + 轻微仰角错位，去掉归属色 modulate（更干净）
 func _rebuild_hand_tile_row(owners: Array) -> void:
 	if _hand_tile_row == null:
 		return
@@ -746,26 +741,41 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 	for child in _hand_tile_row.get_children():
 		child.queue_free()
 	var back_tex: Texture2D = _resolve_back_texture()
-	# 质感层:整行投影(对标参考作 .hand--top 的 row 级 drop-shadow)
 	if owners.size() > 0:
 		var row_w: float = owners.size() * (HAND_TILE_W + HAND_TILE_GAP) - HAND_TILE_GAP
-		_hand_tile_row.add_child(_make_row_shadow(Vector2(row_w, HAND_TILE_H)))
+		_hand_tile_row.add_child(_make_row_shadow(Vector2(row_w + 8, HAND_TILE_H + 4)))
 	var x := 0.0
-	for owner_seat in owners:
+	var i := 0
+	for _owner in owners:
+		# 单牌投影
+		var sh := Panel.new()
+		var ssb := StyleBoxFlat.new()
+		ssb.bg_color = Color(0, 0, 0, 0)
+		ssb.shadow_color = Color(0, 0, 0, 0.40)
+		ssb.shadow_size = 5
+		ssb.shadow_offset = Vector2(0, 3)
+		sh.add_theme_stylebox_override("panel", ssb)
+		sh.position = Vector2(x - 1, 2)
+		sh.size = Vector2(HAND_TILE_W + 2, HAND_TILE_H)
+		sh.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_hand_tile_row.add_child(sh)
 		var rect := TextureRect.new()
 		rect.position = Vector2(x, 0)
 		rect.size = Vector2(HAND_TILE_W, HAND_TILE_H)
 		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		rect.stretch_mode = TextureRect.STRETCH_SCALE
+		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if back_tex != null:
 			rect.texture = back_tex
-			# 用 seat 颜色 modulate 保留归属（淡化 seat 颜色避免完全盖住牌背图案）
-			rect.modulate = CardTileBack.tile_back_color(int(owner_seat)).lerp(Color.WHITE, 0.3)
+			rect.modulate = Color.WHITE
 		else:
-			# back.png 缺失 fall-back：仍用纯色块
-			rect.modulate = CardTileBack.tile_back_color(int(owner_seat))
+			rect.modulate = Color(0.15, 0.35, 0.22)
+		# 左右家侧视略扁
+		if _seat_id == 1 or _seat_id == 3:
+			rect.size = Vector2(HAND_TILE_W * 0.72, HAND_TILE_H)
 		_hand_tile_row.add_child(rect)
 		x += HAND_TILE_W + HAND_TILE_GAP
+		i += 1
 
 # 取牌背图（autoload TextureExtractor）。autoload 不在或缺图时返 null。
 # T3d:对手手牌优先用「站立牌」贴图(bake_standing_back.py),视角语义正确;

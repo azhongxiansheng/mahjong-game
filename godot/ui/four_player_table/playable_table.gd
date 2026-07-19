@@ -69,42 +69,57 @@ func _build_layout() -> void:
 	_dora_widget.update_indicators([])
 
 
-# 顶栏:书法 logo + 右侧「规则/设置」主题按钮。
+# 顶栏：玻璃条 + logo + HUD + loadout + 规则/设置
 func _build_top_bar() -> void:
+	var bar := Panel.new()
+	bar.name = "TopBar"
+	bar.position = Vector2.ZERO
+	bar.size = Vector2(TableLayout.TABLE_W, TableLayout.TOP_BAR_H)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bsb := StyleBoxFlat.new()
+	bsb.bg_color = Color(0.04, 0.05, 0.08, 0.78)
+	bsb.border_color = Color(0.85, 0.71, 0.36, 0.35)
+	bsb.border_width_bottom = 2
+	bsb.shadow_color = Color(0, 0, 0, 0.4)
+	bsb.shadow_size = 8
+	bar.add_theme_stylebox_override("panel", bsb)
+	add_child(bar)
+
 	var logo := Label.new()
 	logo.text = "麻 将 王"
 	logo.position = Vector2(18, 6)
 	logo.size = Vector2(180, 40)
-	logo.add_theme_font_size_override("font_size", 30)
-	logo.add_theme_color_override("font_color", Color(0.88, 0.74, 0.38))
+	logo.add_theme_font_size_override("font_size", 28)
+	logo.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	logo.add_theme_constant_override("shadow_offset_x", 2)
 	logo.add_theme_constant_override("shadow_offset_y", 2)
 	logo.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(logo)
-	# Run HUD 内联(RunFlow 战斗时隐藏自身 HUD,HP/金币挂这里)
+
 	_run_hud_label = Label.new()
-	_run_hud_label.position = Vector2(212, 14)
-	_run_hud_label.size = Vector2(360, 28)
-	_run_hud_label.add_theme_font_size_override("font_size", 18)
-	_run_hud_label.add_theme_color_override("font_color", Color(0.92, 0.90, 0.82))
+	_run_hud_label.position = Vector2(200, 12)
+	_run_hud_label.size = Vector2(300, 28)
+	_run_hud_label.add_theme_font_size_override("font_size", 17)
+	_run_hud_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	_run_hud_label.add_theme_constant_override("shadow_offset_y", 1)
 	_run_hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
 	_run_hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_run_hud_label.visible = false
 	add_child(_run_hud_label)
-	# 对局 loadout 芯片条：能力/遗物/道具，挂顶栏中段
+
 	_loadout_strip = BattleLoadoutStrip.new()
-	_loadout_strip.position = Vector2(520, 8)
-	_loadout_strip.custom_minimum_size = Vector2(400, 36)
-	_loadout_strip.size = Vector2(400, 36)
+	_loadout_strip.position = Vector2(500, 6)
+	_loadout_strip.custom_minimum_size = Vector2(420, 36)
+	_loadout_strip.size = Vector2(420, 36)
 	add_child(_loadout_strip)
-	var rules_btn := DT.make_button("规则", DT.BtnRole.SECONDARY, Vector2(88, 36))
-	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 8)
+
+	var rules_btn := DT.make_button("规则", DT.BtnRole.SECONDARY, Vector2(88, 34))
+	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 7)
 	rules_btn.pressed.connect(_open_help_overlay)
 	add_child(rules_btn)
-	var settings_btn := DT.make_button("设置", DT.BtnRole.SECONDARY, Vector2(88, 36))
-	settings_btn.position = Vector2(TableLayout.TABLE_W - 100, 8)
+	var settings_btn := DT.make_button("设置", DT.BtnRole.SECONDARY, Vector2(88, 34))
+	settings_btn.position = Vector2(TableLayout.TABLE_W - 100, 7)
 	settings_btn.pressed.connect(_open_settings_overlay)
 	add_child(settings_btn)
 

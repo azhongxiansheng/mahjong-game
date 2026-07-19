@@ -65,7 +65,8 @@ func _ready() -> void:
 
 # 布局对齐参考截图:盘 170×170(分数移出到头像卡下,盘只留
 # 风字章 + 局数 + 余张 + 当前回合家)
-const PLATE_HALF: float = 85.0
+# 中心盘略放大，金边更沉
+const PLATE_HALF: float = 92.0
 
 # 每边一组节点:{wind: Label, score: Label, stick: Control}
 var _side_nodes: Array = []
@@ -73,7 +74,7 @@ var _side_nodes: Array = []
 var _seats_summary: Array = []
 
 func _restyle_plate() -> void:
-	# 把 .tscn 的方角 ColorRect Bg 换成 220×220 圆角金边深蓝盘
+	# 圆角金边深蓝盘 + 外环暗影（雀魂中心台）
 	var bg := get_node_or_null("Bg")
 	if bg:
 		bg.visible = false
@@ -83,30 +84,37 @@ func _restyle_plate() -> void:
 	plate.size = Vector2(PLATE_HALF * 2, PLATE_HALF * 2)
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.10, 0.13, 0.22)
-	sb.border_color = Color(0.85, 0.71, 0.36, 0.45)
-	sb.set_border_width_all(2)
-	sb.set_corner_radius_all(16)
-	sb.shadow_color = Color(0, 0, 0, 0.55)
-	sb.shadow_size = 10
+	sb.bg_color = Color(0.07, 0.09, 0.16, 0.96)
+	sb.border_color = Color(0.92, 0.78, 0.40, 0.65)
+	sb.set_border_width_all(3)
+	sb.set_corner_radius_all(18)
+	sb.shadow_color = Color(0, 0, 0, 0.65)
+	sb.shadow_size = 18
+	sb.shadow_offset = Vector2(0, 4)
 	plate.add_theme_stylebox_override("panel", sb)
 	add_child(plate)
 	move_child(plate, 0)
-	# VBox 信息列适配 170 盘(原 .tscn 偏移按 240 盘设计)
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
-		vbox.offset_left = -72
-		vbox.offset_right = 72
-		vbox.offset_top = -52
-		vbox.offset_bottom = 56
-	# 顶部 1/3 微高光(参考作 radial 高光的近似):半透明白渐变条
+		vbox.offset_left = -78
+		vbox.offset_right = 78
+		vbox.offset_top = -56
+		vbox.offset_bottom = 60
+	# 顶缘高光
 	var sheen := ColorRect.new()
-	sheen.color = Color(0.55, 0.62, 0.78, 0.08)
-	sheen.position = Vector2(-PLATE_HALF + 3, -PLATE_HALF + 3)
-	sheen.size = Vector2(PLATE_HALF * 2 - 6, 52)
+	sheen.color = Color(0.75, 0.80, 0.95, 0.10)
+	sheen.position = Vector2(-PLATE_HALF + 4, -PLATE_HALF + 4)
+	sheen.size = Vector2(PLATE_HALF * 2 - 8, 48)
 	sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(sheen)
 	move_child(sheen, 1)
+	# 底缘金线
+	var gold_line := ColorRect.new()
+	gold_line.color = Color(0.9, 0.75, 0.35, 0.35)
+	gold_line.position = Vector2(-PLATE_HALF + 20, PLATE_HALF - 14)
+	gold_line.size = Vector2(PLATE_HALF * 2 - 40, 2)
+	gold_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(gold_line)
 
 func _build_seat_sides() -> void:
 	_side_nodes = []

@@ -17,36 +17,36 @@ const TABLE_H: float = 720.0
 const ACTION_BAR_Y: float = 548.0
 const ACTION_BAR_H: float = 56.0
 
-# 中心盘
+# 中心盘（略上移，给自家手牌/河更多呼吸）
 static func center() -> Vector2:
-	return Vector2(TABLE_W * 0.5, TABLE_H * 0.46)
+	return Vector2(TABLE_W * 0.5, TABLE_H * 0.44)
 
 
 # 四家 seat 锚点（相对桌面 0,0）
 static func seat_anchor(seat_id: int) -> Vector2:
 	var cx := TABLE_W * 0.5
-	var cy := TABLE_H * 0.46
+	var cy := TABLE_H * 0.44
 	match seat_id:
-		0:  # 下 — 自家；手牌在 panel 下方展开
-			return Vector2(cx, TABLE_H - 95.0)
+		0:  # 下 — 自家
+			return Vector2(cx, TABLE_H - 88.0)
 		1:  # 右
-			return Vector2(TABLE_W - 100.0, cy)
+			return Vector2(TABLE_W - 88.0, cy)
 		2:  # 上
-			return Vector2(cx, 88.0)
+			return Vector2(cx, 78.0)
 		3:  # 左
-			return Vector2(100.0, cy)
+			return Vector2(88.0, cy)
 	return Vector2(cx, cy)
 
 
 # 弃牌河：四边贴中心盘外围
-const RIVER_W: float = 238.0
-const RIVER_H: float = 154.0
+const RIVER_W: float = 248.0
+const RIVER_H: float = 160.0
 
 static func discard_river(seat_id: int) -> Dictionary:
 	var cx := TABLE_W * 0.5
-	var cy := TABLE_H * 0.46
-	var inner := 148.0
-	var inner_self := 120.0
+	var cy := TABLE_H * 0.44
+	var inner := 156.0
+	var inner_self := 128.0
 	match seat_id:
 		0:
 			return {"position": Vector2(cx - RIVER_W / 2.0, cy + inner_self), "rotation_degrees": 0.0}
