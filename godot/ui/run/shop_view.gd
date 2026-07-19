@@ -139,43 +139,30 @@ func _rebuild() -> void:
 	DT.stagger_in(_slot_buttons, "fade_in_up", 0.25, 0.06)
 
 
-# 商店槽：图标 + 文案，仍是 Button（兼容 refund/disabled 逻辑）
+# 商店槽：大 icon + 价签；仍是 Button（兼容 refund/disabled）
 func _make_shop_slot_button(r: GachaResult, border_color: Color) -> Button:
 	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(220, 280)
+	btn.custom_minimum_size = Vector2(230, 300)
 	btn.text = ""
 	btn.clip_contents = true
-	var state_bg := {
-		"normal": Color(0.13, 0.12, 0.15, 0.97),
-		"hover": Color(0.20, 0.17, 0.20, 0.97),
-		"pressed": Color(0.26, 0.14, 0.16, 0.97),
-		"focus": Color(0.20, 0.17, 0.20, 0.97),
-		"disabled": Color(0.10, 0.10, 0.11, 0.9),
-	}
-	for state in state_bg:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = state_bg[state]
-		sb.border_color = border_color
-		sb.border_width_left = 3
-		sb.border_width_top = 3
-		sb.border_width_right = 3
-		sb.border_width_bottom = 3
-		sb.corner_radius_top_left = 4
-		sb.corner_radius_top_right = 4
-		sb.corner_radius_bottom_left = 4
-		sb.corner_radius_bottom_right = 4
-		sb.content_margin_left = 8
-		sb.content_margin_right = 8
-		sb.content_margin_top = 8
-		sb.content_margin_bottom = 8
-		btn.add_theme_stylebox_override(state, sb)
+	DT.apply_card_button_styles(btn, border_color)
 	var vbox := VBoxContainer.new()
 	vbox.set_anchors_preset(Control.PRESET_FULL_RECT)
+	vbox.offset_left = 10
+	vbox.offset_right = -10
+	vbox.offset_top = 10
+	vbox.offset_bottom = -10
 	vbox.add_theme_constant_override("separation", 6)
 	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	btn.add_child(vbox)
+	# 顶条稀有色
+	var stripe := ColorRect.new()
+	stripe.custom_minimum_size = Vector2(0, 5)
+	stripe.color = border_color
+	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vbox.add_child(stripe)
 	var icon_path: String = RunUi.resolve_gacha_icon_path(r)
-	var icon := RunUi.make_item_icon(icon_path, 72)
+	var icon := RunUi.make_item_icon(icon_path, 88)
 	if icon:
 		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		vbox.add_child(icon)
@@ -184,7 +171,7 @@ func _make_shop_slot_button(r: GachaResult, border_color: Color) -> Button:
 	lbl.text = format_slot_text(r)
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", DT.FONT_BODY)
+	lbl.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
 	lbl.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE

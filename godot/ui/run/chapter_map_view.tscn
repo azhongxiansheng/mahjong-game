@@ -28,9 +28,9 @@ offset_bottom = 110.0
 theme_override_constants/separation = 8
 
 [node name="Title" type="Label" parent="VBox"]
-text = "章节地图 — 点击下层可选节点推进"
+text = "选择下一节点"
 horizontal_alignment = 1
-theme_override_font_sizes/font_size = 24
+theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(1, 0.85, 0.4, 1)
 
 [node name="LastResult" type="Label" parent="VBox"]

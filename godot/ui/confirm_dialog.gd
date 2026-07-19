@@ -53,18 +53,9 @@ func _ready() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var panel := Panel.new()
-	panel.custom_minimum_size = Vector2(PANEL_W, PANEL_H)
-	panel.size = Vector2(PANEL_W, PANEL_H)
-	panel.anchor_left = 0.5
-	panel.anchor_top = 0.5
-	panel.anchor_right = 0.5
-	panel.anchor_bottom = 0.5
-	panel.offset_left = -PANEL_W / 2.0
-	panel.offset_top = -PANEL_H / 2.0
-	panel.offset_right = PANEL_W / 2.0
-	panel.offset_bottom = PANEL_H / 2.0
+	var panel := DT.make_centered_panel(PANEL_W, PANEL_H)
 	add_child(panel)
+	DT.popin(panel)
 
 	var title_lbl := Label.new()
 	title_lbl.text = _title

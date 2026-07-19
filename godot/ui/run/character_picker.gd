@@ -25,86 +25,84 @@ func _build_ui() -> void:
 	vbox.add_child(title)
 
 	var subtitle := Label.new()
-	subtitle.text = "每个角色有独特被动能力和起始属性"
+	subtitle.text = "每个角色有独特被动与起始属性"
 	DT.apply_caption_style(subtitle)
 	vbox.add_child(subtitle)
-
-	vbox.add_child(HSeparator.new())
 
 	var hbox := HBoxContainer.new()
 	hbox.alignment = BoxContainer.ALIGNMENT_CENTER
 	hbox.add_theme_constant_override("separation", DT.GAP_LOOSE)
+	hbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	vbox.add_child(hbox)
 
 	var renown: int = _get_renown()
 	var chars: Array = CharacterPool.unlocked(renown)
-
+	var cards: Array = []
 	for c in chars:
 		var card := _build_char_card(c)
 		hbox.add_child(card)
+		cards.append(card)
+	DT.stagger_in(cards, "fade_in_up", 0.28, 0.08)
 
-	vbox.add_child(HSeparator.new())
 	_build_difficulty_selector(vbox)
 
 func _build_char_card(c: Character) -> PanelContainer:
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(280, 420)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(DT.BG_BASE.r + 0.06, DT.BG_BASE.g + 0.07, DT.BG_BASE.b + 0.12, 0.95)
-	sb.border_color = DT.TEXT_TITLE
-	sb.border_width_left = 2
-	sb.border_width_top = 2
-	sb.border_width_right = 2
-	sb.border_width_bottom = 2
-	sb.corner_radius_top_left = 8
-	sb.corner_radius_top_right = 8
-	sb.corner_radius_bottom_left = 8
-	sb.corner_radius_bottom_right = 8
-	sb.content_margin_left = DT.GAP_NORMAL
-	sb.content_margin_right = DT.GAP_NORMAL
-	sb.content_margin_top = DT.GAP_NORMAL
-	sb.content_margin_bottom = DT.GAP_NORMAL
-	panel.add_theme_stylebox_override("panel", sb)
+	panel.custom_minimum_size = Vector2(260, 460)
+	panel.add_theme_stylebox_override("panel", DT.make_card_stylebox(DT.BORDER_GOLD, "normal"))
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", DT.GAP_TIGHT)
 	panel.add_child(vbox)
 
-	if c.portrait_path != "":
+	# 立绘区占主体
+	var portrait_wrap := Panel.new()
+	portrait_wrap.custom_minimum_size = Vector2(0, 220)
+	portrait_wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	portrait_wrap.clip_contents = true
+	portrait_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var p_sb := StyleBoxFlat.new()
+	p_sb.bg_color = Color(0.05, 0.06, 0.09, 1)
+	p_sb.set_corner_radius_all(8)
+	portrait_wrap.add_theme_stylebox_override("panel", p_sb)
+	if c.portrait_path != "" and ResourceLoader.exists(c.portrait_path):
 		var tex: Texture2D = load(c.portrait_path)
 		if tex:
 			var portrait := TextureRect.new()
 			portrait.texture = tex
-			portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			portrait.custom_minimum_size = Vector2(200, 150)
-			portrait.expand_mode = TextureRect.EXPAND_FIT_HEIGHT
-			vbox.add_child(portrait)
+			portrait.set_anchors_preset(Control.PRESET_FULL_RECT)
+			portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+			portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			portrait_wrap.add_child(portrait)
+	vbox.add_child(portrait_wrap)
 
 	var name_label := Label.new()
 	name_label.text = c.display_name
-	DT.apply_subtitle_style(name_label)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
 	name_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	vbox.add_child(name_label)
 
-	vbox.add_child(HSeparator.new())
-
 	var desc := Label.new()
 	desc.text = c.description
-	DT.apply_caption_style(desc)
-	desc.custom_minimum_size = Vector2(240, 80)
+	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	desc.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	desc.custom_minimum_size = Vector2(220, 56)
+	desc.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
+	desc.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 	vbox.add_child(desc)
 
-	vbox.add_child(HSeparator.new())
-
 	var stats := Label.new()
-	stats.text = "HP: %d    金币: %d" % [c.starting_hp, c.starting_gold]
-	DT.apply_body_style(stats)
+	stats.text = "HP %d    🪙 %d" % [c.starting_hp, c.starting_gold]
+	stats.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stats.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	stats.add_theme_color_override("font_color", DT.TEXT_SUCCESS)
 	vbox.add_child(stats)
 
 	var pick_btn := Button.new()
-	pick_btn.text = "选择 %s" % c.display_name
-	pick_btn.custom_minimum_size = Vector2(160, DT.BUTTON_H)
+	pick_btn.text = "出战"
+	pick_btn.custom_minimum_size = Vector2(140, DT.BUTTON_H)
 	pick_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	var cid: StringName = c.id
 	pick_btn.pressed.connect(func(): emit_signal("character_chosen", cid))
@@ -117,7 +115,7 @@ func _build_char_card(c: Character) -> PanelContainer:
 
 func _build_difficulty_selector(parent: VBoxContainer) -> void:
 	var label := Label.new()
-	label.text = "难度选择"
+	label.text = "难度"
 	DT.apply_subtitle_style(label)
 	label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	parent.add_child(label)
@@ -127,21 +125,20 @@ func _build_difficulty_selector(parent: VBoxContainer) -> void:
 	hbox.add_theme_constant_override("separation", DT.GAP_NORMAL)
 	parent.add_child(hbox)
 
-	# Button text 多行会被单行宽度撑爆 minimum_size (commit bcbcc63 的教训)。
-	# 用 DT.make_text_card_button 统一规避:Button(text="") + 内嵌 Label autowrap。
 	var _diff_buttons: Array[Button] = []
 	for level in [Difficulty.Level.NORMAL, Difficulty.Level.HARD, Difficulty.Level.LUNATIC]:
-		var card_text := "%s\n\n%s" % [Difficulty.display_name(level), Difficulty.description(level)]
-		var btn := DT.make_text_card_button(hbox, card_text, Vector2(240, 120), Difficulty.color(level))
+		var card_text := "%s\n%s" % [Difficulty.display_name(level), Difficulty.description(level)]
+		var btn := DT.make_text_card_button(hbox, card_text, Vector2(220, 88), Difficulty.color(level))
 		var captured_level: int = level
 		var captured_buttons: Array[Button] = _diff_buttons
 		btn.pressed.connect(func():
 			_selected_difficulty = captured_level
 			for b in captured_buttons:
-				b.flat = true
-			btn.flat = false
+				b.modulate = Color(0.75, 0.75, 0.75, 1)
+			btn.modulate = Color.WHITE
+			DT.attention(btn, "pulse", 0.35)
 		)
-		btn.flat = (level != _selected_difficulty)
+		btn.modulate = Color(0.75, 0.75, 0.75, 1) if level != _selected_difficulty else Color.WHITE
 		_diff_buttons.append(btn)
 
 func get_selected_difficulty() -> int:

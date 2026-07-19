@@ -68,81 +68,39 @@ func show_rewards(options: Array, battle_rank: int) -> void:
 	vbox.add_child(center)
 
 func _build_card(r: GachaResult, index: int) -> PanelContainer:
-	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(280, 380)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(DT.BG_BASE.r + 0.08, DT.BG_BASE.g + 0.09, DT.BG_BASE.b + 0.14, 0.95)
-	sb.border_color = Rarity.color(r.rarity)
-	sb.border_width_left = 3
-	sb.border_width_top = 3
-	sb.border_width_right = 3
-	sb.border_width_bottom = 3
-	sb.corner_radius_top_left = 8
-	sb.corner_radius_top_right = 8
-	sb.corner_radius_bottom_left = 8
-	sb.corner_radius_bottom_right = 8
-	sb.content_margin_left = DT.GAP_NORMAL
-	sb.content_margin_right = DT.GAP_NORMAL
-	sb.content_margin_top = DT.GAP_NORMAL
-	sb.content_margin_bottom = DT.GAP_NORMAL
-	panel.add_theme_stylebox_override("panel", sb)
-
-	var vbox := VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", DT.GAP_TIGHT)
-	panel.add_child(vbox)
-
-	var icon_path: String = RunUi.resolve_gacha_icon_path(r)
-	var icon := RunUi.make_item_icon(icon_path, 80)
-	if icon:
-		icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-		vbox.add_child(icon)
-
-	var kind_label := Label.new()
-	DT.apply_caption_style(kind_label)
+	var kind_text := "奖励"
 	match r.kind:
 		GachaResult.KIND_TILE:
-			kind_label.text = "牌技能"
+			kind_text = "牌技能"
 		GachaResult.KIND_ABILITY:
-			kind_label.text = "角色能力"
+			kind_text = "角色能力"
 		GachaResult.KIND_CONSUMABLE:
-			kind_label.text = "战斗道具"
+			kind_text = "战斗道具"
 		GachaResult.KIND_RELIC:
-			kind_label.text = "遗物（被动）"
-		_:
-			kind_label.text = "奖励"
-	vbox.add_child(kind_label)
-
-	var name_label := Label.new()
-	DT.apply_subtitle_style(name_label)
-	name_label.add_theme_color_override("font_color", Rarity.color(r.rarity))
-	name_label.text = _get_name(r)
-	vbox.add_child(name_label)
-
-	var rarity_label := Label.new()
-	DT.apply_caption_style(rarity_label)
-	rarity_label.add_theme_color_override("font_color", Rarity.color(r.rarity))
-	rarity_label.text = Rarity.display_name(r.rarity)
-	vbox.add_child(rarity_label)
-
-	vbox.add_child(HSeparator.new())
-
-	var desc_label := Label.new()
-	DT.apply_caption_style(desc_label)
-	desc_label.custom_minimum_size = Vector2(240, 100)
-	desc_label.text = _get_description(r)
-	vbox.add_child(desc_label)
-
+			kind_text = "遗物"
+	var panel := RunUi.make_item_card_shell(
+		Vector2(260, 400),
+		Rarity.color(r.rarity),
+		RunUi.resolve_gacha_icon_path(r),
+		_get_name(r),
+		"%s · %s" % [kind_text, Rarity.display_name(r.rarity)],
+		_get_description(r),
+		100,
+	)
+	var vbox: VBoxContainer = panel.get_child(0) as VBoxContainer
 	var pick_btn := Button.new()
 	pick_btn.text = "选择"
-	pick_btn.custom_minimum_size = Vector2(120, DT.BUTTON_H)
+	pick_btn.custom_minimum_size = Vector2(140, DT.BUTTON_H)
 	pick_btn.add_theme_font_size_override("font_size", DT.FONT_BODY)
 	var captured_result: GachaResult = r
 	pick_btn.pressed.connect(func(): emit_signal("reward_chosen", captured_result))
 	var btn_center := HBoxContainer.new()
 	btn_center.alignment = BoxContainer.ALIGNMENT_CENTER
 	btn_center.add_child(pick_btn)
-	vbox.add_child(btn_center)
-
+	if vbox:
+		vbox.add_child(btn_center)
+	else:
+		panel.add_child(btn_center)
 	return panel
 
 static func _get_name(r: GachaResult) -> String:
