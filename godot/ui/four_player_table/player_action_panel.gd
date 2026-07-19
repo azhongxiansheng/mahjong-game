@@ -4,9 +4,9 @@ class_name PlayerActionPanel extends Control
 #
 # 4 人桌底部的玩家命令栏。状态机（与 BC 决策顺序对齐 — 先切牌再问立直）：
 #   IDLE                   非玩家回合（AI 出牌中），所有按钮 disabled
-#   WAITING_DISCARD        玩家 14 张摸完，点手牌切 / 可选自摸
+#   WAITING_DISCARD        玩家 14 张摸完，点手牌切 / 可选自摸 / 暗杠加杠
 #   WAITING_RIICHI_CONFIRM 玩家刚切完牌，BC 算出可立直，问"立直/不立直"
-#   WAITING_CLAIM          别家切牌，玩家可荣和/见逃（v1 不支持吃碰杠）
+#   WAITING_CLAIM          别家切牌，玩家可荣和/吃/碰/明杠/见逃
 #
 # TableDecisionAdapter 订阅 player_action_chosen，转成 PlayerDecisionPort 响应。
 

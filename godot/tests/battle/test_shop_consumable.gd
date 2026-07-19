@@ -87,8 +87,8 @@ func test_shop_refund_slot_restores_purchase_state():
 	view.refund_slot(0, "消耗品已满")
 	assert_false(view._bought[0], "回滚后槽位可再购")
 	assert_false(view._slot_buttons[0].disabled, "金币充足时按钮恢复可点")
-	var lbl := view._slot_buttons[0].get_child(0) as Label
-	assert_not_null(lbl)
+	var lbl: Label = ShopView._find_slot_label(view._slot_buttons[0])
+	assert_not_null(lbl, "商店槽应有 SlotLabel")
 	assert_true(lbl.text.contains("消耗品已满"), "槽位提示拒绝原因")
 	assert_false(lbl.text.contains("(已购)"), "已购标记被清除")
 

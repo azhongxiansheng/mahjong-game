@@ -112,6 +112,12 @@ func _build_top_bar() -> void:
 	_run_hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_run_hud_label.visible = false
 	add_child(_run_hud_label)
+	# 对局 loadout 芯片条：能力/遗物/道具，挂顶栏中段
+	_loadout_strip = BattleLoadoutStrip.new()
+	_loadout_strip.position = Vector2(580, 10)
+	_loadout_strip.custom_minimum_size = Vector2(280, 36)
+	_loadout_strip.size = Vector2(280, 36)
+	add_child(_loadout_strip)
 	var rules_btn := Button.new()
 	rules_btn.text = "📖 规则"
 	rules_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 196, 10)
@@ -556,12 +562,21 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	var winner: Seat = _bc.state.seats[winner_seat]
 	if winner == null:
 		return
-	var concealed_ids: Array = winner.hand.to_id_array()
+	# 保留 is_red_dora：用 Tile 列表而非 to_id_array
+	var concealed: Array = []  # Array[Tile]
+	for t in winner.hand._tiles:
+		concealed.append(t)
+	var win_red: bool = false
 	if is_tsumo:
-		var idx: int = concealed_ids.find(winning_tile_id)
-		if idx >= 0:
-			concealed_ids.remove_at(idx)
-	concealed_ids.sort()
+		for i in range(concealed.size() - 1, -1, -1):
+			if concealed[i].id == winning_tile_id:
+				win_red = concealed[i].is_red_dora
+				concealed.remove_at(i)
+				break
+	else:
+		# 荣和：winning tile 不在手牌；若事件 extra 带 red 以后可扩展
+		win_red = false
+	concealed.sort_custom(func(a, b): return a.id < b.id)
 	# HBox 居中,1 px 牌间隙
 	var strip := HBoxContainer.new()
 	strip.position = Vector2(0, y_offset)
@@ -571,13 +586,13 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	# 否则 14 张牌 + 13 个 8px 间隔总宽超 720 容器宽,溢出。
 	strip.add_theme_constant_override("separation", 1)
 	parent.add_child(strip)
-	for tid in concealed_ids:
-		strip.add_child(_make_overlay_tile(int(tid), false))
+	for t in concealed:
+		strip.add_child(_make_overlay_tile(t.id, false, t.is_red_dora))
 	# 暗手与 winning tile 之间留 10 px gap
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(10, 56)
 	strip.add_child(spacer)
-	strip.add_child(_make_overlay_tile(winning_tile_id, true))
+	strip.add_child(_make_overlay_tile(winning_tile_id, true, win_red))
 	# 副露(吃/碰/杠)展示在最右,每个 meld 内 1 px 间隔、meld 间 8 px gap
 	for meld in winner.melds:
 		var meld_gap := Control.new()
@@ -585,14 +600,14 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 		strip.add_child(meld_gap)
 		for t in meld.tiles:
 			if t != null:
-				strip.add_child(_make_overlay_tile(t.id, false))
+				strip.add_child(_make_overlay_tile(t.id, false, t.is_red_dora))
 
 
 # 单张小牌(28×40),winning=true 给金色描边 Panel 包装突出。
-func _make_overlay_tile(tile_id: int, is_winning: bool) -> Control:
+func _make_overlay_tile(tile_id: int, is_winning: bool, is_red_dora: bool = false) -> Control:
 	const TW := 28
 	const TH := 40
-	var key: String = CardTileBack.tile_id_to_atlas_key(tile_id)
+	var key: String = CardTileBack.tile_id_to_atlas_key(tile_id, is_red_dora)
 	var tr := TextureRect.new()
 	tr.custom_minimum_size = Vector2(TW, TH)
 	tr.size = Vector2(TW, TH)
@@ -691,6 +706,7 @@ var _toast_tween: Tween = null
 var _pending_win_tile_id: int = -1
 var _dora_widget: DoraWidget = null
 var _run_hud_label: Label = null
+var _loadout_strip: BattleLoadoutStrip = null
 
 
 # RunFlow 战斗时注入 run 级 HUD(HP/金币/章),内联进顶栏。
@@ -699,6 +715,13 @@ func set_run_hud(hp: int, max_hp: int, gold: int, chapter: int) -> void:
 		return
 	_run_hud_label.text = "♥ %d/%d    金 %d    第 %d 章" % [hp, max_hp, gold, chapter]
 	_run_hud_label.visible = true
+
+
+# 注入当前 Run 的能力/遗物/消耗品 id，渲染顶栏芯片条。
+func set_loadout(ability_ids: Array, relic_ids: Array = [], consumable_ids: Array = []) -> void:
+	if _loadout_strip == null:
+		return
+	_loadout_strip.bind_ids(ability_ids, relic_ids, consumable_ids)
 
 func _attach_event_polling() -> void:
 	if _polling_active:

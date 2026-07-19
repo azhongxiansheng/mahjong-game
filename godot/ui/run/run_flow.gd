@@ -609,6 +609,11 @@ func _swap_panel(new_panel: Control) -> void:
 		# size 由 FULL_RECT 锚点接管,显式设值会触发引擎警告且被覆盖
 		if _hud:
 			_hud.visible = false
+		if new_panel.has_method("set_loadout") and _run_state:
+			new_panel.set_loadout(
+				_player_ability_ids(),
+				_player_relic_ids(),
+				_player_consumable_ids())
 		if new_panel.has_method("set_run_hud") and _run_state:
 			new_panel.set_run_hud(_run_state.hp, _run_state.max_hp,
 				_run_state.gold, _run_state.chapter)

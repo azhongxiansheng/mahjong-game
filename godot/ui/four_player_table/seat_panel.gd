@@ -646,7 +646,7 @@ func _resolve_back_texture() -> Texture2D:
 # 映射），不用为玩家手牌再造一个 TextureRect 包装。
 func _rebuild_player_hand_row(tile_ids: Array) -> void:
 	# 兼容旧 caller（无 drawn 信息）：全部按一行渲染，无分隔
-	_rebuild_player_hand_row_internal(tile_ids, [])
+	_rebuild_player_hand_row_internal(tile_ids, [], [], [])
 
 # spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右（与其他 13 张间留 PLAYER_HAND_DRAWN_GAP 间距）
 # hand：当前手牌 Hand；drawn_tile_id：刚摸的牌 id（-1 = 不在 post-draw 状态，全 sorted 渲染）
@@ -656,7 +656,9 @@ func _rebuild_player_hand_row(tile_ids: Array) -> void:
 #     渲染顺序 = sorted 13 张 + 间距 + 1 张刚摸的牌（最右）
 func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_tile_id: int) -> void:
 	var split: Dictionary = split_hand_for_display(hand, drawn_tile_id)
-	_rebuild_player_hand_row_internal(split.sorted_ids, split.drawn_ids)
+	_rebuild_player_hand_row_internal(
+		split.sorted_ids, split.drawn_ids,
+		split.get("sorted_reds", []), split.get("drawn_reds", []))
 
 # spec 2026-05-08 bug 2 fix：把"hand + 刚摸的牌 id"拆成 sorted + drawn 两部分。
 # 提为 static func 便于 GUT 单测（不依赖 SceneTree / TextureExtractor）。
@@ -668,20 +670,45 @@ func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_tile_id: int) -> void
 # 仅 pop 第 1 张，保留其余按 sorted 渲染。这与日麻 UI 实现一致：刚摸的牌物理
 # 上是末尾插入的那张，UI 显示在右侧。
 static func split_hand_for_display(hand: Hand, drawn_tile_id: int) -> Dictionary:
-	var all_ids: Array = []
+	# 返回 ids 与平行 is_red_dora 数组，保证赤宝真图接线不丢标记。
+	# 摸牌分离：从末尾往前找 drawn id（刚摸的通常是最后插入的那张）。
+	var entries: Array = []  # Array[{id, red}]
 	for t in hand._tiles:
-		all_ids.append(t.id)
+		entries.append({"id": t.id, "red": t.is_red_dora})
 	if drawn_tile_id < 0:
-		all_ids.sort()
-		return {"sorted_ids": all_ids, "drawn_ids": []}
-	var drawn_idx: int = all_ids.find(drawn_tile_id)
+		entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+		return _split_entries_to_dict(entries, [])
+	var drawn_idx: int = -1
+	for i in range(entries.size() - 1, -1, -1):
+		if int(entries[i]["id"]) == drawn_tile_id:
+			drawn_idx = i
+			break
 	if drawn_idx < 0:
-		# 异常 fallback：drawn id 在 hand 中找不到（如刚 chi/pon 后未及时清 -1）
-		all_ids.sort()
-		return {"sorted_ids": all_ids, "drawn_ids": []}
-	all_ids.remove_at(drawn_idx)
-	all_ids.sort()
-	return {"sorted_ids": all_ids, "drawn_ids": [drawn_tile_id]}
+		entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+		return _split_entries_to_dict(entries, [])
+	var drawn_entry: Dictionary = entries[drawn_idx]
+	entries.remove_at(drawn_idx)
+	entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+	return _split_entries_to_dict(entries, [drawn_entry])
+
+
+static func _split_entries_to_dict(sorted_entries: Array, drawn_entries: Array) -> Dictionary:
+	var sorted_ids: Array = []
+	var sorted_reds: Array = []
+	for e in sorted_entries:
+		sorted_ids.append(int(e["id"]))
+		sorted_reds.append(bool(e["red"]))
+	var drawn_ids: Array = []
+	var drawn_reds: Array = []
+	for e in drawn_entries:
+		drawn_ids.append(int(e["id"]))
+		drawn_reds.append(bool(e["red"]))
+	return {
+		"sorted_ids": sorted_ids,
+		"drawn_ids": drawn_ids,
+		"sorted_reds": sorted_reds,
+		"drawn_reds": drawn_reds,
+	}
 
 # 整行投影 helper(质感层):透明底 + 仅 shadow 的 Panel 垫在行底。
 static func _make_row_shadow(size_: Vector2) -> Panel:
@@ -699,7 +726,9 @@ static func _make_row_shadow(size_: Vector2) -> Panel:
 
 
 # 内部统一渲染：sorted_ids 在左，drawn_ids 在右（与 sorted 之间留 PLAYER_HAND_DRAWN_GAP 间距）
-func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array) -> void:
+# sorted_reds / drawn_reds 与 ids 平行；长度不足时按 false。
+func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array,
+		sorted_reds: Array = [], drawn_reds: Array = []) -> void:
 	if _hand_tile_row == null:
 		return
 	_apply_hand_row_offset()
@@ -708,17 +737,20 @@ func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array) -> v
 	var scale_x: float = PLAYER_HAND_TILE_W / float(CardTileBack.TILE_WIDTH)
 	var scale_y: float = PLAYER_HAND_TILE_H / float(CardTileBack.TILE_HEIGHT)
 	var x := 0.0
-	for tid in sorted_ids:
-		_spawn_player_tile(tid, x, scale_x, scale_y)
+	for i in range(sorted_ids.size()):
+		var is_red: bool = i < sorted_reds.size() and bool(sorted_reds[i])
+		_spawn_player_tile(int(sorted_ids[i]), x, scale_x, scale_y, is_red)
 		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
 	if not drawn_ids.is_empty():
 		# 让间距更明显：把现在的 x 上加 DRAWN_GAP - HAND_TILE_GAP
 		x += PLAYER_HAND_DRAWN_GAP - HAND_TILE_GAP
-		for tid in drawn_ids:
-			_spawn_player_tile(tid, x, scale_x, scale_y)
+		for i in range(drawn_ids.size()):
+			var is_red_d: bool = i < drawn_reds.size() and bool(drawn_reds[i])
+			_spawn_player_tile(int(drawn_ids[i]), x, scale_x, scale_y, is_red_d)
 			x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
 
-func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float) -> void:
+func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float,
+		is_red_dora: bool = false) -> void:
 	# T3e:立牌错觉 — 牌顶两条棱(绿背边 + 灰白棱),对标参考作
 	# .seat-bottom-fixed .tile:before/:after。独立节点(不在 CardTileBack 内,
 	# 避免与 dora 扫光的 clip_contents 冲突),不随 hover 抬起(被抬起的牌
@@ -739,7 +771,7 @@ func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float) 
 	tile.position = Vector2(x, 0)
 	tile.scale = Vector2(scale_x, scale_y)
 	_hand_tile_row.add_child(tile)
-	tile.set_face_up(int(tile_id))
+	tile.set_face_up(int(tile_id), is_red_dora)
 	tile.set_clickable(_hand_clickable)
 	tile.card_clicked.connect(_on_player_tile_clicked)
 	# T2:宝牌扫光(rebuild 后按当前 dora 集合重标,spec AC-G2-d)

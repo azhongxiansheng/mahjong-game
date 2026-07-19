@@ -55,3 +55,19 @@ func test_tile_id_to_atlas_key_covers_all_standard_tiles() -> void:
 		assert_ne(key, "", "TileId %d 无 atlas key 映射" % tid)
 		assert_true(ResourceLoader.exists(TILES_DIR + key + ".png"),
 			"TileId %d → %s 对应资产缺失" % [tid, key])
+
+# 赤宝：is_red_dora=true 的 5 万/筒/索 → 0m/0p/0s 真图 key
+func test_red_dora_maps_to_aka_keys() -> void:
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.W5, true), "0m")
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.T5, true), "0p")
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.S5, true), "0s")
+	# 非赤 5 仍走普通 5
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.W5, false), "5m")
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.T5, false), "5p")
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.S5, false), "5s")
+	# 非 5 数牌即使标 red 也不改 key（防御：数据异常时不瞎映射）
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.W3, true), "3m")
+	assert_eq(CardTileBack.tile_id_to_atlas_key(TileId.HAKU, true), "5z")
+	for key in ["0m", "0p", "0s"]:
+		assert_true(ResourceLoader.exists(TILES_DIR + key + ".png"),
+			"赤宝资产缺失: %s" % key)

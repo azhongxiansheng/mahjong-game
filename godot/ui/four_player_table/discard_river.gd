@@ -104,7 +104,7 @@ func _append_from(start: int) -> void:
 		if row != _cursor_row:
 			_cursor_x = 0.0
 			_cursor_row = row
-		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id)
+		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id, tile.is_red_dora)
 		if key == "":
 			continue
 		var tex: Texture2D = extractor.get_tile_texture(key)
@@ -147,7 +147,7 @@ func _rebuild() -> void:
 		if row != _cursor_row:
 			_cursor_x = 0.0
 			_cursor_row = row
-		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id)
+		var key: String = CardTileBack.tile_id_to_atlas_key(tile.id, tile.is_red_dora)
 		if key == "":
 			continue
 		var tex: Texture2D = extractor.get_tile_texture(key)

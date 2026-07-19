@@ -9,6 +9,7 @@ var display_name: String
 var description: String
 var rarity: int = Rarity.Kind.COMMON
 var hook_resource_path: String = ""  # M6 改为 SkillHook 子类路径
+var icon_path: String = ""  # 可选；多数能力暂无独立图标
 
 func _init(p_id: StringName = &"", p_rarity: int = Rarity.Kind.COMMON) -> void:
 	id = p_id
@@ -17,6 +18,11 @@ func _init(p_id: StringName = &"", p_rarity: int = Rarity.Kind.COMMON) -> void:
 func summary() -> String:
 	var rarity_str := Rarity.display_name(rarity)
 	return "[%s 角色能力] %s" % [rarity_str, display_name if display_name != "" else String(id)]
+
+func resolved_icon_path() -> String:
+	if icon_path != "" and ResourceLoader.exists(icon_path):
+		return icon_path
+	return ""
 
 # ---- 序列化（M5 SaveSystem） ----
 
@@ -27,6 +33,7 @@ func to_dict() -> Dictionary:
 		"description": description,
 		"rarity": rarity,
 		"hook_resource_path": hook_resource_path,
+		"icon_path": icon_path,
 	}
 
 static func from_dict(d: Dictionary) -> AbilityCard:
@@ -36,4 +43,5 @@ static func from_dict(d: Dictionary) -> AbilityCard:
 	a.display_name = d.get("display_name", "")
 	a.description = d.get("description", "")
 	a.hook_resource_path = d.get("hook_resource_path", "")
+	a.icon_path = d.get("icon_path", "")
 	return a

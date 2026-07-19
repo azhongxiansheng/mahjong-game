@@ -430,6 +430,7 @@ static func _mk_relic(id: StringName, name: String, desc: String, rarity: int, h
 	r.display_name = name
 	r.description = desc
 	r.hook_resource_path = hook_path
+	r.icon_path = RelicItem.default_icon_path(id)
 	return r
 
 static func _mk_consumable(id: StringName, name: String, desc: String, kind: int, rarity: int, hook_path: String) -> ConsumableItem:
@@ -437,4 +438,5 @@ static func _mk_consumable(id: StringName, name: String, desc: String, kind: int
 	c.display_name = name
 	c.description = desc
 	c.hook_resource_path = hook_path
+	c.icon_path = ConsumableItem.default_icon_path(id)
 	return c

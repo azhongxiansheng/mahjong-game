@@ -15,18 +15,41 @@ const RUN_BG_PATH := "res://assets/run_bg.png"
 static func attach_panel_icon(vbox: VBoxContainer, icon_path: String, icon_size: int = 96) -> void:
 	if vbox == null or not ResourceLoader.exists(icon_path):
 		return
+	var tr := make_item_icon(icon_path, icon_size)
+	if tr == null:
+		return
+	tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	vbox.add_child(tr)
+	vbox.move_child(tr, 0)
+
+
+# 通用物品图标；资产缺失时返回 null（调用方决定 fallback）。
+static func make_item_icon(icon_path: String, icon_size: int = 64) -> TextureRect:
+	if icon_path == "" or not ResourceLoader.exists(icon_path):
+		return null
 	var tex := load(icon_path) as Texture2D
 	if tex == null:
-		return
+		return null
 	var tr := TextureRect.new()
 	tr.texture = tex
 	tr.custom_minimum_size = Vector2(icon_size, icon_size)
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tr.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	vbox.add_child(tr)
-	vbox.move_child(tr, 0)
+	return tr
+
+
+# 从 GachaResult 解析展示用 icon_path（遗物/消耗品优先；能力有则用）。
+static func resolve_gacha_icon_path(r: GachaResult) -> String:
+	if r == null:
+		return ""
+	if r.kind == GachaResult.KIND_RELIC and r.relic:
+		return r.relic.resolved_icon_path()
+	if r.kind == GachaResult.KIND_CONSUMABLE and r.consumable:
+		return r.consumable.resolved_icon_path()
+	if r.kind == GachaResult.KIND_ABILITY and r.ability:
+		return r.ability.resolved_icon_path()
+	return ""
 
 
 static func attach_background(root: Control) -> void:
