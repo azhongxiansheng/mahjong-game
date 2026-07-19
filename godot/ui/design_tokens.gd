@@ -34,6 +34,16 @@ const TEXT_TITLE: Color = Color(1.00, 0.85, 0.40, 1.0)      # #FFD966 唯一金 
 const TEXT_DANGER: Color = Color(0.88, 0.27, 0.27, 1.0)     # #E04545 警告/失败红
 const TEXT_SUCCESS: Color = Color(0.45, 0.85, 0.45, 1.0)    # 通关/正向绿
 
+# ---- 表面 / 卡片（Run 壳层统一）----
+const SURFACE_PANEL: Color = Color(0.09, 0.10, 0.14, 0.96)   # 卡片/模态面板底
+const SURFACE_PANEL_HOVER: Color = Color(0.14, 0.13, 0.18, 0.97)
+const SURFACE_PANEL_PRESSED: Color = Color(0.18, 0.12, 0.14, 0.97)
+const SURFACE_GLASS: Color = Color(0.06, 0.07, 0.10, 0.82)   # HUD 玻璃条
+const BORDER_GOLD: Color = Color(0.85, 0.71, 0.36, 0.75)     # 金描边默认
+const BORDER_GOLD_SOFT: Color = Color(0.85, 0.71, 0.36, 0.40)
+const CARD_RADIUS: int = 10
+const CARD_BORDER: int = 2
+
 # ---- 节点主色 (8-15% 透明叠在 BG_BASE 上,保留主题信号,底色仍统一) ----
 
 const NODE_TINT_NORMAL: Color = Color(0.40, 0.55, 0.70, 0.08)
@@ -109,6 +119,39 @@ static func apply_caption_style(lbl: Label) -> void:
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
+# 统一卡片 StyleBoxFlat（normal/hover/pressed 共用边色，hover 提亮底）
+static func make_card_stylebox(border_color: Color, state: String = "normal") -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	match state:
+		"hover", "focus":
+			sb.bg_color = SURFACE_PANEL_HOVER
+		"pressed":
+			sb.bg_color = SURFACE_PANEL_PRESSED
+		"disabled":
+			sb.bg_color = Color(0.08, 0.08, 0.09, 0.9)
+		_:
+			sb.bg_color = SURFACE_PANEL
+	sb.border_color = border_color
+	sb.set_border_width_all(CARD_BORDER)
+	sb.set_corner_radius_all(CARD_RADIUS)
+	sb.content_margin_left = GAP_NORMAL
+	sb.content_margin_right = GAP_NORMAL
+	sb.content_margin_top = GAP_NORMAL
+	sb.content_margin_bottom = GAP_NORMAL
+	# 轻投影让卡"浮"在背景上
+	sb.shadow_color = Color(0, 0, 0, 0.45)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 4)
+	return sb
+
+
+static func apply_card_button_styles(btn: Button, border_color: Color) -> void:
+	if btn == null:
+		return
+	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
+		btn.add_theme_stylebox_override(state, make_card_stylebox(border_color, state))
+
+
 # 在父 Container 里建一张"长描述卡片按钮":Button 不带 text(避免单行宽度撑爆
 # minimum_size),内嵌 Label autowrap。返回 Button 供 caller 连 signal。
 #
@@ -124,30 +167,11 @@ static func make_text_card_button(
 	btn.custom_minimum_size = card_size
 	btn.text = ""
 	btn.clip_text = true
-	# 描边 stylebox — 显式构建暗底,不能 duplicate 主题 base:
-	# 主题已是 StyleBoxTexture,强转 StyleBoxFlat 得 null → 默认亮灰底
-	var state_bg := {
-		"normal": Color(0.13, 0.12, 0.15, 0.97),
-		"hover": Color(0.20, 0.17, 0.20, 0.97),
-		"pressed": Color(0.26, 0.14, 0.16, 0.97),
-		"focus": Color(0.20, 0.17, 0.20, 0.97),
-		"disabled": Color(0.10, 0.10, 0.11, 0.9),
-	}
-	for state in state_bg:
-		var sb := StyleBoxFlat.new()
-		sb.bg_color = state_bg[state]
-		sb.border_color = border_color
-		sb.border_width_left = 3
-		sb.border_width_top = 3
-		sb.border_width_right = 3
-		sb.border_width_bottom = 3
-		sb.corner_radius_top_left = 4
-		sb.corner_radius_top_right = 4
-		sb.corner_radius_bottom_left = 4
-		sb.corner_radius_bottom_right = 4
-		btn.add_theme_stylebox_override(state, sb)
+	btn.clip_contents = true
+	apply_card_button_styles(btn, border_color)
 	# 内嵌 Label
 	var lbl := Label.new()
+	lbl.name = "CardBody"
 	lbl.text = body_text
 	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -163,6 +187,29 @@ static func make_text_card_button(
 	btn.add_child(lbl)
 	parent.add_child(btn)
 	return btn
+
+
+# 模态/设置类：居中 Panel + 金边表面（调用方再塞内容）
+static func make_centered_panel(width: float, height: float) -> Panel:
+	var panel := Panel.new()
+	panel.custom_minimum_size = Vector2(width, height)
+	panel.size = Vector2(width, height)
+	panel.anchor_left = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -width / 2.0
+	panel.offset_top = -height / 2.0
+	panel.offset_right = width / 2.0
+	panel.offset_bottom = height / 2.0
+	var sb := make_card_stylebox(BORDER_GOLD, "normal")
+	sb.content_margin_left = PANEL_PAD
+	sb.content_margin_right = PANEL_PAD
+	sb.content_margin_top = PANEL_PAD
+	sb.content_margin_bottom = PANEL_PAD
+	sb.shadow_size = 16
+	panel.add_theme_stylebox_override("panel", sb)
+	return panel
 
 
 # ---- 入场/强调动效 (Anima 插件, addons/anima) ----

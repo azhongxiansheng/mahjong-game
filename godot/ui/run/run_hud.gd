@@ -30,9 +30,39 @@ const TWEEN_DURATION: float = 0.4  # 数字 counter tween 持续时间
 var _abilities_box: HBoxContainer = null
 
 func _ready() -> void:
+	_style_glass_bar()
 	_attach_hud_icons()
 	_attach_abilities_box()
 	_refresh_default()
+
+
+# 顶栏：玻璃底 + 金底边，替代纯黑条
+func _style_glass_bar() -> void:
+	var bg := get_node_or_null("Bg") as ColorRect
+	if bg:
+		bg.visible = false
+	var bar := Panel.new()
+	bar.name = "GlassBar"
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_bottom = float(DT.HUD_H)
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = DT.SURFACE_GLASS
+	sb.border_color = DT.BORDER_GOLD_SOFT
+	sb.border_width_bottom = 2
+	sb.shadow_color = Color(0, 0, 0, 0.4)
+	sb.shadow_size = 8
+	sb.shadow_offset = Vector2(0, 2)
+	bar.add_theme_stylebox_override("panel", sb)
+	add_child(bar)
+	move_child(bar, 0)
+	# 标签统一用 DT 色
+	if _label_chapter:
+		_label_chapter.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	if _label_gold:
+		_label_gold.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	if _label_deck:
+		_label_deck.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
 
 
 func _attach_abilities_box() -> void:
@@ -226,27 +256,22 @@ func _rebuild_abilities(rs: RunState) -> void:
 
 static func _make_ability_chip(a) -> Control:
 	var chip := Panel.new()
-	chip.custom_minimum_size = Vector2(64, 30)
+	chip.custom_minimum_size = Vector2(68, 32)
 	chip.mouse_filter = Control.MOUSE_FILTER_STOP
-	# 稀有度色描边覆盖主题 Panel StyleBox
+	var accent: Color = Rarity.color(int(a.rarity) if a else 0)
 	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.12, 0.10, 0.13, 1.0)
-	sb.border_color = Rarity.color(int(a.rarity) if a else 0)
-	sb.border_width_left = 2
-	sb.border_width_right = 2
-	sb.border_width_top = 2
-	sb.border_width_bottom = 2
-	sb.corner_radius_top_left = 4
-	sb.corner_radius_top_right = 4
-	sb.corner_radius_bottom_left = 4
-	sb.corner_radius_bottom_right = 4
-	sb.content_margin_left = 4
-	sb.content_margin_right = 4
+	sb.bg_color = Color(0.10, 0.09, 0.12, 0.95)
+	sb.border_color = accent
+	sb.set_border_width_all(2)
+	sb.set_corner_radius_all(6)
+	sb.content_margin_left = 6
+	sb.content_margin_right = 6
+	sb.shadow_color = Color(accent.r, accent.g, accent.b, 0.25)
+	sb.shadow_size = 4
 	chip.add_theme_stylebox_override("panel", sb)
 	var lbl := Label.new()
 	lbl.text = _ability_short_name(a)
-	lbl.size = Vector2(64, 30)
-	lbl.position = Vector2(0, 0)
+	lbl.set_anchors_preset(Control.PRESET_FULL_RECT)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 13)
