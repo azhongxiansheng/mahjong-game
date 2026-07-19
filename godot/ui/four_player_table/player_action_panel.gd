@@ -55,6 +55,17 @@ const BTN_H: float = 52.0
 
 var _btn_bar: HBoxContainer = null
 
+# 雀魂式响应倒计时（秒，可测试时改短）
+var CLAIM_TIMEOUT_SEC: float = 5.0
+var RIICHI_TIMEOUT_SEC: float = 6.0
+var KYUUSYU_TIMEOUT_SEC: float = 5.0
+var _countdown_bar: ProgressBar = null
+var _countdown_tween: Tween = null
+var _countdown_active: bool = false
+var _countdown_remaining: float = 0.0
+var _countdown_total: float = 0.0
+var _countdown_kind: StringName = &""  # claim / riichi / kyuusyu
+
 func _ready() -> void:
 	custom_minimum_size = Vector2(PANEL_W, PANEL_H)
 	size = Vector2(PANEL_W, PANEL_H)
@@ -94,6 +105,32 @@ func _build_ui() -> void:
 	_btn_bar.offset_left = 8
 	_btn_bar.offset_right = -8
 	add_child(_btn_bar)
+
+	# 雀魂式倒计时条（胶囊底下方细条）
+	_countdown_bar = ProgressBar.new()
+	_countdown_bar.min_value = 0.0
+	_countdown_bar.max_value = 1.0
+	_countdown_bar.value = 1.0
+	_countdown_bar.show_percentage = false
+	_countdown_bar.custom_minimum_size = Vector2(200, 6)
+	_countdown_bar.size = Vector2(200, 6)
+	_countdown_bar.visible = false
+	_countdown_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(0.95, 0.75, 0.25, 0.95)
+	fill.corner_radius_top_left = 3
+	fill.corner_radius_top_right = 3
+	fill.corner_radius_bottom_left = 3
+	fill.corner_radius_bottom_right = 3
+	var bg_sb := StyleBoxFlat.new()
+	bg_sb.bg_color = Color(0.15, 0.14, 0.16, 0.9)
+	bg_sb.corner_radius_top_left = 3
+	bg_sb.corner_radius_top_right = 3
+	bg_sb.corner_radius_bottom_left = 3
+	bg_sb.corner_radius_bottom_right = 3
+	_countdown_bar.add_theme_stylebox_override("fill", fill)
+	_countdown_bar.add_theme_stylebox_override("background", bg_sb)
+	add_child(_countdown_bar)
 
 	# 蓝=立直 / 金=自摸荣和 / 红=鸣牌 / 紫=九种 / 橙=杠道具 / 灰=跳过
 	_btn_riichi = _make_btn("立直", Color(0.30, 0.55, 0.85))
@@ -179,12 +216,85 @@ func _refresh_bg() -> void:
 	bar_w = clampf(bar_w, 160.0, PANEL_W)
 	_bg.size = Vector2(bar_w, PANEL_H - 4)
 	_bg.position = Vector2((PANEL_W - bar_w) / 2.0, 2)
+	if _countdown_bar and _countdown_bar.visible:
+		_countdown_bar.size = Vector2(maxf(bar_w - 24.0, 80.0), 6)
+		_countdown_bar.position = Vector2((PANEL_W - _countdown_bar.size.x) / 2.0, PANEL_H - 10)
+
+
+func is_countdown_active() -> bool:
+	return _countdown_active
+
+
+func get_countdown_remaining() -> float:
+	return _countdown_remaining
+
+
+func _start_countdown(seconds: float, kind: StringName) -> void:
+	_stop_countdown(false)
+	if seconds <= 0.0:
+		return
+	_countdown_kind = kind
+	_countdown_total = seconds
+	_countdown_remaining = seconds
+	_countdown_active = true
+	if _countdown_bar:
+		_countdown_bar.visible = true
+		_countdown_bar.value = 1.0
+		_refresh_bg()
+	_countdown_tween = create_tween()
+	_countdown_tween.tween_method(_on_countdown_tick, seconds, 0.0, seconds)
+	_countdown_tween.finished.connect(_on_countdown_finished)
+
+
+func _on_countdown_tick(remain: float) -> void:
+	_countdown_remaining = remain
+	if _countdown_bar and _countdown_total > 0.0:
+		_countdown_bar.value = remain / _countdown_total
+		# 最后 1.5s 变红催促（雀魂紧迫感）
+		if remain <= 1.5:
+			var fill: StyleBoxFlat = _countdown_bar.get_theme_stylebox("fill") as StyleBoxFlat
+			if fill:
+				var f2 := fill.duplicate() as StyleBoxFlat
+				f2.bg_color = Color(0.95, 0.30, 0.25, 0.95)
+				_countdown_bar.add_theme_stylebox_override("fill", f2)
+
+
+func _on_countdown_finished() -> void:
+	if not _countdown_active:
+		return
+	var kind: StringName = _countdown_kind
+	_stop_countdown(false)
+	_click_sfx()
+	match kind:
+		&"claim":
+			player_action_chosen.emit({"action": "skip"})
+		&"riichi":
+			player_action_chosen.emit({"action": "riichi_no"})
+		&"kyuusyu":
+			player_action_chosen.emit({"action": "kyuusyu_no"})
+		_:
+			player_action_chosen.emit({"action": "skip"})
+
+
+# stop_emit=false：超时已处理；true：用户操作取消
+func _stop_countdown(_user_cancel: bool = true) -> void:
+	_countdown_active = false
+	_countdown_remaining = 0.0
+	_countdown_kind = &""
+	if _countdown_tween and _countdown_tween.is_valid():
+		_countdown_tween.kill()
+	_countdown_tween = null
+	if _countdown_bar:
+		_countdown_bar.visible = false
+		_countdown_bar.value = 1.0
+
 
 # ---- 公开 API（TableDecisionAdapter 调） ----
 
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
 # 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
 func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false, has_consumable: bool = false) -> void:
+	_stop_countdown()
 	_state = State.WAITING_DISCARD
 	_label_status.text = "轮到你出牌（点手牌切）"
 	_hide_btn(_btn_riichi)
@@ -233,6 +343,7 @@ func enter_waiting_riichi_confirm() -> void:
 	_hide_btn(_btn_added_kan)
 	_hide_btn(_btn_consumable)
 	_show_btn(_btn_skip)  # = "不立直"
+	_start_countdown(RIICHI_TIMEOUT_SEC, &"riichi")
 
 # 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和/吃/碰/杠或见逃。
 # 4 个 can_* 标志由战斗层算出，经 TableDecisionAdapter 传入。
@@ -280,6 +391,7 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 	_hide_btn(_btn_added_kan)
 	_hide_btn(_btn_consumable)
 	_show_btn(_btn_skip)
+	_start_countdown(CLAIM_TIMEOUT_SEC, &"claim")
 
 # 进入"九種九牌"宣告状态:第一巡摸完后 14 张含 ≥ 9 种幺九,玩家可选途中流局。
 func enter_waiting_kyuusyu() -> void:
@@ -296,9 +408,11 @@ func enter_waiting_kyuusyu() -> void:
 	_hide_btn(_btn_consumable)
 	_show_btn(_btn_kyuusyu)
 	_show_btn(_btn_skip)
+	_start_countdown(KYUUSYU_TIMEOUT_SEC, &"kyuusyu")
 
 
 func enter_idle(status_text: String = "等待 AI…") -> void:
+	_stop_countdown()
 	_state = State.IDLE
 	_label_status.text = status_text
 	_start_dots_animation_if_applicable(status_text)
@@ -360,70 +474,75 @@ func _click_sfx() -> void:
 func on_hand_tile_clicked(tile_id: int) -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		player_action_chosen.emit({"action": "discard", "tile_id": tile_id})
+		_emit_choice({"action": "discard", "tile_id": tile_id})
 	elif _state == State.WAITING_CLAIM:
 		# 吃搭子选择模式（多组合时 BC 把手牌设回 clickable 等玩家点搭子）
 		_click_sfx()
-		player_action_chosen.emit({"action": "claim_tile_pick", "tile_id": tile_id})
+		_emit_choice({"action": "claim_tile_pick", "tile_id": tile_id})
 
 # ---- 按钮回调 ----
+
+func _emit_choice(choice: Dictionary) -> void:
+	_stop_countdown()
+	player_action_chosen.emit(choice)
+
 
 func _on_btn_riichi() -> void:
 	if _state == State.WAITING_RIICHI_CONFIRM:
 		_click_sfx()
-		player_action_chosen.emit({"action": "riichi_yes"})
+		_emit_choice({"action": "riichi_yes"})
 
 func _on_btn_tsumo() -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		player_action_chosen.emit({"action": "tsumo"})
+		_emit_choice({"action": "tsumo"})
 
 func _on_btn_ron() -> void:
 	if _state == State.WAITING_CLAIM:
 		_click_sfx()
-		player_action_chosen.emit({"action": "ron", "discarder_seat": _claim_discarder_seat})
+		_emit_choice({"action": "ron", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_chi() -> void:
 	if _state == State.WAITING_CLAIM:
 		_click_sfx()
-		player_action_chosen.emit({"action": "chi", "discarder_seat": _claim_discarder_seat})
+		_emit_choice({"action": "chi", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_pon() -> void:
 	if _state == State.WAITING_CLAIM:
 		_click_sfx()
-		player_action_chosen.emit({"action": "pon", "discarder_seat": _claim_discarder_seat})
+		_emit_choice({"action": "pon", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_minkan() -> void:
 	if _state == State.WAITING_CLAIM:
 		_click_sfx()
-		player_action_chosen.emit({"action": "minkan", "discarder_seat": _claim_discarder_seat})
+		_emit_choice({"action": "minkan", "discarder_seat": _claim_discarder_seat})
 
 func _on_btn_ankan() -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		player_action_chosen.emit({"action": "ankan"})
+		_emit_choice({"action": "ankan"})
 
 func _on_btn_added_kan() -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		player_action_chosen.emit({"action": "added_kan"})
+		_emit_choice({"action": "added_kan"})
 
 func _on_btn_skip() -> void:
 	_click_sfx()
 	if _state == State.WAITING_RIICHI_CONFIRM:
-		player_action_chosen.emit({"action": "riichi_no"})
+		_emit_choice({"action": "riichi_no"})
 	elif _state == State.WAITING_CLAIM:
-		player_action_chosen.emit({"action": "skip"})
+		_emit_choice({"action": "skip"})
 	elif _state == State.WAITING_KYUUSYU:
-		player_action_chosen.emit({"action": "kyuusyu_no"})
+		_emit_choice({"action": "kyuusyu_no"})
 
 
 func _on_btn_consumable() -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		player_action_chosen.emit({"action": "use_consumable"})
+		_emit_choice({"action": "use_consumable"})
 
 func _on_btn_kyuusyu() -> void:
 	if _state == State.WAITING_KYUUSYU:
 		_click_sfx()
-		player_action_chosen.emit({"action": "kyuusyu_yes"})
+		_emit_choice({"action": "kyuusyu_yes"})
