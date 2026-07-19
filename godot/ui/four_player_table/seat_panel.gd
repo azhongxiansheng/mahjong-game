@@ -39,9 +39,9 @@ const PLAYER_HAND_TILE_W: float = 54.0
 const PLAYER_HAND_TILE_H: float = 76.0
 # 14 张(13 + 摸牌位)总宽 ≈ 811;右移给左侧玩家头像卡让位
 # (布局对齐参考截图:自家头像卡在手牌左侧)
-const PLAYER_HAND_ROW_OFFSET_X: float = -350.0
-# panel y=570 → 牌 640..716,贴桌底(720)
-const PLAYER_HAND_ROW_OFFSET_Y: float = 70.0
+const PLAYER_HAND_ROW_OFFSET_X: float = -380.0
+# seat 锚点 ~TABLE_H-95 → 手牌贴底略上，给操作条留空
+const PLAYER_HAND_ROW_OFFSET_Y: float = 48.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 16.0
 var _hand_tile_row: Node2D = null

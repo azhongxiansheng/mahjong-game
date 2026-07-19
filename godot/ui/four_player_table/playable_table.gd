@@ -5,14 +5,13 @@ class_name PlayableTable extends Control
 # 组合 FourPlayerTable + PlayerActionPanel + PlayableBattleController，
 # 跑一局完整东风局玩家可玩对战。
 #
-# 1280×800：上方 720 给 four_player_table（含旋转的 4 个 SeatPanel），
-# 下方 80 给 player_action_panel。
+# 1280×800 雀魂式满桌（P0）：平面 2D，无 3D 倾桌 / 无右栏。
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 
-const TABLE_HEIGHT: float = 720.0
-const ACTION_PANEL_HEIGHT: float = 80.0
+const TABLE_HEIGHT: float = TableLayout.TABLE_H
+const ACTION_PANEL_HEIGHT: float = TableLayout.ACTION_BAR_H
 
 var _table: FourPlayerTable = null
 var _action_panel: PlayerActionPanel = null
@@ -40,50 +39,32 @@ func _on_achievement_unlocked(_id: String, meta: Dictionary) -> void:
 	get_tree().create_timer(0.7).timeout.connect(func():
 		_show_toast_text("🏆 成就解锁:%s" % captured))
 
-# ---- 3D 透视桌面(spec 2026-06-11 追加;对标参考作 .table-plane rotateX(18°)) ----
-#
-# 管线:桌面内容(FourPlayerTable)渲染进 SubViewport(2D)→ 贴到 World3D 里
-# 绕 X 倾斜的面片 → 透视相机渲染 → TextureRect 回贴 2D。
-# 关键决策:**只倾斜展示层** — 玩家 SeatPanel(手牌可点)抽出到平面层,
-# 按钮/宣告大字本就在平面层 → 被倾斜的部分零交互,无需鼠标反投影。
-# 参考作同构(.seat-bottom-fixed 不参与 table-plane 变换)。
+# P0：平面桌（关闭 3D 倾桌）。整桌可点、布局可预测，对标雀魂构图。
 
-# 透视强度 = 倾角 × 相机近距。参考作 perspective:1200px / 内容高 900px
-# ≈ 距离 1.33 倍面高;距离太远倾斜在投影里几乎不可见(首版 2.3 只剩 6% 收窄)。
-const TILT_DEG: float = 18.0
-const CAM_FOV: float = 42.0
-# 取景:桌面要溢出画框(参考作 table-plane top:-140 / rails ±130 都在屏外),
-# 桌沿在屏内"飘着"会露出黑边。拉近 + 略下移让底边溢出、顶边near顶。
-const CAM_POS := Vector3(0.0, 0.065, 1.12)
-const TABLE_RES_SCALE: float = 1.5  # SubViewport 超采样,补偿透视缩小后的清晰度
-
-var _vp_table: SubViewport = null
+var _vp_table: SubViewport = null  # 保留字段兼容旧引用；P0 不建倾桌
 
 func _build_layout() -> void:
-	# Bg 覆盖整个 viewport,让桌底 ActionPanel 区跟桌面同色,避免桌外背景跳变。
+	custom_minimum_size = Vector2(TableLayout.VIEW_W, TableLayout.VIEW_H)
 	var bg := ColorRect.new()
-	bg.size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	bg.size = Vector2(TableLayout.VIEW_W, TableLayout.VIEW_H)
 	bg.color = DT.BG_BASE
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
 	_table = FOUR_PLAYER_TABLE.instantiate()
-	_build_tilted_table()
+	_build_flat_table()
 
 	_action_panel = PLAYER_ACTION_PANEL.instantiate()
-	# 操作栏浮在手牌正上方(按钮带底,y 578..626,手牌顶 631)— 鸣牌/自摸
-	# 窗口是全局等待点,按钮必须出现在玩家视线焦点处(对标参考作 action-bar)。
-	# 旧位置在桌外底部黑条,玩家注意不到,以为游戏卡死。
+	# 贴手牌上方，不挡河、不落黑条
 	_action_panel.position = Vector2(
-		(_table.TABLE_WIDTH - PlayerActionPanel.PANEL_W) / 2.0, 550)
+		(TableLayout.TABLE_W - PlayerActionPanel.PANEL_W) / 2.0,
+		TableLayout.ACTION_BAR_Y)
 	add_child(_action_panel)
 
-	# 顶栏(对标参考截图):logo 左 + 规则/设置按钮右
 	_build_top_bar()
 
-	# 宝牌指示窗(平面层左上、顶栏之下):已翻 face-up + 未翻牌背槽
 	_dora_widget = DoraWidget.new()
-	_dora_widget.position = Vector2(16, 54)
+	_dora_widget.position = Vector2(16, TableLayout.TOP_BAR_H + 6)
 	add_child(_dora_widget)
 	_dora_widget.update_indicators([])
 
@@ -114,20 +95,16 @@ func _build_top_bar() -> void:
 	add_child(_run_hud_label)
 	# 对局 loadout 芯片条：能力/遗物/道具，挂顶栏中段
 	_loadout_strip = BattleLoadoutStrip.new()
-	_loadout_strip.position = Vector2(580, 10)
-	_loadout_strip.custom_minimum_size = Vector2(280, 36)
-	_loadout_strip.size = Vector2(280, 36)
+	_loadout_strip.position = Vector2(520, 8)
+	_loadout_strip.custom_minimum_size = Vector2(400, 36)
+	_loadout_strip.size = Vector2(400, 36)
 	add_child(_loadout_strip)
-	var rules_btn := Button.new()
-	rules_btn.text = "📖 规则"
-	rules_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 196, 10)
-	rules_btn.custom_minimum_size = Vector2(88, 36)
+	var rules_btn := DT.make_button("规则", DT.BtnRole.SECONDARY, Vector2(88, 36))
+	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 8)
 	rules_btn.pressed.connect(_open_help_overlay)
 	add_child(rules_btn)
-	var settings_btn := Button.new()
-	settings_btn.text = "⚙ 设置"
-	settings_btn.position = Vector2(FourPlayerTable.TABLE_WIDTH - 100, 10)
-	settings_btn.custom_minimum_size = Vector2(88, 36)
+	var settings_btn := DT.make_button("设置", DT.BtnRole.SECONDARY, Vector2(88, 36))
+	settings_btn.position = Vector2(TableLayout.TABLE_W - 100, 8)
 	settings_btn.pressed.connect(_open_settings_overlay)
 	add_child(settings_btn)
 
@@ -140,61 +117,11 @@ func _open_help_overlay() -> void:
 	get_tree().root.add_child(overlay)
 
 
-func _build_tilted_table() -> void:
-	var tw_f: float = FourPlayerTable.TABLE_WIDTH
-	var th_f: float = FourPlayerTable.TABLE_HEIGHT
-	# 2D 桌面离屏渲染(超采样)
-	_vp_table = SubViewport.new()
-	_vp_table.size = Vector2i(int(tw_f * TABLE_RES_SCALE), int(th_f * TABLE_RES_SCALE))
-	_vp_table.transparent_bg = true
-	_vp_table.disable_3d = true
-	_vp_table.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(_vp_table)
+# 平面满桌：FourPlayerTable 直接挂树，seat0 手牌可点，无 SubViewport/倾桌。
+func _build_flat_table() -> void:
 	_table.position = Vector2.ZERO
-	_table.scale = Vector2.ONE * TABLE_RES_SCALE
-	_vp_table.add_child(_table)
-	# 玩家 SeatPanel 抽出到平面层:手牌保持原生坐标可点击
-	var sp0: SeatPanel = _table.seat_panels[0]
-	if sp0:
-		sp0.get_parent().remove_child(sp0)
-		sp0.scale = Vector2.ONE  # 不吃超采样缩放
-		add_child(sp0)
-	# 3D 倾斜面片 + 透视相机
-	var vp3d := SubViewport.new()
-	vp3d.size = Vector2i(int(tw_f), int(th_f))
-	vp3d.transparent_bg = true
-	vp3d.own_world_3d = true
-	vp3d.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	add_child(vp3d)
-	var cam := Camera3D.new()
-	cam.fov = CAM_FOV
-	cam.position = CAM_POS
-	vp3d.add_child(cam)
-	var quad := MeshInstance3D.new()
-	var mesh := QuadMesh.new()
-	mesh.size = Vector2(tw_f / th_f, 1.0)
-	quad.mesh = mesh
-	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_texture = _vp_table.get_texture()
-	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	quad.material_override = mat
-	quad.rotation_degrees.x = -TILT_DEG  # 顶边向远处倒
-	vp3d.add_child(quad)
-	# 回贴 2D
-	var tr := TextureRect.new()
-	tr.name = "TiltedTableView"
-	tr.texture = vp3d.get_texture()
-	tr.position = Vector2.ZERO
-	tr.size = Vector2(tw_f, th_f)
-	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tr.stretch_mode = TextureRect.STRETCH_SCALE
-	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(tr)
-	# 平面层的玩家 SeatPanel 必须在贴图之上
-	if sp0:
-		move_child(sp0, get_child_count() - 1)
+	_table.scale = Vector2.ONE
+	add_child(_table)
 
 var _pending_discard_fly: Dictionary = {}  # {from: Vector2, tile_id: int, is_red: bool}
 
@@ -1333,13 +1260,9 @@ func _estimate_river_end_global(seat_id: int) -> Vector2:
 	var dr: DiscardRiver = _table.discard_rivers[seat_id]
 	if dr == null:
 		return Vector2.ZERO
-	# SubViewport 内全局坐标（含超采样 scale）
+	# P0 平面桌：河在同一坐标系，直接全局中心
 	var local_c: Vector2 = dr.get_last_tile_local_center()
-	var vp_global: Vector2 = dr.to_global(local_c)
-	# 映射到 TiltedTableView 贴图像素（取消 TABLE_RES_SCALE）
-	var screen: Vector2 = vp_global / TABLE_RES_SCALE
-	# TextureRect 在 playable_table 原点；再转全局
-	return global_position + screen
+	return dr.to_global(local_c)
 
 # 键盘 helper：D=切第一张牌；S=跳过；R=立直 yes — 备用调试入口
 func _input(event: InputEvent) -> void:

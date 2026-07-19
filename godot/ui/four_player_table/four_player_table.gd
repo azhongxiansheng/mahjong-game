@@ -12,10 +12,10 @@ class_name FourPlayerTable extends Control
 #   - 与 GameDriver 集成（→ 第 4 步 four_player_table_smoke.tscn）
 #   - 印章 + tooltip + 透明牌（→ 第 3 步）
 
-# 4 人桌默认尺寸（spec §14 v1 默认）；右侧 200px 给 AbilityPanel
-const TABLE_WIDTH: float = 1080.0
-const TABLE_HEIGHT: float = 720.0
-const ABILITY_PANEL_WIDTH: float = 200.0
+# 雀魂式满桌 1280×720（P0：取消 200px 右栏，能力走顶栏 loadout）
+const TABLE_WIDTH: float = TableLayout.TABLE_W
+const TABLE_HEIGHT: float = TableLayout.TABLE_H
+const ABILITY_PANEL_WIDTH: float = 0.0
 
 const SEAT_PANEL_SCENE := preload("res://ui/four_player_table/seat_panel.tscn")
 const CENTER_INFO_SCENE := preload("res://ui/four_player_table/center_info_panel.tscn")
@@ -32,7 +32,7 @@ var discard_rivers: Array = []
 var meld_areas: Array = []
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(TABLE_WIDTH + ABILITY_PANEL_WIDTH, TABLE_HEIGHT)
+	custom_minimum_size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
 	_build_layout()
 
 # ---- public setters ----
@@ -140,24 +140,9 @@ static func ai_persona_for_seat(seat_id: int) -> Array:
 	return []  # seat 0 玩家自家不挂 AI persona
 
 
-# 静态：seat_id → 桌面坐标（相对 Table 区域）。
-# 0=下、1=右、2=上、3=左；中央为 (TABLE_WIDTH/2, TABLE_HEIGHT/2)。
-# seat 0 margin 比 AI 大 50px,因为玩家自家手牌(60 高)要画在分数框下方,
-# 需要留 60+ 垂直空间;AI 手牌只是色块,小得多。
+# 静态：seat_id → 桌面坐标（相对 Table 区域）。契约见 TableLayout。
 static func seat_position(seat_id: int) -> Vector2:
-	var cx := TABLE_WIDTH / 2.0
-	var cy := TABLE_HEIGHT / 2.0
-	var margin := 110.0
-	match seat_id:
-		0:
-			return Vector2(cx, TABLE_HEIGHT - margin - 50)
-		1:
-			return Vector2(TABLE_WIDTH - margin, cy)
-		2:
-			return Vector2(cx, margin)
-		3:
-			return Vector2(margin, cy)
-	return Vector2(cx, cy)
+	return TableLayout.seat_anchor(seat_id)
 
 # 默认风牌：dealer 是 E，按 seat_id 与 dealer 偏移决定。
 # 但本面板暂不持 dealer 信息；调用方在 bind_battle_state 时由 Seat.seat_wind 直接喂。
@@ -224,75 +209,57 @@ func _build_layout() -> void:
 
 	# CenterInfoPanel
 	center_info = CENTER_INFO_SCENE.instantiate()
-	center_info.position = Vector2(TABLE_WIDTH / 2.0, TABLE_HEIGHT / 2.0)
+	center_info.position = TableLayout.center()
 	table.add_child(center_info)
 
-	# AbilityPanel：v1 简化为隐藏（spec §14 角色能力 v1 不可见消化干扰）
+	# AbilityPanel：P0 隐藏，能力展示走 PlayableTable 顶栏 loadout
 	ability_panel = ABILITY_PANEL_SCENE.instantiate()
-	ability_panel.position = Vector2(TABLE_WIDTH, 0)
 	ability_panel.visible = false
+	ability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ability_panel)
 
-# DiscardRiver 4 边布局（日麻标准）：
-# 每家弃牌从自己面前桌心方向展开，旋转 0/-90/180/+90 度让 face 朝桌中心。
-# DiscardRiver 内部 local 坐标系：(0,0) 是 left-top 原点，6 张横向 +X，行向 +Y 累积。
-# 6×34-2=202 宽，3×50-2=148 高。
-# Node2D rotation 把这套坐标转到 4 边方向。
-# 中央留 280×280（位置 (500..780, 220..500)）给 CenterInfoPanel + Dora 显示。
-# T3e:与 DiscardRiver 38×50 同步(6×38+5×2 = 238 / 3×50+2×2 = 154)
-const RIVER_W: float = 238.0
-const RIVER_H: float = 154.0
-static func _discard_river_layout(seat_id: int) -> Dictionary:
-	var cx := TABLE_WIDTH / 2.0
-	var cy := TABLE_HEIGHT / 2.0
-	# inner = 河"内沿"到桌心的距离；让 4 河之间留中央 280×280
-	var inner := 140.0
-	# 玩家河内沿收紧:手牌放大贴底(顶端 ~631)后,inner=140 时第三行
-	# (604..654)会压进手牌区。116 → 河 476..630,上贴中心盘下缘(470)
-	# 留 6px、下距手牌顶留 1-3px,三行都不重叠。
-	var inner_self := 116.0
-	match seat_id:
-		0:
-			# 玩家：rotation=0；local (0,0) 在 visual 左上，6 张牌正面朝玩家。
-			# 让河顶部贴在 cy + inner_self（桌心下方一点开始）
-			return {"position": Vector2(cx - RIVER_W / 2.0, cy + inner_self), "rotation_degrees": 0.0}
-		1:
-			# 右家：rotation=-90（顺时针）。local +X 在 screen 上变 -Y（向上），
-			# local +Y 变 +X（向右）。所以 local (0,0) 在 visual 的 (position.x, position.y)，
-			# 6 张牌从该点向上排列。让河"内沿"（local Y=0 那条）贴在 cx + inner，
-			# 河"开始"贴在 cy + RIVER_W/2（visual 下方）。
-			return {"position": Vector2(cx + inner, cy + RIVER_W / 2.0), "rotation_degrees": -90.0}
-		2:
-			# 对家：rotation=180。local +X 在 screen 上变 -X（向左）；+Y 变 -Y（向上）。
-			# local (0,0) 在 visual 右下角；牌从右往左排列（玩家视角是从左到右读）。
-			# 让河"内沿"（local Y=0 那条）贴在 cy - inner（桌心上方一点开始），
-			# visual 横向 right edge 在 cx + RIVER_W/2。
-			return {"position": Vector2(cx + RIVER_W / 2.0, cy - inner), "rotation_degrees": 180.0}
-		3:
-			# 左家：rotation=+90（逆时针）。local +X 在 screen 上变 +Y（向下），
-			# local +Y 变 -X（向左）。让河"内沿" 贴在 cx - inner，
-			# 河"开始" 贴在 cy - RIVER_W/2（visual 上方）。
-			return {"position": Vector2(cx - inner, cy - RIVER_W / 2.0), "rotation_degrees": 90.0}
-	return {"position": Vector2(cx, cy), "rotation_degrees": 0.0}
+	# 木框暗角：四边内阴影，让毡不「贴屏幕边」
+	_add_table_frame()
 
-# MeldArea 4 边布局（日麻"副露摆在自己面前右侧"风格）：
-# - MeldArea 内坐标：x=0 是组的最右侧（首组 meld 起点），从右往左累积
-# - 4 个角各放 1 个 MeldArea，rotation 让 face 朝桌中心
-# - 玩家（seat 0）的 MeldArea 在 桌面 右下角；melds 向左展开
-# - 视觉位置略低于 seat_panel 高度，避免与 score / hand 显示重叠
-const MELD_MARGIN: float = 30.0  # 距桌边
+
+func _add_table_frame() -> void:
+	var frame := Control.new()
+	frame.name = "TableFrame"
+	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	# 四边暗条
+	for edge in [
+		[Vector2(0, 0), Vector2(TABLE_WIDTH, 18)],
+		[Vector2(0, TABLE_HEIGHT - 18), Vector2(TABLE_WIDTH, 18)],
+		[Vector2(0, 0), Vector2(18, TABLE_HEIGHT)],
+		[Vector2(TABLE_WIDTH - 18, 0), Vector2(18, TABLE_HEIGHT)],
+	]:
+		var r := ColorRect.new()
+		r.color = Color(0.04, 0.03, 0.02, 0.55)
+		r.position = edge[0]
+		r.size = edge[1]
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		frame.add_child(r)
+	# 内金线
+	var gold := ColorRect.new()
+	gold.color = Color(0.75, 0.62, 0.32, 0.22)
+	gold.position = Vector2(16, 16)
+	gold.size = Vector2(TABLE_WIDTH - 32, 2)
+	gold.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(gold)
+	add_child(frame)
+
+
+const RIVER_W: float = TableLayout.RIVER_W
+const RIVER_H: float = TableLayout.RIVER_H
+
+
+static func _discard_river_layout(seat_id: int) -> Dictionary:
+	return TableLayout.discard_river(seat_id)
+
+
+const MELD_MARGIN: float = TableLayout.MELD_MARGIN
+
+
 static func _meld_area_layout(seat_id: int) -> Dictionary:
-	match seat_id:
-		0:
-			# 玩家：rotation=0；x=0 在 visual 桌面右下角；melds 向左 (-X) 展开
-			return {"position": Vector2(TABLE_WIDTH - MELD_MARGIN, TABLE_HEIGHT - MELD_MARGIN), "rotation_degrees": 0.0}
-		1:
-			# 右家：rotation=-90（顺时针）；视觉上 melds 从右上角向下展开
-			return {"position": Vector2(TABLE_WIDTH - MELD_MARGIN, MELD_MARGIN), "rotation_degrees": -90.0}
-		2:
-			# 对家：rotation=180；melds 从左上角向右展开（视觉为对家视角的左下）
-			return {"position": Vector2(MELD_MARGIN, MELD_MARGIN), "rotation_degrees": 180.0}
-		3:
-			# 左家：rotation=+90；melds 从左下角向上展开
-			return {"position": Vector2(MELD_MARGIN, TABLE_HEIGHT - MELD_MARGIN), "rotation_degrees": 90.0}
-	return {"position": Vector2(0, 0), "rotation_degrees": 0.0}
+	return TableLayout.meld_area(seat_id)
