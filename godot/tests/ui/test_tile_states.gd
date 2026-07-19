@@ -79,6 +79,18 @@ func _make_player_panel_with_hand(ids: Array) -> SeatPanel:
 	sp.bind_seat(seat)
 	return sp
 
+# 手牌增量后：CardTileBack 挂在 slot 容器内，经 _hand_slots 访问。
+func _iter_hand_tiles(sp: SeatPanel) -> Array:
+	var tiles: Array = []
+	for s in sp._hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+		if tile:
+			tiles.append(tile)
+	return tiles
+
+
 func test_seat_panel_marks_dora_from_ids():
 	var sp := SeatPanel.new()
 	sp.set_seat_id(0)
@@ -89,8 +101,8 @@ func test_seat_panel_marks_dora_from_ids():
 		seat.hand.add(Tile.new(tid))
 	sp.bind_seat(seat)
 	var dora_count := 0
-	for child in sp._hand_tile_row.get_children():
-		if child is CardTileBack and child._is_dora:
+	for tile in _iter_hand_tiles(sp):
+		if tile._is_dora:
 			dora_count += 1
 	assert_eq(dora_count, 1, "手牌中 1 张 W5 实宝牌应标扫光")
 
@@ -98,21 +110,20 @@ func test_seat_panel_dim_except_and_clear():
 	var sp := _make_player_panel_with_hand([TileId.W1, TileId.W2, TileId.T5])
 	sp.dim_hand_except([TileId.W1, TileId.W2])
 	var dimmed: Array = []
-	for child in sp._hand_tile_row.get_children():
-		if child is CardTileBack and child.is_dim():
-			dimmed.append(child._tile_id)
+	for tile in _iter_hand_tiles(sp):
+		if tile.is_dim():
+			dimmed.append(tile._tile_id)
 	assert_eq(dimmed, [TileId.T5], "候选外的 T5 压暗")
 	sp.clear_hand_dim()
-	for child in sp._hand_tile_row.get_children():
-		if child is CardTileBack:
-			assert_false(child.is_dim())
+	for tile in _iter_hand_tiles(sp):
+		assert_false(tile.is_dim())
 
 func test_seat_panel_mark_win_tile():
 	var sp := _make_player_panel_with_hand([TileId.W1, TileId.CHUN])
 	sp.mark_win_tile(TileId.CHUN)
 	var marked := 0
-	for child in sp._hand_tile_row.get_children():
-		if child is CardTileBack and child._is_win_tile:
+	for tile in _iter_hand_tiles(sp):
+		if tile._is_win_tile:
 			marked += 1
-			assert_eq(child._tile_id, TileId.CHUN)
+			assert_eq(tile._tile_id, TileId.CHUN)
 	assert_eq(marked, 1)

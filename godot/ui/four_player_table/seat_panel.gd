@@ -710,6 +710,30 @@ static func _split_entries_to_dict(sorted_entries: Array, drawn_entries: Array) 
 		"drawn_reds": drawn_reds,
 	}
 
+
+# 手牌增量匹配（纯函数，可单测）。
+# prev/next: Array[{id:int, red:bool}]
+# 返回 Array[int]，与 next 等长：reuse 的 prev 下标，或 -1 表示新建。
+# 匹配键严格为 (id, red)；每个 prev 槽最多用一次。
+static func assign_hand_reuse(prev: Array, next: Array) -> Array:
+	var used: Dictionary = {}
+	var assignments: Array = []
+	for n in next:
+		var nid: int = int(n.get("id", -1))
+		var nred: bool = bool(n.get("red", false))
+		var found: int = -1
+		for pi in range(prev.size()):
+			if used.has(pi):
+				continue
+			var p: Dictionary = prev[pi]
+			if int(p.get("id", -2)) == nid and bool(p.get("red", false)) == nred:
+				found = pi
+				break
+		if found >= 0:
+			used[found] = true
+		assignments.append(found)
+	return assignments
+
 # 整行投影 helper(质感层):透明底 + 仅 shadow 的 Panel 垫在行底。
 static func _make_row_shadow(size_: Vector2) -> Panel:
 	var p := Panel.new()
@@ -725,72 +749,189 @@ static func _make_row_shadow(size_: Vector2) -> Panel:
 	return p
 
 
-# 内部统一渲染：sorted_ids 在左，drawn_ids 在右（与 sorted 之间留 PLAYER_HAND_DRAWN_GAP 间距）
-# sorted_reds / drawn_reds 与 ids 平行；长度不足时按 false。
+# 手牌槽：每张牌一个 Control 容器（棱 + CardTileBack），便于增量 reuse。
+# meta: hand_id, hand_red, is_drawn
+var _hand_slots: Array = []  # Array[Control]
+
+
+# 内部统一渲染：sorted 在左，drawn 在右；增量 reuse 同 (id,red) 节点，避免整行闪。
 func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array,
 		sorted_reds: Array = [], drawn_reds: Array = []) -> void:
 	if _hand_tile_row == null:
 		return
 	_apply_hand_row_offset()
+	var targets: Array = []
+	for i in range(sorted_ids.size()):
+		targets.append({
+			"id": int(sorted_ids[i]),
+			"red": i < sorted_reds.size() and bool(sorted_reds[i]),
+			"drawn": false,
+		})
+	for i in range(drawn_ids.size()):
+		targets.append({
+			"id": int(drawn_ids[i]),
+			"red": i < drawn_reds.size() and bool(drawn_reds[i]),
+			"drawn": true,
+		})
+	_sync_player_hand_slots(targets)
+
+
+func _sync_player_hand_slots(targets: Array) -> void:
+	# 清掉旧 shadow（每次按总宽重建）
 	for child in _hand_tile_row.get_children():
-		child.queue_free()
+		if child is Panel and child.name == "HandRowShadow":
+			child.queue_free()
+
+	var prev_meta: Array = []
+	for slot in _hand_slots:
+		if slot == null or not is_instance_valid(slot):
+			prev_meta.append({"id": -999, "red": false})
+			continue
+		prev_meta.append({
+			"id": int(slot.get_meta("hand_id", -1)),
+			"red": bool(slot.get_meta("hand_red", false)),
+		})
+	var assignments: Array = assign_hand_reuse(prev_meta, targets)
+	var reused_prev: Dictionary = {}
+	var new_slots: Array = []
 	var scale_x: float = PLAYER_HAND_TILE_W / float(CardTileBack.TILE_WIDTH)
 	var scale_y: float = PLAYER_HAND_TILE_H / float(CardTileBack.TILE_HEIGHT)
-	var x := 0.0
-	for i in range(sorted_ids.size()):
-		var is_red: bool = i < sorted_reds.size() and bool(sorted_reds[i])
-		_spawn_player_tile(int(sorted_ids[i]), x, scale_x, scale_y, is_red)
-		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
-	if not drawn_ids.is_empty():
-		# 让间距更明显：把现在的 x 上加 DRAWN_GAP - HAND_TILE_GAP
-		x += PLAYER_HAND_DRAWN_GAP - HAND_TILE_GAP
-		for i in range(drawn_ids.size()):
-			var is_red_d: bool = i < drawn_reds.size() and bool(drawn_reds[i])
-			var drawn_tile: CardTileBack = _spawn_player_tile(
-				int(drawn_ids[i]), x, scale_x, scale_y, is_red_d)
-			# 摸牌位：自上滑入 + 淡入，减轻全量 rebuild 的"闪一下"
-			if drawn_tile != null and is_inside_tree():
-				var target_y: float = drawn_tile.position.y
-				drawn_tile.position.y = target_y - 28.0
-				drawn_tile.modulate.a = 0.0
-				var tw := create_tween().set_parallel(true)
-				tw.tween_property(drawn_tile, "position:y", target_y, 0.18)\
-					.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
-				tw.tween_property(drawn_tile, "modulate:a", 1.0, 0.16)
-			x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
 
-func _spawn_player_tile(tile_id: int, x: float, scale_x: float, scale_y: float,
-		is_red_dora: bool = false) -> CardTileBack:
-	# T3e:立牌错觉 — 牌顶两条棱(绿背边 + 灰白棱),对标参考作
-	# .seat-bottom-fixed .tile:before/:after。独立节点(不在 CardTileBack 内,
-	# 避免与 dora 扫光的 clip_contents 冲突),不随 hover 抬起(被抬起的牌
-	# "离开桌面"反而正确)。
+	for ti in range(targets.size()):
+		var t: Dictionary = targets[ti]
+		var prev_i: int = int(assignments[ti])
+		var slot: Control = null
+		var is_new: bool = false
+		if prev_i >= 0 and prev_i < _hand_slots.size():
+			var cand: Control = _hand_slots[prev_i]
+			if cand != null and is_instance_valid(cand) and not reused_prev.has(prev_i):
+				slot = cand
+				reused_prev[prev_i] = true
+		if slot == null:
+			slot = _make_hand_slot(int(t["id"]), bool(t["red"]), scale_x, scale_y)
+			is_new = true
+		else:
+			_refresh_hand_slot(slot, int(t["id"]), bool(t["red"]))
+		slot.set_meta("is_drawn", bool(t["drawn"]))
+		new_slots.append({"slot": slot, "drawn": bool(t["drawn"]), "is_new": is_new})
+
+	# 释放未 reuse 的旧槽
+	for pi in range(_hand_slots.size()):
+		if reused_prev.has(pi):
+			continue
+		var dead: Control = _hand_slots[pi]
+		if dead != null and is_instance_valid(dead):
+			dead.queue_free()
+
+	var n_sorted: int = 0
+	for item in new_slots:
+		if not bool(item["drawn"]):
+			n_sorted += 1
+
+	_hand_slots.clear()
+	var x := 0.0
+	var seen_drawn := false
+	for item in new_slots:
+		var slot2: Control = item["slot"]
+		if bool(item["drawn"]) and not seen_drawn:
+			if n_sorted > 0:
+				x += PLAYER_HAND_DRAWN_GAP - HAND_TILE_GAP
+			seen_drawn = true
+		var target_pos := Vector2(x, 0)
+		if not slot2.get_parent():
+			_hand_tile_row.add_child(slot2)
+		if bool(item["is_new"]) and bool(item["drawn"]) and is_inside_tree():
+			slot2.position = Vector2(x, -28)
+			slot2.modulate.a = 0.0
+			var tw := create_tween().set_parallel(true)
+			tw.tween_property(slot2, "position", target_pos, 0.18)\
+				.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+			tw.tween_property(slot2, "modulate:a", 1.0, 0.16)
+		elif is_inside_tree() and slot2.position.distance_to(target_pos) > 0.5:
+			slot2.modulate.a = 1.0
+			var tw2 := create_tween()
+			tw2.tween_property(slot2, "position", target_pos, 0.12)\
+				.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+		else:
+			slot2.position = target_pos
+			slot2.modulate.a = 1.0
+		_hand_slots.append(slot2)
+		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
+
+	# 行投影
+	var row_w: float = x - HAND_TILE_GAP if x > 0 else 0.0
+	if row_w > 0:
+		var shadow := _make_row_shadow(Vector2(row_w, PLAYER_HAND_TILE_H))
+		shadow.name = "HandRowShadow"
+		_hand_tile_row.add_child(shadow)
+		_hand_tile_row.move_child(shadow, 0)
+
+	# 重标 dora / clickable / dim 清
+	for slot3 in _hand_slots:
+		var tile: CardTileBack = slot3.get_node_or_null("Tile") as CardTileBack
+		if tile == null:
+			continue
+		tile.set_clickable(_hand_clickable)
+		tile.set_dora(_dora_ids.has(int(slot3.get_meta("hand_id", -1))))
+		tile.set_dim(false)
+		tile.set_hover_match(false)
+
+
+func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float) -> Control:
+	var slot := Control.new()
+	slot.custom_minimum_size = Vector2(PLAYER_HAND_TILE_W, PLAYER_HAND_TILE_H)
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.set_meta("hand_id", tile_id)
+	slot.set_meta("hand_red", is_red)
 	var edge_back := ColorRect.new()
+	edge_back.name = "EdgeBack"
 	edge_back.color = Color(0.17, 0.36, 0.24)
-	edge_back.position = Vector2(x, -9)
+	edge_back.position = Vector2(0, -9)
 	edge_back.size = Vector2(PLAYER_HAND_TILE_W, 6)
 	edge_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hand_tile_row.add_child(edge_back)
+	slot.add_child(edge_back)
 	var edge_face := ColorRect.new()
+	edge_face.name = "EdgeFace"
 	edge_face.color = Color(0.71, 0.71, 0.69)
-	edge_face.position = Vector2(x, -4.5)
+	edge_face.position = Vector2(0, -4.5)
 	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 4.5)
 	edge_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hand_tile_row.add_child(edge_face)
+	slot.add_child(edge_face)
 	var tile := CardTileBack.new()
-	tile.position = Vector2(x, 0)
+	tile.name = "Tile"
+	tile.position = Vector2.ZERO
 	tile.scale = Vector2(scale_x, scale_y)
-	_hand_tile_row.add_child(tile)
-	tile.set_face_up(int(tile_id), is_red_dora)
+	slot.add_child(tile)
+	tile.set_face_up(tile_id, is_red)
 	tile.set_clickable(_hand_clickable)
 	tile.card_clicked.connect(_on_player_tile_clicked)
-	# T2:宝牌扫光(rebuild 后按当前 dora 集合重标,spec AC-G2-d)
-	if _dora_ids.has(int(tile_id)):
-		tile.set_dora(true)
-	# T2:同名联动 — 悬停时全手牌同 id 高亮
-	tile.mouse_entered.connect(_on_hand_tile_hover.bind(int(tile_id), true))
-	tile.mouse_exited.connect(_on_hand_tile_hover.bind(int(tile_id), false))
-	return tile
+	tile.mouse_entered.connect(_on_hand_tile_hover_slot.bind(slot, true))
+	tile.mouse_exited.connect(_on_hand_tile_hover_slot.bind(slot, false))
+	return slot
+
+
+func _refresh_hand_slot(slot: Control, tile_id: int, is_red: bool) -> void:
+	slot.set_meta("hand_id", tile_id)
+	slot.set_meta("hand_red", is_red)
+	var tile: CardTileBack = slot.get_node_or_null("Tile") as CardTileBack
+	if tile == null:
+		return
+	# 仅当 id/red 变化时刷新贴图（reuse 命中时通常不变）
+	if tile._tile_id != tile_id or tile._is_red_dora != is_red:
+		tile.set_face_up(tile_id, is_red)
+
+
+func _on_hand_tile_hover_slot(slot: Control, entered: bool) -> void:
+	if _seat_id != 0 or slot == null:
+		return
+	var tid: int = int(slot.get_meta("hand_id", -1))
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		if int(s.get_meta("hand_id", -2)) == tid:
+			var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+			if tile:
+				tile.set_hover_match(entered)
 
 # ---- T2 单牌状态接线(spec 2026-06-11 G2) ----
 
@@ -803,35 +944,44 @@ func set_dora_ids(ids: Array) -> void:
 
 # 悬停同名联动:同 id 的其它手牌叠蓝色蒙版。仅自家手牌行内生效(v1)。
 func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
-	if _seat_id != 0 or _hand_tile_row == null:
+	# 兼容旧调用；槽结构下转 slot 版
+	if _seat_id != 0:
 		return
-	for child in _hand_tile_row.get_children():
-		if child is CardTileBack and child._tile_id == tile_id:
-			child.set_hover_match(entered)
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		if int(s.get_meta("hand_id", -2)) == tile_id:
+			var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+			if tile:
+				tile.set_hover_match(entered)
 
 # 吃牌选搭子模式:候选之外的手牌压暗。allowed 为可选搭子 tile_id 列表。
 func dim_hand_except(allowed: Array) -> void:
-	if _hand_tile_row == null:
-		return
-	for child in _hand_tile_row.get_children():
-		if child is CardTileBack:
-			child.set_dim(not allowed.has(child._tile_id))
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+		if tile:
+			tile.set_dim(not allowed.has(int(s.get_meta("hand_id", -1))))
 
 func clear_hand_dim() -> void:
-	if _hand_tile_row == null:
-		return
-	for child in _hand_tile_row.get_children():
-		if child is CardTileBack:
-			child.set_dim(false)
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+		if tile:
+			tile.set_dim(false)
 
 # 和牌张脉冲:标记手牌行中第一张匹配 id 的牌(自摸/荣和宣告后、结算前)。
 func mark_win_tile(tile_id: int) -> void:
-	if _hand_tile_row == null:
-		return
-	for child in _hand_tile_row.get_children():
-		if child is CardTileBack and child._tile_id == tile_id:
-			child.set_win_tile(true)
-			return
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		if int(s.get_meta("hand_id", -2)) == tile_id:
+			var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+			if tile:
+				tile.set_win_tile(true)
+				return
 
 # T5:发牌演出期间整行隐藏/恢复。
 func set_hand_row_visible(b: bool) -> void:
@@ -843,11 +993,12 @@ func set_hand_row_visible(b: bool) -> void:
 # 仅 seat==0 有效；其它 seat 调用本方法无效（手牌行只有色块不 emit click）。
 func set_hand_clickable(b: bool) -> void:
 	_hand_clickable = b
-	if _hand_tile_row == null:
-		return
-	for child in _hand_tile_row.get_children():
-		if child is CardTileBack:
-			child.set_clickable(b)
+	for s in _hand_slots:
+		if s == null or not is_instance_valid(s):
+			continue
+		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
+		if tile:
+			tile.set_clickable(b)
 
 func _on_player_tile_clicked(tile_id: int) -> void:
 	if _seat_id != 0:
