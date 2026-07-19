@@ -5,7 +5,7 @@ class_name PlayableTable extends Control
 # 组合 FourPlayerTable + PlayerActionPanel + PlayableBattleController，
 # 跑一局完整东风局玩家可玩对战。
 #
-# 1280×800 雀魂式满桌（P0）：平面 2D，无 3D 倾桌 / 无右栏。
+# 1280×800 雀魂式 3D 牌桌（M1）：立体牌 + 俯斜相机 + 2D HUD
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
@@ -13,12 +13,14 @@ const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_p
 const TABLE_HEIGHT: float = TableLayout.TABLE_H
 const ACTION_PANEL_HEIGHT: float = TableLayout.ACTION_BAR_H
 
-var _table: FourPlayerTable = null
+# M1：主视觉为 MahjongTable3D；_table 保留类型宽松以兼容旧调用
+var _table = null
 var _action_panel: PlayerActionPanel = null
 var _bc: PlayableBattleController = null
 var _decision_adapter: TableDecisionAdapter = null
 
-var _seat_panel_player: SeatPanel = null
+var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
+var _use_3d: bool = true
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
@@ -51,15 +53,22 @@ func _build_layout() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	_table = FOUR_PLAYER_TABLE.instantiate()
-	_build_flat_table()
+	if _use_3d:
+		_table = MahjongTable3D.new()
+		_table.position = Vector2(0, 0)
+		add_child(_table)
+		_seat_panel_player = _table
+	else:
+		_table = FOUR_PLAYER_TABLE.instantiate()
+		_build_flat_table()
 
 	_action_panel = PLAYER_ACTION_PANEL.instantiate()
-	# 贴手牌上方，不挡河、不落黑条
 	_action_panel.position = Vector2(
 		(TableLayout.TABLE_W - PlayerActionPanel.PANEL_W) / 2.0,
 		TableLayout.ACTION_BAR_Y)
 	add_child(_action_panel)
+	# 操作条在 3D 视口之上
+	move_child(_action_panel, get_child_count() - 1)
 
 	_build_top_bar()
 
@@ -143,9 +152,13 @@ var _pending_discard_fly: Dictionary = {}  # {from: Vector2, tile_id: int, is_re
 
 func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_bc = bc
-	if _table.seat_panels.size() >= 1:
+	if _use_3d:
+		_seat_panel_player = _table
+	elif _table.seat_panels.size() >= 1:
 		_seat_panel_player = _table.seat_panels[0]
-		if not _seat_panel_player.player_card_clicked.is_connected(_on_player_tile_clicked):
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_signal("player_card_clicked") \
+				and not _seat_panel_player.player_card_clicked.is_connected(_on_player_tile_clicked):
 			_seat_panel_player.player_card_clicked.connect(_on_player_tile_clicked)
 		if _seat_panel_player.has_signal("hand_tile_hover") \
 				and not _seat_panel_player.hand_tile_hover.is_connected(_on_hand_tile_hover):
@@ -891,10 +904,11 @@ func _reveal_winner_hand(win_event: BattleEvent) -> void:
 	if seat_id >= _bc.state.seats.size():
 		return
 	var seat: Seat = _bc.state.seats[seat_id]
-	var sp: SeatPanel = _table.seat_panels[seat_id]
+	var sp = _table.seat_panels[seat_id]
 	if sp == null or seat == null or seat.hand == null:
 		return
-	sp.reveal_hand_face_up(seat.hand, true)
+	if sp.has_method("reveal_hand_face_up"):
+		sp.reveal_hand_face_up(seat.hand, true)
 
 
 # T5:发牌演出期间隐藏四家真手牌行(演出结束恢复)。
@@ -910,7 +924,7 @@ func _set_hand_rows_visible(b: bool) -> void:
 func _play_call_announce(kind: StringName, seat_id: int) -> void:
 	var avatar: Texture2D = null
 	if _table != null and seat_id >= 0 and seat_id < _table.seat_panels.size():
-		var sp: SeatPanel = _table.seat_panels[seat_id]
+		var sp = _table.seat_panels[seat_id]
 		if sp and sp.has_method("get_portrait_texture"):
 			avatar = sp.get_portrait_texture()
 	CallAnnounce.play(self, kind, seat_id, avatar)
@@ -919,7 +933,7 @@ func _play_call_announce(kind: StringName, seat_id: int) -> void:
 func _set_seat_emote(seat_id: int, emote: String) -> void:
 	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
 		return
-	var sp: SeatPanel = _table.seat_panels[seat_id]
+	var sp = _table.seat_panels[seat_id]
 	if sp and sp.has_method("set_emote"):
 		sp.set_emote(emote)
 
@@ -927,7 +941,7 @@ func _set_seat_emote(seat_id: int, emote: String) -> void:
 func _say_for_seat(seat_id: int, event_kind: String) -> void:
 	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
 		return
-	var sp: SeatPanel = _table.seat_panels[seat_id]
+	var sp = _table.seat_panels[seat_id]
 	if sp and sp.has_method("say_for_event"):
 		sp.say_for_event(event_kind)
 
@@ -1270,12 +1284,15 @@ func _play_discard_fly_to_river() -> void:
 
 
 func _estimate_river_end_global(seat_id: int) -> Vector2:
-	if _table == null or seat_id >= _table.discard_rivers.size():
+	if _table == null:
 		return Vector2.ZERO
-	var dr: DiscardRiver = _table.discard_rivers[seat_id]
-	if dr == null:
+	if _use_3d:
+		return size * 0.5  # M1：飞牌落点近似桌心
+	if seat_id >= _table.discard_rivers.size():
 		return Vector2.ZERO
-	# P0 平面桌：河在同一坐标系，直接全局中心
+	var dr = _table.discard_rivers[seat_id]
+	if dr == null or not dr.has_method("get_last_tile_local_center"):
+		return Vector2.ZERO
 	var local_c: Vector2 = dr.get_last_tile_local_center()
 	return dr.to_global(local_c)
 
