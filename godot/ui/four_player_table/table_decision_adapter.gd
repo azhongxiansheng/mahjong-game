@@ -6,10 +6,11 @@ class_name TableDecisionAdapter extends PlayerDecisionPort
 # 发送语义化 request/present，不直接操作按钮、手牌点击或高亮。
 
 var _action_panel: PlayerActionPanel
-var _seat_panel: SeatPanel
+# SeatPanel 或 MahjongTable3D（duck：set_hand_clickable / dim_hand_except）
+var _seat_panel: Node
 
 
-func _init(action_panel: PlayerActionPanel, seat_panel: SeatPanel) -> void:
+func _init(action_panel: PlayerActionPanel, seat_panel: Node) -> void:
 	_action_panel = action_panel
 	_seat_panel = seat_panel
 
