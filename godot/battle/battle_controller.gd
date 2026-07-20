@@ -625,16 +625,23 @@ func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei:
 		"discarder_seat": discarder_seat,
 	})
 	# 先 emit RON_DECLARED 让技能（如「中·封印」）有机会取消
-	_emit(&"RON_DECLARED", winner_seat, ron_ti, {"discarder_seat": discarder_seat})
+	_emit(&"RON_DECLARED", winner_seat, ron_ti, {
+		"discarder_seat": discarder_seat,
+		"is_tsumo": false,
+		"is_chankan": is_chankan,
+	})
 	if state.ron_cancelled[winner_seat]:
 		return false
 	var win := _check_ron(ron_tile, winner_seat, is_houtei, is_chankan)
 	if not win.is_winning:
 		return false
-	_settle_ron(ron_tile, ron_ti, winner_seat, discarder_seat, win.wp, win.yaku_list, is_houtei)
+	_settle_ron(ron_tile, ron_ti, winner_seat, discarder_seat,
+		win.wp, win.yaku_list, is_houtei, is_chankan)
 	return true
 
-func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discarder_seat: int, wp: Dictionary, yaku_list, is_houtei: bool = false) -> void:
+func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int,
+		discarder_seat: int, wp: Dictionary, yaku_list,
+		is_houtei: bool = false, is_chankan: bool = false) -> void:
 	var winner: Seat = state.seats[winner_seat]
 
 	var score_ctx := ScoreContext.new()
@@ -668,7 +675,12 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	var pre_ctxs: Array = []
 	if is_houtei:
 		pre_ctxs.append(_emit(&"HOUTEI", winner_seat, ron_ti, {}))
-	var pre_extra: Dictionary = {"discarder_seat": discarder_seat, "is_tsumo": false, "is_houtei": is_houtei}
+	var pre_extra: Dictionary = {
+		"discarder_seat": discarder_seat,
+		"is_tsumo": false,
+		"is_houtei": is_houtei,
+		"is_chankan": is_chankan,
+	}
 	pre_ctxs.append(_emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra))
 	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(winner_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, winner_seat)
@@ -686,6 +698,8 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int, discard
 	# M7：把 discarder_seat / points_won 注入 WIN_DECLARED.extra，让 post-score
 	# hooks（soul_drain_hatsu / east_mirror_chambo 等用 transfer_points）能读到
 	result["discarder_seat"] = discarder_seat
+	result["is_tsumo"] = false
+	result["is_chankan"] = is_chankan
 	result["points_won"] = int(result.get("winner_total", 0))
 	# 给 UI 结算 overlay 用：抽出本次胡牌命中的役名 + han（已含 evaluator
 	# 的役満/普通飜判定;skill_han/extra_dora 等修正不在此列表内）。
@@ -747,6 +761,8 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	var result: Dictionary = ScoreCalc.calculate(wp, melds_arr, score_yaku_list, score_ctx)
 
 	# M7：tsumo 无 discarder_seat（自摸无放铳人），仅设 points_won
+	result["is_tsumo"] = true
+	result["is_chankan"] = false
 	result["points_won"] = int(result.get("winner_total", 0))
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
 

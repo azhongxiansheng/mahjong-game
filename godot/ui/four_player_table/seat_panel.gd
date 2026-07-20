@@ -28,20 +28,32 @@ const SEAT_ROTATION_DEGREES := [0.0, -90.0, 180.0, 90.0]
 
 # 手牌色块行：M3 收尾 — 13 个 (或 ≤13) 小 ColorRect 显示 owner_seat 着色，
 # 实现 plan-3 D2/D5 归属可视化（看一家手牌区的"色块拼盘"知道牌从哪 4 家来）。
-# 对家手牌（背/侧视）— 略加大间距，更有「立牌」体积
-const HAND_TILE_W: float = 34.0
-const HAND_TILE_H: float = 50.0
-const HAND_TILE_GAP: float = 2.0
-const HAND_ROW_OFFSET_X: float = -240.0
+# 公开参考 CSS 的对手牌尺寸：上家是正向立牌背，左右家是窄侧视牌背。
+const TOP_HAND_TILE_W: float = 38.0
+const TOP_HAND_TILE_H: float = 55.0
+# bundle Q3():axisA[0,-30],axisB[27.5,0],axisC[-15.21,32.63] 的外包围盒。
+const SIDE_HAND_TILE_W: float = 46.71
+const SIDE_HAND_TILE_H: float = 66.63
+const SIDE_HAND_STACK_STEP: float = 32.0
+const HAND_TILE_GAP: float = 4.0
+const TOP_HAND_TILE_GAP: float = 3.0
+const TOP_HAND_DRAWN_GAP: float = 22.0
+const SIDE_HAND_TILE_GAP: float = 0.0
+const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
-# 自家手牌：画面主角，雀魂级大牌
-const PLAYER_HAND_TILE_W: float = 58.0
-const PLAYER_HAND_TILE_H: float = 82.0
-const PLAYER_HAND_ROW_OFFSET_X: float = -400.0
-const PLAYER_HAND_ROW_OFFSET_Y: float = 42.0
+# 自家手牌直接对应参考 .tile--xl；13 张宽 882px，以 seat anchor 居中。
+const PLAYER_HAND_TILE_W: float = 66.0
+const PLAYER_HAND_TILE_H: float = 92.0
+const PLAYER_HAND_ROW_OFFSET_X: float = -498.0
+# 1600×900 下全局 y=700+78=778，底边 870，保留 30px 桌底间距。
+const PLAYER_HAND_ROW_OFFSET_Y: float = 78.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
-const PLAYER_HAND_DRAWN_GAP: float = 16.0
+const PLAYER_HAND_DRAWN_GAP: float = 24.0
 var _hand_tile_row: Node2D = null
+# 发牌动画只读取当前真实 slot 的几何；玩家/对手共用，不生成静态猜测坐标。
+var _deal_slots: Array[Control] = []
+# 当前实际可见牌槽；摸牌后的第14槽属于视觉布局，但不属于4/4/4/1发牌目标。
+var _visual_hand_slots: Array[Control] = []
 
 # 玩家手牌当前是否接受点击（轮到玩家出牌时切 true）
 var _hand_clickable: bool = false
@@ -93,6 +105,8 @@ const SPEECH_GENERIC: Dictionary = {
 	"upset": ["唉。"],
 }
 var _hand_size: int = 13
+var _hand_base_count: int = 13
+var _hand_has_drawn: bool = false
 var _meld_count: int = 0
 var _discards_count: int = 0
 var _riichi: bool = false
@@ -109,7 +123,7 @@ var _wait_ids: Array = []  # Array[int]
 func _ready() -> void:
 	_hand_tile_row = Node2D.new()
 	# 偏移在 _rebuild_*_row 之前会按 seat_id 调整（seat 0 用更宽的偏移给真实牌面留位）
-	_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+	_hand_tile_row.position = Vector2(TOP_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
 	add_child(_hand_tile_row)
 	_wait_row = Node2D.new()
 	_wait_row.name = "WaitRow"
@@ -119,15 +133,41 @@ func _ready() -> void:
 	add_child(_wait_row)
 	_refresh_labels()
 
-# 切换 seat 0 / 其它 seat 时切换 hand_tile_row 的水平偏移。
-# seat 0 用真实 atlas 牌面（40x60）需要更宽 ~560 px；其它 seat 用色块（30x45）~450 px。
+
+# 参考 .hand--top / .hand--left / .hand--right 的可观察尺寸。
+static func opponent_hand_tile_size(seat_id: int) -> Vector2:
+	if seat_id == 2:
+		return Vector2(TOP_HAND_TILE_W, TOP_HAND_TILE_H)
+	return Vector2(SIDE_HAND_TILE_W, SIDE_HAND_TILE_H)
+
+
+static func _opponent_hand_layout_size(seat_id: int) -> Vector2:
+	var screen_size := opponent_hand_tile_size(seat_id)
+	if seat_id == 1 or seat_id == 3:
+		return Vector2(screen_size.y, screen_size.x)
+	return screen_size
+
+
+static func _opponent_hand_gap(seat_id: int) -> float:
+	return TOP_HAND_TILE_GAP if seat_id == 2 else SIDE_HAND_TILE_GAP
+
+# 切换 seat 0 / 上家 / 左右家时，按各自真实牌宽居中 hand row。
 func _apply_hand_row_offset() -> void:
 	if _hand_tile_row == null:
 		return
 	if _seat_id == 0:
 		_hand_tile_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y)
+	elif _seat_id == 2:
+		_hand_tile_row.position = Vector2(TOP_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+	elif _seat_id == 1:
+		# 13 个 cube 以 -32 本地步进；抵消整体旋转后在屏幕向下堆叠。
+		_hand_tile_row.position = Vector2(
+			(SIDE_HAND_STACK_STEP * 12.0 - SIDE_HAND_TILE_H) / 2.0,
+			HAND_ROW_OFFSET_Y)
 	else:
-		_hand_tile_row.position = Vector2(HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
+		_hand_tile_row.position = Vector2(
+			-(SIDE_HAND_STACK_STEP * 12.0 + SIDE_HAND_TILE_H) / 2.0,
+			HAND_ROW_OFFSET_Y)
 
 # ---- public setters ----
 
@@ -187,10 +227,10 @@ func _counter_rotate_info_node(node: Node) -> void:
 # SeatPanel 整体被旋转,信息件又反向旋转 — _pin_info_node 做坐标换算:
 # 给定屏幕 top-left,反推出旋转空间里的 local position。
 const CLUSTER_ANCHORS: Dictionary = {
-	0: Vector2(60, 536),
-	1: Vector2(926, 282),
-	2: Vector2(742, 54),
-	3: Vector2(84, 282),
+	0: Vector2(322, 644),
+	1: Vector2(1417, 370),
+	2: Vector2(1110, 85),
+	3: Vector2(105, 370),
 }
 
 func cluster_anchor() -> Vector2:
@@ -293,7 +333,7 @@ func get_portrait_texture() -> Texture2D:
 	return null
 
 
-# 立绘节点懒创建。固定尺寸 64x80,位置在分数框上方(seat panel center 上 70px)。
+# 立绘节点懒创建。参考 seat-avatar 固定 78×78、cover 裁切、金软边。
 # seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
 func _ensure_portrait() -> void:
 	if _portrait_path == "":
@@ -305,32 +345,31 @@ func _ensure_portrait() -> void:
 	var tex: Texture2D = load(_portrait_path) as Texture2D
 	if tex == null:
 		return
-	# 头像卡(对标参考截图):暗底圆角卡 + 微金描边垫在立绘后,
-	# 整个卡群钉在 CLUSTER_ANCHORS 屏幕锚位。
 	var anchor: Vector2 = cluster_anchor()
-	var card := Panel.new()
-	card.name = "PortraitCard"
-	card.size = Vector2(72, 88)
-	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var card_sb := StyleBoxFlat.new()
-	card_sb.bg_color = Color(0.05, 0.07, 0.06, 0.85)
-	card_sb.border_color = Color(0.85, 0.71, 0.36, 0.55)
-	card_sb.set_border_width_all(2)
-	card_sb.set_corner_radius_all(8)
-	card_sb.shadow_color = Color(0, 0, 0, 0.45)
-	card_sb.shadow_size = 6
-	card_sb.shadow_offset = Vector2(0, 4)
-	card.add_theme_stylebox_override("panel", card_sb)
-	add_child(card)
-	_pin_info_node(card, anchor)
 	_portrait_rect = TextureRect.new()
 	_portrait_rect.texture = tex
-	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_portrait_rect.size = Vector2(64, 80)
+	_portrait_rect.size = Vector2(78, 78)
+	_portrait_rect.clip_contents = true
 	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_portrait_rect)
-	_pin_info_node(_portrait_rect, anchor + Vector2(4, 4))
+	_pin_info_node(_portrait_rect, anchor)
+	var border := Panel.new()
+	border.name = "PortraitBorder"
+	border.size = Vector2(78, 78)
+	border.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var border_style := StyleBoxFlat.new()
+	border_style.bg_color = Color.TRANSPARENT
+	border_style.border_color = Color("d9b65b66")
+	border_style.set_border_width_all(2)
+	border_style.set_corner_radius_all(6)
+	border_style.shadow_color = Color(0, 0, 0, 0.35)
+	border_style.shadow_size = 3
+	border_style.shadow_offset = Vector2(0, 1)
+	border.add_theme_stylebox_override("panel", border_style)
+	add_child(border)
+	_pin_info_node(border, anchor)
 
 func set_score(s: int) -> void:
 	var prev := _score
@@ -586,6 +625,8 @@ func _apply_active_visual() -> void:
 # 重建 _hand_tile_row 子节点。owners.size() 也作为 hand_size 同步更新文字 Label。
 func set_hand_tile_owners(owners: Array) -> void:
 	_hand_size = owners.size()
+	_hand_base_count = owners.size()
+	_hand_has_drawn = false
 	if is_inside_tree():
 		_rebuild_hand_tile_row(owners)
 		_refresh_labels()
@@ -602,6 +643,8 @@ func bind_seat(seat: Seat) -> void:
 	_seat_wind = seat.seat_wind
 	_score = seat.points
 	_hand_size = seat.hand.size()
+	_hand_has_drawn = seat.last_drawn_tile_id >= 0 and seat.hand.size() > 0
+	_hand_base_count = seat.hand.size() - 1 if _hand_has_drawn else seat.hand.size()
 	_meld_count = seat.melds.size()
 	_riichi = seat.riichi.declared
 	_furiten = seat.furiten.is_furiten() if seat.furiten else false
@@ -613,7 +656,8 @@ func bind_seat(seat: Seat) -> void:
 			# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右
 			_rebuild_player_hand_row_with_drawn(seat.hand, seat.last_drawn_tile_id)
 		else:
-			_rebuild_hand_tile_row(seat.hand.to_owner_array())
+			_rebuild_hand_tile_row(seat.hand.to_owner_array(),
+				seat.last_drawn_tile_id >= 0)
 		_refresh_labels()
 
 
@@ -638,12 +682,16 @@ func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
 	for child in _hand_tile_row.get_children():
 		child.queue_free()
 	_hand_slots.clear()
+	_deal_slots.clear()
+	_visual_hand_slots.clear()
 	var ids: Array = hand.to_id_array()
 	ids.sort()
 	# 自家用大牌尺寸，对手用小牌（与日常手牌行一致）
-	var tw: float = PLAYER_HAND_TILE_W if _seat_id == 0 else HAND_TILE_W
-	var th: float = PLAYER_HAND_TILE_H if _seat_id == 0 else HAND_TILE_H
-	var gap: float = HAND_TILE_GAP if _seat_id != 0 else 4.0
+	var opponent_size := opponent_hand_tile_size(_seat_id)
+	var tw: float = PLAYER_HAND_TILE_W if _seat_id == 0 else opponent_size.x
+	var th: float = PLAYER_HAND_TILE_H if _seat_id == 0 else opponent_size.y
+	# 结算翻牌沿用既有对手 2px 间距；HAND_TILE_GAP 是自家参考行的 4px。
+	var gap: float = 4.0 if _seat_id == 0 else 2.0
 	var scale_x: float = tw / float(CardTileBack.TILE_WIDTH)
 	var scale_y: float = th / float(CardTileBack.TILE_HEIGHT)
 	var x := 0.0
@@ -733,35 +781,63 @@ func _refresh_labels() -> void:
 	_label_discards.text = ""
 	_label_discards.visible = false
 
-# 对家手牌行：立背/侧视 + 行影 + 轻微仰角错位，去掉归属色 modulate（更干净）
-func _rebuild_hand_tile_row(owners: Array) -> void:
+# 对家手牌行：直接翻译参考 .hand--top / .hand--left / .hand--right 的尺寸。
+func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:
 	if _hand_tile_row == null:
 		return
 	_apply_hand_row_offset()
 	for child in _hand_tile_row.get_children():
 		child.queue_free()
+	_deal_slots.clear()
+	_visual_hand_slots.clear()
+	if _seat_id == 1 or _seat_id == 3:
+		_rebuild_side_cube_hand(owners, has_drawn)
+		return
+	var has_visual_drawn := has_drawn and not owners.is_empty()
+	var base_count := owners.size() - 1 if has_visual_drawn else owners.size()
+	var screen_size := opponent_hand_tile_size(_seat_id)
+	var layout_size := _opponent_hand_layout_size(_seat_id)
+	var gap := _opponent_hand_gap(_seat_id)
 	var back_tex: Texture2D = _resolve_back_texture()
 	if owners.size() > 0:
-		var row_w: float = owners.size() * (HAND_TILE_W + HAND_TILE_GAP) - HAND_TILE_GAP
-		_hand_tile_row.add_child(_make_row_shadow(Vector2(row_w + 8, HAND_TILE_H + 4)))
+		var row_w: float = owners.size() * layout_size.x + maxi(owners.size() - 1, 0) * gap
+		_hand_tile_row.add_child(_make_row_shadow(Vector2(row_w + 8, layout_size.y + 4)))
 	var x := 0.0
-	var i := 0
-	for _owner in owners:
+	for owner_index in range(owners.size()):
+		var is_drawn := has_visual_drawn and owner_index == base_count
+		if is_drawn and _seat_id == 2:
+			# top row-reverse：13槽 raw union=530，摸牌另留22px视觉间距。
+			x = base_count * TOP_HAND_TILE_W \
+				+ maxi(base_count - 1, 0) * TOP_HAND_TILE_GAP \
+				+ TOP_HAND_DRAWN_GAP
+		var slot := Control.new()
+		slot.name = "DealSlot"
+		slot.position = Vector2(x, 0)
+		slot.size = layout_size
+		slot.custom_minimum_size = layout_size
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.set_meta("is_drawn", is_drawn)
+		_hand_tile_row.add_child(slot)
 		# 单牌投影
 		var sh := Panel.new()
 		var ssb := StyleBoxFlat.new()
 		ssb.bg_color = Color(0, 0, 0, 0)
 		ssb.shadow_color = Color(0, 0, 0, 0.40)
 		ssb.shadow_size = 5
-		ssb.shadow_offset = Vector2(0, 3)
+		ssb.shadow_offset = _opponent_shadow_offset(_seat_id)
 		sh.add_theme_stylebox_override("panel", ssb)
-		sh.position = Vector2(x - 1, 2)
-		sh.size = Vector2(HAND_TILE_W + 2, HAND_TILE_H)
+		sh.position = Vector2(-1, 2)
+		sh.size = Vector2(layout_size.x + 2, layout_size.y)
 		sh.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_hand_tile_row.add_child(sh)
+		slot.add_child(sh)
 		var rect := TextureRect.new()
-		rect.position = Vector2(x, 0)
-		rect.size = Vector2(HAND_TILE_W, HAND_TILE_H)
+		rect.name = "Back"
+		rect.position = (layout_size - screen_size) / 2.0
+		rect.size = screen_size
+		rect.pivot_offset = screen_size / 2.0
+		# 抵消 SeatPanel 的 ±90°，参考左右家单牌在屏幕上保持 28×42 正立。
+		if _seat_id == 1 or _seat_id == 3:
+			rect.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		rect.stretch_mode = TextureRect.STRETCH_SCALE
 		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -770,12 +846,289 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 			rect.modulate = Color.WHITE
 		else:
 			rect.modulate = Color(0.15, 0.35, 0.22)
-		# 左右家侧视略扁
-		if _seat_id == 1 or _seat_id == 3:
-			rect.size = Vector2(HAND_TILE_W * 0.72, HAND_TILE_H)
-		_hand_tile_row.add_child(rect)
-		x += HAND_TILE_W + HAND_TILE_GAP
-		i += 1
+		slot.add_child(rect)
+		_visual_hand_slots.append(slot)
+		if not is_drawn:
+			_deal_slots.append(slot)
+		x += layout_size.x + gap
+
+
+# 正常左右家直接翻译 bundle q0 → aw 的 SVG 立方体堆叠。SeatPanel 自身仍按
+# 方位旋转，单个 CubeVisual 反向旋转保持屏幕正立；左家再做 scaleX(-1)。
+func _rebuild_side_cube_hand(owners: Array, has_drawn: bool) -> void:
+	var has_visual_drawn := has_drawn and not owners.is_empty()
+	var base_count := owners.size() - 1 if has_visual_drawn \
+		else owners.size()
+	var slot_count := base_count + 1
+	var host_height := SIDE_HAND_TILE_H \
+		+ (slot_count - 1) * SIDE_HAND_STACK_STEP + 12.0
+	_hand_tile_row.set_meta("r3d_host_size", Vector2(SIDE_HAND_TILE_W, host_height))
+	# q0 host 在 seat body 中居中；左右 CSS 都另向桌内 translateX(15px)。
+	_hand_tile_row.position = Vector2(
+		host_height / 2.0 if _seat_id == 1 else -host_height / 2.0,
+		13.0)
+	var layout_size := Vector2(SIDE_HAND_TILE_H, SIDE_HAND_TILE_W)
+	# 右家把摸牌预留在 index 0；左家把预留放在最后并由外层镜像。
+	if has_visual_drawn and _seat_id == 1:
+		_add_side_cube_slot(layout_size, 0.0, 0, true, true, false, true, -1)
+	for i in range(base_count):
+		var host_index := i + 1 if _seat_id == 1 else i
+		var host_y := host_index * SIDE_HAND_STACK_STEP
+		if _seat_id == 1:
+			host_y += 12.0
+		_add_side_cube_slot(layout_size, host_y, host_index,
+			i == 0, i == base_count - 1, true, false, i)
+	if has_visual_drawn and _seat_id == 3:
+		var drawn_y := base_count * SIDE_HAND_STACK_STEP + 12.0
+		_add_side_cube_slot(layout_size, drawn_y, base_count, true, true, false,
+			true, base_count)
+
+
+func _add_side_cube_slot(layout_size: Vector2, host_y: float, stack_index: int,
+		is_top: bool, is_bottom: bool, is_deal_slot: bool,
+		is_drawn: bool = false, reference_slot_index: int = -1) -> void:
+	var slot := Control.new()
+	slot.name = "DealSlot"
+	slot.position = Vector2(-host_y if _seat_id == 1 else host_y, 0)
+	slot.size = layout_size
+	slot.custom_minimum_size = layout_size
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	slot.z_index = stack_index
+	slot.set_meta("is_drawn", is_drawn)
+	slot.set_meta("reference_slot_index", reference_slot_index)
+	_hand_tile_row.add_child(slot)
+	var cube := make_reference_side_cube(_seat_id == 3, is_top, is_bottom)
+	cube.position = (layout_size - cube.size) / 2.0
+	cube.pivot_offset = cube.size / 2.0
+	cube.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
+	slot.add_child(cube)
+	_visual_hand_slots.append(slot)
+	if is_deal_slot:
+		_deal_slots.append(slot)
+
+
+static func make_reference_side_cube(mirror_x: bool = false,
+		is_top: bool = false, is_bottom: bool = false) -> Control:
+	var cube := Control.new()
+	cube.name = "CubeVisual"
+	cube.size = Vector2(SIDE_HAND_TILE_W, SIDE_HAND_TILE_H)
+	cube.custom_minimum_size = cube.size
+	cube.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cube.pivot_offset = cube.size / 2.0
+	cube.scale.x = -1.0 if mirror_x else 1.0
+	cube.set_meta("is_top", is_top)
+	cube.set_meta("is_bottom", is_bottom)
+	# aw() 将所有 axis 点平移到 Q3() 的 2px 外边距内。
+	var o := Vector2(17.21, 32.0)
+	var a := Vector2(17.21, 2.0)
+	var ab := Vector2(44.71, 2.0)
+	var b := Vector2(44.71, 32.0)
+	var bc := Vector2(29.50, 64.63)
+	var c := Vector2(2.0, 64.63)
+	var ac := Vector2(2.0, 34.63)
+	var corner_radius := 6.0 if is_bottom else 0.0
+	var back_points := _rounded_cube_polygon([a, o, c, ac],
+		[0.0, 0.0, corner_radius, 0.0])
+	var top_points := _rounded_cube_polygon([a, ab, b, o],
+		[0.0, 6.0, 0.0, 0.0])
+	var side_points := _rounded_cube_polygon([b, bc, c, o],
+		[0.0, 6.0, corner_radius, 0.0])
+	# aw(): 接触影允许越过 46.71×66.63 viewBox，等价 SVG overflow:visible。
+	_add_cube_gradient_face(cube, "ContactLeft",
+		[ac, ac + Vector2(-6, 0), c + Vector2(-6, 0), c],
+		[Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0)], [0.0, 1.0],
+		c, c + Vector2(-6, 0), Rect2(Vector2(-4, 34.63), Vector2(6, 30)))
+	if is_bottom:
+		_add_cube_gradient_face(cube, "ContactBottom",
+			[c, bc, bc + Vector2(0, 6), c + Vector2(0, 6)],
+			[Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0)], [0.0, 1.0],
+			c, c + Vector2(0, 6), Rect2(c, Vector2(bc.x - c.x, 6)))
+	_add_cube_gradient_face(cube, "CubeTop", top_points,
+		[Color("2c5e3f"), Color("2c5e3f"), Color.WHITE, Color.WHITE],
+		[0.0, 0.499, 0.501, 1.0], o, b)
+	_add_cube_face(cube, "CubeBack", back_points, Color("2c5e3f"))
+	_add_cube_gradient_face(cube, "CubeSide", side_points,
+		[Color("2c5e3f"), Color("2c5e3f"), Color.WHITE, Color.WHITE],
+		[0.0, 0.499, 0.501, 1.0], o, Vector2(39.801309, 42.530610))
+	_add_cube_gradient_face(cube, "CubeSideShadow", side_points,
+		[Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.7)],
+		[0.0, 0.3, 1.0], o, c)
+	if not is_top:
+		_add_cube_stack_seam(cube, a, ab, ac)
+	_add_cube_outline_and_bevels(cube, o, a, ab, b, bc, c, ac,
+		is_top, is_bottom, corner_radius)
+	return cube
+
+
+static func _add_cube_face(parent: Control, node_name: String,
+		points: Array, color: Color) -> void:
+	var face := Polygon2D.new()
+	face.name = node_name
+	face.polygon = PackedVector2Array(points)
+	face.color = color
+	parent.add_child(face)
+
+
+# bundle 的 rounded polygon helper：每个顶点按相邻边各退/进 radius，再以顶点作
+# quadratic control point。SVG 用连续 Q；Godot Polygon2D 用 4 段采样同一曲线。
+static func _rounded_cube_polygon(points: Array, radii: Array) -> Array:
+	var corners: Array = []
+	for i in range(points.size()):
+		var previous: Vector2 = points[(i - 1 + points.size()) % points.size()]
+		var current: Vector2 = points[i]
+		var following: Vector2 = points[(i + 1) % points.size()]
+		var incoming := current - previous
+		var outgoing := following - current
+		var radius := minf(float(radii[i]),
+			minf(incoming.length() / 2.0, outgoing.length() / 2.0))
+		corners.append({
+			"start": current - incoming.normalized() * radius,
+			"corner": current,
+			"end": current + outgoing.normalized() * radius,
+		})
+	var result: Array = [corners[0]["start"]]
+	for i in range(corners.size()):
+		var item: Dictionary = corners[i]
+		for step in range(1, 5):
+			var t := float(step) / 4.0
+			var inv := 1.0 - t
+			result.append(inv * inv * item["start"] \
+				+ 2.0 * inv * t * item["corner"] + t * t * item["end"])
+		var next_start: Vector2 = corners[(i + 1) % corners.size()]["start"]
+		if (result[-1] as Vector2).distance_to(next_start) > 0.001:
+			result.append(next_start)
+	return result
+
+
+static func _add_cube_gradient_face(parent: Control, node_name: String,
+		points: Array, colors: Array, offsets: Array, fill_from: Vector2,
+		fill_to: Vector2, texture_rect: Rect2 = Rect2()) -> void:
+	if texture_rect.size == Vector2.ZERO:
+		texture_rect = Rect2(Vector2.ZERO, Vector2(SIDE_HAND_TILE_W, SIDE_HAND_TILE_H))
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array(offsets)
+	gradient.colors = PackedColorArray(colors)
+	var texture := GradientTexture2D.new()
+	texture.width = maxi(1, ceili(texture_rect.size.x))
+	texture.height = maxi(1, ceili(texture_rect.size.y))
+	texture.fill_from = (fill_from - texture_rect.position) / texture_rect.size
+	texture.fill_to = (fill_to - texture_rect.position) / texture_rect.size
+	texture.gradient = gradient
+	var face := Polygon2D.new()
+	face.name = node_name
+	face.polygon = PackedVector2Array(points)
+	var uv_points: Array = []
+	var texture_size := Vector2(texture.width, texture.height)
+	for point in points:
+		uv_points.append(((point as Vector2) - texture_rect.position)
+			/ texture_rect.size * texture_size)
+	face.uv = PackedVector2Array(uv_points)
+	face.texture = texture
+	face.color = Color.WHITE
+	parent.add_child(face)
+
+
+static func _cube_outward_normal(direction: Vector2) -> Vector2:
+	var candidate := Vector2(direction.y, -direction.x)
+	if candidate.y < 0:
+		return candidate
+	return -candidate
+
+
+static func _add_cube_stack_seam(parent: Control, a: Vector2, ab: Vector2,
+		ac: Vector2) -> void:
+	var left_dir := (a - ac).normalized()
+	var right_dir := (ab - a).normalized()
+	var left_normal := _cube_outward_normal(left_dir)
+	var right_normal := _cube_outward_normal(right_dir)
+	var gap := 2.0
+	var left_outer := ac + left_normal * gap
+	var right_outer := ab + right_normal * gap
+	var summed := left_normal + right_normal
+	var corner_normal := summed.normalized()
+	var divisor := left_normal.dot(corner_normal)
+	var corner_outer := a + corner_normal * gap / divisor
+	_add_cube_face(parent, "StackSeam",
+		[left_outer, corner_outer, right_outer, ab, a, ac],
+		Color(12.0 / 255.0, 35.0 / 255.0, 22.0 / 255.0, 0.5))
+	_add_cube_gradient_face(parent, "SeamShadow",
+		[ac, a, ab, ab + Vector2(0, 1.5), a + Vector2(0, 1.5),
+			ac + Vector2(0, 1.5)],
+		[Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0)], [0.0, 1.0],
+		a, a + Vector2(0, 1.5))
+
+
+static func _add_cube_line(parent: Control, node_name: String, points: Array,
+		color: Color, width: float, closed: bool = false) -> void:
+	var line := Line2D.new()
+	line.name = node_name
+	line.points = PackedVector2Array(points)
+	line.default_color = color
+	line.width = width
+	line.closed = closed
+	line.antialiased = true
+	parent.add_child(line)
+
+
+static func _quadratic_segment(start: Vector2, control: Vector2,
+		end: Vector2) -> Array:
+	var points: Array = []
+	for step in range(1, 5):
+		var t := float(step) / 4.0
+		var inv := 1.0 - t
+		points.append(inv * inv * start + 2.0 * inv * t * control + t * t * end)
+	return points
+
+
+static func _add_cube_outline_and_bevels(parent: Control, o: Vector2, a: Vector2,
+		ab: Vector2, b: Vector2, bc: Vector2, c: Vector2, ac: Vector2,
+		is_top: bool, is_bottom: bool, corner_radius: float) -> void:
+	var outline_color := Color(12.0 / 255.0, 35.0 / 255.0, 22.0 / 255.0, 0.32)
+	var edge_color := Color(12.0 / 255.0, 35.0 / 255.0, 22.0 / 255.0, 0.28)
+	_add_cube_line(parent, "CubeOutline",
+		[a, ab, b, bc, c, ac] if is_top else [ab, b, bc, c, ac],
+		outline_color, 0.7, is_top)
+	var axis_a := Vector2(0, -30).normalized()
+	var axis_b := Vector2(27.5, 0).normalized()
+	var axis_c := Vector2(-15.21, 32.63).normalized()
+	var inset := 1.8
+	var a_normal := Vector2(axis_a.y, -axis_a.x)
+	_add_cube_line(parent, "BevelA", [o + a_normal * inset, a + a_normal * inset],
+		Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.15), 0.9)
+	if not is_bottom:
+		_add_cube_line(parent, "EdgeMV0", [a, o], edge_color, 0.5)
+		return
+	var trim := 4.0
+	var along_a := o + axis_a * trim
+	var along_b := o + axis_b * trim
+	var along_c := o + axis_c * trim
+	var c_end := c - axis_c * corner_radius
+	var edge_ab: Array = [a, along_a]
+	edge_ab.append_array(_quadratic_segment(along_a, o, along_b))
+	edge_ab.append(b)
+	var edge_bc: Array = [b, along_b]
+	edge_bc.append_array(_quadratic_segment(along_b, o, along_c))
+	edge_bc.append(c_end)
+	var edge_ca: Array = [c_end, along_c]
+	edge_ca.append_array(_quadratic_segment(along_c, o, along_a))
+	edge_ca.append(a)
+	_add_cube_line(parent, "EdgeAB", edge_ab, edge_color, 0.5)
+	_add_cube_line(parent, "EdgeBC", edge_bc, edge_color, 0.5)
+	_add_cube_line(parent, "EdgeCA", edge_ca, edge_color, 0.5)
+	var b_normal := Vector2(axis_b.y, -axis_b.x)
+	_add_cube_line(parent, "BevelB", [along_b + b_normal * inset, b + b_normal * inset],
+		Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.15), 0.9)
+	var c_normal := Vector2(-axis_c.y, axis_c.x)
+	_add_cube_line(parent, "BevelC", [along_c + c_normal * inset,
+		c_end + c_normal * inset],
+		Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.7), 0.9)
+
+
+static func _opponent_shadow_offset(seat_id: int) -> Vector2:
+	match seat_id:
+		1: return Vector2(-4, 6) # .hand--right
+		3: return Vector2(4, 6)  # .hand--left
+	return Vector2(0, 4)      # .hand--top
 
 # 取牌背图（autoload TextureExtractor）。autoload 不在或缺图时返 null。
 # T3d:对手手牌优先用「站立牌」贴图(bake_standing_back.py),视角语义正确;
@@ -783,11 +1136,9 @@ func _rebuild_hand_tile_row(owners: Array) -> void:
 # 对面(seat 2)看到的是牌背(绿背+白棱);左右家(seat 1/3)看到的是
 # 牌的侧面体块(白厚身+绿顶,绿顶朝桌心)— 参考截图确认的真实立牌视角。
 const STANDING_BACK_PATH := "res://assets/tile_back_standing.png"
-const SIDE_BACK_PATH := "res://assets/tile_back_side.png"
 
 func _resolve_back_texture() -> Texture2D:
-	var path: String = SIDE_BACK_PATH if (_seat_id == 1 or _seat_id == 3) \
-		else STANDING_BACK_PATH
+	var path: String = STANDING_BACK_PATH
 	if ResourceLoader.exists(path):
 		var tex: Texture2D = load(path) as Texture2D
 		if tex != null:
@@ -799,7 +1150,7 @@ func _resolve_back_texture() -> Texture2D:
 		return null
 	return extractor.get_tile_texture("back")
 
-# 玩家手牌（seat 0）真实 atlas 渲染：CardTileBack.set_face_up + 缩放到 40x60。
+# 玩家手牌（seat 0）真实 atlas 渲染：CardTileBack.set_face_up + 缩放到 66×92。
 # 复用 CardTileBack 是为了一致样式（边框、modulate=WHITE、tile_id_to_atlas_key
 # 映射），不用为玩家手牌再造一个 TextureRect 包装。
 func _rebuild_player_hand_row(tile_ids: Array) -> void:
@@ -1015,6 +1366,10 @@ func _sync_player_hand_slots(targets: Array) -> void:
 			slot2.modulate.a = 1.0
 		_hand_slots.append(slot2)
 		x += PLAYER_HAND_TILE_W + HAND_TILE_GAP
+	_deal_slots.clear()
+	for hand_slot in _hand_slots:
+		if hand_slot != null and is_instance_valid(hand_slot):
+			_deal_slots.append(hand_slot)
 
 	# 行投影
 	var row_w: float = x - HAND_TILE_GAP if x > 0 else 0.0
@@ -1037,22 +1392,24 @@ func _sync_player_hand_slots(targets: Array) -> void:
 
 func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float) -> Control:
 	var slot := Control.new()
+	slot.name = "HandSlot"
 	slot.custom_minimum_size = Vector2(PLAYER_HAND_TILE_W, PLAYER_HAND_TILE_H)
+	slot.size = Vector2(PLAYER_HAND_TILE_W, PLAYER_HAND_TILE_H)
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.set_meta("hand_id", tile_id)
 	slot.set_meta("hand_red", is_red)
 	var edge_back := ColorRect.new()
 	edge_back.name = "EdgeBack"
-	edge_back.color = Color(0.17, 0.36, 0.24)
-	edge_back.position = Vector2(0, -9)
-	edge_back.size = Vector2(PLAYER_HAND_TILE_W, 6)
+	edge_back.color = Color("2c5b3e")
+	edge_back.position = Vector2(0, -10)
+	edge_back.size = Vector2(PLAYER_HAND_TILE_W, 10)
 	edge_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(edge_back)
 	var edge_face := ColorRect.new()
 	edge_face.name = "EdgeFace"
-	edge_face.color = Color(0.71, 0.71, 0.69)
-	edge_face.position = Vector2(0, -4.5)
-	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 4.5)
+	edge_face.color = Color("b9babc")
+	edge_face.position = Vector2(0, -5)
+	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 5)
 	edge_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.add_child(edge_face)
 	var tile := CardTileBack.new()
@@ -1060,6 +1417,8 @@ func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float)
 	tile.position = Vector2.ZERO
 	tile.scale = Vector2(scale_x, scale_y)
 	slot.add_child(tile)
+	# hover / lifted 变换整张 DOM 等价物（含 before/after 棱），不只移动牌面。
+	tile.set_motion_target(slot)
 	tile.set_face_up(tile_id, is_red)
 	tile.set_clickable(_hand_clickable)
 	tile.card_clicked.connect(_on_player_tile_clicked)
@@ -1161,6 +1520,110 @@ func mark_win_tile(tile_id: int) -> void:
 func set_hand_row_visible(b: bool) -> void:
 	if _hand_tile_row:
 		_hand_tile_row.visible = b
+
+
+# 把已生成的真实 hand slot 套到公开 bundle 的 1600×900 flex/perspective
+# 几何。上下家可由一个仿射变换表达；左右家必须逐槽投影，禁止整列统一缩放。
+func apply_reference_hand_layout(meld_main_extent: float = 0.0) -> void:
+	if _hand_tile_row == null:
+		return
+	var host_rect := TableLayout.hand_host_rect_for_state(
+		_seat_id, _hand_base_count, meld_main_extent, _hand_has_drawn)
+	set_meta("reference_hand_host_rect", host_rect)
+	if _seat_id == 0:
+		_hand_tile_row.scale = Vector2.ONE
+		_hand_tile_row.position = host_rect.position - position
+		return
+	if _seat_id == 2:
+		var raw_extent := TableLayout.hand_main_extent(2, _hand_base_count)
+		_hand_tile_row.scale = Vector2(
+			host_rect.size.x / raw_extent,
+			host_rect.size.y / TOP_HAND_TILE_H,
+		)
+		# 根旋转 180°，local (0,0) 对应 hand host 的屏幕右下角。
+		_hand_tile_row.position = (host_rect.end - position).rotated(
+			-deg_to_rad(SEAT_ROTATION_DEGREES[_seat_id]))
+		return
+	_hand_tile_row.scale = Vector2.ONE
+	_hand_tile_row.position = Vector2.ZERO
+	for slot in _visual_hand_slots:
+		if slot == null or not is_instance_valid(slot):
+			continue
+		var target := TableLayout.side_hand_drawn_slot_rect_for_state(
+			_seat_id, _hand_base_count, meld_main_extent) \
+			if bool(slot.get_meta("is_drawn", false)) else \
+			TableLayout.side_hand_slot_rect_for_state(_seat_id,
+				int(slot.get_meta("reference_slot_index", -1)), _hand_base_count,
+				meld_main_extent, _hand_has_drawn)
+		# Slot 本地 66.63×46.71；根节点 ±90° 后屏幕宽对应 local y，
+		# 屏幕高对应 local x。
+		slot.scale = Vector2(
+			target.size.y / SIDE_HAND_TILE_H,
+			target.size.x / SIDE_HAND_TILE_W,
+		)
+		var screen_origin := Vector2(target.position.x, target.end.y) \
+			if _seat_id == 1 else Vector2(target.end.x, target.position.y)
+		slot.position = (screen_origin - position).rotated(
+			-deg_to_rad(SEAT_ROTATION_DEGREES[_seat_id]))
+
+
+func get_reference_hand_metrics() -> Dictionary:
+	return {
+		"base_count": _hand_base_count,
+		"has_drawn": _hand_has_drawn,
+		"main_extent": TableLayout.hand_main_extent(_seat_id, _hand_base_count),
+	}
+
+
+func get_reference_hand_host_rect() -> Rect2:
+	# FourPlayerTable bind 后 row 已按当前 meld extent 放置；由实际 row/host参数返回。
+	var host_extent := TableLayout.hand_main_extent(_seat_id, _hand_base_count)
+	if _seat_id == 0:
+		return Rect2(position + _hand_tile_row.position, Vector2(host_extent, 92.0))
+	if _seat_id == 2:
+		var origin := get_global_transform() * _hand_tile_row.position
+		return Rect2(origin.x - host_extent * _hand_tile_row.scale.x,
+			origin.y - TOP_HAND_TILE_H * _hand_tile_row.scale.y,
+			host_extent * _hand_tile_row.scale.x,
+			TOP_HAND_TILE_H * _hand_tile_row.scale.y)
+	# side host 使用 apply 后第一个视觉槽无法代表 placeholder；保存由 bind 注入的值。
+	return Rect2(get_meta("reference_hand_host_rect", Rect2()))
+
+
+func get_visual_hand_rects() -> Array[Rect2]:
+	var slots: Array = _hand_slots if _seat_id == 0 else _visual_hand_slots
+	var result: Array[Rect2] = []
+	for slot in slots:
+		if slot == null or not is_instance_valid(slot):
+			continue
+		result.append(_control_global_aabb(slot as Control))
+	return result
+
+
+# 对标线上 getBoundingClientRect()：只返回当前真实的 13 个 slot 全局 AABB。
+# 发牌期间 hand row 只是 visible=false，节点几何仍存在，故无需静态魔法坐标。
+func get_deal_target_rects() -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	if _deal_slots.size() != 13:
+		return result
+	for slot in _deal_slots:
+		if slot == null or not is_instance_valid(slot):
+			return []
+		result.append(_control_global_aabb(slot))
+	return result
+
+
+static func _control_global_aabb(control: Control) -> Rect2:
+	var xf := control.get_global_transform()
+	var p0 := xf * Vector2.ZERO
+	var p1 := xf * Vector2(control.size.x, 0)
+	var p2 := xf * Vector2(0, control.size.y)
+	var p3 := xf * control.size
+	var min_x := minf(minf(p0.x, p1.x), minf(p2.x, p3.x))
+	var min_y := minf(minf(p0.y, p1.y), minf(p2.y, p3.y))
+	var max_x := maxf(maxf(p0.x, p1.x), maxf(p2.x, p3.x))
+	var max_y := maxf(maxf(p0.y, p1.y), maxf(p2.y, p3.y))
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
 
 
 # 切换玩家手牌点击响应。轮到玩家出牌时调 true，AI 回合或鸣牌响应窗口外调 false。

@@ -145,6 +145,8 @@ func test_apply_chi_success():
 	assert_true(ok)
 	assert_eq(e.state.seats[1].melds.size(), 1)
 	assert_eq(e.state.seats[1].melds[0].kind, Meld.Kind.CHI)
+	assert_same(e.state.seats[1].melds[0].called_tile, tile,
+		"TurnEngine 必须把河里的真实叫牌写进 Meld")
 	assert_eq(e.state.seats[1].hand.size(), 0)
 	assert_eq(e.state.discards_per_seat[0].size(), 0, "弃牌被取走")
 	assert_eq(e.state.current_seat, 1)
@@ -169,6 +171,7 @@ func test_apply_pon_success():
 	var ok := e.apply_pon(2, tile)
 	assert_true(ok)
 	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.PON)
+	assert_same(e.state.seats[2].melds[0].called_tile, tile)
 	assert_eq(e.state.current_seat, 2)
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
 
@@ -182,6 +185,7 @@ func test_apply_minkan_reveals_new_dora_and_takes_rinshan():
 	var ok := e.apply_minkan(2, tile)
 	assert_true(ok)
 	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.MINKAN)
+	assert_same(e.state.seats[2].melds[0].called_tile, tile)
 	assert_eq(e.state.dora_indicators.visible.size(), initial_dora_count + 1, "明杠翻 dora")
 	assert_eq(e.state.seats[2].hand.size(), 1, "摸岭上后 1 张")
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)

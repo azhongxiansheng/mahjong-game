@@ -47,12 +47,27 @@ var _face_atlas_tex: Texture2D = null
 var _back_tex: Texture2D = null
 # 牌背着色（按 owner_seat；保留 plan-3 D2/D5 的归属可视化）
 var _back_tint: Color = Color.WHITE
+var _soft_shadow: Panel = null
 
 func _init() -> void:
 	custom_minimum_size = Vector2(TILE_WIDTH, TILE_HEIGHT)
 	size = Vector2(TILE_WIDTH, TILE_HEIGHT)
 
 func _ready() -> void:
+	# 参考 .tile 的第二层漫射影：主 StyleBox 画 2px 锐影，本子节点画 4px 软影。
+	_soft_shadow = Panel.new()
+	_soft_shadow.name = "SoftShadow"
+	_soft_shadow.position = Vector2.ZERO
+	_soft_shadow.size = Vector2(TILE_WIDTH, TILE_HEIGHT)
+	_soft_shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_soft_shadow.show_behind_parent = true
+	var soft_sb := StyleBoxFlat.new()
+	soft_sb.bg_color = Color(0, 0, 0, 0)
+	soft_sb.shadow_color = Color(0, 0, 0, 0.18)
+	soft_sb.shadow_size = 6
+	soft_sb.shadow_offset = Vector2(0, 4)
+	_soft_shadow.add_theme_stylebox_override("panel", soft_sb)
+	add_child(_soft_shadow)
 	# 子节点 Label 作为 atlas 缺失时的降级显示
 	_face_label = Label.new()
 	_face_label.size = Vector2(TILE_WIDTH, TILE_HEIGHT)
@@ -71,34 +86,69 @@ func _ready() -> void:
 	_refresh()
 
 
-# Hover lift:可点击牌(玩家自家手牌)鼠标 hover 时上抬,提供"可选"反馈。
-# 玩家手牌在 SeatPanel 内 scale=0.5,所以 local 16 px ≈ 视觉 8 px lift。
-# Tween 60ms 缓动比硬切自然得多。不可点击时跳过(AI 牌背不响应)。
-const HOVER_LIFT_PX: float = 16.0
-const HOVER_TWEEN_S: float = 0.06
-var _hover_base_y: float = 0.0
+# 参考状态机：hover=-7px，lifted=-14px，lifted:hover=-22px。
+const HOVER_LIFT_PX: float = 7.0
+const LIFTED_PX: float = 14.0
+const LIFTED_HOVER_PX: float = 22.0
+const HOVER_TWEEN_S: float = 0.15
+var _motion_base_y: float = 0.0
+var _motion_base_valid: bool = false
+var _motion_target: Control = null
 var _hover_tween: Tween = null
 var _hover_active: bool = false
+
+
+# SeatPanel 传 slot 后，状态变换会连同立牌 before/after 棱一起移动；其它调用仍移动 self。
+func set_motion_target(target: Control) -> void:
+	_motion_target = target
+	_motion_base_valid = false
+
+
+func _resolved_motion_target() -> Control:
+	if _motion_target != null and is_instance_valid(_motion_target):
+		return _motion_target
+	return self
+
+
+func _capture_motion_base() -> void:
+	_motion_base_y = _resolved_motion_target().position.y
+	_motion_base_valid = true
+
+
+func _motion_offset_px() -> float:
+	if _is_lifted and _hover_active:
+		return LIFTED_HOVER_PX
+	if _is_lifted:
+		return LIFTED_PX
+	if _hover_active:
+		return HOVER_LIFT_PX
+	return 0.0
+
+
+func _apply_motion_state() -> void:
+	if not _motion_base_valid:
+		_capture_motion_base()
+	if _hover_tween and _hover_tween.is_valid():
+		_hover_tween.kill()
+	var target := _resolved_motion_target()
+	_hover_tween = create_tween()
+	_hover_tween.tween_property(target, "position:y",
+		_motion_base_y - _motion_offset_px(), HOVER_TWEEN_S)
 
 func _on_mouse_enter() -> void:
 	if not _is_clickable or _hover_active:
 		return
+	if not _is_lifted:
+		_capture_motion_base()
 	_hover_active = true
-	_hover_base_y = position.y
-	if _hover_tween and _hover_tween.is_valid():
-		_hover_tween.kill()
-	_hover_tween = create_tween()
-	_hover_tween.tween_property(self, "position:y", _hover_base_y - HOVER_LIFT_PX, HOVER_TWEEN_S)
+	_apply_motion_state()
 
 
 func _on_mouse_exit() -> void:
 	if not _hover_active:
 		return
 	_hover_active = false
-	if _hover_tween and _hover_tween.is_valid():
-		_hover_tween.kill()
-	_hover_tween = create_tween()
-	_hover_tween.tween_property(self, "position:y", _hover_base_y, HOVER_TWEEN_S)
+	_apply_motion_state()
 
 # 直接 draw_texture_rect 画 atlas，避免 TextureRect 嵌套渲染的诡异问题。
 # Panel.draw_style_box 在 NOTIFICATION_DRAW 已画了 stylebox；这里在子 _draw
@@ -172,7 +222,10 @@ func set_dora(b: bool) -> void:
 func set_lifted(b: bool) -> void:
 	if _is_lifted == b:
 		return
+	if b and not _hover_active:
+		_capture_motion_base()
 	_is_lifted = b
+	_apply_motion_state()
 	queue_redraw()
 
 # 同名联动高亮:悬停某张时,同 id 的牌叠蓝色蒙版(对标 .tile--hover-match)。
@@ -377,11 +430,10 @@ func _refresh() -> void:
 	sb.border_width_left = BORDER_WIDTH
 	sb.border_width_right = BORDER_WIDTH
 	sb.border_color = Color.BLACK
-	# 质感层:投影(对标参考作 .tile 双层 box-shadow)。StyleBox 阴影画在
-	# 面板之下,牌"立"在毡上而非"浮"着。
-	sb.shadow_color = Color(0, 0, 0, 0.38)
-	sb.shadow_size = 5
-	sb.shadow_offset = Vector2(0, 4)
+	# 参考 .tile 第一层锐影 0 2px 3px #00000059；第二层在 SoftShadow。
+	sb.shadow_color = Color(0, 0, 0, 0.35)
+	sb.shadow_size = 3
+	sb.shadow_offset = Vector2(0, 2)
 
 	var atlas_tex: Texture2D = _resolve_atlas_texture(_tile_id)
 

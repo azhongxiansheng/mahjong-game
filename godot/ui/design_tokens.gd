@@ -18,8 +18,8 @@ func _ready() -> void:
 
 # ---- 基准 viewport (所有面板设计基准) ----
 
-const VIEW_W: int = 1280
-const VIEW_H: int = 800
+const VIEW_W: int = 1600
+const VIEW_H: int = 900
 
 # ---- 字号 4 档 ----
 

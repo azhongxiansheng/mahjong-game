@@ -1,7 +1,7 @@
 extends GutTest
 
 # PlayableTable._format_toast_text / _seat_short 静态 helper 单测。
-# 关键事件 → 顶部 toast 文本(立直/自摸/荣和/流局/海底/河底/开局)。
+# 关键事件 → 顶部 toast 文本；特殊胡牌役改走确认后的参考横幅。
 
 const PT := preload("res://ui/four_player_table/playable_table.gd")
 
@@ -44,9 +44,9 @@ func test_exhaustive_draw_toast() -> void:
 	assert_eq(PT._format_toast_text(_make_event(&"EXHAUSTIVE_DRAW")), "流局")
 
 
-func test_haitei_houtei_toast() -> void:
-	assert_eq(PT._format_toast_text(_make_event(&"HAITEI", 0)), "海底捞月!")
-	assert_eq(PT._format_toast_text(_make_event(&"HOUTEI", 0)), "河底捞鱼!")
+func test_haitei_houtei_wait_for_confirmed_moment_band() -> void:
+	assert_eq(PT._format_toast_text(_make_event(&"HAITEI", 0)), "")
+	assert_eq(PT._format_toast_text(_make_event(&"HOUTEI", 0)), "")
 
 
 func test_game_begin_toast() -> void:

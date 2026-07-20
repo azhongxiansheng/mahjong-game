@@ -5,26 +5,38 @@ class_name PlayableTable extends Control
 # 组合 FourPlayerTable + PlayerActionPanel + PlayableBattleController，
 # 跑一局完整东风局玩家可玩对战。
 #
-# 1280×800 雀魂式 3D 牌桌（M1）：立体牌 + 俯斜相机 + 2D HUD
+# 生产默认复用 FourPlayerTable 2D 完整路径；3D 仅保留为实验模式。
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 
-const TABLE_HEIGHT: float = TableLayout.TABLE_H
-const ACTION_PANEL_HEIGHT: float = TableLayout.ACTION_BAR_H
+# 公开 bundle `.moment-band`：固定舞台 30% 高度、128px，1.3s 后卸载。
+const MOMENT_BAND_Y: float = 270.0
+const MOMENT_BAND_H: float = 128.0
+const MOMENT_BAND_ENTER_TIME: float = 0.34
+const MOMENT_BAND_EXIT_DELAY: float = 0.98
+const MOMENT_BAND_EXIT_TIME: float = 0.32
+const MOMENT_BAND_TRAVEL: float = 1760.0
+const REFERENCE_MOMENT_VARIANTS: Dictionary = {
+	"海底捞月": &"haitei",
+	"河底捞鱼": &"houtei",
+	"岭上开花": &"rinshan",
+	"抢杠": &"chankan",
+}
 
-# M1：主视觉为 MahjongTable3D；_table 保留类型宽松以兼容旧调用
+# _table 保留类型宽松，让显式实验开关仍可切到 MahjongTable3D。
 var _table = null
 var _action_panel: PlayerActionPanel = null
 var _bc: PlayableBattleController = null
 var _decision_adapter: TableDecisionAdapter = null
 
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
-# 雀魂式真 3D 桌（透视 mesh + 2D HUD）。手牌近景放大可读后默认开启。
-var _use_3d: bool = true
+# 雀魂式真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
+var _use_3d: bool = false
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)
+	# 操作条位于 1600×900 舞台内，是 overlay，不额外增加 72px 高度。
+	custom_minimum_size = Vector2(DT.VIEW_W, TableLayout.VIEW_H)
 	_build_layout()
 	# 成就解锁 → toast 弹"🏆 成就解锁:xxx"。autoload 可能晚 ready,defer connect。
 	var sm = get_node_or_null("/root/StatsManager")
@@ -68,8 +80,6 @@ func _build_layout() -> void:
 		(TableLayout.TABLE_W - PlayerActionPanel.PANEL_W) / 2.0,
 		TableLayout.ACTION_BAR_Y)
 	add_child(_action_panel)
-	# 操作条在 3D 视口之上
-	move_child(_action_panel, get_child_count() - 1)
 
 	_build_top_bar()
 
@@ -77,6 +87,8 @@ func _build_layout() -> void:
 	_dora_widget.position = Vector2(16, TableLayout.TOP_BAR_H + 6)
 	add_child(_dora_widget)
 	_dora_widget.update_indicators([])
+	# 操作条在牌桌、3D 视口（实验模式）及 HUD 之上。
+	move_child(_action_panel, get_child_count() - 1)
 
 
 # 顶栏：玻璃条 + logo + HUD + loadout + 规则/设置
@@ -166,7 +178,7 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 			_seat_panel_player.hand_tile_hover.connect(_on_hand_tile_hover)
 	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
 	_bc.bind_decision_port(_decision_adapter, get_tree())
-	_table.bind_battle_state(bc.state, 0, 4)
+	_bind_state_for_deal(bc.state, 0, 4)
 	_decision_adapter.present(&"idle", {"text": "准备开局…"})
 	_attach_event_polling()
 	# 注册到 DebugOverlay (F3 调试面板) — 让运行时可观测 BC state。
@@ -202,6 +214,19 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	return result
 
 
+# 同一张 PlayableTable 会连续跑多局；必须在新状态 bind 前清上局胜者翻牌，
+# 否则 SeatPanel 会继续按旧 revealed hand 重建，发牌采集拿不到 4×13 槽。
+func _bind_state_for_deal(state: BattleState, hand_index: int,
+		hands_per_round: int) -> void:
+	if _table == null:
+		return
+	if _table is FourPlayerTable:
+		for panel in _table.seat_panels:
+			if panel != null:
+				panel.clear_hand_reveal()
+	_table.bind_battle_state(state, hand_index, hands_per_round)
+
+
 # 调 StatsManager 把本局结果存进去 — 主要根据 events 找 WIN_DECLARED + 玩家
 # 视角(seat 0)推断 is_player_winner / loser_was_player。
 func _record_hand_stats(bc) -> void:
@@ -233,6 +258,7 @@ func _record_hand_stats(bc) -> void:
 # 本局结束后弹结算 panel：胡牌显示 役/番/符/点数；流局显示听牌情况
 # 主题化 + tier 大字（役満/倍満/跳満/満貫/N 飜 N 符）+ 玩家胡 / 失点配色。
 func _show_hand_result_overlay(result: Dictionary) -> void:
+	var gate_started_usec := Time.get_ticks_usec()
 	var last_event: String = String(result.get("last_event", ""))
 	var win_event: BattleEvent = null
 	for i in range(_bc.events.size() - 1, -1, -1):
@@ -240,39 +266,37 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		if ev.type == &"WIN_DECLARED":
 			win_event = ev
 			break
-	# 胡牌 → 翻手牌 + 粒子 + 役名横幅，再弹 overlay。
+	# drawInfo 必须在上层推进到下一 BattleState 之前冻结；modal 延迟挂载后只读快照。
+	var draw_snapshots: Array = []
+	if win_event == null and last_event == "EXHAUSTIVE_DRAW":
+		draw_snapshots = _build_exhaustive_draw_snapshots()
+	# 胡牌先翻手牌。公开 bundle 的重役演出使用 totalFan，本仓只有日麻
+	# han / yakuman_multiplier，量纲不等价；确认宣告由事件轮询单独播放，
+	# 这里不得自行猜分级并追加白闪、方块粒子或整桌震动。
 	if win_event != null:
 		_reveal_winner_hand(win_event)
-		_play_win_effects(win_event)
-		# 错峰翻牌约 0.04*13 + 0.2 ≈ 0.7s
-		await get_tree().create_timer(0.55).timeout
-		await _play_yaku_banner(win_event.extra.get("yaku_names", []))
-	var overlay := Control.new()
-	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(overlay)
-	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.85)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	overlay.add_child(bg)
-
-	# 主题化 Panel（StyleBox 由 run_theme.tres 提供 — 暗底 + 猩红描边）
-	# 加大到 560 高,给胡牌 14 张展示行(_render_winning_hand_strip)留位置。
-	var panel := Panel.new()
-	panel.position = Vector2(280, 120)
-	panel.custom_minimum_size = Vector2(720, 560)
-	panel.size = Vector2(720, 560)
-	overlay.add_child(panel)
-	DT.popin(panel)
+	var gate_seconds := _result_modal_gate_seconds(win_event != null, last_event)
+	if gate_seconds > 0.0:
+		var gate_finished := await _await_result_modal_gate(
+			gate_seconds, gate_started_usec)
+		if not gate_finished:
+			return
+	if win_event != null:
+		_unmount_win_announces_before_result()
+	var shell := _create_result_modal_shell()
+	var overlay := shell["overlay"] as Control
+	var backdrop := shell["backdrop"] as ColorRect
+	var panel := shell["panel"] as Panel
+	_animate_reference_result_modal(backdrop, panel)
 
 	# tier 大字：役満 / 倍満 / 跳満 / 満貫 / N 飜 N 符
 	var tier := Label.new()
-	tier.position = Vector2(0, 28)
-	tier.size = Vector2(720, 80)
-	tier.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tier.add_theme_font_size_override("font_size", 56)
-	tier.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
+	tier.name = "ResultTitle"
+	tier.position = Vector2(36, 24)
+	tier.size = Vector2(548, 38)
+	tier.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	tier.add_theme_font_size_override("font_size", 26)
+	tier.add_theme_color_override("font_color", Color("d9b65b"))
 	tier.add_theme_constant_override("shadow_offset_x", 2)
 	tier.add_theme_constant_override("shadow_offset_y", 2)
 	tier.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.95))
@@ -280,39 +304,29 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 
 	# 副标题：谁 · 自摸/荣和
 	var subtitle := Label.new()
-	subtitle.position = Vector2(0, 118)
-	subtitle.size = Vector2(720, 32)
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	subtitle.add_theme_font_size_override("font_size", 22)
-	subtitle.add_theme_color_override("font_color", Color(0.93, 0.9, 0.78))
+	subtitle.name = "ResultSubtitle"
+	subtitle.position = Vector2(36, 64)
+	subtitle.size = Vector2(548, 24)
+	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	subtitle.add_theme_font_size_override("font_size", 14)
+	subtitle.add_theme_color_override("font_color", Color("f4ead2d9"))
 	panel.add_child(subtitle)
 
 	if win_event != null:
 		var winner_seat: int = win_event.actor_seat
 		var winner_name: String = "你" if winner_seat == 0 else "AI %d" % winner_seat
-		var is_tsumo: bool = (last_event == "TSUMO_DECLARED"
-			or int(win_event.extra.get("discarder_seat", -1)) < 0)
-		var win_kind: String = "自摸" if is_tsumo else "荣和"
+		var announce_kind := _confirmed_win_announce_kind(win_event.extra)
+		var win_kind: String = {
+			&"tsumo": "自摸",
+			&"chankan": "抢杠",
+			&"ron": "荣和",
+		}[announce_kind]
 		var fu: int = int(win_event.extra.get("fu", 0))
 		var han: int = int(win_event.extra.get("han", 0))
 		var yakuman_mul: int = int(win_event.extra.get("yakuman_multiplier", 0))
-		tier.text = _score_tier_label(han, fu, yakuman_mul)
-		# 玩家胡=金；失点=猩红；AI 自摸（非玩家放铳）=暗黄
-		if winner_seat == 0:
-			tier.add_theme_color_override("font_color", Color(1, 0.85, 0.3))
-		elif not is_tsumo and int(win_event.extra.get("discarder_seat", -1)) == 0:
-			tier.add_theme_color_override("font_color", Color(1, 0.32, 0.32))
-		else:
-			tier.add_theme_color_override("font_color", Color(0.82, 0.78, 0.55))
-		subtitle.text = "%s · %s" % [winner_name, win_kind]
-		# 分级强调:役満/三倍満 tier 大字 tada;玩家自己胡 heartbeat;
-		# 玩家放铳 → 整个 panel shake_x"挨了一拳"。延迟让 popin 先落地。
-		if yakuman_mul >= 1 or han >= 11:
-			DT.attention(tier, "tada", 0.8, 0.3)
-		elif winner_seat == 0:
-			DT.attention(tier, "heartbeat", 0.6, 0.3)
-		elif not is_tsumo and int(win_event.extra.get("discarder_seat", -1)) == 0:
-			DT.attention(panel, "shake_x", 0.5, 0.3)
+		tier.text = "%s　和牌" % winner_name
+		subtitle.text = "%s · %s" % [win_kind,
+			_score_tier_label(han, fu, yakuman_mul)]
 	elif last_event == "NAGASHI_MANGAN":
 		# 日麻 §6.5 流し満貫:流局时弃牌全幺九且无被鸣 → 满贯支付
 		tier.text = "流し満貫"
@@ -324,105 +338,145 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	elif last_event == "EXHAUSTIVE_DRAW":
 		tier.text = "流局"
 		tier.add_theme_color_override("font_color", Color(0.7, 0.78, 0.85))
-		subtitle.text = "本局无人胡牌"
+		subtitle.text = "查听"
 	elif last_event == "ABORTIVE_DRAW":
 		# 5 种途中流局(日麻 §3.2):九種九牌 / 四风连打 / 四家立直 / 四杠散了 / 三家和了
-		tier.text = "途中流局"
+		tier.text = "中途流局"
 		tier.add_theme_color_override("font_color", Color(0.85, 0.62, 0.85))
 		subtitle.text = _abortive_reason_label(_find_last_event_extra("ABORTIVE_DRAW"))
 	else:
 		tier.text = "本局结束"
 		subtitle.text = ""
 
-	# 役名列表 — T4(spec AC-G4-a):逐条错峰入场替代整段文本。
-	# 双列 Grid 容纳 ≤8 条不与下方胡牌行打架;>8 条尾部聚合。
+	# Step 1：番种结算。参考为单列役；滚分不得在本步骤提前启动。
 	_result_anim_tweens.clear()
+	var yaku_list: Control = null
+	var bonus_list: Control = null
+	var total_bar: Control = null
 	if win_event != null:
-		_build_yaku_rows(panel, win_event.extra.get("yaku_names", []))
+		var result_yaku: Array = win_event.extra.get("yaku_names", [])
+		yaku_list = _build_yaku_rows(panel, result_yaku)
+		# 参考 bundle 将所有 bonus 同时揭示为一个 phase。本仓事件只保留总番，
+		# 因此只把「总番 - 已命中役番」的可证明差额聚合为一行，不猜来源。
+		var named_han := 0
+		for item in result_yaku:
+			if item is Dictionary and int(item.get("yakuman_multiplier", 0)) == 0:
+				named_han += int(item.get("han", 0))
+		var bonus_han := maxi(int(win_event.extra.get("han", 0)) - named_han, 0)
+		var bonus_rows: Array = []
+		if bonus_han > 0:
+			bonus_rows.append({"name": "附加番", "han": bonus_han})
+		var shown_yaku_count := result_yaku.size()
+		if not bonus_rows.is_empty():
+			var bonus_delay := (shown_yaku_count + 1) * RESULT_PHASE_INTERVAL
+			bonus_list = _build_result_bonus_rows(panel, bonus_rows, bonus_delay)
+		if not result_yaku.is_empty():
+			var total_delay := _result_total_reveal_delay(
+				shown_yaku_count, not bonus_rows.is_empty())
+			total_bar = _build_result_total_bar(panel,
+				int(win_event.extra.get("han", 0)),
+				int(win_event.extra.get("winner_total", 0)), total_delay)
 
-	# 胡牌 14 张展示行(winning tile 单独右侧 + 金色调突出)
+	var hand_strip: Control = null
 	if win_event != null and win_event.tile_instance != null and win_event.tile_instance.tile != null:
-		var is_tsumo: bool = (last_event == "TSUMO_DECLARED"
-			or int(win_event.extra.get("discarder_seat", -1)) < 0)
-		_render_winning_hand_strip(panel, win_event.actor_seat,
-			win_event.tile_instance.tile.id, is_tsumo, 220)
+		var is_tsumo := bool(win_event.extra.get("is_tsumo", false))
+		hand_strip = _render_winning_hand_strip(panel, win_event.actor_seat,
+			win_event.tile_instance.tile.id, is_tsumo, 96)
+	var draw_list: Control = null
+	if last_event == "EXHAUSTIVE_DRAW" and not draw_snapshots.is_empty():
+		draw_list = _build_draw_result_list(panel, draw_snapshots)
 
-	# 明细：番·符 + 得失分(得分大数字由 _build_rolling_score 单独渲染)
+	# 胡牌的 Step 2 不预建；流し满贯属于单页非 win 结果，直接展示真实支付。
 	var detail := Label.new()
-	detail.position = Vector2(48, 322)
-	detail.size = Vector2(624, 128)
-	detail.add_theme_font_size_override("font_size", 18)
-	detail.add_theme_color_override("font_color", Color(0.95, 0.95, 0.85))
+	detail.name = "ResultDetail"
+	detail.position = Vector2(36, 155)
+	detail.size = Vector2(548, 285)
+	detail.add_theme_font_size_override("font_size", 16)
+	detail.add_theme_color_override("font_color", Color("f4ead2"))
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var pending_payments: Array[int] = [0, 0, 0, 0]
+	var pending_final_scores: Array[int] = [0, 0, 0, 0]
+	var pending_dealer := 0
+	var has_nagashi_payment := false
 	if win_event != null:
-		var fu2: int = int(win_event.extra.get("fu", 0))
-		var han2: int = int(win_event.extra.get("han", 0))
 		var winner_total: int = int(win_event.extra.get("winner_total", 0))
 		var payout: Dictionary = win_event.extra.get("payout", {})
-		# T4(spec AC-G4-b):胜者得分独立 Label 数字滚动(0→N,金/红辉光)
-		_build_rolling_score(panel, winner_total,
-			int(win_event.actor_seat) == 0
-			or int(win_event.extra.get("discarder_seat", -1)) != 0)
-		var lines: Array[String] = []
-		if int(win_event.extra.get("yakuman_multiplier", 0)) > 0:
-			lines.append("番数：—   符：—")
-		else:
-			lines.append("番数：%d 飜    符：%d" % [han2, fu2])
-		# 显式列出 dora 指示牌让玩家核对算番:visible + 立直胡时 hidden uradora。
-		if _bc != null and _bc.state != null:
-			var di = _bc.state.dora_indicators
-			var dora_names: Array[String] = []
-			for tile in di.visible:
-				if tile != null:
-					dora_names.append(CardTileBack.tile_short_name(tile.id))
-			if not dora_names.is_empty():
-				lines.append("Dora 指示: " + ", ".join(dora_names))
-			# 立直胡 → 显式裏 dora 指示
-			var winner_seat: int = int(win_event.actor_seat)
-			if winner_seat >= 0 and _bc.state.seats[winner_seat].riichi.declared:
-				var ura_names: Array[String] = []
-				for tile in di.hidden_uradora:
-					if tile != null:
-						ura_names.append(CardTileBack.tile_short_name(tile.id))
-				if not ura_names.is_empty():
-					lines.append("裏 Dora 指示: " + ", ".join(ura_names))
-		lines.append("")
-		lines.append("点数转移：")
 		for seat in payout.keys():
-			var seat_int: int = int(seat)
-			var amount: int = int(payout[seat])
-			var name: String = "你" if seat_int == 0 else "AI %d" % seat_int
-			lines.append("  %s  -%d" % [name, amount])
-		detail.text = "\n".join(lines)
+			var seat_id := int(seat)
+			if seat_id >= 0 and seat_id < 4:
+				pending_payments[seat_id] -= int(payout[seat])
+		var winner_id := int(win_event.actor_seat)
+		if winner_id >= 0 and winner_id < 4:
+			pending_payments[winner_id] += winner_total
+		if _bc != null and _bc.state != null:
+			pending_dealer = int(_bc.state.dealer_seat)
+			for seat_id in range(4):
+				pending_final_scores[seat_id] = int(_bc.state.scores[seat_id]) \
+					+ pending_payments[seat_id]
+	elif last_event == "NAGASHI_MANGAN" and _bc != null \
+			and _bc.state != null:
+		var payment_extra: Dictionary = _find_last_event_extra("NAGASHI_MANGAN")
+		var nm_winner := int(payment_extra.get("winner_seat", -1))
+		pending_dealer = int(_bc.state.dealer_seat)
+		var nagashi_payment: Dictionary = NagashiMangan.payout(
+			nm_winner, pending_dealer)
+		for seat_id in range(4):
+			pending_payments[seat_id] = int(nagashi_payment.get(seat_id, 0))
+			pending_final_scores[seat_id] = int(_bc.state.scores[seat_id]) \
+				+ pending_payments[seat_id]
+		has_nagashi_payment = true
+	elif last_event == "ABORTIVE_DRAW":
+		detail.name = "AbortiveDrawNote"
+		detail.position = Vector2(36, 108)
+		detail.size = Vector2(548, 80)
+		detail.text = "本局不查听、不结算；报听棒结转下一局。"
 	else:
 		detail.text = "无人胡牌（流局）"
+	detail.visible = win_event == null and not is_instance_valid(draw_list) \
+		and last_event != "NAGASHI_MANGAN"
 	panel.add_child(detail)
+	if has_nagashi_payment:
+		_build_score_delta_list(panel, pending_final_scores,
+			pending_payments, pending_dealer)
 
-	# 继续按钮(主题化)
+	var step_hint := Label.new()
+	step_hint.position = Vector2(36, 458)
+	step_hint.size = Vector2(548, 20)
+	step_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	step_hint.text = "1 / 2 · 番种结算" if win_event != null else ""
+	step_hint.add_theme_font_size_override("font_size", 11)
+	step_hint.add_theme_color_override("font_color", Color("d9b65b8c"))
+	panel.add_child(step_hint)
+
 	var btn := Button.new()
-	btn.text = "继续 →"
-	btn.position = Vector2(380, 490)
+	btn.text = "继续 →" if win_event != null else "确定"
+	btn.position = Vector2(230, 490)
 	btn.custom_minimum_size = Vector2(160, 44)
-	btn.pressed.connect(func(): overlay.queue_free())
+	var step_state := {"value": 1 if win_event != null else 2}
+	btn.pressed.connect(func():
+		if int(step_state["value"]) == 1:
+			_skip_result_animations()
+			step_state["value"] = 2
+			if is_instance_valid(yaku_list):
+				yaku_list.visible = false
+			if is_instance_valid(bonus_list):
+				bonus_list.visible = false
+			if is_instance_valid(total_bar):
+				total_bar.visible = false
+			if is_instance_valid(hand_strip):
+				hand_strip.visible = false
+			tier.text = "分数变动"
+			detail.visible = false
+			step_hint.text = "2 / 2 · 分数变动"
+			btn.text = "确定"
+			_build_score_delta_list(panel, pending_final_scores,
+				pending_payments, pending_dealer)
+			return
+		_skip_result_animations()
+		overlay.queue_free())
 	panel.add_child(btn)
 
-	# 牌谱按钮:点了弹本局所有 events 的文字列表 panel,玩家可复盘"AI 1 弃 W5、
-	# 我立直、AI 2 抢杠..."。基于 _bc.events 即时格式化,无需 events sourcing
-	# 重放(那需要 UI apply_event 镜像 BC state mutation,工作量超 1 周)。
-	# 是 PVP 战报常见形态,玩家可截图分享。
-	var replay_btn := Button.new()
-	replay_btn.text = "📜 牌谱"
-	replay_btn.position = Vector2(180, 490)
-	replay_btn.custom_minimum_size = Vector2(160, 44)
-	replay_btn.pressed.connect(func(): _show_replay_log(overlay))
-	panel.add_child(replay_btn)
-
-	# 点击空白处:动画未播完 → 先跳到终态(spec AC-G4-c);已完 → 关闭
-	overlay.gui_input.connect(func(ev: InputEvent):
-		if ev is InputEventMouseButton and ev.pressed:
-			if _skip_result_animations():
-				return
-			overlay.queue_free())
+	# 参考 modal backdrop 不负责关闭；只允许显式按钮推进两步状态机。
 	while is_instance_valid(overlay):
 		await get_tree().process_frame
 
@@ -431,17 +485,445 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 
 # 正在播放的结算动画 [{tween, finish: Callable}];点击跳过时统一收尾。
 var _result_anim_tweens: Array = []
+const RESULT_MODAL_SIZE := Vector2(620, 560)
+const RESULT_MODAL_PADDING := Vector4(36, 28, 36, 24)
+const RESULT_BACKDROP_COLOR := Color("000000a8")
+const RESULT_PHASE_INTERVAL := 0.7
+const RESULT_YAKU_LIGHT_DURATION := 0.26
+const RESULT_YAKU_HEAVY_DURATION := 0.28
+const RESULT_TOTAL_WAIT := 1.0
+const RESULT_TOTAL_DURATION := 0.42
+const RESULT_HEAVY_HAN := 8
+const RESULT_SCORE_ROLL_DURATION := 1.5
+const RESULT_WIN_MODAL_GATE := 3.0
+const RESULT_DRAW_MODAL_GATE := 0.5
+const RESULT_TILE_SM_SIZE := Vector2(30, 40)
+const RESULT_WIN_TILE_SM_SIZE := Vector2(34, 45)
+static var _result_felt_shader: Shader = null
 
-# 役种双列逐条入场。每条左侧金条 +「役名  N飜」,0.08s/条错峰。
-func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.position = Vector2(80, 148)
-	grid.size = Vector2(560, 68)
-	grid.add_theme_constant_override("h_separation", 48)
-	grid.add_theme_constant_override("v_separation", 4)
+
+# 公开 bundle：ended win 固定 3000ms，其余普通/途中流局固定 500ms。
+static func _result_modal_gate_seconds(has_win: bool, _last_event: String) -> float:
+	if has_win:
+		return RESULT_WIN_MODAL_GATE
+	return RESULT_DRAW_MODAL_GATE
+
+
+# 用 PlayableTable 子 Timer，而非 SceneTreeTimer；父节点退出树时 Timer 一并退出，
+# 不会在旧牌桌外继续回调并挂载孤儿 modal。started_usec 保证门控从函数入口计时。
+func _await_result_modal_gate(seconds: float, started_usec: int) -> bool:
+	if not is_inside_tree():
+		return false
+	var elapsed := float(Time.get_ticks_usec() - started_usec) / 1000000.0
+	var remaining := maxf(seconds - elapsed, 0.0)
+	if remaining <= 0.0:
+		return is_inside_tree()
+	var timer := Timer.new()
+	timer.name = "ResultModalGate"
+	timer.one_shot = true
+	add_child(timer)
+	var gate_state := {"cancelled": false}
+	var cancel_gate := func() -> void:
+		gate_state["cancelled"] = true
+		if is_instance_valid(timer):
+			timer.stop()
+			timer.timeout.emit()
+	tree_exiting.connect(cancel_gate, CONNECT_ONE_SHOT)
+	timer.start(remaining)
+	await timer.timeout
+	if tree_exiting.is_connected(cancel_gate):
+		tree_exiting.disconnect(cancel_gate)
+	if not bool(gate_state["cancelled"]) and is_instance_valid(timer):
+		timer.queue_free()
+	return not bool(gate_state["cancelled"]) and is_inside_tree()
+
+
+# React 参考在 result modal 状态挂载前卸载 win-announce。事件 polling 可能比
+# gate 晚一帧创建节点，因此这里按结构状态卸载，避免两个同为 3s 的组件重叠一帧。
+func _unmount_win_announces_before_result() -> void:
+	for child in get_children():
+		if child is CallAnnounce \
+				and String(child.get_meta("layout_direction", "")) == "column":
+			remove_child(child)
+			child.queue_free()
+
+
+# vP(drawInfo) 的本仓等价输入：真实 WaitCalculator + noten payout，冻结手牌与
+# 副露对象，并在这里按庄家起顺时针排好，后续 modal 不再读取活 BattleState。
+func _build_exhaustive_draw_snapshots() -> Array:
+	if _bc == null or _bc.state == null or _bc.state.seats.size() < 4:
+		return []
+	var tenpai_array: Array = []
+	for seat_id in range(4):
+		var seat: Seat = _bc.state.seats[seat_id]
+		tenpai_array.append(WaitCalculator.is_tenpai(seat.hand, seat.melds))
+	var payments := ExhaustiveDraw.noten_payout(tenpai_array)
+	var snapshots: Array = []
+	var dealer := int(_bc.state.dealer_seat)
+	for offset in range(4):
+		var seat_id := (dealer + offset) % 4
+		var seat: Seat = _bc.state.seats[seat_id]
+		var hand_snapshot: Array[Tile] = []
+		for tile in seat.hand._tiles:
+			hand_snapshot.append(_clone_result_tile(tile))
+		hand_snapshot.sort_custom(func(a: Tile, b: Tile) -> bool:
+			if a.id == b.id:
+				return int(a.is_red_dora) < int(b.is_red_dora)
+			return a.id < b.id)
+		var meld_snapshots: Array[Meld] = []
+		for meld in seat.melds:
+			meld_snapshots.append(_clone_result_meld(meld))
+		snapshots.append({
+			"seat": seat_id,
+			"tenpai": bool(tenpai_array[seat_id]),
+			"winKind": "",
+			"payment": int(payments.get(seat_id, 0)),
+			"hand": hand_snapshot,
+			"melds": meld_snapshots,
+		})
+	return snapshots
+
+
+static func _clone_result_tile(tile: Tile) -> Tile:
+	if tile == null:
+		return null
+	return Tile.new(tile.id, tile.is_red_dora, tile.owner_seat)
+
+
+static func _clone_result_meld(meld: Meld) -> Meld:
+	if meld == null:
+		return null
+	var tiles: Array[Tile] = []
+	var called_tile: Tile = null
+	for original in meld.tiles:
+		var copied := _clone_result_tile(original)
+		tiles.append(copied)
+		if original == meld.called_tile:
+			called_tile = copied
+	return Meld.new(meld.kind, tiles, meld.from_seat, called_tile)
+
+
+# 公开 `.modal__draw-list` / vP() 的 2D 等价结构：真实暗手后复用
+# Fl(flat:true) 渲染快照中的副露。
+func _build_draw_result_list(panel: Control, snapshots: Array) -> VBoxContainer:
+	var list := VBoxContainer.new()
+	list.name = "DrawResultList"
+	list.position = Vector2(36, 100)
+	list.size = Vector2(548, 350)
+	list.add_theme_constant_override("separation", 10)
+	panel.add_child(list)
+	for snapshot in snapshots:
+		var seat_id := int(snapshot.get("seat", -1))
+		var tenpai := bool(snapshot.get("tenpai", false))
+		var win_kind := String(snapshot.get("winKind", ""))
+		var highlighted := tenpai or win_kind != ""
+		var payment := int(snapshot.get("payment", 0))
+		var row := Panel.new()
+		row.name = "DrawSeat%d" % seat_id
+		row.custom_minimum_size = Vector2(548, 80)
+		row.set_meta("seat_id", seat_id)
+		row.set_meta("tenpai", tenpai)
+		row.set_meta("winKind", win_kind)
+		row.set_meta("payment", payment)
+		row.set_meta("meld_count", (snapshot.get("melds", []) as Array).size())
+		var row_style := StyleBoxFlat.new()
+		row_style.bg_color = Color("d9b65b1f") if highlighted else Color("0000002e")
+		row_style.set_corner_radius_all(6)
+		if highlighted:
+			row_style.border_color = Color("d9b65b40")
+			row_style.set_border_width_all(1)
+		row.add_theme_stylebox_override("panel", row_style)
+		list.add_child(row)
+
+		var seat_name := Label.new()
+		seat_name.name = "SeatName"
+		seat_name.position = Vector2(10, 5)
+		seat_name.size = Vector2(96, 22)
+		seat_name.text = "你" if seat_id == 0 else "AI %d" % seat_id
+		seat_name.add_theme_font_size_override("font_size", 13)
+		seat_name.add_theme_color_override("font_color", Color("f4ead2"))
+		row.add_child(seat_name)
+
+		var tag := Label.new()
+		tag.name = "Tag"
+		tag.position = Vector2(106, 5)
+		tag.size = Vector2(58, 22)
+		tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tag.text = "自摸" if win_kind == "tsumo" else \
+			"荣和" if win_kind == "ron" else "听" if tenpai else "不听"
+		tag.add_theme_font_size_override("font_size", 12)
+		var tag_style := StyleBoxFlat.new()
+		if win_kind != "":
+			tag.add_theme_color_override("font_color", Color("e5c66b"))
+			tag_style.bg_color = Color("d4b05c2e")
+			tag_style.border_color = Color("d4b05c66")
+		elif tenpai:
+			tag.add_theme_color_override("font_color", Color("6bc06b"))
+			tag_style.bg_color = Color("6bc06b2e")
+			tag_style.border_color = Color("6bc06b66")
+		else:
+			tag.add_theme_color_override("font_color", Color("d97a7a"))
+			tag_style.bg_color = Color("d97a7a24")
+			tag_style.border_color = Color("d97a7a52")
+		tag_style.set_border_width_all(1)
+		tag_style.set_corner_radius_all(999)
+		tag_style.content_margin_left = 8
+		tag_style.content_margin_right = 8
+		tag_style.content_margin_top = 1
+		tag_style.content_margin_bottom = 1
+		tag.add_theme_stylebox_override("normal", tag_style)
+		row.add_child(tag)
+
+		var payment_label := Label.new()
+		payment_label.name = "Payment"
+		payment_label.position = Vector2(430, 3)
+		payment_label.size = Vector2(108, 24)
+		payment_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		payment_label.text = "+%d" % payment if payment > 0 else str(payment)
+		payment_label.add_theme_font_size_override("font_size", 16)
+		payment_label.add_theme_color_override("font_color",
+			Color("6bc06b") if payment > 0 else
+			Color("d97a7a") if payment < 0 else Color("f4ead2"))
+		row.add_child(payment_label)
+
+		# `.modal__draw-tiles`: flex-wrap + align-end + 6px gap。
+		var tiles := HFlowContainer.new()
+		tiles.name = "Tiles"
+		tiles.position = Vector2(10, 30)
+		tiles.size = Vector2(528, 40)
+		tiles.add_theme_constant_override("h_separation", 6)
+		tiles.add_theme_constant_override("v_separation", 6)
+		tiles.set_meta("reference_align", "flex-end")
+		row.add_child(tiles)
+		var hand_index := 0
+		for tile in snapshot.get("hand", []):
+			if tile is Tile:
+				var hand_tile := _make_result_tile(
+					tile.id, false, tile.is_red_dora, RESULT_TILE_SM_SIZE)
+				hand_tile.name = "HandTile%d" % hand_index
+				hand_tile.set_meta("result_role", "hand")
+				hand_tile.size_flags_vertical = Control.SIZE_SHRINK_END
+				tiles.add_child(hand_tile)
+				hand_index += 1
+		var melds: Array = snapshot.get("melds", [])
+		if not melds.is_empty():
+			var flat_melds := _build_flat_result_melds(
+				melds, RESULT_TILE_SM_SIZE, "FlatMelds")
+			flat_melds.size_flags_vertical = Control.SIZE_SHRINK_END
+			tiles.add_child(flat_melds)
+	return list
+
+
+# 公开 Fl(flat:true)：flat 会把 effective owner/claimant 固定为 0，因此直接
+# 复用 MeldLayout.compute(meld, 0) 的 nV 翻译；meld 间 6px、牌间 1px。
+func _build_flat_result_melds(melds: Array, tile_size: Vector2,
+		node_name: String = "FlatMelds") -> HBoxContainer:
+	var root := HBoxContainer.new()
+	root.name = node_name
+	root.add_theme_constant_override("separation", 6)
+	root.size_flags_vertical = Control.SIZE_SHRINK_END
+	for meld_index in range(melds.size()):
+		var meld := melds[meld_index] as Meld
+		if meld == null:
+			continue
+		var group := HBoxContainer.new()
+		group.name = "FlatMeld%d" % meld_index
+		group.add_theme_constant_override("separation", 1)
+		group.size_flags_vertical = Control.SIZE_SHRINK_END
+		group.set_meta("meld_kind", meld.kind)
+		root.add_child(group)
+		var slots := MeldLayout.compute(meld, 0)
+		var stack_anchor: Control = null
+		for slot_index in range(slots.size()):
+			var slot := slots[slot_index] as Dictionary
+			var slot_node := _make_flat_result_meld_slot(
+				slot, tile_size, slot_index)
+			if bool(slot.get("stacked_above", false)) and stack_anchor != null:
+				slot_node.position = Vector2(0, -slot_node.size.y - 1)
+				stack_anchor.name = "MeldStack"
+				stack_anchor.set_meta("stacked_count", 2)
+				stack_anchor.add_child(slot_node)
+				continue
+			group.add_child(slot_node)
+			if bool(slot.get("rotated", false)):
+				stack_anchor = slot_node
+	return root
+
+
+func _make_flat_result_meld_slot(slot: Dictionary, tile_size: Vector2,
+		slot_index: int) -> Control:
+	var horizontal := bool(slot.get("rotated", false))
+	var face_down := bool(slot.get("face_down", false))
+	var visual_size := Vector2(tile_size.y, tile_size.x) if horizontal else tile_size
+	var host := Control.new()
+	host.name = "FlatMeldTile%d" % slot_index
+	host.custom_minimum_size = visual_size
+	host.size = visual_size
+	host.size_flags_vertical = Control.SIZE_SHRINK_END
+	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	host.set_meta("flat_meld_tile", true)
+	host.set_meta("tile_id", int(slot.get("tile_id", -1)))
+	host.set_meta("horizontal", horizontal)
+	host.set_meta("face_down", face_down)
+	host.set_meta("stacked_above", bool(slot.get("stacked_above", false)))
+	host.set_meta("visual_size", visual_size)
+	if face_down:
+		var back := _make_result_tile_back(tile_size)
+		back.name = "Back"
+		host.add_child(back)
+		return host
+	var face := _make_result_tile(int(slot.get("tile_id", -1)), false,
+		bool(slot.get("is_red_dora", false)), tile_size)
+	face.name = "Face"
+	if horizontal:
+		face.pivot_offset = tile_size / 2.0
+		face.rotation_degrees = -90
+		var half_delta := (tile_size.y - tile_size.x) / 2.0
+		face.position = Vector2(half_delta, -half_delta)
+	host.add_child(face)
+	return host
+
+
+func _make_result_tile_back(tile_size: Vector2) -> Panel:
+	var back := Panel.new()
+	back.custom_minimum_size = tile_size
+	back.size = tile_size
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("2c5e3f")
+	style.border_color = Color("0c231699")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(3)
+	back.add_theme_stylebox_override("panel", style)
+	return back
+
+
+# 公开 CSS `.modal-backdrop` / `.modal` 的 Godot 等价壳；内容按两步状态机装入。
+func _create_result_modal_shell() -> Dictionary:
+	var overlay := Control.new()
+	overlay.name = "ResultOverlay"
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	var backdrop := ColorRect.new()
+	backdrop.name = "Backdrop"
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.color = RESULT_BACKDROP_COLOR
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	overlay.add_child(backdrop)
+	var panel := Panel.new()
+	panel.name = "ResultModal"
+	panel.position = Vector2(
+		(DT.VIEW_W - RESULT_MODAL_SIZE.x) / 2.0,
+		(DT.VIEW_H - RESULT_MODAL_SIZE.y) / 2.0)
+	panel.custom_minimum_size = RESULT_MODAL_SIZE
+	panel.size = RESULT_MODAL_SIZE
+	panel.clip_contents = false
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	style.border_color = Color("d9b65b8c")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(12)
+	style.content_margin_left = RESULT_MODAL_PADDING.x
+	style.content_margin_top = RESULT_MODAL_PADDING.y
+	style.content_margin_right = RESULT_MODAL_PADDING.z
+	style.content_margin_bottom = RESULT_MODAL_PADDING.w
+	style.shadow_color = Color("0000008c")
+	style.shadow_size = 60
+	style.shadow_offset = Vector2(0, 20)
+	panel.add_theme_stylebox_override("panel", style)
+	overlay.add_child(panel)
+	var felt := ColorRect.new()
+	felt.name = "FeltGradient"
+	felt.position = Vector2.ONE
+	felt.size = RESULT_MODAL_SIZE - Vector2(2, 2)
+	felt.color = Color.WHITE
+	felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	felt.material = _make_result_felt_material(felt.size)
+	panel.add_child(felt)
+	return {"overlay": overlay, "backdrop": backdrop, "panel": panel}
+
+
+static func _make_result_felt_material(rect_size: Vector2) -> ShaderMaterial:
+	if _result_felt_shader == null:
+		_result_felt_shader = Shader.new()
+		_result_felt_shader.code = """
+shader_type canvas_item;
+uniform vec2 rect_size = vec2(618.0, 558.0);
+uniform float radius = 11.0;
+uniform vec4 felt_1 : source_color = vec4(0.122, 0.318, 0.196, 1.0);
+uniform vec4 felt_2 : source_color = vec4(0.078, 0.220, 0.133, 1.0);
+void fragment() {
+	vec2 p = UV * rect_size;
+	vec2 q = abs(p - rect_size * 0.5) - (rect_size * 0.5 - vec2(radius));
+	float dist = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
+	float alpha = 1.0 - smoothstep(-0.7, 0.7, dist);
+	float diagonal = clamp(UV.x * 0.35 + UV.y * 0.65, 0.0, 1.0);
+	vec3 felt = mix(felt_1.rgb, felt_2.rgb, diagonal);
+	felt += vec3(0.04) * (1.0 - UV.y);
+	COLOR = vec4(felt, alpha);
+}
+"""
+	var shader_material := ShaderMaterial.new()
+	shader_material.shader = _result_felt_shader
+	shader_material.set_shader_parameter("rect_size", rect_size)
+	return shader_material
+
+
+func _animate_reference_result_modal(backdrop: ColorRect, panel: Panel) -> void:
+	backdrop.modulate.a = 0.0
+	var fade := create_tween()
+	fade.tween_property(backdrop, "modulate:a", 1.0, 0.2)
+	var target_position := panel.position
+	var start_position := target_position + Vector2(0, 8)
+	panel.pivot_offset = panel.size / 2.0
+	panel.position = start_position
+	panel.scale = Vector2.ONE * 0.92
+	panel.modulate.a = 0.0
+	var update := func(progress: float) -> void:
+		if not is_instance_valid(panel):
+			return
+		var eased := _result_pop_ease(progress)
+		panel.position = start_position.lerp(target_position, eased)
+		panel.scale = Vector2.ONE * lerpf(0.92, 1.0, eased)
+		panel.modulate.a = clampf(eased, 0.0, 1.0)
+	var pop := create_tween()
+	pop.tween_method(update, 0.0, 1.0, 0.25)
+
+
+# CSS cubic-bezier(.34,1.56,.64,1) 的数值解，保留原始 overshoot。
+static func _result_pop_ease(progress: float) -> float:
+	var x := clampf(progress, 0.0, 1.0)
+	var t := x
+	for _i in range(6):
+		var current_x := _result_bezier_coord(t, 0.34, 0.64)
+		var slope := _result_bezier_slope(t, 0.34, 0.64)
+		if absf(slope) < 0.00001:
+			break
+		t = clampf(t - (current_x - x) / slope, 0.0, 1.0)
+	return _result_bezier_coord(t, 1.56, 1.0)
+
+
+static func _result_bezier_coord(t: float, p1: float, p2: float) -> float:
+	var u := 1.0 - t
+	return 3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t
+
+
+static func _result_bezier_slope(t: float, p1: float, p2: float) -> float:
+	var u := 1.0 - t
+	return 3.0 * u * u * p1 + 6.0 * u * t * (p2 - p1) \
+		+ 3.0 * t * t * (1.0 - p2)
+
+# 役种单列逐条入场。严格对齐参考 bundle:首项等待 700ms,后续每项再等
+# 700ms；普通役 260ms，8 番起重役 280ms。
+func _build_yaku_rows(panel: Control, yaku_names: Array) -> VBoxContainer:
+	var grid := VBoxContainer.new()
+	grid.name = "YakuList"
+	grid.position = Vector2(36, 160)
+	grid.size = Vector2(548, 210)
+	grid.add_theme_constant_override("separation", 0)
 	panel.add_child(grid)
-	var shown: Array = yaku_names.slice(0, 8)
+	var shown: Array = yaku_names
 	for i in range(shown.size()):
 		var item = shown[i]
 		if not (item is Dictionary):
@@ -454,123 +936,259 @@ func _build_yaku_rows(panel: Control, yaku_names: Array) -> void:
 		else:
 			suffix = "%d 飜" % int(item.get("han", 0))
 		var row := _make_yaku_row_label(nm, suffix)
+		var is_heavy := int(item.get("han", 0)) >= RESULT_HEAVY_HAN
+		var reveal_duration := RESULT_YAKU_HEAVY_DURATION \
+			if is_heavy else RESULT_YAKU_LIGHT_DURATION
+		row.set_meta("reference_heavy", is_heavy)
+		row.set_meta("reference_reveal_delay_ms",
+			int(round((i + 1) * RESULT_PHASE_INTERVAL * 1000.0)))
+		row.set_meta("reference_reveal_duration_ms",
+			int(round(reveal_duration * 1000.0)))
+		if is_heavy:
+			var row_labels := row.get_children().filter(
+				func(child: Node): return child is Label)
+			if row_labels.size() >= 3:
+				(row_labels[0] as Label).add_theme_color_override(
+					"font_color", Color("d9b65b"))
+				(row_labels[0] as Label).add_theme_font_size_override("font_size", 17)
+				(row_labels[2] as Label).add_theme_font_size_override("font_size", 18)
 		grid.add_child(row)
-		# 错峰淡入(0.08s/条)。注:Grid 接管子节点 position,只动 modulate。
+		# VBox 接管子节点 position；复刻 yakuRevealIn 的 opacity + scale。
 		row.modulate = Color(1, 1, 1, 0)
+		row.scale = Vector2(0.96, 0.96)
 		var tw := create_tween()
-		tw.tween_interval(0.12 + i * 0.08)
-		tw.tween_property(row, "modulate:a", 1.0, 0.22)
+		tw.tween_interval((i + 1) * RESULT_PHASE_INTERVAL)
+		tw.tween_property(row, "modulate:a", 1.0, reveal_duration) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(row, "scale", Vector2.ONE, reveal_duration) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 		var captured := row
 		var fin := func():
 			if is_instance_valid(captured):
 				captured.modulate = Color.WHITE
+				captured.scale = Vector2.ONE
 		_result_anim_tweens.append({"tween": tw, "finish": fin})
-	if yaku_names.size() > 8:
-		var more := Label.new()
-		more.text = "…等 %d 役" % yaku_names.size()
-		more.add_theme_font_size_override("font_size", 16)
-		more.add_theme_color_override("font_color", Color(0.8, 0.74, 0.5))
-		grid.add_child(more)
-
-
-# 雀魂式：结算面板前的全屏役名横幅（错峰飞入后淡出）。
-# yaku_names: [{name, han, yakuman_multiplier}, ...]
-func _play_yaku_banner(yaku_names: Array) -> void:
-	if yaku_names.is_empty() or not is_inside_tree():
-		return
-	var host := Control.new()
-	host.name = "YakuBanner"
-	host.set_anchors_preset(Control.PRESET_FULL_RECT)
-	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	host.z_index = 180
-	add_child(host)
-	var shown: Array = yaku_names.slice(0, 6)
-	var base_y: float = 280.0
-	for i in range(shown.size()):
-		var item = shown[i]
-		if not (item is Dictionary):
-			continue
-		var nm: String = String(item.get("name", ""))
-		if nm == "":
-			continue
-		var mul: int = int(item.get("yakuman_multiplier", 0))
-		var han: int = int(item.get("han", 0))
-		var text: String = nm
-		if mul > 0:
-			text = "%s  役満" % nm
-		elif han > 0:
-			text = "%s  %d飜" % [nm, han]
-		var lbl := Label.new()
-		lbl.text = text
-		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		lbl.position = Vector2(200, base_y + i * 36)
-		lbl.size = Vector2(880, 34)
-		lbl.add_theme_font_size_override("font_size", 28 if i == 0 else 22)
-		lbl.add_theme_color_override("font_color", Color(1.0, 0.94, 0.72))
-		lbl.add_theme_constant_override("outline_size", 6)
-		lbl.add_theme_color_override("font_outline_color", Color(0.55, 0.18, 0.12, 0.9))
-		lbl.add_theme_constant_override("shadow_offset_y", 2)
-		lbl.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.65))
-		lbl.modulate.a = 0.0
-		lbl.position.x = 260.0  # 从右滑入
-		host.add_child(lbl)
-		var tw := create_tween()
-		tw.tween_interval(0.05 + i * 0.10)
-		tw.tween_property(lbl, "modulate:a", 1.0, 0.18)
-		tw.parallel().tween_property(lbl, "position:x", 200.0, 0.22)\
-			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	var hold: float = 0.35 + mini(shown.size(), 6) * 0.10
-	await get_tree().create_timer(hold).timeout
-	if is_instance_valid(host):
-		var fade := create_tween()
-		fade.tween_property(host, "modulate:a", 0.0, 0.2)
-		await fade.finished
-		if is_instance_valid(host):
-			host.queue_free()
+	return grid
 
 
 static func _make_yaku_row_label(nm: String, suffix: String) -> Control:
 	var box := HBoxContainer.new()
-	box.custom_minimum_size = Vector2(256, 24)
+	box.custom_minimum_size = Vector2(548, 26)
 	box.add_theme_constant_override("separation", 8)
-	var bar := ColorRect.new()
-	bar.custom_minimum_size = Vector2(4, 20)
-	bar.color = Color(0.95, 0.78, 0.32)
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(bar)
-	var row := Label.new()
-	row.text = "%s　%s" % [nm, suffix]
-	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_theme_font_size_override("font_size", 18)
-	row.add_theme_color_override("font_color", Color(1, 0.92, 0.55))
-	box.add_child(row)
+	var name_label := Label.new()
+	name_label.text = nm
+	name_label.add_theme_font_size_override("font_size", 16)
+	name_label.add_theme_color_override("font_color", Color("f4ead2"))
+	box.add_child(name_label)
+	var dots := Label.new()
+	dots.text = "· · · · · · · · · · · · · · · · · · · ·"
+	dots.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dots.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	dots.add_theme_font_size_override("font_size", 16)
+	dots.add_theme_color_override("font_color", Color("d9b65b47"))
+	box.add_child(dots)
+	var fan := Label.new()
+	fan.text = suffix
+	fan.add_theme_font_size_override("font_size", 16)
+	fan.add_theme_color_override("font_color", Color("d9b65b"))
+	box.add_child(fan)
 	return box
 
-# 胜者得分大数字滚动(0→total,0.6s quad_out;金=玩家受益/红=玩家放铳)。
-func _build_rolling_score(panel: Control, total: int, is_up_for_player: bool) -> void:
-	var lbl := Label.new()
-	lbl.name = "RollingScore"
-	lbl.position = Vector2(48, 284)
-	lbl.size = Vector2(624, 34)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.add_theme_font_size_override("font_size", 30)
-	var color := Color(0.94, 0.84, 0.42) if is_up_for_player else Color(0.93, 0.42, 0.42)
-	lbl.add_theme_color_override("font_color", color)
-	lbl.add_theme_constant_override("shadow_offset_y", 2)
-	lbl.add_theme_color_override("font_shadow_color",
-		Color(color.r, color.g, color.b, 0.35))
-	lbl.text = "0 点"
-	panel.add_child(lbl)
-	var update := func(v: float):
-		if is_instance_valid(lbl):
-			lbl.text = "%d 点" % int(v)
+
+# 参考 bundle 的 bonus（庄家/宝牌/报听/自摸）共用一次 phase；这里接收已适配的
+# bonus 行，所有行在同一 260ms tween 内同时揭示。
+func _build_result_bonus_rows(panel: Control, bonus_rows: Array,
+		reveal_delay: float) -> VBoxContainer:
+	var list := VBoxContainer.new()
+	list.name = "BonusRows"
+	list.position = Vector2(36, 365)
+	list.size = Vector2(548, 60)
+	list.add_theme_constant_override("separation", 0)
+	panel.add_child(list)
+	var rows: Array[Control] = []
+	for item in bonus_rows:
+		if not (item is Dictionary):
+			continue
+		var row := _make_yaku_row_label(String(item.get("name", "")),
+			"+%d 飜" % int(item.get("han", 0)))
+		row.modulate = Color(1, 1, 1, 0)
+		row.scale = Vector2(0.96, 0.96)
+		row.set_meta("reference_reveal_delay_ms",
+			int(round(reveal_delay * 1000.0)))
+		row.set_meta("reference_reveal_duration_ms",
+			int(round(RESULT_YAKU_LIGHT_DURATION * 1000.0)))
+		list.add_child(row)
+		rows.append(row)
+	if rows.is_empty():
+		return list
+	var update := func(progress: float) -> void:
+		for row in rows:
+			if is_instance_valid(row):
+				row.modulate.a = clampf(progress, 0.0, 1.0)
+				row.scale = Vector2.ONE * lerpf(0.96, 1.0, progress)
 	var tw := create_tween()
-	tw.tween_method(update, 0.0, float(total), 0.6) \
-		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	var fin := func():
-		if is_instance_valid(lbl):
-			lbl.text = "%d 点" % total
-	_result_anim_tweens.append({"tween": tw, "finish": fin})
+	tw.tween_interval(reveal_delay)
+	tw.tween_method(update, 0.0, 1.0, RESULT_YAKU_LIGHT_DURATION) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var finish := func() -> void:
+		for row in rows:
+			if is_instance_valid(row):
+				row.modulate = Color.WHITE
+				row.scale = Vector2.ONE
+	_result_anim_tweens.append({"tween": tw, "finish": finish})
+	return list
+
+
+# pP() 的 phase 计时直译：每个役 700ms，bonus（若有）只占一个 700ms
+# phase，随后 total 再额外等待 1000ms。
+func _result_total_reveal_delay(yaku_count: int, has_bonus: bool) -> float:
+	var phase_count := maxi(yaku_count, 0) + (1 if has_bonus else 0)
+	return phase_count * RESULT_PHASE_INTERVAL + RESULT_TOTAL_WAIT
+
+
+# totalBarReveal：等待 phase 状态机完成后，用 420ms 入场。
+func _build_result_total_bar(panel: Control, total_han: int, score: int,
+		reveal_delay: float) -> Panel:
+	var bar := Panel.new()
+	bar.name = "ResultTotalBar"
+	bar.position = Vector2(36, 394)
+	bar.size = Vector2(548, 62)
+	bar.pivot_offset = bar.size / 2.0
+	bar.modulate.a = 0.0
+	bar.scale = Vector2.ONE * 0.92
+	bar.set_meta("reference_reveal_delay_ms",
+		int(round(reveal_delay * 1000.0)))
+	bar.set_meta("reference_reveal_duration_ms",
+		int(round(RESULT_TOTAL_DURATION * 1000.0)))
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("d9b65b26")
+	style.border_color = Color("d9b65b73")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(12)
+	bar.add_theme_stylebox_override("panel", style)
+	panel.add_child(bar)
+	var total_label := Label.new()
+	total_label.name = "TotalHan"
+	total_label.position = Vector2(22, 10)
+	total_label.size = Vector2(245, 42)
+	total_label.text = "合计  %d 番" % total_han
+	total_label.add_theme_font_size_override("font_size", 20)
+	total_label.add_theme_color_override("font_color", Color("f4ead2"))
+	bar.add_child(total_label)
+	var score_label := Label.new()
+	score_label.name = "TotalScore"
+	score_label.position = Vector2(281, 10)
+	score_label.size = Vector2(245, 42)
+	score_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	score_label.text = "得分  %d" % score
+	score_label.add_theme_font_size_override("font_size", 20)
+	score_label.add_theme_color_override("font_color", Color("d9b65b"))
+	bar.add_child(score_label)
+	var update := func(progress: float) -> void:
+		if is_instance_valid(bar):
+			bar.modulate.a = clampf(progress, 0.0, 1.0)
+			bar.scale = Vector2.ONE * lerpf(0.92, 1.0, progress)
+	var tw := create_tween()
+	tw.tween_interval(reveal_delay)
+	tw.tween_method(update, 0.0, 1.0, RESULT_TOTAL_DURATION) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var finish := func() -> void:
+		if is_instance_valid(bar):
+			bar.modulate = Color.WHITE
+			bar.scale = Vector2.ONE
+	_result_anim_tweens.append({"tween": tw, "finish": finish})
+	return bar
+
+
+# gP() 的四家滚分直译：final 为结算后点数，payment 为本局有符号增减，
+# before = final - payment；顺序从庄家起，1500ms cubic-out 同步滚动。
+func _build_score_delta_list(panel: Control, final_scores: Array,
+		payments: Array, dealer_seat: int) -> VBoxContainer:
+	var list := VBoxContainer.new()
+	list.name = "ScoreDeltaList"
+	list.position = Vector2(36, 106)
+	list.size = Vector2(548, 260)
+	list.add_theme_constant_override("separation", 6)
+	list.set_meta("reference_roll_duration_ms",
+		int(round(RESULT_SCORE_ROLL_DURATION * 1000.0)))
+	panel.add_child(list)
+	var row_states: Array = []
+	for offset in range(4):
+		var seat_id := (dealer_seat + offset) % 4
+		var final_score := int(final_scores[seat_id])
+		var payment := int(payments[seat_id])
+		var before_score := final_score - payment
+		var row := HBoxContainer.new()
+		row.name = "ScoreDeltaSeat%d" % seat_id
+		row.custom_minimum_size = Vector2(548, 48)
+		row.set_meta("seat_id", seat_id)
+		row.add_theme_constant_override("separation", 10)
+		list.add_child(row)
+		var seat_label := Label.new()
+		seat_label.name = "SeatName"
+		seat_label.custom_minimum_size = Vector2(96, 48)
+		seat_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		seat_label.text = ("你" if seat_id == 0 else "AI %d" % seat_id) \
+			+ ("  庄" if seat_id == dealer_seat else "")
+		seat_label.add_theme_font_size_override("font_size", 16)
+		seat_label.add_theme_color_override("font_color", Color("f4ead2"))
+		row.add_child(seat_label)
+		var before_label := Label.new()
+		before_label.name = "Before"
+		before_label.custom_minimum_size = Vector2(82, 48)
+		before_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		before_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		before_label.text = str(before_score)
+		before_label.add_theme_color_override("font_color", Color("f4ead299"))
+		row.add_child(before_label)
+		var arrow := Label.new()
+		arrow.text = "→"
+		arrow.custom_minimum_size = Vector2(24, 48)
+		arrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		arrow.add_theme_color_override("font_color", Color("d9b65b8c"))
+		row.add_child(arrow)
+		var after_label := Label.new()
+		after_label.name = "After"
+		after_label.custom_minimum_size = Vector2(92, 48)
+		after_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		after_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		after_label.text = str(before_score)
+		after_label.add_theme_color_override("font_color", Color("f4ead2"))
+		row.add_child(after_label)
+		var delta_label := Label.new()
+		delta_label.name = "Delta"
+		delta_label.custom_minimum_size = Vector2(92, 48)
+		delta_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		delta_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		delta_label.text = "0"
+		delta_label.add_theme_color_override("font_color",
+			Color("d9b65b") if payment > 0 else Color("ed6b6b"))
+		row.add_child(delta_label)
+		row_states.append({
+			"after": after_label,
+			"delta": delta_label,
+			"before": before_score,
+			"payment": payment,
+		})
+	var update := func(progress: float) -> void:
+		for state in row_states:
+			var after_label := state["after"] as Label
+			var delta_label := state["delta"] as Label
+			if not is_instance_valid(after_label) or not is_instance_valid(delta_label):
+				continue
+			var payment := int(state["payment"])
+			var current_payment := int(round(payment * progress))
+			after_label.text = str(int(state["before"]) + current_payment)
+			delta_label.text = "+%d" % current_payment \
+				if current_payment > 0 else str(current_payment)
+	var tw := create_tween()
+	tw.tween_method(update, 0.0, 1.0, RESULT_SCORE_ROLL_DURATION) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	var finish := func() -> void:
+		update.call(1.0)
+	_result_anim_tweens.append({"tween": tw, "finish": finish})
+	return list
 
 # 跳过结算动画到终态。有动画在播返 true(本次点击被消费),否则 false。
 func _skip_result_animations() -> bool:
@@ -586,17 +1204,17 @@ func _skip_result_animations() -> bool:
 	_result_anim_tweens.clear()
 	return any_running
 
-# 在 overlay panel 内画胡牌 14 张:13 张暗手升序 + 间隔 + winning tile(金调高亮)。
-# 副露不画(简化;副露已经在桌面 MeldArea 上看过)。
+# 在 overlay panel 内画胡牌：暗手升序 + 间隔 + winning tile（金调高亮）+
+# Fl(flat:true) 副露；modal__win-hand 内 tile--sm 覆盖为 34×45。
 # 自摸:seat.hand 14 张含 winning_tile → pop 到右侧;荣和:seat.hand 13 张,
 # winning tile 来自他家,只需 append。
 func _render_winning_hand_strip(parent: Control, winner_seat: int,
-		winning_tile_id: int, is_tsumo: bool, y_offset: float) -> void:
+		winning_tile_id: int, is_tsumo: bool, y_offset: float) -> Control:
 	if _bc == null or _bc.state == null:
-		return
+		return null
 	var winner: Seat = _bc.state.seats[winner_seat]
 	if winner == null:
-		return
+		return null
 	# 保留 is_red_dora：用 Tile 列表而非 to_id_array
 	var concealed: Array = []  # Array[Tile]
 	for t in winner.hand._tiles:
@@ -612,40 +1230,45 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 		# 荣和：winning tile 不在手牌；若事件 extra 带 red 以后可扩展
 		win_red = false
 	concealed.sort_custom(func(a, b): return a.id < b.id)
-	# HBox 居中,1 px 牌间隙
+	# modal__win-hand：手牌组与 meld 组 16px；手牌组内部 2px。
 	var strip := HBoxContainer.new()
+	strip.name = "WinningHand"
 	strip.position = Vector2(0, y_offset)
-	strip.size = Vector2(720, 56)
+	strip.size = Vector2(620, 56)
 	strip.alignment = BoxContainer.ALIGNMENT_CENTER
-	# 1 px 紧贴 — 胡牌 14 张牌展示行传统紧贴,**不要**改用 DT.GAP_TIGHT(8)
-	# 否则 14 张牌 + 13 个 8px 间隔总宽超 720 容器宽,溢出。
-	strip.add_theme_constant_override("separation", 1)
+	strip.add_theme_constant_override("separation", 16)
 	parent.add_child(strip)
+	var win_tiles := HBoxContainer.new()
+	win_tiles.name = "WinningHandTiles"
+	win_tiles.add_theme_constant_override("separation", 2)
+	win_tiles.size_flags_vertical = Control.SIZE_SHRINK_END
+	strip.add_child(win_tiles)
 	for t in concealed:
-		strip.add_child(_make_overlay_tile(t.id, false, t.is_red_dora))
+		win_tiles.add_child(_make_overlay_tile(t.id, false, t.is_red_dora))
 	# 暗手与 winning tile 之间留 10 px gap
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(10, 56)
-	strip.add_child(spacer)
-	strip.add_child(_make_overlay_tile(winning_tile_id, true, win_red))
-	# 副露(吃/碰/杠)展示在最右,每个 meld 内 1 px 间隔、meld 间 8 px gap
-	for meld in winner.melds:
-		var meld_gap := Control.new()
-		meld_gap.custom_minimum_size = Vector2(8, 56)
-		strip.add_child(meld_gap)
-		for t in meld.tiles:
-			if t != null:
-				strip.add_child(_make_overlay_tile(t.id, false, t.is_red_dora))
+	spacer.custom_minimum_size = Vector2(10, RESULT_WIN_TILE_SM_SIZE.y)
+	win_tiles.add_child(spacer)
+	win_tiles.add_child(_make_overlay_tile(winning_tile_id, true, win_red))
+	if not winner.melds.is_empty():
+		strip.add_child(_build_flat_result_melds(
+			winner.melds, RESULT_WIN_TILE_SM_SIZE, "FlatMelds"))
+	return strip
 
 
-# 单张小牌(28×40),winning=true 给金色描边 Panel 包装突出。
+# 参考 modal__win-hand 单张 34×45；winning=true 给金色描边包装突出。
 func _make_overlay_tile(tile_id: int, is_winning: bool, is_red_dora: bool = false) -> Control:
-	const TW := 28
-	const TH := 40
+	return _make_result_tile(tile_id, is_winning, is_red_dora,
+		RESULT_WIN_TILE_SM_SIZE)
+
+
+# 通用结果牌节点；draw 传 30×40，modal__win-hand 传 34×45。
+func _make_result_tile(tile_id: int, is_winning: bool, is_red_dora: bool,
+		tile_size: Vector2) -> Control:
 	var key: String = CardTileBack.tile_id_to_atlas_key(tile_id, is_red_dora)
 	var tr := TextureRect.new()
-	tr.custom_minimum_size = Vector2(TW, TH)
-	tr.size = Vector2(TW, TH)
+	tr.custom_minimum_size = tile_size
+	tr.size = tile_size
 	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	tr.stretch_mode = TextureRect.STRETCH_SCALE
 	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -657,8 +1280,8 @@ func _make_overlay_tile(tile_id: int, is_winning: bool, is_red_dora: bool = fals
 		return tr
 	# winning tile:套一层 Panel 加金边突出
 	var wrap := Panel.new()
-	wrap.custom_minimum_size = Vector2(TW + 4, TH + 4)
-	wrap.size = Vector2(TW + 4, TH + 4)
+	wrap.custom_minimum_size = tile_size + Vector2(4, 4)
+	wrap.size = tile_size + Vector2(4, 4)
 	wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0, 0, 0, 0)
@@ -733,6 +1356,15 @@ static func _score_tier_label(han: int, _fu: int, yakuman_mul: int) -> String:
 	# 4 飜 40 符以上 / 3 飜 70 符以上 也是満貫,简化忽略
 	return "%d 飜 胡牌" % han
 
+
+# 公开 bundle 仅在确认后的和牌状态挂载 win-announce；显式字段优先级固定。
+static func _confirmed_win_announce_kind(extra: Dictionary) -> StringName:
+	if bool(extra.get("is_tsumo", false)):
+		return &"tsumo"
+	if bool(extra.get("is_chankan", false)):
+		return &"chankan"
+	return &"ron"
+
 var _last_event_count: int = 0
 var _polling_active: bool = false
 var _toast_label: Label = null
@@ -750,6 +1382,16 @@ func set_run_hud(hp: int, max_hp: int, gold: int, chapter: int) -> void:
 		return
 	_run_hud_label.text = "♥ %d/%d    金 %d    第 %d 章" % [hp, max_hp, gold, chapter]
 	_run_hud_label.visible = true
+
+
+# RunFlow 在 PlayableTable 入树后注入已选角色；只复用仓库现有 portrait，
+# 不为缺素材的角色伪造头像。实验 3D 路径保持 no-op。
+func set_player_persona(display_name: String, portrait_path: String) -> void:
+	if not _table is FourPlayerTable or _table.seat_panels.is_empty():
+		return
+	var player := _table.seat_panels[0] as SeatPanel
+	if player != null:
+		player.set_ai_persona(display_name, "", portrait_path)
 
 
 # 注入当前 Run 的能力/遗物/消耗品 id，渲染顶栏芯片条。
@@ -816,16 +1458,8 @@ func _show_hand_start_splash(state) -> void:
 	await splash.finished
 
 
-# 胡牌时 burst 粒子 + 屏幕震动。按 han / yakuman 分级 tier。
-# 玩家胡 tier 不变(都好看);AI 胡用 LIGHT 让玩家不觉得过度奖励对手。
-# 高光时刻的"重量感"效果 — 立直/Dora 翻牌等不到胡牌的中间事件,加屏震
-# + 白闪 + 短 hitstop,让玩家感到"刚才发生了大事"。WIN_DECLARED 的特写
-# 走专属的 _play_win_effects (粒子+大屏震)。
-#
-# 立直: LIGHT 屏震(0.15s 4px) + 白闪 0.2s,让玩家立刻感知到"对手立直了
-# 我得防"。即便走 toast 路径,1.5s 文字 + 屏震 双通道更难错过。
-# DORA 翻牌: 同立直,提示"新 dora 出现"。
-# RINSHAN_DRAW: 短闪,呼应"岭上的紧张感"。
+# 公开 bundle 的事件演出：鸣牌/立直走局部 CallAnnounce；特殊役只在
+# WIN_DECLARED 确认后从 yaku_names 挂 MomentBand。候选态不闪屏、不震桌。
 func _handle_event_dramatic(ev: BattleEvent) -> void:
 	if ev == null:
 		return
@@ -838,54 +1472,30 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			if kind in [&"chi", &"pon", &"minkan", &"ankan", &"added_kan"]:
 				_play_call_announce(kind, int(ev.actor_seat))
 		&"RIICHI_DECLARED":
-			var shake := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
-			shake.start()
-			_flash_screen(0.18, Color(1, 1, 1, 0.35))
 			_play_call_announce(&"riichi", int(ev.actor_seat))
 			# AI 立直 → 该 seat 立绘转蓝调"决意"。actor_seat 越界 / seat 0 无立绘
 			# 时 set_emote 是 no-op,不会崩。
 			_set_seat_emote(int(ev.actor_seat), "riichi")
 			_say_for_seat(int(ev.actor_seat), "riichi")
-		&"HAITEI", &"HOUTEI":
-			# 海底/河底:罕见,玩家可能整个 run 见 1-2 次。补 LIGHT 屏震 +
-			# 蓝白闪让它"被注意到"——单纯 toast 容易错过。WIN_DECLARED 紧
-			# 跟其后会再播胡牌特效,不冲突。
-			var shake2 := ScreenShake.for_tier(self, WinBurst.Tier.LIGHT)
-			shake2.start()
-			_flash_screen(0.22, Color(0.7, 0.85, 1.0, 0.45))
-		&"ABORTIVE_DRAW":
-			# 途中流局(四风连打/四家立直/九種九牌/三家和了等):红闪 + 书法大字。
-			_flash_screen(0.3, Color(1.0, 0.7, 0.7, 0.3))
-			var reason := String(ev.extra.get("reason", ""))
-			if reason == "kyuusyu_kyuuhai":
-				_play_call_announce(&"kyuusyu", int(ev.actor_seat))
-			else:
-				_play_call_announce(&"ryuukyoku", int(ev.actor_seat) if int(ev.actor_seat) >= 0 else 0)
 		&"TSUMO_DECLARED", &"RON_DECLARED":
-			# 胡牌宣告大字(T1)。役満升级版在 WIN_DECLARED 分支补刀。
-			_play_call_announce(
-				&"tsumo" if ev.type == &"TSUMO_DECLARED" else &"ron",
-				int(ev.actor_seat))
+			# 候选自摸/荣和仍可能被技能取消；确认前只保留和牌张提示。
 			# T2:玩家自摸时和牌张心跳脉冲。必须在 rebind 之后标
 			# (rebind 全量重建手牌行会清掉),挂 pending 由 polling loop 应用。
 			if ev.type == &"TSUMO_DECLARED" and int(ev.actor_seat) == 0 \
 					and ev.tile_instance != null and ev.tile_instance.tile != null:
 				_pending_win_tile_id = ev.tile_instance.tile.id
-			# 胜者立绘金调,其他 3 家(含玩家)灰调"被胡失落"。RON 时被点炮的家
-			# (deal_in_seat)单独更愁,可以加深色;v1 三家都用 upset 已足够。
-			_set_seat_emote(int(ev.actor_seat), "winning")
-			_say_for_seat(int(ev.actor_seat), "winning")
+		&"WIN_DECLARED":
+			var winner_seat := int(ev.actor_seat)
+			_play_call_announce(
+				_confirmed_win_announce_kind(ev.extra), winner_seat)
+			_play_confirmed_moment_band(ev.extra.get("yaku_names", []))
+			# 只有确认态才切人物与台词；候选态可能被技能取消。
+			_set_seat_emote(winner_seat, "winning")
+			_say_for_seat(winner_seat, "winning")
 			for s in [0, 1, 2, 3]:
-				if s != int(ev.actor_seat):
+				if s != winner_seat:
 					_set_seat_emote(s, "upset")
 					_say_for_seat(s, "upset")
-		&"WIN_DECLARED":
-			# 役満:在 tsumo/ron 宣告后 0.5s 追加「役満」更大字号演出
-			if int(ev.extra.get("yakuman_multiplier", 0)) >= 1:
-				var seat_c := int(ev.actor_seat)
-				get_tree().create_timer(0.5).timeout.connect(func():
-					if is_inside_tree():
-						_play_call_announce(&"yakuman", seat_c))
 		&"GAME_BEGIN":
 			# 新局开始 → 4 家 emote 重置 normal；清掉上局结算翻牌
 			for s in [0, 1, 2, 3]:
@@ -931,6 +1541,126 @@ func _play_call_announce(kind: StringName, seat_id: int) -> void:
 	CallAnnounce.play(self, kind, seat_id, avatar)
 
 
+static func _reference_moment_from_yaku(yaku_names: Array) -> Dictionary:
+	for item in yaku_names:
+		if not item is Dictionary:
+			continue
+		var text: String = String(item.get("name", ""))
+		if REFERENCE_MOMENT_VARIANTS.has(text):
+			return {"text": text, "variant": REFERENCE_MOMENT_VARIANTS[text]}
+	return {}
+
+
+func _play_confirmed_moment_band(yaku_names: Array) -> void:
+	var moment := _reference_moment_from_yaku(yaku_names)
+	if moment.is_empty():
+		return
+	var previous := get_node_or_null("MomentBand")
+	if previous != null:
+		remove_child(previous)
+		previous.queue_free()
+
+	var variant := StringName(moment["variant"])
+	var band := Control.new()
+	band.name = "MomentBand"
+	band.position = Vector2(0, MOMENT_BAND_Y)
+	band.size = Vector2(TableLayout.VIEW_W, MOMENT_BAND_H)
+	band.clip_contents = true
+	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.z_index = 200
+	band.set_meta("variant", variant)
+	add_child(band)
+
+	var stripe := TextureRect.new()
+	stripe.name = "Stripe"
+	stripe.position = Vector2(-MOMENT_BAND_TRAVEL, 0)
+	stripe.size = band.size
+	stripe.texture = _moment_band_gradient(variant)
+	stripe.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	stripe.stretch_mode = TextureRect.STRETCH_SCALE
+	stripe.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	band.add_child(stripe)
+
+	var top_line := ColorRect.new()
+	top_line.name = "TopLine"
+	top_line.color = Color("ffffff1f")
+	top_line.size = Vector2(TableLayout.VIEW_W, 1)
+	top_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stripe.add_child(top_line)
+	var bottom_line := ColorRect.new()
+	bottom_line.name = "BottomLine"
+	bottom_line.color = Color("0000004d")
+	bottom_line.position = Vector2(0, MOMENT_BAND_H - 1)
+	bottom_line.size = Vector2(TableLayout.VIEW_W, 1)
+	bottom_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stripe.add_child(bottom_line)
+
+	var label := Label.new()
+	label.name = "Text"
+	label.text = String(moment["text"])
+	label.size = stripe.size
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var label_settings := LabelSettings.new()
+	var system_font := SystemFont.new()
+	system_font.font_names = PackedStringArray([
+		"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
+		"Source Han Sans SC", "Noto Sans SC"])
+	system_font.font_weight = 900
+	label_settings.font = system_font
+	label_settings.font_size = 92
+	label_settings.font_color = Color("ffd34d")
+	label_settings.outline_size = 2
+	label_settings.outline_color = Color("6e370080")
+	label_settings.shadow_color = Color("00000080")
+	label_settings.shadow_size = 8
+	label_settings.shadow_offset = Vector2(0, 3)
+	label.label_settings = label_settings
+	stripe.add_child(label)
+
+	var tween := create_tween()
+	tween.tween_property(stripe, "position", Vector2.ZERO,
+		MOMENT_BAND_ENTER_TIME).set_custom_interpolator(
+		func(progress: float) -> float:
+			return CallAnnounce.sample_cubic_bezier(
+				progress, 0.2, 0.9, 0.3, 1.0))
+	tween.tween_interval(MOMENT_BAND_EXIT_DELAY - MOMENT_BAND_ENTER_TIME)
+	tween.tween_property(stripe, "position",
+		Vector2(MOMENT_BAND_TRAVEL, 0), MOMENT_BAND_EXIT_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(band.queue_free)
+
+
+static func _moment_band_gradient(variant: StringName) -> GradientTexture2D:
+	var edge := Color("141a16c7")
+	var center := Color("141a16e6")
+	match variant:
+		&"haitei", &"houtei":
+			edge = Color("162c3cdb")
+			center = Color("143246eb")
+		&"rinshan":
+			edge = Color("461e12db")
+			center = Color("5c2412eb")
+		&"chankan":
+			edge = Color("4e141edb")
+			center = Color("621622eb")
+	var gradient := Gradient.new()
+	gradient.offsets = PackedFloat32Array([0.0, 0.16, 0.5, 0.84, 1.0])
+	gradient.colors = PackedColorArray([
+		Color.TRANSPARENT, edge, center, edge, Color.TRANSPARENT])
+	gradient.interpolation_mode = Gradient.GRADIENT_INTERPOLATE_LINEAR
+	gradient.interpolation_color_space = Gradient.GRADIENT_COLOR_SPACE_SRGB
+	var texture := GradientTexture2D.new()
+	texture.width = int(TableLayout.VIEW_W)
+	texture.height = int(MOMENT_BAND_H)
+	texture.fill = GradientTexture2D.FILL_LINEAR
+	texture.fill_from = Vector2(0, 0.44)
+	texture.fill_to = Vector2(1, 0.56)
+	texture.gradient = gradient
+	return texture
+
+
 func _set_seat_emote(seat_id: int, emote: String) -> void:
 	if _table == null or seat_id < 0 or seat_id >= _table.seat_panels.size():
 		return
@@ -945,170 +1675,6 @@ func _say_for_seat(seat_id: int, event_kind: String) -> void:
 	var sp = _table.seat_panels[seat_id]
 	if sp and sp.has_method("say_for_event"):
 		sp.say_for_event(event_kind)
-
-
-# 全屏白闪 — 短瞬覆盖全屏的半透明 ColorRect, tween alpha 1→0。
-# 不阻塞其他事件,挂 self 顶层 z_index 让胡牌粒子之类不被遮。
-# 弹本局牌谱回放 panel —— ScrollContainer 内显示所有关键 events 的中文摘要,
-# 跟 PVP 战报一样让玩家可复盘 + 截图分享。父 overlay 仍在底,玩家关闭牌谱
-# 就回到 hand_result_overlay。
-func _show_replay_log(parent_overlay: Control) -> void:
-	if _bc == null or _bc.events.is_empty():
-		return
-	var log_overlay := Control.new()
-	log_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
-	log_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
-	parent_overlay.add_child(log_overlay)
-	var bg := ColorRect.new()
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-	bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.92)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	log_overlay.add_child(bg)
-	var panel := Panel.new()
-	panel.position = Vector2(160, 60)
-	panel.size = Vector2(960, 660)
-	log_overlay.add_child(panel)
-	DT.popin(panel)
-	var title := Label.new()
-	title.text = "📜 本局牌谱"
-	title.position = Vector2(0, 16)
-	title.size = Vector2(960, 40)
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
-	title.add_theme_color_override("font_color", DT.TEXT_TITLE)
-	panel.add_child(title)
-	# Scroll 内放一长 Label。events 数十~百条,纯文本足够。
-	var scroll := ScrollContainer.new()
-	scroll.position = Vector2(24, 72)
-	scroll.size = Vector2(912, 520)
-	panel.add_child(scroll)
-	var log_label := Label.new()
-	log_label.text = _format_event_log()
-	log_label.add_theme_font_size_override("font_size", DT.FONT_CAPTION)
-	log_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
-	log_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	log_label.custom_minimum_size = Vector2(880, 0)
-	scroll.add_child(log_label)
-	# 关闭按钮
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.position = Vector2(400, 608)
-	close_btn.custom_minimum_size = Vector2(160, 40)
-	close_btn.pressed.connect(func(): log_overlay.queue_free())
-	panel.add_child(close_btn)
-
-
-# 把 _bc.events 转中文牌谱字串。每行一条事件,带 seat 名 + 牌名(若有)。
-# 过滤噪音事件(PLAYER_ACTION 内部 kind="discard"/"draw" 已被 TILE_DRAWN/
-# DISCARDED 表达,不重复显示)。
-func _format_event_log() -> String:
-	var lines: Array[String] = []
-	var hand_no: int = 1
-	for ev in _bc.events:
-		var line: String = _format_one_event(ev, hand_no)
-		if line == "":
-			continue
-		if ev.type == &"GAME_BEGIN":
-			hand_no += 1
-		lines.append(line)
-	return "\n".join(lines)
-
-
-func _format_one_event(ev: BattleEvent, _hand_no: int) -> String:
-	if ev == null:
-		return ""
-	var who: String = _seat_short(ev.actor_seat)
-	var tile_name: String = ""
-	if ev.tile_instance != null:
-		tile_name = CardTileBack.tile_short_name(ev.tile_instance.id)
-	match ev.type:
-		&"GAME_BEGIN":
-			return "\n— 局开始 (庄家 %s) —" % who
-		&"TILE_DRAWN":
-			return ""  # 太密,不显
-		&"TILE_DISCARDED":
-			return "  %s 弃 %s" % [who, tile_name]
-		&"RIICHI_DECLARED":
-			return "  ⚡ %s 立直!" % who
-		&"TSUMO_DECLARED":
-			return "  🎯 %s 自摸 %s!" % [who, tile_name]
-		&"RON_DECLARED":
-			var ds: int = int(ev.extra.get("discarder_seat", -1))
-			return "  🎯 %s 荣胡 %s (点炮: %s)" % [who, tile_name, _seat_short(ds)]
-		&"WIN_DECLARED":
-			var han: int = int(ev.extra.get("han", 0))
-			var fu: int = int(ev.extra.get("fu", 0))
-			var ym: int = int(ev.extra.get("yakuman_multiplier", 0))
-			if ym > 0:
-				return "    ⭐ 役満%s!" % ("" if ym == 1 else " x%d" % ym)
-			return "    %d 飜 %d 符" % [han, fu]
-		&"EXHAUSTIVE_DRAW":
-			return "  — 流局 —"
-		&"ABORTIVE_DRAW":
-			var reason: String = String(ev.extra.get("reason", ""))
-			return "  — 途中流局 (%s) —" % reason
-		&"NAGASHI_MANGAN":
-			return "  ✨ %s 流し満貫!" % who
-		&"HAITEI":
-			return "  🌊 海底捞月!"
-		&"HOUTEI":
-			return "  🌊 河底捞鱼!"
-		&"PLAYER_ACTION":
-			var kind: String = String(ev.extra.get("kind", ""))
-			match kind:
-				"chi": return "  %s 吃" % who
-				"pon": return "  %s 碰" % who
-				"minkan", "ankan", "added_kan": return "  %s 杠" % who
-				"riichi": return ""  # RIICHI_DECLARED 已显
-			return ""
-		&"SKILL_TRIGGERED":
-			var skill: String = String(ev.extra.get("skill_name", ""))
-			return "    ⚡ 技能 %s (%s)" % [skill, who]
-	return ""
-
-
-func _flash_screen(duration: float, color: Color) -> void:
-	var flash := ColorRect.new()
-	flash.color = color
-	flash.set_anchors_preset(Control.PRESET_FULL_RECT)
-	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	flash.z_index = 1000
-	add_child(flash)
-	var tw := create_tween()
-	tw.tween_property(flash, "color:a", 0.0, duration).set_ease(Tween.EASE_OUT)
-	tw.tween_callback(flash.queue_free)
-
-
-func _play_win_effects(win_event: BattleEvent) -> void:
-	var tier := _win_tier(win_event)
-	# Hitstop:胡牌前 0.12s 全屏微暗 + 白闪,模拟"瞬间空气凝固"。tier 越高
-	# 闪越亮(役満到 0.65 alpha);玩家有"刚才那一下不简单"的体感。
-	var flash_alpha: float = 0.35 + 0.10 * tier  # LIGHT=0.35 / YAKUMAN=0.65
-	_flash_screen(0.5, Color(1, 1, 1, flash_alpha))
-	# 粒子 — 挂 self(PlayableTable),坐标取屏幕中心
-	var burst := WinBurst.new()
-	burst.position = Vector2(640, 400)
-	add_child(burst)
-	burst.play(tier)
-	# 屏幕震动 — 抖 self.position
-	var shake := ScreenShake.for_tier(self, tier)
-	shake.start()
-
-
-# 决定胡牌特效层级:役満 / 倍満+(11飜+) / 跳満+(6飜+) / 普通
-func _win_tier(win_event: BattleEvent) -> int:
-	if win_event == null:
-		return WinBurst.Tier.LIGHT
-	var yakuman_mul: int = int(win_event.extra.get("yakuman_multiplier", 0))
-	var han: int = int(win_event.extra.get("han", 0))
-	# 玩家胡 vs AI 胡:同样 tier(AI 胡也是表演)
-	if yakuman_mul >= 1:
-		return WinBurst.Tier.YAKUMAN
-	if han >= 11:
-		return WinBurst.Tier.HEAVY  # 三倍満
-	if han >= 6:
-		return WinBurst.Tier.MEDIUM  # 跳満/倍満
-	return WinBurst.Tier.LIGHT
 
 
 func _play_event_sfx(ev: BattleEvent) -> void:
@@ -1194,10 +1760,6 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 				"suukantsu_sanra": return "途中流局 · 四杠散了"
 				"sancha_houra": return "途中流局 · 三家和了"
 				_: return "途中流局"
-		&"HAITEI":
-			return "海底捞月!"
-		&"HOUTEI":
-			return "河底捞鱼!"
 		&"GAME_BEGIN":
 			return "开局"
 		&"SKILL_TRIGGERED":

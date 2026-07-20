@@ -368,6 +368,7 @@ func _on_run_won() -> void:
 func _run_battle_node(node_ref: NodeRef) -> void:
 	var table: PlayableTable = PLAYABLE_TABLE.instantiate()
 	_swap_panel(table)
+	_apply_player_persona_to_table(table)
 	var node_seed: int = _run_state.run_seed * 100 + node_ref.index
 	var boss_id: StringName = &""
 	if node_ref.kind == NodeKind.Kind.BOSS:
@@ -454,6 +455,18 @@ func _player_ability_ids() -> Array:
 		if a != null:
 			ids.append(a.id)
 	return ids
+
+
+# 参考桌四家都有角色卡；玩家位直接复用 Run 已选角色的仓库内 portrait。
+# portrait_path 为空时 SeatPanel 保持无头像，不猜测或替换素材。
+func _apply_player_persona_to_table(table: PlayableTable) -> void:
+	if table == null or _run_state == null \
+			or _run_state.selected_character_id == &"":
+		return
+	var character := CharacterPool.find(_run_state.selected_character_id)
+	if character == null:
+		return
+	table.set_player_persona(character.display_name, character.portrait_path)
 
 func _player_tile_variants() -> Dictionary:
 	if _run_state == null or _run_state.player_deck == null:
@@ -597,7 +610,7 @@ static func _gacha_reject_reason(result: GachaResult) -> String:
 func _swap_panel(new_panel: Control) -> void:
 	if _current_panel:
 		_current_panel.queue_free()
-	# PlayableTable 是完整的 1280×800 游戏视图,自带顶栏 + 桌面 + 手牌 + 操作栏。
+	# PlayableTable 是完整的 1600×900 游戏视图,自带顶栏 + 桌面 + 手牌 + 操作栏。
 	# 战斗时**全屏铺满不缩放**,并隐藏 run HUD —— 否则 run HUD(顶 56px)与
 	# PlayableTable 自己的顶栏叠成双栏,桌面被压小、四周留黑边(玩家反馈
 	# "显示不全")。HP/金币改由 PlayableTable 顶栏承载(set_run_hud)。
