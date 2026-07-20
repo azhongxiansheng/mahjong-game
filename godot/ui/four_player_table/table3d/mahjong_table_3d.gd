@@ -10,15 +10,18 @@ signal hand_tile_hover(tile_id: int, entered: bool)
 
 const TABLE_W: float = 2.4
 const TABLE_D: float = 2.4
-const WALL_RADIUS: float = 0.68
-const WALL_GAP: float = 0.078
-const PLATE_HALF: float = 0.18
-const WALL_STACKS_PER_SIDE_MAX: int = 6
+# 布局半径（由内到外）：中心盘 → 河 → 牌山示意 → 手牌
+const PLATE_HALF: float = 0.16
+const RIVER_INNER: float = 0.44
+const WALL_RADIUS: float = 0.82
+const WALL_GAP: float = 0.080
+const WALL_STACKS_PER_SIDE_MAX: int = 5
 const SHOW_LIVE_WALL: bool = true
+const SCORE_LABEL_R: float = 0.58
 # 自家手牌相对桌面的放大（雀魂：手牌占屏底大特写）
 const HAND_SCALE: float = 1.65
-const HAND_Z: float = 1.08
-# 绕 +X 正转：+Y 牌面倾向相机（在 +Z 侧）；负角会把牌面背对相机只见白边+绿底
+const HAND_Z: float = 1.10
+# 绕 +X 正转：+Y 牌面倾向相机
 const HAND_TILT_DEG: float = 48.0
 
 var seat_panels: Array = []
@@ -169,24 +172,27 @@ func _build_3d() -> void:
 	_world_root.add_child(_center_plate)
 
 	_center_label = Label3D.new()
-	_center_label.text = "东1 本0 余70"
-	_center_label.font_size = 22
+	_center_label.text = "东1"
+	_center_label.font_size = 18
+	_center_label.pixel_size = 0.0032
 	_center_label.modulate = Color(0.98, 0.88, 0.45)
 	_center_label.position = Vector3(0, 0.036, 0)
 	_center_label.rotation_degrees = Vector3(-90, 0, 0)
-	_center_label.outline_size = 8
-	_center_label.outline_modulate = Color(0, 0, 0, 0.9)
+	_center_label.outline_size = 6
+	_center_label.outline_modulate = Color(0, 0, 0, 0.92)
 	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_center_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_world_root.add_child(_center_label)
 
-	# 四方风位+分数：贴盘外缘，避免与盘心字重叠
+	# 四方分：在河外侧，远离盘心
 	_center_side_labels.clear()
 	for s in range(4):
 		var lab := Label3D.new()
-		lab.font_size = 18
-		lab.modulate = Color(0.92, 0.9, 0.82)
-		lab.outline_size = 5
-		lab.outline_modulate = Color(0, 0, 0, 0.9)
+		lab.font_size = 14
+		lab.pixel_size = 0.0028
+		lab.modulate = Color(0.95, 0.92, 0.8)
+		lab.outline_size = 4
+		lab.outline_modulate = Color(0, 0, 0, 0.92)
 		lab.rotation_degrees = Vector3(-90, 0, 0)
 		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lab.position = _side_label_pos(s)
@@ -247,13 +253,13 @@ func _add_rail(pos: Vector3, rail_size: Vector3) -> void:
 
 
 func _side_label_pos(seat_id: int) -> Vector3:
-	# 放在盘外缘外一点，不与盘心「东N·本场·余」重叠
-	var r: float = PLATE_HALF + 0.18
+	# 河外侧固定点，不进盘心
+	var r: float = SCORE_LABEL_R
 	match seat_id:
-		0: return Vector3(0, 0.032, r)
-		1: return Vector3(r, 0.032, 0)
-		2: return Vector3(0, 0.032, -r)
-		3: return Vector3(-r, 0.032, 0)
+		0: return Vector3(0, 0.028, r)
+		1: return Vector3(r, 0.028, 0)
+		2: return Vector3(0, 0.028, -r)
+		3: return Vector3(-r, 0.028, 0)
 	return Vector3.ZERO
 
 
@@ -431,17 +437,17 @@ func _update_center_info(state: BattleState, hand_index: int) -> void:
 		return
 	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
 	var hn: int = state.hand_number if state.hand_number > 0 else hand_index + 1
-	# 单行短文案，避免与四方分重叠
-	_center_label.text = "%s%d · 本%d · 棒%d · 余%d" % [
-		_round_wind_char(state.round_wind), hn, state.honba, state.riichi_sticks, wall_n
+	# 盘心只留极短两行；四方分在 SCORE_LABEL_R
+	_center_label.text = "%s%d局\n本%d 余%d" % [
+		_round_wind_char(state.round_wind), hn, state.honba, wall_n
 	]
 	for s in range(4):
 		if s >= _center_side_labels.size() or s >= state.seats.size():
 			continue
 		var seat: Seat = state.seats[s]
 		var lab: Label3D = _center_side_labels[s]
-		var mark: String = "▶" if s == state.current_seat else ""
-		lab.text = "%s%s %d" % [mark, _wind_char(seat.seat_wind), _seat_points(state, s)]
+		var mark: String = "●" if s == state.current_seat else ""
+		lab.text = "%s%s\n%d" % [mark, _wind_char(seat.seat_wind), _seat_points(state, s)]
 		if seat.riichi.declared:
 			lab.modulate = Color(1.0, 0.86, 0.35)
 		elif s == state.current_seat:
@@ -537,12 +543,12 @@ func _rebuild_dead_wall(state: BattleState) -> void:
 	_free_arr(_dead_wall_tiles)
 	if state == null or state.wall == null or _wall_mesh == null:
 		return
-	# 王牌区：5 叠示意（非满 14），牙白底+暗红顶
+	# 王牌区：靠对家右侧，离开中心盘
 	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
 	var stacks: int = 5
 	var gap: float = WALL_GAP
-	var base_x: float = 0.16
-	var base_z: float = -0.14
+	var base_x: float = 0.28
+	var base_z: float = -0.28
 	var top_mat := StandardMaterial3D.new()
 	top_mat.albedo_color = Color(0.72, 0.16, 0.14)
 	top_mat.roughness = 0.55
@@ -698,27 +704,28 @@ func _seat_in_dir(seat_id: int) -> Vector3:
 
 
 func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
-	var gx: float = Tile3D.TILE_W + 0.003
-	var gz: float = Tile3D.TILE_H + 0.003
+	# 6 列；row 0 靠中心，向外涨，不压中心盘
+	var gx: float = Tile3D.TILE_W + 0.004
+	var gz: float = Tile3D.TILE_H + 0.004
 	var y: float = Tile3D.TILE_D * 0.5 + 0.002
 	var dx: float = (col - 2.5) * gx
-	var dz: float = row * gz
+	var outward: float = RIVER_INNER + row * gz
 	var pos: Vector3
 	var rot: Vector3 = Vector3.ZERO
 	match seat_id:
-		0:
-			pos = Vector3(dx, y, 0.32 + dz)
-		1:
-			pos = Vector3(0.38 + dz, y, -dx)
+		0:  # 自家：+Z
+			pos = Vector3(dx, y, outward)
+		1:  # 右：+X
+			pos = Vector3(outward, y, -dx)
 			rot = Vector3(0, -90, 0)
-		2:
-			pos = Vector3(-dx, y, -0.32 - dz)
+		2:  # 对家：-Z
+			pos = Vector3(-dx, y, -outward)
 			rot = Vector3(0, 180, 0)
-		3:
-			pos = Vector3(-0.38 - dz, y, dx)
+		3:  # 左：-X
+			pos = Vector3(-outward, y, dx)
 			rot = Vector3(0, 90, 0)
 		_:
-			pos = Vector3(dx, y, 0.32)
+			pos = Vector3(dx, y, outward)
 	if riichi:
 		rot.y += 90.0
 	return {"pos": pos, "rot": rot}
@@ -817,7 +824,8 @@ func _rebuild_dora(state: BattleState) -> void:
 		_world_root.add_child(tile)
 		tile.setup(ti.id, true, false)
 		# 略偏王牌区左侧，避免与 dead wall 重叠
-		tile.set_base_position(Vector3(-0.18 + i * (Tile3D.TILE_W + 0.006), y, -0.12))
+		# 中心盘左侧，不与王牌/河重叠
+		tile.set_base_position(Vector3(-0.10 + i * (Tile3D.TILE_W + 0.008), y, -0.02))
 		tile.rotation_degrees = Vector3(0, 0, 0)
 		_dora_tiles.append(tile)
 		i += 1

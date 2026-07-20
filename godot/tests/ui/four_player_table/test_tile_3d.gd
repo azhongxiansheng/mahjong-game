@@ -78,7 +78,7 @@ func test_center_sides_and_riichi_sticks() -> void:
 	state.seats[1].riichi.declared = true
 	table.bind_battle_state(state, 0, 4)
 	assert_eq(table._center_side_labels.size(), 4, "四方分数标签")
-	assert_true(table._center_label.text.contains("本"), "中心应显示本场")
+	assert_true(table._center_label.text.contains("本") or table._center_label.text.contains("局"), "中心应显示局/本场")
 	assert_true(table._center_label.text.contains("余"), "中心应显示余张")
 	# 池 3 根 + seat1 立直 1 根
 	assert_eq(table._riichi_stick_meshes.size(), 4, "立直棒 = 池 + 已立直家")
