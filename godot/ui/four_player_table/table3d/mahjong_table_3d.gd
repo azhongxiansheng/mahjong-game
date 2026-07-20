@@ -1,15 +1,18 @@
 class_name MahjongTable3D extends Control
 
-# 雀魂式 3D 牌桌 M3：牌山 + 中心盘四方分/风 + 立直棒 + 当前家高亮
+# 雀魂式 3D 牌桌：可读性修复 — 大牌 + 近相机 + 中心不叠字 + 稀疏牌山
 
 signal player_card_clicked(tile_id: int)
 signal hand_tile_hover(tile_id: int, entered: bool)
 
 const TABLE_W: float = 2.5
 const TABLE_D: float = 2.5
-const WALL_RADIUS: float = 0.76
-const WALL_GAP: float = 0.042
-const PLATE_HALF: float = 0.22
+const WALL_RADIUS: float = 0.70
+const WALL_GAP: float = 0.082
+const PLATE_HALF: float = 0.20
+# 每侧最多示意堆数（双层）；不画满 70 张红背糊墙
+const WALL_STACKS_PER_SIDE_MAX: int = 8
+const SHOW_LIVE_WALL: bool = true
 
 var seat_panels: Array = []
 var discard_rivers: Array = []
@@ -83,26 +86,25 @@ func _build_3d() -> void:
 	e.background_color = Color(0.035, 0.04, 0.055)
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color(0.6, 0.62, 0.68)
-	e.ambient_light_energy = 0.5
+	e.ambient_light_energy = 0.72
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.ssao_enabled = true
-	e.ssao_radius = 0.8
-	e.ssao_intensity = 1.2
+	# SSAO 在小牌上易糊成色块，可读性优先关掉
+	e.ssao_enabled = false
 	env_node.environment = e
 	_world_root.add_child(env_node)
 
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-48, 28, 0)
-	sun.light_energy = 1.45
+	sun.rotation_degrees = Vector3(-55, 20, 0)
+	sun.light_energy = 1.55
 	sun.shadow_enabled = true
-	sun.light_color = Color(1.0, 0.98, 0.94)
+	sun.light_color = Color(1.0, 0.99, 0.96)
 	_world_root.add_child(sun)
 
 	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, 1.6, 0.35)
-	fill.light_energy = 0.55
+	fill.position = Vector3(0, 1.4, 0.55)
+	fill.light_energy = 0.7
 	fill.omni_range = 5.5
-	fill.light_color = Color(0.85, 0.9, 1.0)
+	fill.light_color = Color(0.9, 0.92, 1.0)
 	_world_root.add_child(fill)
 
 	# 桌面
@@ -129,14 +131,10 @@ func _build_3d() -> void:
 	# 共享牌山 / 立直棒 mesh
 	_wall_mesh = BoxMesh.new()
 	_wall_mesh.size = Vector3(Tile3D.TILE_W * 0.92, Tile3D.TILE_D, Tile3D.TILE_H * 0.92)
+	# 牌山用牙白+暗红顶，避免整墙贴 back.png 远看一片血红
 	_wall_mat = StandardMaterial3D.new()
-	_wall_mat.albedo_color = Color(0.10, 0.36, 0.24)
-	_wall_mat.roughness = 0.55
-	var back_tex: Texture2D = _try_back_tex()
-	if back_tex != null:
-		_wall_mat.albedo_texture = back_tex
-		_wall_mat.albedo_color = Color.WHITE
-		_wall_mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_wall_mat.albedo_color = Color(0.94, 0.92, 0.88)
+	_wall_mat.roughness = 0.5
 
 	_stick_mesh = BoxMesh.new()
 	_stick_mesh.size = Vector3(0.055, 0.008, 0.012)
@@ -164,24 +162,24 @@ func _build_3d() -> void:
 	_world_root.add_child(_center_plate)
 
 	_center_label = Label3D.new()
-	_center_label.text = "东 1 局"
-	_center_label.font_size = 34
+	_center_label.text = "东1 本0 余70"
+	_center_label.font_size = 22
 	_center_label.modulate = Color(0.98, 0.88, 0.45)
-	_center_label.position = Vector3(0, 0.035, 0)
+	_center_label.position = Vector3(0, 0.036, 0)
 	_center_label.rotation_degrees = Vector3(-90, 0, 0)
-	_center_label.outline_size = 10
-	_center_label.outline_modulate = Color(0, 0, 0, 0.85)
+	_center_label.outline_size = 8
+	_center_label.outline_modulate = Color(0, 0, 0, 0.9)
 	_center_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_world_root.add_child(_center_label)
 
-	# 四方风位+分数
+	# 四方风位+分数：贴盘外缘，避免与盘心字重叠
 	_center_side_labels.clear()
 	for s in range(4):
 		var lab := Label3D.new()
-		lab.font_size = 20
+		lab.font_size = 18
 		lab.modulate = Color(0.92, 0.9, 0.82)
-		lab.outline_size = 6
-		lab.outline_modulate = Color(0, 0, 0, 0.85)
+		lab.outline_size = 5
+		lab.outline_modulate = Color(0, 0, 0, 0.9)
 		lab.rotation_degrees = Vector3(-90, 0, 0)
 		lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		lab.position = _side_label_pos(s)
@@ -209,13 +207,13 @@ func _build_3d() -> void:
 	_active_light.position = Vector3(0, 0.45, 0.55)
 	_world_root.add_child(_active_light)
 
-	# 相机
+	# 相机：更近、更抬、略广角 → 手牌可读
 	_camera = Camera3D.new()
-	_camera.fov = 34.0
-	_camera.position = Vector3(0, 2.05, 1.72)
+	_camera.fov = 42.0
+	_camera.position = Vector3(0, 1.55, 1.55)
 	_camera.current = true
 	_world_root.add_child(_camera)
-	_camera.look_at(Vector3(0, 0, 0.12), Vector3.UP)
+	_camera.look_at(Vector3(0, 0.02, 0.28), Vector3.UP)
 
 
 func _try_back_tex() -> Texture2D:
@@ -242,7 +240,8 @@ func _add_rail(pos: Vector3, rail_size: Vector3) -> void:
 
 
 func _side_label_pos(seat_id: int) -> Vector3:
-	var r: float = PLATE_HALF - 0.04
+	# 放在盘外缘外一点，不与盘心「东N·本场·余」重叠
+	var r: float = PLATE_HALF + 0.18
 	match seat_id:
 		0: return Vector3(0, 0.032, r)
 		1: return Vector3(r, 0.032, 0)
@@ -425,7 +424,8 @@ func _update_center_info(state: BattleState, hand_index: int) -> void:
 		return
 	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
 	var hn: int = state.hand_number if state.hand_number > 0 else hand_index + 1
-	_center_label.text = "%s %d 局\n本场 %d · 棒 %d\n余 %d" % [
+	# 单行短文案，避免与四方分重叠
+	_center_label.text = "%s%d · 本%d · 棒%d · 余%d" % [
 		_round_wind_char(state.round_wind), hn, state.honba, state.riichi_sticks, wall_n
 	]
 	for s in range(4):
@@ -434,7 +434,7 @@ func _update_center_info(state: BattleState, hand_index: int) -> void:
 		var seat: Seat = state.seats[s]
 		var lab: Label3D = _center_side_labels[s]
 		var mark: String = "▶" if s == state.current_seat else ""
-		lab.text = "%s%s\n%d" % [mark, _wind_char(seat.seat_wind), _seat_points(state, s)]
+		lab.text = "%s%s %d" % [mark, _wind_char(seat.seat_wind), _seat_points(state, s)]
 		if seat.riichi.declared:
 			lab.modulate = Color(1.0, 0.86, 0.35)
 		elif s == state.current_seat:
@@ -481,17 +481,19 @@ func _make_wall_piece() -> MeshInstance3D:
 
 func _rebuild_live_wall(live: int) -> void:
 	_free_arr(_wall_tiles)
-	if live <= 0 or _wall_mesh == null:
+	if not SHOW_LIVE_WALL or live <= 0 or _wall_mesh == null:
 		return
-	# 双层叠堆；余数奇数时顶层少一张
-	var stacks: int = int(ceili(float(live) / 2.0))
+	# 示意堆：每侧最多 WALL_STACKS_PER_SIDE_MAX 双层，gap ≥ 牌宽，避免红墙糊屏
+	var stacks_total: int = mini(int(ceili(float(live) / 2.0)), WALL_STACKS_PER_SIDE_MAX * 4)
 	var per: Array = [0, 0, 0, 0]
-	var base_n: int = stacks / 4
-	var rem: int = stacks % 4
+	var base_n: int = stacks_total / 4
+	var rem: int = stacks_total % 4
 	for s in range(4):
 		per[s] = base_n + (1 if s < rem else 0)
-	var placed: int = 0
 	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
+	var top_mat := StandardMaterial3D.new()
+	top_mat.albedo_color = Color(0.78, 0.18, 0.16)
+	top_mat.roughness = 0.55
 	for seat_id in range(4):
 		var n: int = int(per[seat_id])
 		if n <= 0:
@@ -499,9 +501,9 @@ func _rebuild_live_wall(live: int) -> void:
 		for i in range(n):
 			var t_along: float = (i - (n - 1) * 0.5) * WALL_GAP
 			for layer in range(2):
-				if placed >= live:
-					return
 				var mi := _make_wall_piece()
+				if layer == 1:
+					mi.material_override = top_mat
 				var pos: Vector3
 				var yaw: float = 0.0
 				match seat_id:
@@ -522,30 +524,28 @@ func _rebuild_live_wall(live: int) -> void:
 				mi.position = pos
 				mi.rotation_degrees = Vector3(0, yaw, 0)
 				_wall_tiles.append(mi)
-				placed += 1
 
 
 func _rebuild_dead_wall(state: BattleState) -> void:
 	_free_arr(_dead_wall_tiles)
 	if state == null or state.wall == null or _wall_mesh == null:
 		return
-	# 王牌区固定 14 张视觉（7 叠 × 2），靠宝牌侧
+	# 王牌区：5 叠示意（非满 14），牙白底+暗红顶
 	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
-	var stacks: int = 7
+	var stacks: int = 5
 	var gap: float = WALL_GAP
-	var base_x: float = 0.14
-	var base_z: float = -0.12
+	var base_x: float = 0.16
+	var base_z: float = -0.14
+	var top_mat := StandardMaterial3D.new()
+	top_mat.albedo_color = Color(0.72, 0.16, 0.14)
+	top_mat.roughness = 0.55
 	for i in range(stacks):
 		for layer in range(2):
 			var mi := _make_wall_piece()
+			if layer == 1:
+				mi.material_override = top_mat
 			mi.position = Vector3(base_x + i * gap, y0 + layer * Tile3D.TILE_D, base_z)
 			mi.rotation_degrees = Vector3(0, 0, 0)
-			# 略压暗与 live wall 区分
-			var dm := _wall_mat.duplicate() as StandardMaterial3D
-			dm.albedo_color = Color(0.08, 0.28, 0.18)
-			if dm.albedo_texture != null:
-				dm.albedo_color = Color(0.85, 0.9, 0.88)
-			mi.material_override = dm
 			_dead_wall_tiles.append(mi)
 
 
@@ -620,8 +620,9 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var gap: float = Tile3D.TILE_W + 0.005
 	var total: float = n * gap + (0.028 if drawn_ids.size() > 0 and sorted_ids.size() > 0 else 0.0)
 	var x0: float = -total * 0.5 + gap * 0.5
-	var z: float = 0.98
-	var y: float = Tile3D.TILE_D * 0.5 + 0.002
+	var z: float = 0.92
+	# 立起来面向相机（-X 倾角更大），俯视时也能读牌面
+	var y: float = Tile3D.TILE_H * 0.42
 	var x_cursor: float = x0
 	for i in range(n):
 		var tid: int = int(show_ids[i])
@@ -632,12 +633,13 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 				break
 		var is_drawn_slot: bool = drawn_ids.size() > 0 and i == sorted_ids.size() and sorted_ids.size() > 0
 		if is_drawn_slot:
-			x_cursor += 0.028
+			x_cursor += 0.036
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
 		tile.setup(tid, true, is_red)
+		# 立牌：绕 X 倾 ~62°，使 +Y 牌面朝向玩家相机
 		tile.set_base_position(Vector3(x_cursor, y, z))
-		tile.rotation_degrees = Vector3(-20, 0, 0)
+		tile.rotation_degrees = Vector3(-62, 0, 0)
 		tile.set_clickable(_hand_clickable)
 		tile.tile_clicked.connect(_on_tile_clicked)
 		tile.tile_hover.connect(_on_tile_hover)

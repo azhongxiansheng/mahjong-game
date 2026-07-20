@@ -2,9 +2,10 @@ class_name Tile3D extends Area3D
 
 # 雀魂式立体牌：有厚度方块，+Y 面贴牌图，其余面实体色。
 
-const TILE_W: float = 0.058
-const TILE_H: float = 0.078
-const TILE_D: float = 0.028
+# 略放大：俯斜相机下手牌需 ≥~64px 才可辨花色（M3 过小会糊成色块）
+const TILE_W: float = 0.078
+const TILE_H: float = 0.105
+const TILE_D: float = 0.036
 
 signal tile_clicked(tile_id: int)
 signal tile_hover(tile_id: int, entered: bool)
