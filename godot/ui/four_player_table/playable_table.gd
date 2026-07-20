@@ -91,7 +91,7 @@ func _build_layout() -> void:
 	move_child(_action_panel, get_child_count() - 1)
 
 
-# 顶栏：玻璃条 + logo + HUD + loadout + 规则/设置
+# 顶栏：参考 stage-header 透明容器 + logo + HUD + loadout + 规则/设置
 func _build_top_bar() -> void:
 	var bar := Panel.new()
 	bar.name = "TopBar"
@@ -99,11 +99,7 @@ func _build_top_bar() -> void:
 	bar.size = Vector2(TableLayout.TABLE_W, TableLayout.TOP_BAR_H)
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var bsb := StyleBoxFlat.new()
-	bsb.bg_color = Color(0.04, 0.05, 0.08, 0.78)
-	bsb.border_color = Color(0.85, 0.71, 0.36, 0.35)
-	bsb.border_width_bottom = 2
-	bsb.shadow_color = Color(0, 0, 0, 0.4)
-	bsb.shadow_size = 8
+	bsb.bg_color = Color.TRANSPARENT
 	bar.add_theme_stylebox_override("panel", bsb)
 	add_child(bar)
 

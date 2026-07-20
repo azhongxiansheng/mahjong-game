@@ -179,6 +179,14 @@ static func _side_hand_raw_host_rect_for_state(seat_id: int, base_count: int,
 static func side_hand_slot_rect_for_state(seat_id: int, slot_index: int,
 		base_count: int, meld_main_extent: float = 0.0,
 		has_drawn: bool = true) -> Rect2:
+	return _projected_rect_aabb(Rect2(side_hand_slot_raw_origin_for_state(
+		seat_id, slot_index, base_count, meld_main_extent, has_drawn),
+		SIDE_HAND_RAW_SIZE))
+
+
+static func side_hand_slot_raw_origin_for_state(seat_id: int, slot_index: int,
+		base_count: int, meld_main_extent: float = 0.0,
+		has_drawn: bool = true) -> Vector2:
 	assert(slot_index >= 0 and slot_index < base_count)
 	var host := _side_hand_raw_host_rect_for_state(
 		seat_id, base_count, meld_main_extent, has_drawn)
@@ -186,17 +194,22 @@ static func side_hand_slot_rect_for_state(seat_id: int, slot_index: int,
 	var raw_y := host.position.y + slot_index * SIDE_HAND_RAW_STEP
 	if seat_id == 1:
 		raw_y += 44.0
-	return _projected_rect_aabb(Rect2(Vector2(raw_x, raw_y), SIDE_HAND_RAW_SIZE))
+	return Vector2(raw_x, raw_y)
 
 
 static func side_hand_drawn_slot_rect_for_state(seat_id: int,
 		base_count: int, meld_main_extent: float = 0.0) -> Rect2:
+	return _projected_rect_aabb(Rect2(side_hand_drawn_slot_raw_origin_for_state(
+		seat_id, base_count, meld_main_extent), SIDE_HAND_RAW_SIZE))
+
+
+static func side_hand_drawn_slot_raw_origin_for_state(seat_id: int,
+		base_count: int, meld_main_extent: float = 0.0) -> Vector2:
 	var host := _side_hand_raw_host_rect_for_state(
 		seat_id, base_count, meld_main_extent, true)
 	var raw_y := host.position.y if seat_id == 1 else (
 		host.position.y + base_count * SIDE_HAND_RAW_STEP + 12.0)
-	return _projected_rect_aabb(Rect2(
-		Vector2(host.position.x, raw_y), SIDE_HAND_RAW_SIZE))
+	return Vector2(host.position.x, raw_y)
 
 
 # CSS `rotateX(18deg)` + 父级 1200px perspective 的逐点投影。

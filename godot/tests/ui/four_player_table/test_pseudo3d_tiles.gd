@@ -34,6 +34,12 @@ func _assert_rect_almost_eq(actual: Rect2, expected: Rect2, tolerance: float,
 	assert_almost_eq(actual.size.y, expected.size.y, tolerance, "%s h" % label)
 
 
+func _assert_vector_almost_eq(actual: Vector2, expected: Vector2,
+		tolerance: float, label: String) -> void:
+	assert_almost_eq(actual.x, expected.x, tolerance, "%s x" % label)
+	assert_almost_eq(actual.y, expected.y, tolerance, "%s y" % label)
+
+
 func _rect_union(rects: Array[Rect2]) -> Rect2:
 	assert_false(rects.is_empty())
 	var result := rects[0]
@@ -149,6 +155,55 @@ func test_reference_hand_slots_apply_real_screen_geometry() -> void:
 			"seat %d first slot" % seat_id)
 		_assert_rect_almost_eq(rects[12], expected_last[seat_id], 0.02,
 			"seat %d last slot" % seat_id)
+
+
+func test_top_hand_back_stays_upright_after_seat_rotation() -> void:
+	var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+	panel.position = TableLayout.seat_anchor(2)
+	panel.set_seat_id(2)
+	add_child_autofree(panel)
+	await get_tree().process_frame
+	panel.bind_seat(_seat_with_tiles(2, 13))
+	panel.apply_reference_hand_layout()
+	await get_tree().process_frame
+	var back := panel._deal_slots[0].get_node("Back") as TextureRect
+	assert_almost_eq(back.rotation_degrees, -180.0, 0.001,
+		"顶家牌背须抵消 SeatPanel 的 180°，白棱才能留在屏幕顶部")
+	var top_mid := back.get_global_transform() * Vector2(back.size.x * 0.5, 0.0)
+	var bottom_mid := back.get_global_transform() * Vector2(
+		back.size.x * 0.5, back.size.y)
+	assert_lt(top_mid.y, bottom_mid.y, "顶家贴图 local top 必须仍是屏幕 top")
+
+
+func test_side_hand_cube_vertices_follow_table_plane_projection() -> void:
+	for seat_id in [1, 3]:
+		var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+		panel.position = TableLayout.seat_anchor(seat_id)
+		panel.set_seat_id(seat_id)
+		add_child_autofree(panel)
+		await get_tree().process_frame
+		panel.bind_seat(_seat_with_tiles(seat_id, 13))
+		panel.apply_reference_hand_layout()
+		await get_tree().process_frame
+		for slot_index in [0, 6, 12]:
+			var cube := panel._deal_slots[slot_index].get_node("CubeVisual") as Control
+			var cube_top := cube.get_node("CubeTop") as Polygon2D
+			var raw_origin := TableLayout.side_hand_slot_raw_origin_for_state(
+				seat_id, slot_index, 13)
+			var raw_points: PackedVector2Array = cube_top.get_meta(
+				SeatPanel.CUBE_RAW_POINTS_META)
+			assert_eq(cube_top.polygon.size(), raw_points.size())
+			for point_index in range(raw_points.size()):
+				var raw_point := raw_points[point_index]
+				if seat_id == 3:
+					raw_point.x = TableLayout.SIDE_HAND_RAW_SIZE.x - raw_point.x
+				var actual := cube_top.get_global_transform() \
+					* cube_top.polygon[point_index]
+				var expected := TableLayout.project_table_point(
+					raw_origin + raw_point)
+				_assert_vector_almost_eq(actual, expected, 0.05,
+					"seat %d slot %d CubeTop point %d" % [
+						seat_id, slot_index, point_index])
 
 
 func test_player_drawn_hand_and_pon_reflow_match_reference() -> void:

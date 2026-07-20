@@ -78,6 +78,20 @@ func test_action_panel_is_topmost_playable_child() -> void:
 		"操作条必须保持在牌桌及 HUD 之上")
 
 
+func test_top_bar_container_does_not_cover_reference_top_hand() -> void:
+	var table := _make_table()
+	var bar := table.get_node("TopBar") as Panel
+	assert_not_null(bar)
+	var style := bar.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_not_null(style)
+	assert_eq(style.bg_color.a, 0.0,
+		"参考 stage-header 容器透明，禁止压暗 y=24..48 的顶家牌")
+	assert_eq(style.border_width_bottom, 0,
+		"参考 header 没有横切顶家牌身的全宽底边")
+	assert_eq(style.shadow_size, 0,
+		"参考 header 不投全宽阴影；Logo 与按钮保留各自样式")
+
+
 func test_3d_table_remains_explicit_opt_in() -> void:
 	var table := _make_table(true)
 

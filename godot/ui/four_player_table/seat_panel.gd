@@ -39,6 +39,7 @@ const HAND_TILE_GAP: float = 4.0
 const TOP_HAND_TILE_GAP: float = 3.0
 const TOP_HAND_DRAWN_GAP: float = 22.0
 const SIDE_HAND_TILE_GAP: float = 0.0
+const CUBE_RAW_POINTS_META := &"reference_raw_points"
 const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
 # 自家手牌直接对应参考 .tile--xl；13 张宽 882px，以 seat anchor 居中。
@@ -835,9 +836,8 @@ func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:
 		rect.position = (layout_size - screen_size) / 2.0
 		rect.size = screen_size
 		rect.pivot_offset = screen_size / 2.0
-		# 抵消 SeatPanel 的 ±90°，参考左右家单牌在屏幕上保持 28×42 正立。
-		if _seat_id == 1 or _seat_id == 3:
-			rect.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
+		# 抵消 SeatPanel 方位旋转，让烘焙在贴图顶部的白棱始终朝屏幕上方。
+		rect.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 		rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		rect.stretch_mode = TextureRect.STRETCH_SCALE
 		rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -964,7 +964,9 @@ static func _add_cube_face(parent: Control, node_name: String,
 		points: Array, color: Color) -> void:
 	var face := Polygon2D.new()
 	face.name = node_name
-	face.polygon = PackedVector2Array(points)
+	var raw_points := PackedVector2Array(points)
+	face.polygon = raw_points
+	face.set_meta(CUBE_RAW_POINTS_META, raw_points)
 	face.color = color
 	parent.add_child(face)
 
@@ -1016,7 +1018,9 @@ static func _add_cube_gradient_face(parent: Control, node_name: String,
 	texture.gradient = gradient
 	var face := Polygon2D.new()
 	face.name = node_name
-	face.polygon = PackedVector2Array(points)
+	var raw_points := PackedVector2Array(points)
+	face.polygon = raw_points
+	face.set_meta(CUBE_RAW_POINTS_META, raw_points)
 	var uv_points: Array = []
 	var texture_size := Vector2(texture.width, texture.height)
 	for point in points:
@@ -1062,7 +1066,9 @@ static func _add_cube_line(parent: Control, node_name: String, points: Array,
 		color: Color, width: float, closed: bool = false) -> void:
 	var line := Line2D.new()
 	line.name = node_name
-	line.points = PackedVector2Array(points)
+	var raw_points := PackedVector2Array(points)
+	line.points = raw_points
+	line.set_meta(CUBE_RAW_POINTS_META, raw_points)
 	line.default_color = color
 	line.width = width
 	line.closed = closed
@@ -1549,10 +1555,15 @@ func apply_reference_hand_layout(meld_main_extent: float = 0.0) -> void:
 	for slot in _visual_hand_slots:
 		if slot == null or not is_instance_valid(slot):
 			continue
+		var is_drawn := bool(slot.get_meta("is_drawn", false))
 		var target := TableLayout.side_hand_drawn_slot_rect_for_state(
-			_seat_id, _hand_base_count, meld_main_extent) \
-			if bool(slot.get_meta("is_drawn", false)) else \
+			_seat_id, _hand_base_count, meld_main_extent) if is_drawn else \
 			TableLayout.side_hand_slot_rect_for_state(_seat_id,
+				int(slot.get_meta("reference_slot_index", -1)), _hand_base_count,
+				meld_main_extent, _hand_has_drawn)
+		var raw_origin := TableLayout.side_hand_drawn_slot_raw_origin_for_state(
+			_seat_id, _hand_base_count, meld_main_extent) if is_drawn else \
+			TableLayout.side_hand_slot_raw_origin_for_state(_seat_id,
 				int(slot.get_meta("reference_slot_index", -1)), _hand_base_count,
 				meld_main_extent, _hand_has_drawn)
 		# Slot 本地 66.63×46.71；根节点 ±90° 后屏幕宽对应 local y，
@@ -1565,6 +1576,29 @@ func apply_reference_hand_layout(meld_main_extent: float = 0.0) -> void:
 			if _seat_id == 1 else Vector2(target.end.x, target.position.y)
 		slot.position = (screen_origin - position).rotated(
 			-deg_to_rad(SEAT_ROTATION_DEGREES[_seat_id]))
+		var cube := slot.get_node_or_null("CubeVisual") as Control
+		if cube != null:
+			_warp_side_cube_to_table_projection(cube, raw_origin)
+
+
+func _warp_side_cube_to_table_projection(cube: Control,
+		raw_origin: Vector2) -> void:
+	var local_from_screen := cube.get_global_transform().affine_inverse()
+	for layer in cube.get_children():
+		if not layer.has_meta(CUBE_RAW_POINTS_META):
+			continue
+		var raw_points: PackedVector2Array = layer.get_meta(CUBE_RAW_POINTS_META)
+		var projected_points := PackedVector2Array()
+		for raw_point in raw_points:
+			var table_point: Vector2 = raw_point
+			if _seat_id == 3:
+				table_point.x = SIDE_HAND_TILE_W - table_point.x
+			projected_points.append(local_from_screen \
+				* TableLayout.project_table_point(raw_origin + table_point))
+		if layer is Polygon2D:
+			(layer as Polygon2D).polygon = projected_points
+		elif layer is Line2D:
+			(layer as Line2D).points = projected_points
 
 
 func get_reference_hand_metrics() -> Dictionary:
