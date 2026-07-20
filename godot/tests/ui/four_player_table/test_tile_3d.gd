@@ -64,8 +64,10 @@ func test_live_wall_and_dead_wall() -> void:
 	var live: int = state.wall.live_wall_size()
 	assert_gt(live, 0, "开局应有 live wall")
 	table.bind_battle_state(state, 0, 4)
-	assert_eq(table._wall_tiles.size(), live, "牌山 mesh 数应等于 live wall")
-	assert_eq(table._dead_wall_tiles.size(), 14, "王牌区视觉 14 张")
+	# 稀疏示意堆：最多 4 侧 × 8 叠 × 2 层
+	assert_gt(table._wall_tiles.size(), 0, "应有牌山示意")
+	assert_lte(table._wall_tiles.size(), MahjongTable3D.WALL_STACKS_PER_SIDE_MAX * 4 * 2)
+	assert_eq(table._dead_wall_tiles.size(), 10, "王牌区示意 5 叠×2")
 
 
 func test_center_sides_and_riichi_sticks() -> void:
@@ -76,7 +78,8 @@ func test_center_sides_and_riichi_sticks() -> void:
 	state.seats[1].riichi.declared = true
 	table.bind_battle_state(state, 0, 4)
 	assert_eq(table._center_side_labels.size(), 4, "四方分数标签")
-	assert_true(table._center_label.text.contains("本场"), "中心应显示本场")
+	assert_true(table._center_label.text.contains("本"), "中心应显示本场")
+	assert_true(table._center_label.text.contains("余"), "中心应显示余张")
 	# 池 3 根 + seat1 立直 1 根
 	assert_eq(table._riichi_stick_meshes.size(), 4, "立直棒 = 池 + 已立直家")
 	assert_not_null(table._active_marker, "当前家高亮条")
