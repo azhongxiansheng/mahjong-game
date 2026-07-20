@@ -20,9 +20,8 @@ var _bc: PlayableBattleController = null
 var _decision_adapter: TableDecisionAdapter = null
 
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
-# 默认 2D：3D 桌 M1–M3 构图未验收前不可读（手牌糊成色块/中心字重叠）。
-# 可读性修好并截图验收后再改回 true。
-var _use_3d: bool = false
+# 雀魂式真 3D 桌（透视 mesh + 2D HUD）。手牌近景放大可读后默认开启。
+var _use_3d: bool = true
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(DT.VIEW_W, TABLE_HEIGHT + ACTION_PANEL_HEIGHT)

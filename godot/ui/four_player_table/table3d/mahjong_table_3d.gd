@@ -1,18 +1,25 @@
 class_name MahjongTable3D extends Control
 
-# 雀魂式 3D 牌桌：可读性修复 — 大牌 + 近相机 + 中心不叠字 + 稀疏牌山
+# 雀魂式真 3D 牌桌（非假透视 2.5D）：
+# - 桌/牌/河/副露：3D mesh + 透视相机（对齐雀魂 Unity 桌）
+# - HUD 操作条仍在 2D Control 层（PlayableTable）
+# - 自家手牌：近景放大立牌，保证可读可点
 
 signal player_card_clicked(tile_id: int)
 signal hand_tile_hover(tile_id: int, entered: bool)
 
-const TABLE_W: float = 2.5
-const TABLE_D: float = 2.5
-const WALL_RADIUS: float = 0.70
-const WALL_GAP: float = 0.082
-const PLATE_HALF: float = 0.20
-# 每侧最多示意堆数（双层）；不画满 70 张红背糊墙
-const WALL_STACKS_PER_SIDE_MAX: int = 8
+const TABLE_W: float = 2.4
+const TABLE_D: float = 2.4
+const WALL_RADIUS: float = 0.68
+const WALL_GAP: float = 0.078
+const PLATE_HALF: float = 0.18
+const WALL_STACKS_PER_SIDE_MAX: int = 6
 const SHOW_LIVE_WALL: bool = true
+# 自家手牌相对桌面的放大（雀魂：手牌占屏底大特写）
+const HAND_SCALE: float = 1.65
+const HAND_Z: float = 1.08
+# 绕 +X 正转：+Y 牌面倾向相机（在 +Z 侧）；负角会把牌面背对相机只见白边+绿底
+const HAND_TILT_DEG: float = 48.0
 
 var seat_panels: Array = []
 var discard_rivers: Array = []
@@ -207,13 +214,13 @@ func _build_3d() -> void:
 	_active_light.position = Vector3(0, 0.45, 0.55)
 	_world_root.add_child(_active_light)
 
-	# 相机：更近、更抬、略广角 → 手牌可读
+	# 雀魂式固定俯斜：略低、略近，手牌面朝相机
 	_camera = Camera3D.new()
-	_camera.fov = 42.0
-	_camera.position = Vector3(0, 1.55, 1.55)
+	_camera.fov = 46.0
+	_camera.position = Vector3(0, 1.15, 1.88)
 	_camera.current = true
 	_world_root.add_child(_camera)
-	_camera.look_at(Vector3(0, 0.02, 0.28), Vector3.UP)
+	_camera.look_at(Vector3(0, 0.08, 0.38), Vector3.UP)
 
 
 func _try_back_tex() -> Texture2D:
@@ -617,12 +624,14 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var n: int = show_ids.size()
 	if n == 0:
 		return
-	var gap: float = Tile3D.TILE_W + 0.005
-	var total: float = n * gap + (0.028 if drawn_ids.size() > 0 and sorted_ids.size() > 0 else 0.0)
+	var sc: float = HAND_SCALE
+	var gap: float = (Tile3D.TILE_W + 0.006) * sc
+	var drawn_gap: float = 0.04 * sc
+	var total: float = n * gap + (drawn_gap if drawn_ids.size() > 0 and sorted_ids.size() > 0 else 0.0)
 	var x0: float = -total * 0.5 + gap * 0.5
-	var z: float = 0.92
-	# 立起来面向相机（-X 倾角更大），俯视时也能读牌面
-	var y: float = Tile3D.TILE_H * 0.42
+	# 近景倾牌：+Y 面朝向相机（HAND_TILT 为正）
+	var y: float = Tile3D.TILE_D * 0.5 * sc + 0.01
+	var z: float = HAND_Z
 	var x_cursor: float = x0
 	for i in range(n):
 		var tid: int = int(show_ids[i])
@@ -633,18 +642,18 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 				break
 		var is_drawn_slot: bool = drawn_ids.size() > 0 and i == sorted_ids.size() and sorted_ids.size() > 0
 		if is_drawn_slot:
-			x_cursor += 0.036
+			x_cursor += drawn_gap
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
 		tile.setup(tid, true, is_red)
-		# 立牌：绕 X 倾 ~62°，使 +Y 牌面朝向玩家相机
+		tile.scale = Vector3(sc, sc, sc)
 		tile.set_base_position(Vector3(x_cursor, y, z))
-		tile.rotation_degrees = Vector3(-62, 0, 0)
+		tile.rotation_degrees = Vector3(HAND_TILT_DEG, 0, 0)
 		tile.set_clickable(_hand_clickable)
 		tile.tile_clicked.connect(_on_tile_clicked)
 		tile.tile_hover.connect(_on_tile_hover)
 		if animate_draw and is_drawn_slot:
-			tile.animate_draw_drop(0.14, 0.22)
+			tile.animate_draw_drop(0.18 * sc, 0.22)
 		_hand_tiles.append(tile)
 		x_cursor += gap
 
