@@ -265,6 +265,6 @@ rg -n 'E6|语音举报|自动禁言|按座位静音|全局关闭语音' \
 - [x] 创建规划入口、Master、7 Epic、39 个叶子 Issue。
 - [x] 建立 GitHub 原生 Master → Epic → 叶子层级。
 - [x] 编写总 PRD、Epic PRD、master plan、issue backlog。
-- [ ] 规划 PR 验证、提交、推送和创建。
+- [x] 规划 PR [#260](https://github.com/jingx8885/mahjong-game/pull/260) 已验证、提交、推送和创建。
 - [ ] 等待维护者人工合并规划 PR。
 - [ ] 规划 PR 合并后从 E0/E1 的叶子 Issue 开始业务执行。
