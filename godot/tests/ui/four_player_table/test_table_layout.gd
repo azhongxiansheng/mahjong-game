@@ -55,6 +55,50 @@ const REFERENCE_AVATAR_RECTS := [
 	Rect2(1110.0, 85.0, 78.0, 78.0),
 	Rect2(105.0, 370.0, 78.0, 78.0),
 ]
+const REFERENCE_BOARD_FRAME_OUTER := [
+	Vector2(493.561, 103.520),
+	Vector2(1106.439, 103.520),
+	Vector2(1109.689, 140.730),
+	Vector2(1150.871, 140.730),
+	Vector2(1205.184, 689.631),
+	Vector2(1157.627, 689.631),
+	Vector2(1162.061, 740.400),
+	Vector2(437.939, 740.400),
+	Vector2(442.373, 689.631),
+	Vector2(394.816, 689.631),
+	Vector2(449.129, 140.730),
+	Vector2(490.311, 140.730),
+]
+const REFERENCE_BOARD_FRAME_DIVIDERS := [
+	[Vector2(490.311, 140.730), Vector2(705.260, 302.740)],
+	[Vector2(1109.689, 140.730), Vector2(894.740, 302.740)],
+	[Vector2(442.373, 689.631), Vector2(700.400, 492.946)],
+	[Vector2(1157.627, 689.631), Vector2(899.600, 492.946)],
+]
+const REFERENCE_RAIL_QUADS := [
+	[
+		Vector2(66.454, -9.440), Vector2(161.105, -9.440),
+		Vector2(-10.0, 900.0), Vector2(-130.0, 900.0),
+	],
+	[
+		Vector2(1438.895, -9.440), Vector2(1533.546, -9.440),
+		Vector2(1730.0, 900.0), Vector2(1610.0, 900.0),
+	],
+]
+const REFERENCE_RAIL_CAP_QUADS := [
+	[
+		Vector2(150.063, -9.440), Vector2(161.105, -9.440),
+		Vector2(-10.0, 900.0), Vector2(-24.0, 900.0),
+	],
+	[
+		Vector2(1438.895, -9.440), Vector2(1449.937, -9.440),
+		Vector2(1624.0, 900.0), Vector2(1610.0, 900.0),
+	],
+]
+const REFERENCE_RAIL_HIGHLIGHTS := [
+	[Vector2(150.852, -9.440), Vector2(-23.0, 900.0)],
+	[Vector2(1449.148, -9.440), Vector2(1623.0, 900.0)],
+]
 
 
 func _global_aabb(item: CanvasItem, local_rect: Rect2) -> Rect2:
@@ -83,6 +127,47 @@ func _assert_rect_almost_eq(actual: Rect2, expected: Rect2, tolerance: float,
 		"%s width" % label)
 	assert_almost_eq(actual.size.y, expected.size.y, tolerance,
 		"%s height" % label)
+
+
+func _assert_line_points(line: Line2D, expected: Array, label: String) -> void:
+	assert_eq(line.points.size(), expected.size(), "%s point count" % label)
+	for index in mini(line.points.size(), expected.size()):
+		assert_almost_eq(line.points[index].x, expected[index].x, 0.02,
+			"%s point %d x" % [label, index])
+		assert_almost_eq(line.points[index].y, expected[index].y, 0.02,
+			"%s point %d y" % [label, index])
+
+
+func _assert_packed_points(actual: PackedVector2Array, expected: Array,
+		label: String) -> void:
+	assert_eq(actual.size(), expected.size(), "%s point count" % label)
+	for index in mini(actual.size(), expected.size()):
+		assert_almost_eq(actual[index].x, expected[index].x, 0.02,
+			"%s point %d x" % [label, index])
+		assert_almost_eq(actual[index].y, expected[index].y, 0.02,
+			"%s point %d y" % [label, index])
+
+
+func _assert_light_quad(polygon: Polygon2D, expected_center_line: Array,
+		expected_top_width: float, expected_bottom_width: float,
+		label: String) -> void:
+	assert_eq(polygon.polygon.size(), 4, "%s point count" % label)
+	if polygon.polygon.size() != 4:
+		return
+	var top_center := (polygon.polygon[0] + polygon.polygon[1]) * 0.5
+	var bottom_center := (polygon.polygon[2] + polygon.polygon[3]) * 0.5
+	assert_almost_eq(top_center.x, expected_center_line[0].x, 0.02,
+		"%s top center x" % label)
+	assert_almost_eq(top_center.y, expected_center_line[0].y, 0.02,
+		"%s top center y" % label)
+	assert_almost_eq(bottom_center.x, expected_center_line[1].x, 0.02,
+		"%s bottom center x" % label)
+	assert_almost_eq(bottom_center.y, expected_center_line[1].y, 0.02,
+		"%s bottom center y" % label)
+	assert_almost_eq(polygon.polygon[0].distance_to(polygon.polygon[1]),
+		expected_top_width, 0.02, "%s top width" % label)
+	assert_almost_eq(polygon.polygon[2].distance_to(polygon.polygon[3]),
+		expected_bottom_width, 0.02, "%s bottom width" % label)
 
 
 func test_design_resolution_is_reference_1600_by_900() -> void:
@@ -223,6 +308,120 @@ func test_table_stage_builds_under_table() -> void:
 	assert_not_null(stage, "应有 TableStage 舞台根")
 	assert_true(stage.get_child_count() > 0, "舞台应有子层")
 	assert_not_null(stage.get_node_or_null("TableFelt"), "应有 TableFelt")
+
+
+func test_table_stage_prefers_local_reference_felt_without_duplicate_overlays() -> void:
+	assert_eq(TableStage.FELT_PATH, "res://assets/que_wang_felt.jpg")
+	assert_eq(TableStage.FELT_FALLBACK, "res://assets/mahjong_table_bg.png")
+	var expected_path: String = TableStage.FELT_PATH \
+		if ResourceLoader.exists(TableStage.FELT_PATH) \
+		else TableStage.FELT_FALLBACK
+	assert_true(ResourceLoader.exists(expected_path),
+		"本地参考图缺失时必须回退到仓库自有背景")
+	var texture := load(expected_path) as Texture2D
+	assert_not_null(texture)
+	if texture == null:
+		return
+	if expected_path == TableStage.FELT_PATH:
+		assert_eq(texture.get_width(), 1672)
+		assert_eq(texture.get_height(), 941)
+	var host := Control.new()
+	add_child_autofree(host)
+	var stage := TableStage.build(host, 1600.0, 900.0)
+	assert_eq(stage.get_child_count(), 2,
+		"舞台只保留完整桌布与参考外框，不叠自创光晕、硬暗角或内框")
+	var felt := stage.get_node_or_null("TableFelt") as TextureRect
+	assert_not_null(felt)
+	if felt == null:
+		return
+	assert_eq(felt.texture.resource_path, expected_path)
+	assert_eq(felt.position, Vector2.ZERO)
+	assert_eq(felt.size, Vector2(1600.0, 900.0))
+	assert_null(stage.get_node_or_null("CenterGlow"))
+	assert_null(stage.get_node_or_null("InnerRail"))
+	assert_not_null(stage.get_node_or_null("TableRails"),
+		"参考木质外框独立于桌布")
+
+
+func test_table_rails_copy_reference_plane_geometry_and_layers() -> void:
+	var host := Control.new()
+	add_child_autofree(host)
+	var stage := TableStage.build(host, 1600.0, 900.0)
+	var rails := stage.get_node_or_null("TableRails") as Node2D
+	assert_not_null(rails)
+	if rails == null:
+		return
+	for side_index in range(2):
+		var side_name := "Left" if side_index == 0 else "Right"
+		var base := rails.get_node("Rail%s" % side_name) as Polygon2D
+		_assert_packed_points(base.polygon, REFERENCE_RAIL_QUADS[side_index],
+			"%s rail" % side_name)
+		assert_true(base.texture is GradientTexture2D,
+			"木轨基础色按 CSS 横向渐变")
+		var noise := rails.get_node("Noise%s" % side_name) as Polygon2D
+		assert_true(noise.texture is NoiseTexture2D,
+			"木轨保留参考 fractalNoise 纹理层")
+		var cap := rails.get_node("Cap%s" % side_name) as Polygon2D
+		_assert_packed_points(cap.polygon, REFERENCE_RAIL_CAP_QUADS[side_index],
+			"%s inner cap" % side_name)
+		assert_true(cap.texture is GradientTexture2D)
+		var highlight := rails.get_node_or_null(
+			"Highlight%s" % side_name) as Polygon2D
+		assert_not_null(highlight)
+		if highlight != null:
+			_assert_light_quad(highlight,
+				REFERENCE_RAIL_HIGHLIGHTS[side_index], 1.578, 2.0,
+				"%s highlight" % side_name)
+			assert_true(highlight.texture is GradientTexture2D,
+				"2px 高光必须走实际可渲染的纵向渐变纹理")
+			assert_eq(highlight.z_index, 2,
+				"2px 高光芯必须压在木纹与内收边之上")
+		var glow := rails.get_node_or_null("Glow%s" % side_name) as Polygon2D
+		assert_not_null(glow, "参考 box-shadow 应在高光芯下保留柔光")
+		if glow != null:
+			_assert_light_quad(glow,
+				REFERENCE_RAIL_HIGHLIGHTS[side_index], 4.733, 6.0,
+				"%s glow" % side_name)
+			assert_true(glow.texture is GradientTexture2D)
+			assert_eq(glow.z_index, 1)
+		var gap := rails.get_node("Gap%s" % side_name) as Polygon2D
+		assert_eq(gap.color, Color("050201"),
+			"木轨与桌布之间保留参考 10px 暗缝")
+		var exterior := rails.get_node("Exterior%s" % side_name) as Polygon2D
+		assert_eq(exterior.color, Color("0c0a08"),
+			"透视桌面外侧应露出深色场景而不是未投影桌布")
+
+
+func test_board_frame_copies_reference_svg_lines_and_projection() -> void:
+	var table: FourPlayerTable = load(
+		"res://ui/four_player_table/four_player_table.tscn").instantiate()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var table_root := table.get_node("Table") as Node2D
+	var frame := table_root.get_node_or_null("BoardFrame") as Node2D
+	assert_not_null(frame, "应补回参考 board-frame 结构线")
+	if frame == null:
+		return
+	assert_eq(frame.get_index(), 0, "结构线应在牌、河与中央盘下方")
+	assert_eq(frame.get_child_count(), 5,
+		"参考 SVG 只有 1 条闭合外框与 4 条斜接线")
+	var outer := frame.get_node("Outer") as Line2D
+	_assert_line_points(outer, REFERENCE_BOARD_FRAME_OUTER, "outer")
+	assert_true(outer.closed)
+	assert_almost_eq(outer.width, 2.4, 0.0001)
+	assert_eq(outer.default_color, Color("00000080"))
+	assert_true(outer.antialiased)
+	assert_eq(outer.begin_cap_mode, Line2D.LINE_CAP_ROUND)
+	assert_eq(outer.joint_mode, Line2D.LINE_JOINT_ROUND)
+	for divider_index in range(4):
+		var divider := frame.get_node("Divider%d" % divider_index) as Line2D
+		_assert_line_points(divider,
+			REFERENCE_BOARD_FRAME_DIVIDERS[divider_index],
+			"divider %d" % divider_index)
+		assert_false(divider.closed)
+		assert_almost_eq(divider.width, 2.4, 0.0001)
+		assert_eq(divider.default_color, Color("00000047"))
+		assert_true(divider.antialiased)
 
 
 func test_table_felt_is_not_covered_by_opaque_fallback() -> void:

@@ -40,7 +40,9 @@ const TOP_HAND_TILE_GAP: float = 3.0
 const TOP_HAND_DRAWN_GAP: float = 22.0
 const SIDE_HAND_TILE_GAP: float = 0.0
 const CUBE_RAW_POINTS_META := &"reference_raw_points"
-const SIDE_INFO_WIDTH: float = 170.0
+const SIDE_INFO_WIDTH: float = 58.0
+const SIDE_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 34.0)
+const TOP_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 31.0)
 const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
 # 自家手牌直接对应参考 .tile--xl；13 张宽 882px，以 seat anchor 居中。
@@ -128,6 +130,8 @@ var _wait_ids: Array = []  # Array[int]
 
 func _ready() -> void:
 	_apply_bottom_seat_label_layout()
+	_apply_side_seat_label_layout()
+	_apply_top_seat_label_layout()
 	_hand_tile_row = Node2D.new()
 	# 偏移在 _rebuild_*_row 之前会按 seat_id 调整（seat 0 用更宽的偏移给真实牌面留位）
 	_hand_tile_row.position = Vector2(TOP_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
@@ -192,38 +196,13 @@ func set_seat_id(id: int) -> void:
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
 		if id == 1 or id == 3:
-			vbox.size = Vector2(SIDE_INFO_WIDTH, vbox.size.y)
+			vbox.size = SIDE_NAME_COLUMN_SIZE
 		_pin_info_node(vbox, _info_top_left(vbox.size.x, 92.0))
-	_ensure_info_chip()
 	if is_inside_tree():
 		_apply_bottom_seat_label_layout()
+		_apply_side_seat_label_layout()
+		_apply_top_seat_label_layout()
 		_refresh_labels()
-
-# 侧家沿用的名字行底条；参考 bottom seat-label 没有这层胶囊。
-func _ensure_info_chip() -> void:
-	if _seat_id == 0:
-		return
-	if get_node_or_null("InfoChip") != null:
-		return
-	var chip := Panel.new()
-	chip.name = "InfoChip"
-	var chip_width := SIDE_INFO_WIDTH if _seat_id == 1 or _seat_id == 3 else 200.0
-	var chip_height := 22.0 if _seat_id == 0 else 27.0
-	chip.size = Vector2(chip_width, chip_height)
-	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.04, 0.06, 0.05, 0.62)
-	sb.border_color = Color(0.85, 0.71, 0.36, 0.28)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(13)
-	chip.add_theme_stylebox_override("panel", sb)
-	add_child(chip)
-	_pin_info_node(chip, _info_top_left(chip_width, 89.0))
-	# 垫在 VBox(文字)之下
-	var vbox := get_node_or_null("VBox")
-	if vbox:
-		move_child(chip, vbox.get_index())
-
 
 # 参考 bottom seat-label：avatar-col 内头像下方 3px 放分数，main 在右侧
 # 5px；头像和手牌锚点保持 (322,644) / (302,778) 不变。
@@ -237,6 +216,52 @@ func _apply_bottom_seat_label_layout() -> void:
 		_label_score.reparent(self)
 	vbox.size = BOTTOM_NAME_COLUMN_SIZE
 	_pin_info_node(vbox, cluster_anchor() + Vector2(83.0, 34.0))
+	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_label_seat_info.add_theme_font_size_override("font_size", 12)
+	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
+
+
+# 参考左右 seat-label：名字朝桌内、与头像相隔 5px；分数属于 avatar-col，
+# 固定在头像下方 3px。头像与手牌锚点保持不变。
+func _apply_side_seat_label_layout() -> void:
+	if _seat_id != 1 and _seat_id != 3:
+		return
+	if _label_score == null or _label_seat_info == null:
+		return
+	var vbox := get_node_or_null("VBox") as Control
+	if vbox == null:
+		return
+	if _label_score.get_parent() != self:
+		_label_score.reparent(self)
+	vbox.size = SIDE_NAME_COLUMN_SIZE
+	_pin_info_node(vbox, _info_top_left(vbox.size.x, 36.0))
+	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT \
+		if _seat_id == 1 else HORIZONTAL_ALIGNMENT_LEFT
+	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_label_seat_info.add_theme_font_size_override("font_size", 12)
+	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
+
+
+# 参考 top seat-label：短名字位于头像右侧 5px，分数固定在头像下方 3px。
+func _apply_top_seat_label_layout() -> void:
+	if _seat_id != 2:
+		return
+	if _label_score == null or _label_seat_info == null:
+		return
+	var vbox := get_node_or_null("VBox") as Control
+	if vbox == null:
+		return
+	if _label_score.get_parent() != self:
+		_label_score.reparent(self)
+	vbox.size = TOP_NAME_COLUMN_SIZE
+	_pin_info_node(vbox, cluster_anchor() + Vector2(83.0, 35.5))
 	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label_seat_info.add_theme_font_size_override("font_size", 12)
@@ -271,15 +296,15 @@ func cluster_anchor() -> Vector2:
 	return CLUSTER_ANCHORS.get(_seat_id, Vector2.ZERO)
 
 
-# 自家压缩头像下信息的垂直间距；左右家信息条只向桌外展开。
+# 自家压缩头像下信息的垂直间距；左右家名字朝桌内展开。
 func _info_top_left(width: float, offset_y: float) -> Vector2:
 	var anchor := cluster_anchor()
 	if _seat_id == 0:
 		return anchor + Vector2(36.0 - width / 2.0, 78.0)
 	if _seat_id == 1:
-		return anchor + Vector2(0.0, offset_y)
+		return anchor + Vector2(-5.0 - width, offset_y)
 	if _seat_id == 3:
-		return anchor + Vector2(78.0 - width, offset_y)
+		return anchor + Vector2(83.0, offset_y)
 	return anchor + Vector2(36.0 - width / 2.0, offset_y)
 
 # 把 node 的**视觉 top-left** 钉到桌面屏幕坐标(node 同时被反向旋转恒正立)。
@@ -809,7 +834,8 @@ func _refresh_labels() -> void:
 	# 优先用 persona_name (set_ai_persona 注入),fallback 到 "你"/"AI N"
 	var who: String = _persona_name if _persona_name != "" else seat_display_name(_seat_id)
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
-	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
+	_label_seat_info.text = who if _seat_id != 0 \
+		else "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	# 布局对齐:分数回到头像卡下(参考截图「50 分」位),金色
 	_label_score.text = "%d 分" % _score
 	_label_score.visible = true
@@ -825,6 +851,8 @@ func _refresh_labels() -> void:
 	_label_discards.text = ""
 	_label_discards.visible = false
 	_apply_bottom_seat_label_layout()
+	_apply_side_seat_label_layout()
+	_apply_top_seat_label_layout()
 
 # 对家手牌行：直接翻译参考 .hand--top / .hand--left / .hand--right 的尺寸。
 func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:

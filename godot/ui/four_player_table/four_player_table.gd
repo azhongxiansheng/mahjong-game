@@ -165,6 +165,7 @@ func _build_layout() -> void:
 	table.name = "Table"
 	table.position = Vector2(0, 0)
 	add_child(table)
+	_build_board_frame(table)
 
 	# 4 个 SeatPanel — seat 0 玩家自家,seat 1/2/3 三家 AI 性格化。
 	# 每家 AI 固定挂一个角色 (赤木下家/开司对家/鹫巢上家),不同打法风格,
@@ -212,6 +213,37 @@ func _build_layout() -> void:
 	ability_panel.visible = false
 	ability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ability_panel)
+
+
+# 直接翻译参考 `.board-frame` SVG：1 条闭合外框 + 4 条斜接线。
+# 点位已在 TableLayout 中按 table-plane 逐点投影，线宽保持 CSS 的 2.4px。
+static func _build_board_frame(parent: Node2D) -> void:
+	var frame := Node2D.new()
+	frame.name = "BoardFrame"
+	parent.add_child(frame)
+	var paths := TableLayout.board_frame_paths()
+	frame.add_child(_make_board_frame_line(
+		"Outer", paths.outer, Color("00000080"), true))
+	var dividers: Array = paths.dividers
+	for divider_index in range(dividers.size()):
+		frame.add_child(_make_board_frame_line(
+			"Divider%d" % divider_index, dividers[divider_index],
+			Color("00000047"), false))
+
+
+static func _make_board_frame_line(node_name: String,
+		points: PackedVector2Array, color: Color, closed: bool) -> Line2D:
+	var line := Line2D.new()
+	line.name = node_name
+	line.points = points
+	line.default_color = color
+	line.width = 2.4
+	line.closed = closed
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.antialiased = true
+	return line
 
 
 static func _discard_river_layout(seat_id: int) -> Dictionary:

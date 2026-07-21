@@ -39,6 +39,30 @@ const RIVER_SIZE := Vector2(300.0, 144.0)
 const CENTER_PLATE_SIZE := Vector2(220.0, 220.0)
 const CENTER_CSS_SCALE: float = 1.04
 
+# 公开 DOM `.board-frame` SVG 原始几何；位于 300×300 center track 中央，
+# 再随 table-plane 统一做 18° 透视。保留 raw 点，禁止按截图手调 screen 坐标。
+const BOARD_FRAME_SIZE := Vector2(852.0, 732.0)
+const BOARD_FRAME_OUTER_RAW := [
+	Vector2(50.0, 0.0),
+	Vector2(802.0, 0.0),
+	Vector2(802.0, 50.0),
+	Vector2(852.0, 50.0),
+	Vector2(852.0, 682.0),
+	Vector2(802.0, 682.0),
+	Vector2(802.0, 732.0),
+	Vector2(50.0, 732.0),
+	Vector2(50.0, 682.0),
+	Vector2(0.0, 682.0),
+	Vector2(0.0, 50.0),
+	Vector2(50.0, 50.0),
+]
+const BOARD_FRAME_DIVIDERS_RAW := [
+	[Vector2(50.0, 50.0), Vector2(316.0, 256.0)],
+	[Vector2(802.0, 50.0), Vector2(536.0, 256.0)],
+	[Vector2(50.0, 682.0), Vector2(316.0, 476.0)],
+	[Vector2(802.0, 682.0), Vector2(536.0, 476.0)],
+]
+
 # 公开 bundle 在 1600×900 固定 stage 下的 hand host。对家 hand host 都保留
 # 摸牌槽；出现副露时由同一个 flex 容器整体重排，而不是另写四角坐标。
 const HAND_HOST_RECTS := [
@@ -226,6 +250,25 @@ static func project_table_point(point: Vector2) -> Vector2:
 		PERSPECTIVE_ORIGIN.y
 			+ (rotated_y - PERSPECTIVE_ORIGIN.y) * perspective_scale,
 	)
+
+
+static func board_frame_paths() -> Dictionary:
+	var center_track_origin := Vector2(
+		BOARD_ORIGIN.x + BOARD_TRACKS.x + BOARD_GAP,
+		BOARD_ORIGIN.y + BOARD_TRACKS.x + BOARD_GAP + BOARD_TRANSLATE_Y,
+	)
+	var frame_origin := center_track_origin + (
+		Vector2(BOARD_TRACKS.y, BOARD_TRACKS.y) - BOARD_FRAME_SIZE) * 0.5
+	var outer := PackedVector2Array()
+	for raw_point: Vector2 in BOARD_FRAME_OUTER_RAW:
+		outer.append(project_table_point(frame_origin + raw_point))
+	var dividers: Array[PackedVector2Array] = []
+	for raw_segment: Array in BOARD_FRAME_DIVIDERS_RAW:
+		var segment := PackedVector2Array()
+		for raw_point: Vector2 in raw_segment:
+			segment.append(project_table_point(frame_origin + raw_point))
+		dividers.append(segment)
+	return {"outer": outer, "dividers": dividers}
 
 
 static func _projected_rect_aabb(raw_rect: Rect2) -> Rect2:

@@ -249,12 +249,82 @@ func test_side_hand_hosts_leave_avatar_info_clear() -> void:
 			panel.apply_reference_hand_layout(meld_extent)
 			await get_tree().process_frame
 			var hand_rect := panel.get_reference_hand_host_rect().grow(4.0)
-			for info_name in ["VBox", "InfoChip"]:
+			for info_name in ["Score"]:
 				var info := panel.get_node(info_name) as Control
 				var info_rect := SeatPanel._control_global_aabb(info)
 				assert_false(hand_rect.intersects(info_rect),
 					"seat %d meld %.0f 手牌不得遮挡 %s" % [
 						seat_id, meld_extent, info_name])
+
+
+func test_side_seat_labels_face_table_inward_like_reference() -> void:
+	var expected_name_rects := {
+		1: Rect2(1354.0, 406.0, 58.0, 34.0),
+		3: Rect2(188.0, 406.0, 58.0, 34.0),
+	}
+	for seat_id in [1, 3]:
+		var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+		panel.position = TableLayout.seat_anchor(seat_id)
+		panel.set_seat_id(seat_id)
+		add_child_autofree(panel)
+		await get_tree().process_frame
+		var avatar_rect := TableLayout.avatar_rect(seat_id)
+		var name_column := panel.get_node("VBox") as Control
+		var name_rect := SeatPanel._control_global_aabb(name_column)
+		_assert_rect_almost_eq(name_rect, expected_name_rects[seat_id], 0.02,
+			"seat %d inward name column" % seat_id)
+		assert_eq(panel._label_seat_info.text, "AI %d" % seat_id,
+			"左右家沿用参考短名字，不再向侧边塞入风位与打法长串")
+		if seat_id == 1:
+			assert_almost_eq(name_rect.end.x, avatar_rect.position.x - 5.0, 0.02,
+				"右家名字须在头像左侧留 5px")
+		else:
+			assert_almost_eq(name_rect.position.x, avatar_rect.end.x + 5.0, 0.02,
+				"左家名字须在头像右侧留 5px")
+		var score := panel._label_score as Control
+		assert_eq(score.get_parent(), panel,
+			"左右家分数属于 avatar-col，不和名字一起挤向屏幕边缘")
+		_assert_rect_almost_eq(SeatPanel._control_global_aabb(score),
+			Rect2(avatar_rect.position + Vector2(0.0, 81.0), Vector2(78.0, 21.0)),
+			0.02, "seat %d score below avatar" % seat_id)
+		assert_null(panel.get_node_or_null("InfoChip"),
+			"参考左右家名字没有自创长胶囊")
+
+
+func test_top_seat_label_matches_reference_short_name_layout() -> void:
+	var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+	panel.position = TableLayout.seat_anchor(2)
+	panel.set_seat_id(2)
+	add_child_autofree(panel)
+	await get_tree().process_frame
+	panel.set_ai_persona("金老", "防守",
+		"res://assets/roguelike/characters/char_akagi.png")
+	await get_tree().process_frame
+	assert_eq(panel.cluster_anchor(), Vector2(1110.0, 85.0),
+		"对家头像锚点保持参考坐标")
+	var portrait := panel._portrait_rect as TextureRect
+	assert_not_null(portrait)
+	if portrait == null:
+		return
+	var avatar_rect := SeatPanel._control_global_aabb(portrait)
+	_assert_rect_almost_eq(avatar_rect, Rect2(1110.0, 85.0, 78.0, 78.0),
+		0.02, "top avatar")
+	var name_column := panel.get_node("VBox") as Control
+	var name_rect := SeatPanel._control_global_aabb(name_column)
+	_assert_rect_almost_eq(name_rect, Rect2(1193.0, 120.5, 58.0, 31.0),
+		0.02, "top short name column")
+	assert_almost_eq(name_rect.position.x, avatar_rect.end.x + 5.0, 0.02,
+		"对家短名字位于头像右侧 5px")
+	assert_eq(panel._label_seat_info.text, "金老",
+		"对家只显示短名字，不拼接风位、庄家状态或打法")
+	var score := panel._label_score as Control
+	assert_eq(score.get_parent(), panel,
+		"对家分数独立属于 avatar-col")
+	_assert_rect_almost_eq(SeatPanel._control_global_aabb(score),
+		Rect2(1110.0, 166.0, 78.0, 21.0), 0.02,
+		"top score below avatar")
+	assert_null(panel.get_node_or_null("InfoChip"),
+		"参考对家名字没有自创长胶囊")
 
 
 func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
