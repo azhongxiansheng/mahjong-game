@@ -51,6 +51,10 @@ const PLAYER_HAND_ROW_OFFSET_X: float = -498.0
 const PLAYER_HAND_ROW_OFFSET_Y: float = 78.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 24.0
+const BOTTOM_NAME_COLUMN_SIZE := Vector2(200.0, 34.0)
+const BOTTOM_SCORE_SIZE := Vector2(78.0, 21.0)
+const PORTRAIT_BORDER_COLOR := Color("d9b65b66")
+const PORTRAIT_ACTIVE_BORDER_COLOR := Color("ffd97a")
 var _hand_tile_row: Node2D = null
 # 发牌动画只读取当前真实 slot 的几何；玩家/对手共用，不生成静态猜测坐标。
 var _deal_slots: Array[Control] = []
@@ -123,6 +127,7 @@ var _wait_ids: Array = []  # Array[int]
 
 
 func _ready() -> void:
+	_apply_bottom_seat_label_layout()
 	_hand_tile_row = Node2D.new()
 	# 偏移在 _rebuild_*_row 之前会按 seat_id 调整（seat 0 用更宽的偏移给真实牌面留位）
 	_hand_tile_row.position = Vector2(TOP_HAND_ROW_OFFSET_X, HAND_ROW_OFFSET_Y)
@@ -183,7 +188,7 @@ func set_seat_id(id: int) -> void:
 	var bg := get_node_or_null("Bg") as ColorRect
 	if bg:
 		bg.visible = false
-	# 名字+分数列钉在头像卡正下方(布局对齐:卡群 = 头像卡 + 名字条 + 分数)
+	# 对手仍沿用桌外信息列；自家在 _ready 后拆成参考 avatar-col + main。
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
 		if id == 1 or id == 3:
@@ -191,11 +196,13 @@ func set_seat_id(id: int) -> void:
 		_pin_info_node(vbox, _info_top_left(vbox.size.x, 92.0))
 	_ensure_info_chip()
 	if is_inside_tree():
+		_apply_bottom_seat_label_layout()
 		_refresh_labels()
 
-# 名字行底条卡(对标参考作 seat-label):半透明暗底圆角小条垫在
-# SeatInfo 文字后,钉在头像卡正下方(与 VBox 第一行对位)。
+# 侧家沿用的名字行底条；参考 bottom seat-label 没有这层胶囊。
 func _ensure_info_chip() -> void:
+	if _seat_id == 0:
+		return
 	if get_node_or_null("InfoChip") != null:
 		return
 	var chip := Panel.new()
@@ -216,6 +223,27 @@ func _ensure_info_chip() -> void:
 	var vbox := get_node_or_null("VBox")
 	if vbox:
 		move_child(chip, vbox.get_index())
+
+
+# 参考 bottom seat-label：avatar-col 内头像下方 3px 放分数，main 在右侧
+# 5px；头像和手牌锚点保持 (322,644) / (302,778) 不变。
+func _apply_bottom_seat_label_layout() -> void:
+	if _seat_id != 0 or _label_score == null or _label_seat_info == null:
+		return
+	var vbox := get_node_or_null("VBox") as Control
+	if vbox == null:
+		return
+	if _label_score.get_parent() != self:
+		_label_score.reparent(self)
+	vbox.size = BOTTOM_NAME_COLUMN_SIZE
+	_pin_info_node(vbox, cluster_anchor() + Vector2(83.0, 34.0))
+	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_label_seat_info.add_theme_font_size_override("font_size", 12)
+	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
 
 # 把信息类 Control 绕自身中心反向旋转,抵消 SeatPanel 整体旋转 → 文字恒正立。
 # 牌(手牌行/河/副露)不在此列 — 牌的旋转是方位语义,必须保留。
@@ -379,7 +407,8 @@ func _ensure_portrait() -> void:
 	border.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var border_style := StyleBoxFlat.new()
 	border_style.bg_color = Color.TRANSPARENT
-	border_style.border_color = Color("d9b65b66")
+	border_style.border_color = PORTRAIT_ACTIVE_BORDER_COLOR \
+		if _active else PORTRAIT_BORDER_COLOR
 	border_style.set_border_width_all(2)
 	border_style.set_corner_radius_all(6)
 	border_style.shadow_color = Color(0, 0, 0, 0.35)
@@ -430,8 +459,9 @@ func _spawn_score_delta(delta: int) -> void:
 	# 起始位置:score label 顶部上方 4px
 	var sl_pos: Vector2 = _label_score.position
 	var sl_size: Vector2 = _label_score.size
-	lbl.position = sl_pos + Vector2(0, -34)
-	lbl.size = Vector2(max(sl_size.x, 96), 32)
+	var float_width := maxf(sl_size.x, 96.0)
+	lbl.position = sl_pos + Vector2((sl_size.x - float_width) * 0.5, -34)
+	lbl.size = Vector2(float_width, 32)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.z_index = 50
 	_label_score.get_parent().add_child(lbl)
@@ -530,17 +560,25 @@ func set_ippatsu(b: bool) -> void:
 
 
 func _apply_status_badges() -> void:
-	# 徽章竖排钉在头像卡右侧:振(红) → 听(金) → 一発(青),各 28×20。
+	# 自家按参考 name-row 横排在名字列尾；对手保留头像右侧竖排。
 	var anchor: Vector2 = cluster_anchor()
+	var bottom_origin := Vector2(
+		83.0 + BOTTOM_NAME_COLUMN_SIZE.x + 5.0,
+		34.0 + (BOTTOM_NAME_COLUMN_SIZE.y - 20.0) * 0.5)
+	var furiten_offset := bottom_origin if _seat_id == 0 else Vector2(78, 4)
+	var tenpai_offset := bottom_origin + Vector2(32, 0) \
+		if _seat_id == 0 else Vector2(78, 28)
+	var ippatsu_offset := bottom_origin + Vector2(64, 0) \
+		if _seat_id == 0 else Vector2(78, 52)
 	_badge_furiten = _set_badge(_badge_furiten, _furiten, "振",
-		Color(0.85, 0.18, 0.18), anchor + Vector2(78, 4))
+		Color(0.85, 0.18, 0.18), anchor + furiten_offset)
 	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
 	var show_tenpai: bool = _tenpai and _seat_id == 0 and not _riichi
 	_badge_tenpai = _set_badge(_badge_tenpai, show_tenpai, "听",
-		DT.TEXT_TITLE, anchor + Vector2(78, 28))
+		DT.TEXT_TITLE, anchor + tenpai_offset)
 	# 一発(刚立直未轮回一圈)— 青底,所有 seat 都显(玩家需要算别家一发风险)。
 	_badge_ippatsu = _set_badge(_badge_ippatsu, _ippatsu, "発",
-		Color(0.30, 0.70, 0.90), anchor + Vector2(78, 52))
+		Color(0.30, 0.70, 0.90), anchor + ippatsu_offset)
 
 
 # 创建/销毁徽章。返回当前 badge node 实例(下次 _apply 复用判断)。
@@ -601,8 +639,7 @@ func set_furiten(b: bool) -> void:
 		_refresh_labels()
 
 
-# 当前回合高亮:把 Bg ColorRect 包一个金色描边,玩家从 4 家中立刻识别出
-# "现在该谁出牌"。false 时清除 override 回到主题。
+# 当前回合高亮：只增强参考 78×78 头像自身边框与名字颜色。
 func set_active(b: bool) -> void:
 	if _active == b:
 		return
@@ -614,30 +651,19 @@ func set_active(b: bool) -> void:
 var _active: bool = false
 
 func _apply_active_visual() -> void:
-	# T3c:Bg 板条已隐藏 — 当前回合改为「立绘金圈 + 名字行金字」。
+	# T3c:Bg 板条已隐藏 — 当前回合改为「头像自身金边 + 名字行金字」。
 	# 中心盘四方分数也会同步金色(CenterInfoPanel.set_seats_summary)。
 	if _label_seat_info:
 		_label_seat_info.add_theme_color_override("font_color",
 			DT.TEXT_TITLE if _active else Color(0.91, 0.88, 0.81))
-	if _active:
-		if get_node_or_null("ActiveGlow") == null and _portrait_rect \
-				and is_instance_valid(_portrait_rect):
-			var ring := Panel.new()
-			ring.name = "ActiveGlow"
-			ring.size = Vector2(80, 96)
-			ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			var sb := StyleBoxFlat.new()
-			sb.bg_color = Color(0, 0, 0, 0)
-			sb.border_color = DT.TEXT_TITLE
-			sb.set_border_width_all(3)
-			sb.set_corner_radius_all(8)
-			ring.add_theme_stylebox_override("panel", sb)
-			add_child(ring)
-			_pin_info_node(ring, cluster_anchor() - Vector2(4, 4))
-	else:
-		var existing := get_node_or_null("ActiveGlow")
-		if existing:
-			existing.queue_free()
+	var border := get_node_or_null("PortraitBorder") as Panel
+	if border == null:
+		return
+	var border_style := border.get_theme_stylebox("panel") as StyleBoxFlat
+	if border_style != null:
+		border_style.border_color = PORTRAIT_ACTIVE_BORDER_COLOR \
+			if _active else PORTRAIT_BORDER_COLOR
+		border.queue_redraw()
 
 # 手牌色块归属可视化（M3 收尾）：传入 owners 数组（每张牌的 owner_seat），
 # 重建 _hand_tile_row 子节点。owners.size() 也作为 hand_size 同步更新文字 Label。
@@ -785,10 +811,10 @@ func _refresh_labels() -> void:
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
 	_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	# 布局对齐:分数回到头像卡下(参考截图「50 分」位),金色
-	_label_score.text = "%d" % _score
+	_label_score.text = "%d 分" % _score
 	_label_score.visible = true
 	_label_score.add_theme_color_override("font_color", Color(0.94, 0.84, 0.42))
-	_label_score.add_theme_font_size_override("font_size", 15)
+	_label_score.add_theme_font_size_override("font_size", 14 if _seat_id == 0 else 15)
 	_apply_status_badges()
 	# spec 2026-05-08 MeldArea：副露已用 MeldArea 视觉化，弃用文字 Label
 	# 手牌张数 / 弃牌河张数也弃用：MeldArea + DiscardRiver 视觉自身已传达
@@ -798,6 +824,7 @@ func _refresh_labels() -> void:
 	_label_hand.visible = false
 	_label_discards.text = ""
 	_label_discards.visible = false
+	_apply_bottom_seat_label_layout()
 
 # 对家手牌行：直接翻译参考 .hand--top / .hand--left / .hand--right 的尺寸。
 func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:
@@ -1467,19 +1494,27 @@ func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float)
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.set_meta("hand_id", tile_id)
 	slot.set_meta("hand_red", is_red)
-	var edge_back := ColorRect.new()
+	var edge_back := Panel.new()
 	edge_back.name = "EdgeBack"
-	edge_back.color = Color("2c5b3e")
 	edge_back.position = Vector2(0, -10)
 	edge_back.size = Vector2(PLAYER_HAND_TILE_W, 10)
 	edge_back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var edge_back_style := StyleBoxFlat.new()
+	edge_back_style.bg_color = Color("2c5b3e")
+	edge_back_style.corner_radius_top_left = 5
+	edge_back_style.corner_radius_top_right = 5
+	edge_back.add_theme_stylebox_override("panel", edge_back_style)
 	slot.add_child(edge_back)
-	var edge_face := ColorRect.new()
+	var edge_face := Panel.new()
 	edge_face.name = "EdgeFace"
-	edge_face.color = Color("b9babc")
 	edge_face.position = Vector2(0, -5)
-	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 5)
+	edge_face.size = Vector2(PLAYER_HAND_TILE_W, 10)
 	edge_face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var edge_face_style := StyleBoxFlat.new()
+	edge_face_style.bg_color = Color("b9babc")
+	edge_face_style.corner_radius_top_left = 5
+	edge_face_style.corner_radius_top_right = 5
+	edge_face.add_theme_stylebox_override("panel", edge_face_style)
 	slot.add_child(edge_face)
 	var tile := CardTileBack.new()
 	tile.name = "Tile"

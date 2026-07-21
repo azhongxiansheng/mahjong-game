@@ -128,14 +128,40 @@ func test_player_standing_edges_and_final_bbox_match_reference() -> void:
 	assert_eq(panel._hand_slots.size(), 13)
 	var first: Control = panel._hand_slots[0]
 	assert_eq(first.size, Vector2(66, 92))
-	var green := first.get_node_or_null("EdgeBack") as ColorRect
-	var white := first.get_node_or_null("EdgeFace") as ColorRect
+	var green := first.get_node_or_null("EdgeBack") as Control
+	var white := first.get_node_or_null("EdgeFace") as Control
 	assert_not_null(green)
 	assert_not_null(white)
+	assert_true(green is Panel, "before 顶边需要 StyleBox 圆角")
+	assert_true(white is Panel, "after 顶棱需要 StyleBox 圆角")
 	assert_eq(green.position, Vector2(0, -10), "before 绿背顶边 top=-10")
 	assert_eq(green.size, Vector2(66, 10), "before 绿背顶边 height=10")
 	assert_eq(white.position, Vector2(0, -5), "after 灰白棱 top=-5")
-	assert_eq(white.size, Vector2(66, 5), "可见灰白棱 5px")
+	assert_eq(white.size, Vector2(66, 10), "after 必须伸入牌面 5px 托住透明圆角")
+	if green is Panel and white is Panel:
+		var green_style := (green as Panel).get_theme_stylebox("panel") as StyleBoxFlat
+		var white_style := (white as Panel).get_theme_stylebox("panel") as StyleBoxFlat
+		assert_not_null(green_style)
+		assert_not_null(white_style)
+		if green_style != null and white_style != null:
+			assert_eq(green_style.corner_radius_top_left, 5)
+			assert_eq(green_style.corner_radius_top_right, 5)
+			assert_eq(white_style.corner_radius_top_left, 5)
+			assert_eq(white_style.corner_radius_top_right, 5)
+	var tile := first.get_node("Tile") as CardTileBack
+	var tile_style := tile.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_not_null(tile_style)
+	if tile_style != null:
+		assert_eq(tile_style.border_width_left, 0,
+			"完整牌壳 PNG 禁止再叠第二层边框制造角缺口")
+		assert_eq(tile_style.border_color, Color(0, 0, 0, 0.4),
+			"参考 #0006 禁止再露出纯黑三角")
+		assert_eq(tile_style.corner_radius_top_left, 6,
+			"80px 原始牌体缩放后对应参考 5px 顶圆角")
+		assert_eq(tile_style.corner_radius_top_right, 6)
+		assert_eq(tile_style.corner_radius_bottom_left, 8,
+			"80px 原始牌体缩放后对应参考 6px 底圆角")
+		assert_eq(tile_style.corner_radius_bottom_right, 8)
 	var rects: Array[Rect2] = panel.get_deal_target_rects()
 	assert_eq(rects.size(), 13)
 	assert_almost_eq(rects[0].position.y, 778.0, 0.01)
@@ -231,26 +257,89 @@ func test_side_hand_hosts_leave_avatar_info_clear() -> void:
 						seat_id, meld_extent, info_name])
 
 
-func test_player_hand_leaves_score_clear() -> void:
+func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
 	var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	panel.position = TableLayout.seat_anchor(0)
 	panel.set_seat_id(0)
 	add_child_autofree(panel)
 	await get_tree().process_frame
+	panel.set_ai_persona("赤木", "",
+		"res://assets/roguelike/characters/char_akagi.png")
+	panel.set_active(true)
 	panel.bind_seat(_seat_with_tiles(0, 13))
 	panel.apply_reference_hand_layout()
 	await get_tree().process_frame
 	assert_eq(panel.cluster_anchor(), TableLayout.avatar_rect(0).position,
 		"修信息遮挡不能挪动参考头像锚点")
-	var score := panel.get_node("VBox/Score") as Control
+	var portrait := panel._portrait_rect as TextureRect
+	assert_not_null(portrait)
+	if portrait == null:
+		return
+	var portrait_rect := SeatPanel._control_global_aabb(portrait)
+	_assert_rect_almost_eq(portrait_rect, TableLayout.avatar_rect(0), 0.02,
+		"bottom avatar")
+	assert_null(panel.get_node_or_null("InfoChip"),
+		"参考 bottom seat-label 没有自创胶囊底条")
+	assert_null(panel.get_node_or_null("ActiveGlow"),
+		"当前态只增强 78x78 头像自身边框")
+	var border := panel.get_node_or_null("PortraitBorder") as Panel
+	assert_not_null(border)
+	if border != null:
+		_assert_rect_almost_eq(SeatPanel._control_global_aabb(border),
+			portrait_rect, 0.02, "active portrait border")
+		var border_style := border.get_theme_stylebox("panel") as StyleBoxFlat
+		assert_eq(border_style.border_color, Color("ffd97a"),
+			"active 只把头像自身边框变为参考金色")
+	var score := panel._label_score as Control
+	assert_eq(score.get_parent(), panel,
+		"分数属于 avatar-col，不再和名字堆进同一个 VBox")
+	assert_eq(panel._label_score.text, "25000 分",
+		"参考 seat-label 分数保留分值单位")
 	var score_rect := SeatPanel._control_global_aabb(score)
-	for hand_rect in panel.get_visual_hand_rects():
-		var standing_visual_rect := Rect2(
-			(hand_rect as Rect2).position - Vector2(0.0, 10.0),
-			(hand_rect as Rect2).size + Vector2(0.0, 10.0))
-		assert_false(standing_visual_rect.grow(4.0).intersects(score_rect),
-			"自家手牌必须与分数保留 4px 间距: %s vs %s" % [
-				standing_visual_rect, score_rect])
+	assert_almost_eq(score_rect.position.y, portrait_rect.end.y + 3.0, 0.02,
+		"分数位于头像下方 3px")
+	assert_almost_eq(score_rect.get_center().x, portrait_rect.get_center().x,
+		0.02, "分数与头像水平居中")
+	var name_column := panel.get_node("VBox") as Control
+	var name_rect := SeatPanel._control_global_aabb(name_column)
+	assert_almost_eq(name_rect.position.x, portrait_rect.end.x + 5.0, 0.02,
+		"名字主列位于头像右侧 5px")
+	assert_almost_eq(name_rect.position.y, 678.0, 0.02,
+		"名字主列沿用参考 seat-label 垂直居中坐标")
+	panel.set_furiten(true)
+	panel.set_tenpai(true)
+	panel.set_ippatsu(true)
+	await get_tree().process_frame
+	for badge in [panel._badge_furiten, panel._badge_tenpai,
+			panel._badge_ippatsu]:
+		assert_not_null(badge)
+		if badge == null:
+			continue
+		var badge_rect := SeatPanel._control_global_aabb(badge as Control)
+		assert_false(badge_rect.intersects(name_rect),
+			"bottom 状态徽章不得覆盖名字主列")
+		assert_gte(badge_rect.position.x, name_rect.end.x + 5.0,
+			"bottom 状态徽章接在 name-row 右侧")
+		assert_almost_eq(badge_rect.get_center().y, name_rect.get_center().y,
+			0.02, "bottom 状态徽章与 name-row 垂直居中")
+	var hand_host := panel.get_reference_hand_host_rect()
+	_assert_rect_almost_eq(hand_host, Rect2(302, 778, 996, 92), 0.02,
+		"bottom hand host")
+	var standing_edge_y := hand_host.position.y - 10.0
+	assert_gte(standing_edge_y - score_rect.end.y, 20.0,
+		"分数与牌顶棱至少保留参考 20px 净空")
+	panel.set_score(26000)
+	var score_delta: Label = null
+	for child in panel.get_children():
+		if child is Label and (child as Label).text == "+1000":
+			score_delta = child as Label
+			break
+	assert_not_null(score_delta)
+	if score_delta != null:
+		var delta_rect := SeatPanel._control_global_aabb(score_delta)
+		assert_almost_eq(delta_rect.get_center().x, score_rect.get_center().x,
+			0.02, "分数飘字与 avatar-col 水平居中")
+	await wait_seconds(1.6)
 
 
 func test_top_hand_back_stays_upright_after_seat_rotation() -> void:

@@ -10,7 +10,9 @@ class_name CardTileBack extends Panel
 
 const TILE_WIDTH: int = 80
 const TILE_HEIGHT: int = 120
-const BORDER_WIDTH: int = 2
+const BORDER_WIDTH: int = 0
+const CORNER_RADIUS_TOP: int = 6
+const CORNER_RADIUS_BOTTOM: int = 8
 
 # spec §10：4 套牌背贴图 v1 用程序化色块（D2 方案 A）
 # seat 0 玩家金色固定，1-3 AI 主题色（M7 引入 AIProfile 后会改读 ai_profiles[i].tile_back_color）
@@ -66,6 +68,10 @@ func _ready() -> void:
 	soft_sb.shadow_color = Color(0, 0, 0, 0.18)
 	soft_sb.shadow_size = 6
 	soft_sb.shadow_offset = Vector2(0, 4)
+	soft_sb.corner_radius_top_left = CORNER_RADIUS_TOP
+	soft_sb.corner_radius_top_right = CORNER_RADIUS_TOP
+	soft_sb.corner_radius_bottom_left = CORNER_RADIUS_BOTTOM
+	soft_sb.corner_radius_bottom_right = CORNER_RADIUS_BOTTOM
 	_soft_shadow.add_theme_stylebox_override("panel", soft_sb)
 	add_child(_soft_shadow)
 	# 子节点 Label 作为 atlas 缺失时的降级显示
@@ -429,7 +435,11 @@ func _refresh() -> void:
 	sb.border_width_bottom = BORDER_WIDTH
 	sb.border_width_left = BORDER_WIDTH
 	sb.border_width_right = BORDER_WIDTH
-	sb.border_color = Color.BLACK
+	sb.border_color = Color(0, 0, 0, 0.4)
+	sb.corner_radius_top_left = CORNER_RADIUS_TOP
+	sb.corner_radius_top_right = CORNER_RADIUS_TOP
+	sb.corner_radius_bottom_left = CORNER_RADIUS_BOTTOM
+	sb.corner_radius_bottom_right = CORNER_RADIUS_BOTTOM
 	# 参考 .tile 第一层锐影 0 2px 3px #00000059；第二层在 SoftShadow。
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 3
