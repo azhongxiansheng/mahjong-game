@@ -1,6 +1,6 @@
 # 多人麻将与“嘴强道具”桌面 Alpha PRD
 
-> 状态：已由用户确认，等待规划 PR 人工合并
+> 状态：规划 PR #260 已合并，E0 执行中
 > 日期：2026-07-22
 > 规划入口：[GitHub Issue #212](https://github.com/jingx8885/mahjong-game/issues/212)
 > Master Epic：[GitHub Issue #213](https://github.com/jingx8885/mahjong-game/issues/213)
@@ -42,6 +42,22 @@
 - 让 LLM、STT 或客户端直接决定道具奖励。
 - Kubernetes、跨地域容灾、生产级自动扩缩容。
 - **整个 E6：语音举报、证据缓冲、音频上传、人工审核、对象存储、按座位静音、语音音量、全局关语音、自动临时禁言及相关占位接口。**
+
+### 2.3 锁定默认值
+
+| 决策 | Alpha 固定值 | 边界 |
+|---|---|---|
+| 四人桌席位 | 4 | 不提供二人/三人麻将 |
+| 练习场真人 | 1，固定 seat 0 | 其余 3 席均为本地 AI |
+| 公共场真人 | 1–4 | 不足席位只能由 Headless Worker AI 补齐 |
+| 公共队列等待 | 从匹配池最早有效 ticket 的 `queued_at` 起 30 秒 | 四真人提前到齐则立即开房 |
+| 公共重连宽限 | 掉线起 30 秒 | 超时由 Worker AI 接管；仅本局内允许恢复 |
+| 标准场能力 | 角色、道具、Momentum、语音全部关闭 | 必须构造期硬隔离，不能只隐藏 UI |
+| 欢乐场语音 | PTT | 不提供常开麦或语音设置 |
+| 练习场转写 | 本地 whisper.cpp final 为本地评分输入 | 不经过公共 Control Plane |
+| 公共场转写 | 本地仅显示；服务端 final 才能评分 | STT/LLM 本身没有发奖权 |
+| 单次话语奖励 | 最多 1 个最高匹配道具，直接到账 | 不提供三选一 |
+| 语音/转写留存 | 仅房间生命周期内的有界内存 | 不写磁盘，不建立证据存储 |
 
 ## 3. 用户与核心路径
 
@@ -92,14 +108,22 @@ UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截
 
 ### 3.2 模式矩阵
 
-| 房间 | 局制 | 标准场 | 嘴强欢乐场 |
-|---|---|---|---|
-| 电脑练习 | 东风 | 1 人 + 3 本地 AI；纯日麻 | 1 人 + 3 本地 AI；本地 PTT/STT、角色与道具 |
-| 电脑练习 | 半庄 | 1 人 + 3 本地 AI；纯日麻 | 1 人 + 3 本地 AI；本地 PTT/STT、角色与道具 |
-| 公共匹配 | 东风 | 真人优先、Worker AI 补位；纯日麻 | 真人优先、Worker AI 补位；房间语音、权威 STT/发奖 |
-| 公共匹配 | 半庄 | 真人优先、Worker AI 补位；纯日麻 | 真人优先、Worker AI 补位；房间语音、权威 STT/发奖 |
+下列 8 个 `mode_id` 是 Alpha 的完整可启动集合；实现可以分别序列化三个枚举，但测试与遥测必须能稳定还原对应 `mode_id`。
+
+| mode_id | 房间/局制/玩法 | 权威 | 真人 / AI | 角色与道具 | 语音与 STT | 发奖权 |
+|---|---|---|---|---|---|---|
+| `PRACTICE_EAST_STANDARD` | 练习 / 东风 / 标准 | 本地 Godot | 1 / 3 本地 AI | 关闭 | 不创建 | 无 |
+| `PRACTICE_EAST_TRASH_TALK` | 练习 / 东风 / 欢乐 | 本地 Godot | 1 / 3 本地 AI | 启用 | PTT；本地 whisper.cpp | 本地确定性规则 |
+| `PRACTICE_HANCHAN_STANDARD` | 练习 / 半庄 / 标准 | 本地 Godot | 1 / 3 本地 AI | 关闭 | 不创建 | 无 |
+| `PRACTICE_HANCHAN_TRASH_TALK` | 练习 / 半庄 / 欢乐 | 本地 Godot | 1 / 3 本地 AI | 启用 | PTT；本地 whisper.cpp | 本地确定性规则 |
+| `PUBLIC_EAST_STANDARD` | 公共 / 东风 / 标准 | Headless Worker | 1–4 / 0–3 Worker AI | 关闭 | 不创建 | 无 |
+| `PUBLIC_EAST_TRASH_TALK` | 公共 / 东风 / 欢乐 | Headless Worker | 1–4 / 0–3 Worker AI | 启用 | 房间 PTT；本地字幕 + 服务端 STT | Worker 确定性规则 |
+| `PUBLIC_HANCHAN_STANDARD` | 公共 / 半庄 / 标准 | Headless Worker | 1–4 / 0–3 Worker AI | 关闭 | 不创建 | 无 |
+| `PUBLIC_HANCHAN_TRASH_TALK` | 公共 / 半庄 / 欢乐 | Headless Worker | 1–4 / 0–3 Worker AI | 启用 | 房间 PTT；本地字幕 + 服务端 STT | Worker 确定性规则 |
 
 标准场的“关闭”是构造期硬隔离：不得实例化角色能力、道具库存、Momentum 或语音采集/传输节点，不能仅靠隐藏 UI 实现。
+
+公共场的 AI 数量由 `4 - 已匹配真人数` 唯一决定；四真人到齐立即开房，否则最早 ticket 满 30 秒后补位。练习场不连接公共队列、房间服务或服务端 STT。
 
 ## 4. 功能需求
 
@@ -289,6 +313,21 @@ flowchart LR
 7. 12 名角色完成原创替换，能力语义有回归测试。
 8. 仓库与 GitHub 不存在 E6、举报、静音、语音控制或自动禁言占位实现。
 9. macOS 与 Windows 包可连接同一公网房间并完成整场牌局。
+
+### 7.3 成功指标与证据归属
+
+| 指标 ID | Alpha 目标 | 最终证据 | 负责 Issue |
+|---|---|---|---|
+| `S-MODE-01` | 8 个 `mode_id` 均能从大厅生成合法 `GameSessionConfig` | UI 组合测试 + 配置序列化测试 | #228、#231 |
+| `S-PRACTICE-01` | 东风/半庄练习均能由 1 人 + 3 AI 完成整场且分数守恒 | 固定种子 GUT + 桌面主路径 | #233、#235 |
+| `S-MATCH-01` | 四真人立即开房；1–3 真人在 30 秒边界后只进入一个 AI 补位房 | 真实 Redis 并发与可控时钟测试 | #238、#239 |
+| `S-AUTH-01` | 客户端不能改变牌墙、合法行动、AI、技能、道具或发奖结果 | 伪造/越权/重复命令测试 + replay | #240、#242 |
+| `S-ISOLATION-01` | 4 个 STANDARD 模式均不创建角色、道具、Momentum 或语音链路 | 构造期隔离测试 | #234 |
+| `S-REWARD-01` | 同文本、角色、牌局状态和规则版本只得到一个稳定最高匹配道具 | 中英日夹具 + 幂等/回放测试 | #250–#253 |
+| `S-ORIGINAL-01` | 12 名生产角色无旧 IP 身份且能力语义一一映射 | 角色映射/资源加载/生产引用审计 | #230 |
+| `S-NO-ROGUE-01` | 启动、对局、结算、重赛和返回均不读取或展示肉鸽状态 | 导航/Autoload/场景测试 | #225、#226、#235 |
+| `S-DESKTOP-01` | macOS、Windows 可连接同一公网房并完成整场 | 干净环境包验证 + 四客户端公网 E2E | #257–#259 |
+| `S-NO-E6-01` | M6、scope:e6、E6 Issue/API/UI/代码均为 0 | GitHub 与仓库审计 | #259 |
 
 ## 8. 发布与协作闸门
 
