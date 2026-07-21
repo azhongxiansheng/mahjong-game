@@ -12,7 +12,7 @@ class_name FourPlayerTable extends Control
 #   - 与 GameDriver 集成（→ 第 4 步 four_player_table_smoke.tscn）
 #   - 印章 + tooltip + 透明牌（→ 第 3 步）
 
-# 雀魂式满桌 1280×720（P0：取消 200px 右栏，能力走顶栏 loadout）
+# 参考站固定 1600×900 满桌（取消右栏，能力走顶栏 loadout）
 const TABLE_WIDTH: float = TableLayout.TABLE_W
 const TABLE_HEIGHT: float = TableLayout.TABLE_H
 const ABILITY_PANEL_WIDTH: float = 0.0
@@ -95,6 +95,14 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 	for i in range(meld_areas.size()):
 		var ma: MeldArea = meld_areas[i]
 		ma.set_melds(state.seats[i].melds, i)
+		var has_meld: bool = not state.seats[i].melds.is_empty()
+		var meld_main_extent: float = ma.get_layout_bounds().size.x \
+			if has_meld else 0.0
+		seat_panels[i].apply_reference_hand_layout(meld_main_extent)
+		if has_meld:
+			var hand_metrics: Dictionary = seat_panels[i].get_reference_hand_metrics()
+			ma.apply_reference_layout(float(hand_metrics["main_extent"]),
+				bool(hand_metrics["has_drawn"]))
 
 # 整场累计分（来自 GameDriver.cumulative_scores）
 func bind_cumulative_scores(scores: Array) -> void:
@@ -157,6 +165,7 @@ func _build_layout() -> void:
 	table.name = "Table"
 	table.position = Vector2(0, 0)
 	add_child(table)
+	_build_board_frame(table)
 
 	# 4 个 SeatPanel — seat 0 玩家自家,seat 1/2/3 三家 AI 性格化。
 	# 每家 AI 固定挂一个角色 (赤木下家/开司对家/鹫巢上家),不同打法风格,
@@ -175,9 +184,11 @@ func _build_layout() -> void:
 	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
 	for i in range(4):
 		var dr := DiscardRiver.new()
+		dr.set_seat_id(i)
 		var p := _discard_river_layout(i)
 		dr.position = p.position
 		dr.rotation_degrees = p.rotation_degrees
+		dr.scale = p.scale
 		table.add_child(dr)
 		discard_rivers.append(dr)
 
@@ -185,15 +196,16 @@ func _build_layout() -> void:
 	# spec 2026-05-08-meld-area-japanese-style-design.md
 	for i in range(4):
 		var ma := MeldArea.new()
-		var mp := _meld_area_layout(i)
-		ma.position = mp.position
-		ma.rotation_degrees = mp.rotation_degrees
+		ma.set_seat_id(i)
+		ma.rotation_degrees = SeatPanel.SEAT_ROTATION_DEGREES[i]
 		table.add_child(ma)
 		meld_areas.append(ma)
 
 	# CenterInfoPanel
 	center_info = CENTER_INFO_SCENE.instantiate()
-	center_info.position = TableLayout.center()
+	var center_layout := TableLayout.center_plate()
+	center_info.position = center_layout.position
+	center_info.scale = center_layout.scale
 	table.add_child(center_info)
 
 	# AbilityPanel：隐藏，能力走顶栏 loadout
@@ -203,16 +215,36 @@ func _build_layout() -> void:
 	add_child(ability_panel)
 
 
-const RIVER_W: float = TableLayout.RIVER_W
-const RIVER_H: float = TableLayout.RIVER_H
+# 直接翻译参考 `.board-frame` SVG：1 条闭合外框 + 4 条斜接线。
+# 点位已在 TableLayout 中按 table-plane 逐点投影，线宽保持 CSS 的 2.4px。
+static func _build_board_frame(parent: Node2D) -> void:
+	var frame := Node2D.new()
+	frame.name = "BoardFrame"
+	parent.add_child(frame)
+	var paths := TableLayout.board_frame_paths()
+	frame.add_child(_make_board_frame_line(
+		"Outer", paths.outer, Color("00000080"), true))
+	var dividers: Array = paths.dividers
+	for divider_index in range(dividers.size()):
+		frame.add_child(_make_board_frame_line(
+			"Divider%d" % divider_index, dividers[divider_index],
+			Color("00000047"), false))
+
+
+static func _make_board_frame_line(node_name: String,
+		points: PackedVector2Array, color: Color, closed: bool) -> Line2D:
+	var line := Line2D.new()
+	line.name = node_name
+	line.points = points
+	line.default_color = color
+	line.width = 2.4
+	line.closed = closed
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
+	line.antialiased = true
+	return line
 
 
 static func _discard_river_layout(seat_id: int) -> Dictionary:
 	return TableLayout.discard_river(seat_id)
-
-
-const MELD_MARGIN: float = TableLayout.MELD_MARGIN
-
-
-static func _meld_area_layout(seat_id: int) -> Dictionary:
-	return TableLayout.meld_area(seat_id)

@@ -63,10 +63,9 @@ func _ready() -> void:
 # 亮金条+发光红点(对标 .center-stick--on)。分数从 SeatPanel 移此处后,
 # 桌面四角的黑板条即可瘦身(T3c)。
 
-# 布局对齐参考截图:盘 170×170(分数移出到头像卡下,盘只留
-# 风字章 + 局数 + 余张 + 当前回合家)
-# 中心盘略放大，金边更沉
-const PLATE_HALF: float = 92.0
+# 公开 bundle `.center` 的基础盒保持 220×220；透视与 CSS `scale(1.04)`
+# 由 TableLayout 统一换算后施加到 CenterInfoPanel 节点，不污染基础盘尺寸。
+const PLATE_HALF: float = 110.0
 
 # 每边一组节点:{wind: Label, score: Label, stick: Control}
 var _side_nodes: Array = []

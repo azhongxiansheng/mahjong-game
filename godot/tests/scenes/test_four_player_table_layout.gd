@@ -87,9 +87,7 @@ func test_seat_position_player_at_bottom_center():
 
 func test_seat_position_right_at_right_center():
 	var p: Vector2 = FourPlayerTable.seat_position(1)
-	# 左右家 y 对齐中心盘（略上于几何中线）
-	assert_almost_eq(p.y, TableLayout.center().y, 0.5)
-	assert_true(p.x > FourPlayerTable.TABLE_WIDTH / 2.0, "右家 x 在桌面右半")
+	assert_eq(p, Vector2(1495.0, 370.0), "右家匹配参考站固定座位锚点")
 
 func test_seat_position_opposite_at_top_center():
 	var p: Vector2 = FourPlayerTable.seat_position(2)
@@ -98,8 +96,7 @@ func test_seat_position_opposite_at_top_center():
 
 func test_seat_position_left_at_left_center():
 	var p: Vector2 = FourPlayerTable.seat_position(3)
-	assert_almost_eq(p.y, TableLayout.center().y, 0.5)
-	assert_true(p.x < FourPlayerTable.TABLE_WIDTH / 2.0, "左家 x 在桌面左半")
+	assert_eq(p, Vector2(105.0, 370.0), "左家匹配参考站固定座位锚点")
 
 # ---- AbilityPanel.SLOT_COUNT 不变量 ----
 

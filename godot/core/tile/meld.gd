@@ -8,26 +8,33 @@ const NO_SOURCE_SEAT: int = -1
 var kind: Kind
 var tiles: Array[Tile]
 var from_seat: int  # 牌来自哪个 seat（暗杠 = NO_SOURCE_SEAT）
+var called_tile: Tile  # 河里真正叫来的牌；暗杠/历史手工构造可为 null
 
-func _init(p_kind: Kind, p_tiles: Array[Tile], p_from: int) -> void:
+func _init(p_kind: Kind, p_tiles: Array[Tile], p_from: int,
+		p_called_tile: Tile = null) -> void:
 	kind = p_kind
 	tiles = p_tiles
 	from_seat = p_from
+	called_tile = p_called_tile
 
-static func make_chi(p_tiles: Array[Tile], p_from: int) -> Meld:
-	return Meld.new(Kind.CHI, p_tiles, p_from)
+static func make_chi(p_tiles: Array[Tile], p_from: int,
+		p_called_tile: Tile = null) -> Meld:
+	return Meld.new(Kind.CHI, p_tiles, p_from, p_called_tile)
 
-static func make_pon(p_tiles: Array[Tile], p_from: int) -> Meld:
-	return Meld.new(Kind.PON, p_tiles, p_from)
+static func make_pon(p_tiles: Array[Tile], p_from: int,
+		p_called_tile: Tile = null) -> Meld:
+	return Meld.new(Kind.PON, p_tiles, p_from, p_called_tile)
 
-static func make_minkan(p_tiles: Array[Tile], p_from: int) -> Meld:
-	return Meld.new(Kind.MINKAN, p_tiles, p_from)
+static func make_minkan(p_tiles: Array[Tile], p_from: int,
+		p_called_tile: Tile = null) -> Meld:
+	return Meld.new(Kind.MINKAN, p_tiles, p_from, p_called_tile)
 
 static func make_ankan(p_tiles: Array[Tile]) -> Meld:
 	return Meld.new(Kind.ANKAN, p_tiles, NO_SOURCE_SEAT)
 
-static func make_added_kan(p_tiles: Array[Tile], p_from: int) -> Meld:
-	return Meld.new(Kind.ADDED_KAN, p_tiles, p_from)
+static func make_added_kan(p_tiles: Array[Tile], p_from: int,
+		p_called_tile: Tile = null) -> Meld:
+	return Meld.new(Kind.ADDED_KAN, p_tiles, p_from, p_called_tile)
 
 func is_concealed() -> bool:
 	return kind == Kind.ANKAN

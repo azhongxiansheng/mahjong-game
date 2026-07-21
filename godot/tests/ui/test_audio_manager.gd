@@ -27,12 +27,12 @@ func test_riichi_declared_maps_to_riichi_chime() -> void:
 	assert_eq(AudioManager.sfx_key_for_event(&"RIICHI_DECLARED"), "riichi_chime")
 
 
-func test_tsumo_declared_maps_to_win_chime() -> void:
-	assert_eq(AudioManager.sfx_key_for_event(&"TSUMO_DECLARED"), "win_chime")
+func test_tsumo_declared_waits_for_confirmed_win() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"TSUMO_DECLARED"), "")
 
 
-func test_ron_declared_maps_to_win_chime() -> void:
-	assert_eq(AudioManager.sfx_key_for_event(&"RON_DECLARED"), "win_chime")
+func test_ron_declared_waits_for_confirmed_win() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"RON_DECLARED"), "")
 
 
 func test_exhaustive_draw_maps_to_draw_chime() -> void:
@@ -43,16 +43,21 @@ func test_abortive_draw_maps_to_abortive_chime() -> void:
 	assert_eq(AudioManager.sfx_key_for_event(&"ABORTIVE_DRAW"), "abortive_chime")
 
 
+func test_haitei_houtei_have_no_invented_dora_flip_sfx() -> void:
+	assert_eq(AudioManager.sfx_key_for_event(&"HAITEI"), "")
+	assert_eq(AudioManager.sfx_key_for_event(&"HOUTEI"), "")
+
+
 # WIN_DECLARED yakuman_multiplier>=1 → yakuman_chime
 func test_win_declared_yakuman_maps_to_yakuman() -> void:
 	assert_eq(AudioManager.sfx_key_for_event(&"WIN_DECLARED",
 		{"yakuman_multiplier": 1}), "yakuman_chime")
 
 
-# 非 yakuman 的 WIN_DECLARED 不重叠 SFX(已有 TSUMO/RON 在前)
-func test_win_declared_non_yakuman_no_sfx() -> void:
+# 普通和牌同样只在不可取消的 WIN_DECLARED 播一次。
+func test_win_declared_non_yakuman_maps_to_win_chime() -> void:
 	assert_eq(AudioManager.sfx_key_for_event(&"WIN_DECLARED",
-		{"yakuman_multiplier": 0}), "")
+		{"yakuman_multiplier": 0}), "win_chime")
 
 
 # PLAYER_ACTION kind=chi/pon/kan → chi_tap

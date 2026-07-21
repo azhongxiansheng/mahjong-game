@@ -2,6 +2,8 @@ extends GutTest
 
 # T2 单牌状态系统(spec 2026-06-11 G2)— CardTileBack 五状态 + SeatPanel 接线。
 
+const SEAT_PANEL_SCENE := preload("res://ui/four_player_table/seat_panel.tscn")
+
 func _make_face_up_tile(tid: int = TileId.W5) -> CardTileBack:
 	var tile := CardTileBack.new()
 	add_child_autofree(tile)
@@ -67,7 +69,7 @@ func test_states_are_stackable():
 # ---- SeatPanel 接线 ----
 
 func _make_player_panel_with_hand(ids: Array) -> SeatPanel:
-	var sp := SeatPanel.new()
+	var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp.set_seat_id(0)
 	add_child_autofree(sp)
 	var hand := Hand.new()
@@ -92,7 +94,7 @@ func _iter_hand_tiles(sp: SeatPanel) -> Array:
 
 
 func test_seat_panel_marks_dora_from_ids():
-	var sp := SeatPanel.new()
+	var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp.set_seat_id(0)
 	add_child_autofree(sp)
 	sp.set_dora_ids([TileId.W5])
@@ -131,7 +133,7 @@ func test_seat_panel_mark_win_tile():
 
 # 雀魂式：结算前翻开对手手牌
 func test_seat_panel_reveal_hand_face_up():
-	var sp := SeatPanel.new()
+	var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp.set_seat_id(2)  # 对手
 	add_child_autofree(sp)
 	await get_tree().process_frame
@@ -146,7 +148,7 @@ func test_seat_panel_reveal_hand_face_up():
 
 # 听牌候补条：仅 seat 0 + tenpai 时显示
 func test_seat_panel_wait_tiles_strip():
-	var sp := SeatPanel.new()
+	var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp.set_seat_id(0)
 	add_child_autofree(sp)
 	await get_tree().process_frame
@@ -156,7 +158,7 @@ func test_seat_panel_wait_tiles_strip():
 	sp.set_tenpai(false)
 	assert_eq(sp.count_wait_tiles_shown(), 0, "非听应隐藏候补")
 	# 对手 seat 不显示
-	var sp2 := SeatPanel.new()
+	var sp2: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp2.set_seat_id(1)
 	add_child_autofree(sp2)
 	await get_tree().process_frame

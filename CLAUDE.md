@@ -105,7 +105,8 @@ docker build -t mahjong .
 - 赤宝：`is_red_dora` → atlas key **`0m` / `0p` / `0s`**
 - 滤波：`rendering/textures/canvas_textures/default_texture_filter=3`（**LINEAR_WITH_MIPMAPS**）
 - 改 PNG 后必须 `--import`，否则 ctex 失效界面全黑
-- Viewport 设计基准 **1280×800**
+- Viewport 设计基准 **1600×900**；`PlayableTable` 默认走 **2D 伪 3D**，
+  `MahjongTable3D` 仅保留为显式实验 opt-in
 
 ### 日麻引擎与技能（active）
 见 `core/`、`battle/`、`skills/`。玩家输入：`PlayerDecisionPort` + `TableDecisionAdapter` + `PlayerActionPanel`。

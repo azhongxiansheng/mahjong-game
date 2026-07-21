@@ -114,7 +114,7 @@ func apply_chi(claimant_seat: int, claimed_tile: Tile, companion_ids: Array) -> 
 			return false
 		meld_tiles.append(found)
 	meld_tiles.sort_custom(func(a, b): return a.id < b.id)
-	claimant.melds.append(Meld.make_chi(meld_tiles, discarder_seat))
+	claimant.melds.append(Meld.make_chi(meld_tiles, discarder_seat, claimed_tile))
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(claimant_seat)
 	_clear_all_ippatsu_windows()  # 日麻 §6.4 一発:任何鸣牌(含暗杠)立刻关窗
@@ -129,7 +129,7 @@ func apply_pon(claimant_seat: int, claimed_tile: Tile) -> bool:
 	var meld_tiles: Array[Tile] = [claimed_tile]
 	for _i in range(2):
 		meld_tiles.append(_take_from_hand(claimant.hand, claimed_tile.id))
-	claimant.melds.append(Meld.make_pon(meld_tiles, discarder_seat))
+	claimant.melds.append(Meld.make_pon(meld_tiles, discarder_seat, claimed_tile))
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(claimant_seat)
 	_clear_all_ippatsu_windows()
@@ -144,7 +144,7 @@ func apply_minkan(claimant_seat: int, claimed_tile: Tile) -> bool:
 	var meld_tiles: Array[Tile] = [claimed_tile]
 	for _i in range(3):
 		meld_tiles.append(_take_from_hand(claimant.hand, claimed_tile.id))
-	claimant.melds.append(Meld.make_minkan(meld_tiles, discarder_seat))
+	claimant.melds.append(Meld.make_minkan(meld_tiles, discarder_seat, claimed_tile))
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_reveal_new_dora()
 	_take_rinshan_to(claimant)
@@ -184,7 +184,8 @@ func apply_added_kan(seat_id: int, tile_id: int) -> bool:
 			for t in m.tiles:
 				combined.append(t)
 			combined.append(fourth)
-			seat.melds[i] = Meld.make_added_kan(combined, m.from_seat)
+			seat.melds[i] = Meld.make_added_kan(combined, m.from_seat,
+				m.called_tile)
 			break
 	_reveal_new_dora()
 	_take_rinshan_to(seat)

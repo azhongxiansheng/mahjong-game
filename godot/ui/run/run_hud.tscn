@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://ui/run/run_hud.gd" id="1"]
 
 [node name="RunHud" type="Control"]
-custom_minimum_size = Vector2(1280, 56)
+custom_minimum_size = Vector2(1600, 56)
 script = ExtResource("1")
 
 [node name="Bg" type="ColorRect" parent="."]
@@ -14,7 +14,7 @@ color = Color(0.04, 0.06, 0.08, 1)
 [node name="HBox" type="HBoxContainer" parent="."]
 offset_left = 16.0
 offset_top = 10.0
-offset_right = 1264.0
+offset_right = 1584.0
 offset_bottom = 46.0
 theme_override_constants/separation = 24
 

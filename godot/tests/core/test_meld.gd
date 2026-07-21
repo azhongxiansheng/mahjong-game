@@ -6,6 +6,15 @@ func test_chi_meld_3_tiles_consecutive():
 	assert_eq(m.tiles.size(), 3)
 	assert_eq(m.from_seat, 0)
 
+
+func test_open_meld_preserves_exact_called_tile_identity():
+	var called := Tile.new(TileId.W3)
+	var m := Meld.make_chi([
+		Tile.new(TileId.W2), called, Tile.new(TileId.W4)
+	], 0, called)
+	assert_same(m.called_tile, called,
+		"参考副露牌序必须知道真正从河里叫来的 Tile，不能按排序位置猜")
+
 func test_pon_meld_3_tiles_same():
 	var m := Meld.make_pon([Tile.new(TileId.W5), Tile.new(TileId.W5), Tile.new(TileId.W5)], 1)
 	assert_eq(m.kind, Meld.Kind.PON)
@@ -26,11 +35,13 @@ func test_ankan_4_tiles_concealed():
 	assert_eq(m.from_seat, Meld.NO_SOURCE_SEAT, "暗杠不来自任何人")
 
 func test_added_kan_from_existing_pon():
+	var called := Tile.new(TileId.E)
 	var m := Meld.make_added_kan([
-		Tile.new(TileId.E), Tile.new(TileId.E),
+		called, Tile.new(TileId.E),
 		Tile.new(TileId.E), Tile.new(TileId.E)
-	], 3)
+	], 3, called)
 	assert_eq(m.kind, Meld.Kind.ADDED_KAN)
+	assert_same(m.called_tile, called, "加杠必须继承原碰的 called tile")
 
 func test_is_concealed():
 	assert_true(Meld.make_ankan([

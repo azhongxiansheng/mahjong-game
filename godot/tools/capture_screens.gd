@@ -20,6 +20,7 @@ const SHOTS := [
 	["res://ui/run/run_hud.tscn", "run_hud"],
 	["res://ui/four_player_table/four_player_table.tscn", "four_player_table"],
 ]
+const CAPTURE_SIZE := Vector2i(1600, 900)
 
 
 func _initialize() -> void:
@@ -27,9 +28,9 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	# 1280x800 让截图够大看清 UI (默认 1152x648 太挤)
-	root.content_scale_size = Vector2i(1280, 800)
-	DisplayServer.window_set_size(Vector2i(1280, 800))
+	# 与参考站固定 stage 同尺寸，截图直接核对设计基准。
+	root.content_scale_size = CAPTURE_SIZE
+	DisplayServer.window_set_size(CAPTURE_SIZE)
 	await process_frame
 	await process_frame
 	for entry in SHOTS:
@@ -57,12 +58,14 @@ func _run() -> void:
 
 
 func _capture_battle_with_state() -> void:
-	# 走 PlayableTable(真实游戏视图,含 3D 倾斜桌面管线),
-	# 不再裸实例化 FourPlayerTable(那会绕过透视渲染)。
+	# 走 PlayableTable（真实游戏视图，默认 2D 伪 3D 渲染），
+	# 不再裸实例化 FourPlayerTable（那会绕过生产入口的渲染模式选择）。
 	# 注意:必须运行时 load — -s 脚本的编译闭包先于 autoload 注册,
 	# 静态引用 PlayableTable 会把 Anima(依赖 ANIMA autoload)拖进早期编译。
 	var table = load("res://ui/four_player_table/playable_table.gd").new()
 	root.add_child(table)
+	table.set_player_persona("赤木",
+		"res://assets/roguelike/characters/char_akagi.png")
 	# BattleController 跑一个确定 seed 起手,state 立刻有 4 家 13 张手牌 + 庄家
 	var bc := BattleController.new(42, 0, false, TileId.E)
 	# bind 桌面到这个 state,seat 0 可见手牌、dora 指示牌、立直棒 0、当前 seat 高亮
@@ -73,6 +76,18 @@ func _capture_battle_with_state() -> void:
 	var out := "/tmp/shot_battle_live.png"
 	img.save_png(out)
 	print("[capture] saved ", out)
+	# 确认态特殊役横幅：只调用公开 bundle 的 MomentBand 翻译入口，避免同时
+	# 挂 3 秒 win-announce 干扰后续终局截图。
+	table._play_confirmed_moment_band([{"name": "海底捞月", "han": 1}])
+	for _i in range(24):
+		await process_frame
+	var moment_img := root.get_texture().get_image()
+	moment_img.save_png("/tmp/shot_battle_moment.png")
+	print("[capture] saved /tmp/shot_battle_moment.png")
+	var moment_band: Node = table.get_node_or_null("MomentBand")
+	if moment_band != null:
+		moment_band.queue_free()
+	await process_frame
 	# 再来一张终局状态:跑完整局后 rebind,河牌满 / 副露 / 立直棒全亮,
 	# 验证 3D 倾斜视图下的中盘景观密度。
 	bc.run_to_end()

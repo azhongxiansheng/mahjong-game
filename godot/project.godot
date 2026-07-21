@@ -35,12 +35,12 @@ ANIMA="*res://addons/anima/core/constants.gd"
 
 [display]
 
-; UI 全部按 1280×800 设计;主窗口默认 1280×800 + canvas_items 拉伸。
+; UI 全部按参考站 1600×900 固定 stage 设计;主窗口同尺寸 + canvas_items 拉伸。
 ; 开 hidpi_allowed:Retina 屏按物理像素渲染,贴图采样高质量不糊。
-window/size/viewport_width=1280
-window/size/viewport_height=800
-window/size/window_width_override=1280
-window/size/window_height_override=800
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/size/window_width_override=1600
+window/size/window_height_override=900
 window/dpi/allow_hidpi=true
 window/stretch/mode="canvas_items"
 window/stretch/aspect="keep"

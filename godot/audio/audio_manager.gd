@@ -82,24 +82,17 @@ static func sfx_key_for_event(event_type: StringName, extra: Dictionary = {}) ->
 			return "tile_click"
 		&"RIICHI_DECLARED":
 			return "riichi_chime"
-		&"TSUMO_DECLARED":
-			return "win_chime"
-		&"RON_DECLARED":
-			return "win_chime"
+		&"TSUMO_DECLARED", &"RON_DECLARED":
+			return ""  # 候选态可能取消；统一等最终 WIN_DECLARED
 		&"WIN_DECLARED":
 			# yakuman_multiplier >= 1 → 役満版 chime
 			if int(extra.get("yakuman_multiplier", 0)) >= 1:
 				return "yakuman_chime"
-			return ""  # WIN_DECLARED 后立刻播 win/yakuman,但 TSUMO/RON 已先播过,跳过避免叠加
+			return "win_chime"
 		&"EXHAUSTIVE_DRAW":
 			return "draw_chime"
 		&"ABORTIVE_DRAW":
 			return "abortive_chime"
-		&"HAITEI", &"HOUTEI":
-			# 海底捞月 / 河底捞鱼:罕见牌型,用 dora_flip 声(短促清亮)标记
-			# "命中关键事件"。WIN_DECLARED 紧跟会再播 win_chime,玩家听到的
-			# 是连贯的 "叮 → 胡" 双音,强化命中感。
-			return "dora_flip"
 		&"NAGASHI_MANGAN":
 			return "win_chime"
 		&"PLAYER_ACTION":
