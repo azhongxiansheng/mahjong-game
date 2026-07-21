@@ -40,6 +40,7 @@ const TOP_HAND_TILE_GAP: float = 3.0
 const TOP_HAND_DRAWN_GAP: float = 22.0
 const SIDE_HAND_TILE_GAP: float = 0.0
 const CUBE_RAW_POINTS_META := &"reference_raw_points"
+const SIDE_INFO_WIDTH: float = 170.0
 const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
 # 自家手牌直接对应参考 .tile--xl；13 张宽 882px，以 seat anchor 居中。
@@ -185,7 +186,9 @@ func set_seat_id(id: int) -> void:
 	# 名字+分数列钉在头像卡正下方(布局对齐:卡群 = 头像卡 + 名字条 + 分数)
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
-		_pin_info_node(vbox, cluster_anchor() + Vector2(36 - vbox.size.x / 2.0, 92))
+		if id == 1 or id == 3:
+			vbox.size = Vector2(SIDE_INFO_WIDTH, vbox.size.y)
+		_pin_info_node(vbox, _info_top_left(vbox.size.x, 92.0))
 	_ensure_info_chip()
 	if is_inside_tree():
 		_refresh_labels()
@@ -197,7 +200,9 @@ func _ensure_info_chip() -> void:
 		return
 	var chip := Panel.new()
 	chip.name = "InfoChip"
-	chip.size = Vector2(200, 27)
+	var chip_width := SIDE_INFO_WIDTH if _seat_id == 1 or _seat_id == 3 else 200.0
+	var chip_height := 22.0 if _seat_id == 0 else 27.0
+	chip.size = Vector2(chip_width, chip_height)
 	chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.04, 0.06, 0.05, 0.62)
@@ -206,7 +211,7 @@ func _ensure_info_chip() -> void:
 	sb.set_corner_radius_all(13)
 	chip.add_theme_stylebox_override("panel", sb)
 	add_child(chip)
-	_pin_info_node(chip, cluster_anchor() + Vector2(36 - 100, 89))
+	_pin_info_node(chip, _info_top_left(chip_width, 89.0))
 	# 垫在 VBox(文字)之下
 	var vbox := get_node_or_null("VBox")
 	if vbox:
@@ -236,6 +241,18 @@ const CLUSTER_ANCHORS: Dictionary = {
 
 func cluster_anchor() -> Vector2:
 	return CLUSTER_ANCHORS.get(_seat_id, Vector2.ZERO)
+
+
+# 自家压缩头像下信息的垂直间距；左右家信息条只向桌外展开。
+func _info_top_left(width: float, offset_y: float) -> Vector2:
+	var anchor := cluster_anchor()
+	if _seat_id == 0:
+		return anchor + Vector2(36.0 - width / 2.0, 78.0)
+	if _seat_id == 1:
+		return anchor + Vector2(0.0, offset_y)
+	if _seat_id == 3:
+		return anchor + Vector2(78.0 - width, offset_y)
+	return anchor + Vector2(36.0 - width / 2.0, offset_y)
 
 # 把 node 的**视觉 top-left** 钉到桌面屏幕坐标(node 同时被反向旋转恒正立)。
 func _pin_info_node(node: Control, screen_top_left: Vector2) -> void:
@@ -943,13 +960,10 @@ static func make_reference_side_cube(mirror_x: bool = false,
 			[c, bc, bc + Vector2(0, 6), c + Vector2(0, 6)],
 			[Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0)], [0.0, 1.0],
 			c, c + Vector2(0, 6), Rect2(c, Vector2(bc.x - c.x, 6)))
-	_add_cube_gradient_face(cube, "CubeTop", top_points,
-		[Color("2c5e3f"), Color("2c5e3f"), Color.WHITE, Color.WHITE],
-		[0.0, 0.499, 0.501, 1.0], o, b)
+	_add_cube_hard_split_face(cube, "CubeTop", top_points, o, b)
 	_add_cube_face(cube, "CubeBack", back_points, Color("2c5e3f"))
-	_add_cube_gradient_face(cube, "CubeSide", side_points,
-		[Color("2c5e3f"), Color("2c5e3f"), Color.WHITE, Color.WHITE],
-		[0.0, 0.499, 0.501, 1.0], o, Vector2(39.801309, 42.530610))
+	_add_cube_hard_split_face(cube, "CubeSide", side_points, o,
+		Vector2(39.801309, 42.530610))
 	_add_cube_gradient_face(cube, "CubeSideShadow", side_points,
 		[Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.0), Color(0, 0, 0, 0.7)],
 		[0.0, 0.3, 1.0], o, c)
@@ -968,7 +982,49 @@ static func _add_cube_face(parent: Control, node_name: String,
 	face.polygon = raw_points
 	face.set_meta(CUBE_RAW_POINTS_META, raw_points)
 	face.color = color
+	face.antialiased = true
 	parent.add_child(face)
+
+
+# 参考 SVG 的 49.9/50.1 渐变是视觉硬分色。Polygon2D 在逐点透视后若继续
+# 依赖 UV，会按三角形分别插值，分界就会折成梯形；这里改为共享 50% 边的
+# 绿底 + 白色裁切面，等价保留 bundle 的硬分色语义。
+static func _add_cube_hard_split_face(parent: Control, node_name: String,
+		points: Array, fill_from: Vector2, fill_to: Vector2) -> void:
+	_add_cube_face(parent, node_name, points, Color("2c5e3f"))
+	var white_points := _clip_polygon_after_gradient(
+		points, fill_from, fill_to, 0.5)
+	_add_cube_face(parent, node_name + "White", white_points, Color.WHITE)
+
+
+static func _clip_polygon_after_gradient(points: Array, fill_from: Vector2,
+		fill_to: Vector2, threshold: float) -> Array:
+	var result: Array = []
+	if points.is_empty():
+		return result
+	var axis := fill_to - fill_from
+	var axis_length_squared := axis.length_squared()
+	for index in range(points.size()):
+		var current: Vector2 = points[index]
+		var following: Vector2 = points[(index + 1) % points.size()]
+		var current_t := (current - fill_from).dot(axis) / axis_length_squared
+		var following_t := (following - fill_from).dot(axis) / axis_length_squared
+		var current_inside := current_t >= threshold
+		var following_inside := following_t >= threshold
+		if current_inside:
+			_append_unique_polygon_point(result, current)
+		if current_inside != following_inside:
+			var ratio := (threshold - current_t) / (following_t - current_t)
+			_append_unique_polygon_point(result, current.lerp(following, ratio))
+	if result.size() > 1 \
+			and (result[0] as Vector2).distance_to(result[-1] as Vector2) <= 0.001:
+		result.pop_back()
+	return result
+
+
+static func _append_unique_polygon_point(points: Array, point: Vector2) -> void:
+	if points.is_empty() or (points[-1] as Vector2).distance_to(point) > 0.001:
+		points.append(point)
 
 
 # bundle 的 rounded polygon helper：每个顶点按相邻边各退/进 radius，再以顶点作
@@ -988,17 +1044,18 @@ static func _rounded_cube_polygon(points: Array, radii: Array) -> Array:
 			"corner": current,
 			"end": current + outgoing.normalized() * radius,
 		})
-	var result: Array = [corners[0]["start"]]
+	var result: Array = []
+	_append_unique_polygon_point(result, corners[0]["start"])
 	for i in range(corners.size()):
 		var item: Dictionary = corners[i]
 		for step in range(1, 5):
 			var t := float(step) / 4.0
 			var inv := 1.0 - t
-			result.append(inv * inv * item["start"] \
+			_append_unique_polygon_point(result, inv * inv * item["start"] \
 				+ 2.0 * inv * t * item["corner"] + t * t * item["end"])
 		var next_start: Vector2 = corners[(i + 1) % corners.size()]["start"]
-		if (result[-1] as Vector2).distance_to(next_start) > 0.001:
-			result.append(next_start)
+		if i < corners.size() - 1:
+			_append_unique_polygon_point(result, next_start)
 	return result
 
 
@@ -1029,6 +1086,7 @@ static func _add_cube_gradient_face(parent: Control, node_name: String,
 	face.uv = PackedVector2Array(uv_points)
 	face.texture = texture
 	face.color = Color.WHITE
+	face.antialiased = true
 	parent.add_child(face)
 
 
@@ -1072,6 +1130,9 @@ static func _add_cube_line(parent: Control, node_name: String, points: Array,
 	line.default_color = color
 	line.width = width
 	line.closed = closed
+	line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	line.joint_mode = Line2D.LINE_JOINT_ROUND
 	line.antialiased = true
 	parent.add_child(line)
 
@@ -1099,10 +1160,11 @@ static func _add_cube_outline_and_bevels(parent: Control, o: Vector2, a: Vector2
 	var axis_c := Vector2(-15.21, 32.63).normalized()
 	var inset := 1.8
 	var a_normal := Vector2(axis_a.y, -axis_a.x)
-	_add_cube_line(parent, "BevelA", [o + a_normal * inset, a + a_normal * inset],
-		Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.15), 0.9)
+	var bevel_a_points := [o + a_normal * inset, a + a_normal * inset]
+	var bevel_a_color := Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.15)
 	if not is_bottom:
 		_add_cube_line(parent, "EdgeMV0", [a, o], edge_color, 0.5)
+		_add_cube_line(parent, "BevelA", bevel_a_points, bevel_a_color, 0.9)
 		return
 	var trim := 4.0
 	var along_a := o + axis_a * trim
@@ -1121,6 +1183,7 @@ static func _add_cube_outline_and_bevels(parent: Control, o: Vector2, a: Vector2
 	_add_cube_line(parent, "EdgeAB", edge_ab, edge_color, 0.5)
 	_add_cube_line(parent, "EdgeBC", edge_bc, edge_color, 0.5)
 	_add_cube_line(parent, "EdgeCA", edge_ca, edge_color, 0.5)
+	_add_cube_line(parent, "BevelA", bevel_a_points, bevel_a_color, 0.9)
 	var b_normal := Vector2(axis_b.y, -axis_b.x)
 	_add_cube_line(parent, "BevelB", [along_b + b_normal * inset, b + b_normal * inset],
 		Color(1.0, 245.0 / 255.0, 215.0 / 255.0, 0.15), 0.9)

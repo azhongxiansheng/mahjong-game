@@ -40,6 +40,60 @@ func _assert_vector_almost_eq(actual: Vector2, expected: Vector2,
 	assert_almost_eq(actual.y, expected.y, tolerance, "%s y" % label)
 
 
+func _assert_white_split_face(layer: Polygon2D, fill_from: Vector2,
+		fill_to: Vector2, label: String) -> void:
+	assert_not_null(layer, "%s 白面必须独立成几何面片" % label)
+	if layer == null:
+		return
+	assert_true(layer.antialiased, "%s 圆弧边缘必须抗锯齿" % label)
+	var raw_points: PackedVector2Array = layer.get_meta(
+		SeatPanel.CUBE_RAW_POINTS_META, PackedVector2Array())
+	assert_gt(raw_points.size(), 2, "%s 白面必须有闭合轮廓" % label)
+	var axis := fill_to - fill_from
+	var boundary_points := 0
+	for point in raw_points:
+		var gradient_t := (point - fill_from).dot(axis) / axis.length_squared()
+		assert_gte(gradient_t, 0.499,
+			"%s 禁止白面越过参考 50%% 分界" % label)
+		if absf(gradient_t - 0.5) <= 0.001:
+			boundary_points += 1
+	assert_gte(boundary_points, 2, "%s 必须共享一条精确分界边" % label)
+
+
+func _assert_no_duplicate_outline_points(layer: Polygon2D, label: String) -> void:
+	var raw_points: PackedVector2Array = layer.get_meta(
+		SeatPanel.CUBE_RAW_POINTS_META, PackedVector2Array())
+	for index in range(raw_points.size()):
+		var next_index := (index + 1) % raw_points.size()
+		assert_gt(raw_points[index].distance_to(raw_points[next_index]), 0.001,
+			"%s 禁止连续重复点制造退化三角形" % label)
+
+
+func _assert_polygon_contains_point(layer: Polygon2D, expected: Vector2,
+		label: String) -> void:
+	var raw_points: PackedVector2Array = layer.get_meta(
+		SeatPanel.CUBE_RAW_POINTS_META, PackedVector2Array())
+	var found := false
+	for point in raw_points:
+		if point.distance_to(expected) <= 0.001:
+			found = true
+			break
+	assert_true(found, "%s 必须包含参考圆弧采样点 %s" % [label, expected])
+
+
+func _assert_svg_round_lines(cube: Control) -> void:
+	for child in cube.get_children():
+		if child is not Line2D:
+			continue
+		var line := child as Line2D
+		assert_eq(line.begin_cap_mode, Line2D.LINE_CAP_ROUND,
+			"%s 起点必须对齐 SVG round cap" % line.name)
+		assert_eq(line.end_cap_mode, Line2D.LINE_CAP_ROUND,
+			"%s 终点必须对齐 SVG round cap" % line.name)
+		assert_eq(line.joint_mode, Line2D.LINE_JOINT_ROUND,
+			"%s 折点必须对齐 SVG round join" % line.name)
+
+
 func _rect_union(rects: Array[Rect2]) -> Rect2:
 	assert_false(rects.is_empty())
 	var result := rects[0]
@@ -155,6 +209,48 @@ func test_reference_hand_slots_apply_real_screen_geometry() -> void:
 			"seat %d first slot" % seat_id)
 		_assert_rect_almost_eq(rects[12], expected_last[seat_id], 0.02,
 			"seat %d last slot" % seat_id)
+
+
+func test_side_hand_hosts_leave_avatar_info_clear() -> void:
+	for seat_id in [1, 3]:
+		var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+		panel.position = TableLayout.seat_anchor(seat_id)
+		panel.set_seat_id(seat_id)
+		add_child_autofree(panel)
+		await get_tree().process_frame
+		panel.bind_seat(_seat_with_tiles(seat_id, 13))
+		for meld_extent in [0.0, 137.0]:
+			panel.apply_reference_hand_layout(meld_extent)
+			await get_tree().process_frame
+			var hand_rect := panel.get_reference_hand_host_rect().grow(4.0)
+			for info_name in ["VBox", "InfoChip"]:
+				var info := panel.get_node(info_name) as Control
+				var info_rect := SeatPanel._control_global_aabb(info)
+				assert_false(hand_rect.intersects(info_rect),
+					"seat %d meld %.0f 手牌不得遮挡 %s" % [
+						seat_id, meld_extent, info_name])
+
+
+func test_player_hand_leaves_score_clear() -> void:
+	var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
+	panel.position = TableLayout.seat_anchor(0)
+	panel.set_seat_id(0)
+	add_child_autofree(panel)
+	await get_tree().process_frame
+	panel.bind_seat(_seat_with_tiles(0, 13))
+	panel.apply_reference_hand_layout()
+	await get_tree().process_frame
+	assert_eq(panel.cluster_anchor(), TableLayout.avatar_rect(0).position,
+		"修信息遮挡不能挪动参考头像锚点")
+	var score := panel.get_node("VBox/Score") as Control
+	var score_rect := SeatPanel._control_global_aabb(score)
+	for hand_rect in panel.get_visual_hand_rects():
+		var standing_visual_rect := Rect2(
+			(hand_rect as Rect2).position - Vector2(0.0, 10.0),
+			(hand_rect as Rect2).size + Vector2(0.0, 10.0))
+		assert_false(standing_visual_rect.grow(4.0).intersects(score_rect),
+			"自家手牌必须与分数保留 4px 间距: %s vs %s" % [
+				standing_visual_rect, score_rect])
 
 
 func test_top_hand_back_stays_upright_after_seat_rotation() -> void:
@@ -311,16 +407,31 @@ func test_side_cube_translates_svg_layers_and_top_bottom_branches() -> void:
 	add_child_autofree(middle)
 	add_child_autofree(bottom)
 	for cube in [top, middle, bottom]:
-		for layer_name in ["ContactLeft", "CubeTop", "CubeBack", "CubeSide",
-				"CubeSideShadow", "CubeOutline", "BevelA"]:
+		for layer_name in ["ContactLeft", "CubeTop", "CubeTopWhite", "CubeBack",
+				"CubeSide", "CubeSideWhite", "CubeSideShadow", "CubeOutline", "BevelA"]:
 			assert_not_null(cube.get_node_or_null(layer_name),
 				"aw() 绘制层缺失: %s" % layer_name)
-		assert_true((cube.get_node("CubeTop") as Polygon2D).texture is GradientTexture2D,
-			"顶面 49.9/50.1 split 必须用参考渐变")
+		var top_green := cube.get_node("CubeTop") as Polygon2D
+		assert_null(top_green.texture,
+			"硬分色不能再依赖透视后会变形的 UV 渐变")
+		assert_eq(top_green.color, Color("2c5e3f"))
+		for face_name in ["CubeTop", "CubeBack", "CubeSide"]:
+			_assert_no_duplicate_outline_points(cube.get_node(face_name) as Polygon2D,
+				face_name)
 		assert_true((cube.get_node("CubeSideShadow") as Polygon2D).texture is GradientTexture2D,
 			"侧面暗化必须沿 O→C 渐变，不能退化成纯色蒙版")
+		_assert_white_split_face(cube.get_node_or_null("CubeTopWhite") as Polygon2D,
+			Vector2(17.21, 32.0), Vector2(44.71, 32.0), "CubeTopWhite")
+		_assert_white_split_face(cube.get_node_or_null("CubeSideWhite") as Polygon2D,
+			Vector2(17.21, 32.0), Vector2(39.801309, 42.530610),
+			"CubeSideWhite")
+		_assert_svg_round_lines(cube)
 	assert_null(top.get_node_or_null("StackSeam"), "isTop 不画与上一张之间的暗面")
 	assert_null(top.get_node_or_null("SeamShadow"), "isTop 不画牌缝影")
+	for cube in [top, middle]:
+		assert_lt(cube.get_node("EdgeMV0").get_index(),
+			cube.get_node("BevelA").get_index(),
+			"参考 SVG 先画暗边，再叠 round-cap 高光")
 	assert_not_null(middle.get_node_or_null("StackSeam"))
 	assert_not_null(middle.get_node_or_null("SeamShadow"))
 	assert_null(middle.get_node_or_null("ContactBottom"), "非 isBottom 不画底接触影")
@@ -330,8 +441,24 @@ func test_side_cube_translates_svg_layers_and_top_bottom_branches() -> void:
 	assert_not_null(bottom.get_node_or_null("EdgeCA"))
 	assert_not_null(bottom.get_node_or_null("BevelB"))
 	assert_not_null(bottom.get_node_or_null("BevelC"))
+	assert_lt(bottom.get_node("EdgeCA").get_index(),
+		bottom.get_node("BevelA").get_index(),
+		"底张三条暗边必须先于高光绘制")
+	assert_lt(bottom.get_node("BevelA").get_index(),
+		bottom.get_node("BevelB").get_index())
+	assert_lt(bottom.get_node("BevelB").get_index(),
+		bottom.get_node("BevelC").get_index())
 	assert_gt((bottom.get_node("CubeBack") as Polygon2D).polygon.size(), 4,
 		"isBottom 的 C 角必须按 6px quadratic round 采样，不能仍是尖角四边形")
+	var bottom_white := bottom.get_node_or_null("CubeSideWhite") as Polygon2D
+	assert_not_null(bottom_white)
+	if bottom_white != null:
+		_assert_polygon_contains_point(bottom_white,
+			Vector2(32.034940, 59.191795), "底张白面 BC start")
+		_assert_polygon_contains_point(bottom_white,
+			Vector2(28.633735, 63.270449), "底张白面 BC quadratic midpoint")
+		_assert_polygon_contains_point(bottom_white,
+			Vector2(23.5, 64.63), "底张白面 BC end")
 
 
 func test_side_hand_slots_follow_q0_reserved_drawn_slot_formula() -> void:
