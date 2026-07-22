@@ -1,7 +1,7 @@
 """CLI: generate non-tile assets — backgrounds, run-node icons, HUD icons, logo.
 
-斗牌传说 / Akagi art direction — dramatic high-contrast, hard ink shadows,
-gritty 1990s seinen gambling-den mood.
+Original dramatic high-contrast art direction — hard ink shadows,
+gritty 1990s seinen gambling-den mood (no third-party IP).
 
 Usage:
   python3 generate_misc.py --table        # battle table felt background
@@ -26,10 +26,10 @@ ASSETS = HERE.parent.parent / "assets"
 ICON_DIR = ASSETS / "run_icons"
 RAW_DIR = HERE / "_raw_misc"
 
-_AKAGI = (
+_DRAMA_STYLE = (
     "Dramatic high-contrast lighting, hard ink shadows, sharp angular linework, "
     "monochrome-leaning palette with selective deep crimson, gritty 1990s "
-    "Akagi seinen-manga gambling-den aesthetic, tense and ominous mood."
+    "seinen-manga gambling-den aesthetic, tense and ominous mahjong-table mood."
 )
 
 # (key, prompt, size, background) for the run-node icons — transparent 256x256.
@@ -46,7 +46,7 @@ TABLE_PROMPT = (
     "A top-down view of a traditional Japanese mahjong gambling table surface, "
     "dark green felt with a faint worn texture, a subtle darker border frame, "
     "empty center, no tiles, no text. Heavy vignette darkening the edges. "
-    + _AKAGI
+    + _DRAMA_STYLE
     + " Seamless even surface suitable as a full-screen game background."
 )
 
@@ -57,7 +57,7 @@ RUNBG_PROMPT = (
     "seen straight on: dim hanging lights, deep shadows, worn wooden walls, "
     "a heavy vignette, mostly very dark with faint warm light, no people, no "
     "furniture in the center, no text. Uncluttered and dim so UI panels can "
-    "be overlaid on top. " + _AKAGI
+    "be overlaid on top. " + _DRAMA_STYLE
 )
 
 # (key, prompt, out_path) for HUD icons — transparent, small.
@@ -70,7 +70,7 @@ LOGO_PROMPT = (
     "A bold game logo emblem for a mahjong roguelike titled 麻将王 (Mahjong "
     "King): a single dramatic mahjong tile rendered as a throne or crown motif, "
     "isolated on a transparent background, sharp angular design. "
-    + _AKAGI
+    + _DRAMA_STYLE
 )
 
 
@@ -78,7 +78,7 @@ def _icon_prompt(desc: str) -> str:
     return (
         f"A game UI icon: {desc}, isolated on a fully transparent background, "
         "centered, filling most of the frame, bold and readable as a small "
-        "icon. " + _AKAGI + " No text, no caption, no watermark."
+        "icon. " + _DRAMA_STYLE + " No text, no caption, no watermark."
     )
 
 

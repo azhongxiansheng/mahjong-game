@@ -1,7 +1,6 @@
 extends GutTest
 
 func test_character_pool_has_12_characters():
-	# 6 初版 + M12 咲 6 角色
 	var pool: Array = CharacterPool.all()
 	assert_eq(pool.size(), 12)
 
@@ -9,30 +8,34 @@ func test_all_characters_unlocked_at_zero_renown():
 	var unlocked: Array = CharacterPool.unlocked(0)
 	assert_eq(unlocked.size(), 3, "3 初始角色应在 0 声望解锁")
 
-func test_find_akagi():
-	var c: Character = CharacterPool.find(&"akagi")
+func test_find_lin_yeche():
+	var c: Character = CharacterPool.find(&"lin_yeche")
 	assert_not_null(c)
-	assert_eq(c.display_name, "赤木")
+	assert_eq(c.display_name, "林夜彻")
 	assert_eq(c.starting_hp, 4)
 	assert_eq(c.starting_gold, 50)
+	assert_eq(c.ability_id, &"char_akagi_passive_v1")
 
-func test_find_kaiji():
-	var c: Character = CharacterPool.find(&"kaiji")
+func test_find_qiu_jue():
+	var c: Character = CharacterPool.find(&"qiu_jue")
 	assert_not_null(c)
 	assert_eq(c.starting_hp, 5)
+	assert_eq(c.ability_id, &"char_kaiji_passive_v1")
 
-func test_find_washizu():
-	var c: Character = CharacterPool.find(&"washizu")
+func test_find_bai_touli():
+	var c: Character = CharacterPool.find(&"bai_touli")
 	assert_not_null(c)
 	assert_eq(c.starting_hp, 6)
+	assert_eq(c.ability_id, &"char_washizu_passive_v1")
 
 func test_character_serialization():
-	var c: Character = CharacterPool.find(&"akagi")
+	var c: Character = CharacterPool.find(&"lin_yeche")
 	var d := c.to_dict()
 	var restored := Character.from_dict(d)
-	assert_eq(restored.id, &"akagi")
+	assert_eq(restored.id, &"lin_yeche")
 	assert_eq(restored.starting_hp, 4)
 	assert_eq(restored.starting_gold, 50)
+	assert_eq(restored.portrait_path, c.portrait_path)
 
 func test_akagi_passive_reveals_opponent_hand():
 	var reg := SkillRegistry.new()
@@ -48,7 +51,7 @@ func test_akagi_passive_reveals_opponent_hand():
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_akagi_passive_v1", 0)
 	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
-	assert_gt(st.revealed_tiles.size(), 0, "赤木鬼読み应 reveal 对手手牌")
+	assert_gt(st.revealed_tiles.size(), 0, "读脊应 reveal 对手手牌")
 
 func test_kaiji_passive_adds_han_when_low_score():
 	var reg := SkillRegistry.new()
@@ -57,7 +60,7 @@ func test_kaiji_passive_adds_han_when_low_score():
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_kaiji_passive_v1", 0)
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(int(ctx.han_deltas.get(0, 0)), 2, "开司低分时应 +2 番")
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 2, "绝崖低分时应 +2 番")
 
 func test_kaiji_passive_no_han_when_high_score():
 	var reg := SkillRegistry.new()
@@ -65,7 +68,7 @@ func test_kaiji_passive_no_han_when_high_score():
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_kaiji_passive_v1", 0)
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(int(ctx.han_deltas.get(0, 0)), 0, "开司高分时不增番")
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 0, "绝崖高分时不增番")
 
 func test_washizu_passive_reveals_all_opponents():
 	var reg := SkillRegistry.new()
@@ -81,14 +84,14 @@ func test_washizu_passive_reveals_all_opponents():
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_washizu_passive_v1", 0)
 	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
-	assert_eq(st.revealed_tiles.size(), 6, "鹲巣应 reveal 3 对手各 2 张 = 6 张")
+	assert_eq(st.revealed_tiles.size(), 6, "透璃应 reveal 3 对手各 2 张 = 6 张")
 
 func test_run_state_character_applied():
 	var rs := RunState.new(42)
-	rs.selected_character_id = &"akagi"
+	rs.selected_character_id = &"lin_yeche"
 	var d := rs.to_dict()
 	var restored := RunState.from_dict(d)
-	assert_eq(restored.selected_character_id, &"akagi")
+	assert_eq(restored.selected_character_id, &"lin_yeche")
 
 func test_battle_with_character_passive():
 	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(

@@ -1,6 +1,4 @@
-# 衣・海底支配 — 能力版
-# HAITEI / HOUTEI 自胡時 +3 番 + 満貫下限保証。
-# 触発：HAITEI / HOUTEI + actor == beneficiary
+# 可抽能力「底牌压制」— id: koromo_haitei_ability_v1（非角色被动）
 extends SkillHook
 
 const HAITEI_BONUS: int = 3

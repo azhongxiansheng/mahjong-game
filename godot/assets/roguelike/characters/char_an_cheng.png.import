@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bvqgsg0ji873n"
-path="res://.godot/imported/char_washizu.png-1a289e2bce77fb574cdff01e56074622.ctex"
+uid="uid://dk6fq2yffv6es"
+path="res://.godot/imported/char_an_cheng.png-9061e463c71fe8d279040f0ccf1af01e.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/roguelike/characters/char_washizu.png"
-dest_files=["res://.godot/imported/char_washizu.png-1a289e2bce77fb574cdff01e56074622.ctex"]
+source_file="res://assets/roguelike/characters/char_an_cheng.png"
+dest_files=["res://.godot/imported/char_an_cheng.png-9061e463c71fe8d279040f0ccf1af01e.ctex"]
 
 [params]
 

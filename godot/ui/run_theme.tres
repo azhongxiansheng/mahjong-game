@@ -1,6 +1,6 @@
 [gd_resource type="Theme" load_steps=14 format=3]
 
-; 麻将王 — 斗牌传说(Akagi)风统一 UI 主题。
+; 麻将王 — 原创高对比暗色 UI 主题（紧张麻将桌气质，非第三方 IP）。
 ; 设为 project.godot 的 gui/theme/custom，全 run-flow 面板默认换肤：
 ; 暗底、猩红回纹描边(Kenney Fantasy UI Borders CC0 烘焙,见
 ; tools/asset_gen/bake_ui_borders.py)、霞鹜文楷(LXGW WenKai, OFL)。

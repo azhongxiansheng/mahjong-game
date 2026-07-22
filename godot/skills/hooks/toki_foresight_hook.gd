@@ -1,7 +1,4 @@
-# 園城寺怜 — 先見能力
-# GAME_BEGIN 時に全 4 席の次の摸牌を owner に reveal。
-# コスト：owner から 1000 点を seat (owner+1)%4 に移動（v1 簡略化）。
-# 触発：GAME_BEGIN
+# 可抽能力「巡初窥摸」— id: toki_foresight_v1（非角色被动）
 extends SkillHook
 
 const FORESIGHT_COST: int = 1000

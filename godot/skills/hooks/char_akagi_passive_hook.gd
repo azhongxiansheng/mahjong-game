@@ -1,6 +1,6 @@
-# 赤木 — 角色被动「鬼読み」
-# 原著：赤木しげる读取对手"背中の気配"，从不振込。
-# 效果：每次摸牌后 reveal 1 张对手手牌（读心能力）。
+# 林夜彻 — 角色被动「脊读鬼神」
+# ability_id: char_akagi_passive_v1（语义冻结）
+# 效果：每次己方摸牌后 reveal 下家 1 张手牌。
 extends SkillHook
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:

@@ -1,6 +1,6 @@
-# 松実玄 — 角色被動「ドラの愛」
-# 原著：ドラが自然と集まってくる体質。
-# 効果：WIN_DECLARED_PRE 自胡時、+2 extra Dora。
+# 宝络绯 — 角色被动「赤线缠宝」
+# ability_id: char_kuro_passive_v1（语义冻结）
+# 效果：WIN_DECLARED_PRE 自胡时 +2 extra Dora。
 extends SkillHook
 
 const EXTRA_DORA: int = 2

@@ -36,7 +36,7 @@ func test_choosing_pack_advances_to_chapter_map() -> void:
 	assert_not_null(char_picker, "应先在角色选择面板")
 	if char_picker == null:
 		return
-	char_picker.character_chosen.emit(&"akagi")
+	char_picker.character_chosen.emit(&"lin_yeche")
 	await get_tree().process_frame
 
 	# 2) 推进到起始包选择面板

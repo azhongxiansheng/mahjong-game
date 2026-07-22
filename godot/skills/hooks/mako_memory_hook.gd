@@ -1,6 +1,4 @@
-# 原村 — 記憶力能力
-# turn_count >= 6 になったら摸牌時に牌墙トップ 3 枚を reveal。
-# 触発：TILE_DRAWN + actor == beneficiary + turn_count >= 6
+# 可抽能力「牌墙记忆」— id: mako_memory_v1
 extends SkillHook
 
 const MEMORY_TURN_THRESHOLD: int = 6

@@ -1,6 +1,7 @@
-# 園城寺怜 — 角色被動「一巡先見」
-# 原著：一巡先を見通す未来視の能力。
-# 効果：GAME_BEGIN 時、全 4 席の次の摸牌を owner に reveal。
+# 先示 — 角色被动「四席窥运」
+# ability_id: char_toki_passive_v1（GAME_BEGIN 身份锁；语义冻结）
+# 效果：GAME_BEGIN 时，全 4 席的下一摸 reveal 给 owner。
+# 不得改绑 toki_foresight_v1 等近义卡池能力。
 extends SkillHook
 
 func on_event(_skill: SkillResource, _event: BattleEvent, ctx: SkillCtx) -> void:

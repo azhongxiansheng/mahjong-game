@@ -168,7 +168,7 @@ func _build_layout() -> void:
 	_build_board_frame(table)
 
 	# 4 个 SeatPanel — seat 0 玩家自家,seat 1/2/3 三家 AI 性格化。
-	# 每家 AI 固定挂一个角色 (赤木下家/开司对家/鹫巢上家),不同打法风格,
+	# 每家 AI 固定挂一个角色 (下家/对家/上家),不同打法风格,
 	# 显示在 SeatInfo 行替代抽象的 "AI 1/2/3"。
 	for i in range(4):
 		var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()

@@ -1,9 +1,9 @@
 """Tile face specs + prompt builder for the 38 riichi mahjong tile assets.
 
-Style: 斗牌传说 / Akagi — dramatic high-contrast, hard ink shadows, gritty
-1990s seinen gambling-den mood. Tile FACES stay highly legible (aged ivory
-ground, crisp black/vermilion engraving); the style shows only in texture and
-lighting, never by obscuring the suit/number.
+Style: original dramatic high-contrast mahjong tile art — hard ink shadows,
+gritty 1990s seinen gambling-den mood. Tile FACES stay highly legible (aged
+ivory ground, crisp black/vermilion engraving); the style shows only in texture
+and lighting, never by obscuring the suit/number.
 """
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ _FACE_PREFIX = (
 _FACE_SUFFIX = (
     " The engraving is crisp, deeply carved and cleanly filled. Strong "
     "directional surface shading across the ivory gives a high-contrast, "
-    "gritty seinen-manga gambling-den mood, 1990s Akagi anime aesthetic, "
+    "gritty seinen-manga gambling-den mood, tense 1990s anime table aesthetic, "
     "slightly worn and aged ivory surface. The tile stands upright, is "
     "centered and fills the entire frame edge to edge. No drop shadow, no "
     "cast shadow outside the tile. No other objects, no background, no "
@@ -114,7 +114,7 @@ def all_specs() -> dict[str, str]:
         "transparent background, standing upright (portrait), rounded corners "
         "and a subtle 3D bevel. The back is a solid deep jade-green surface "
         "with a faint inset border, no symbols, no characters. Strong "
-        "directional surface shading, gritty high-contrast 1990s Akagi anime "
+        "directional surface shading, gritty high-contrast 1990s anime table "
         "aesthetic. The tile stands upright, centered and fills the entire "
         "frame edge to edge. No drop shadow, no cast shadow outside the tile. "
         "No other objects, no caption, no watermark.")
