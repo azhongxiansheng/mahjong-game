@@ -1,8 +1,6 @@
-# 哲也 — 角色被動「玄人技」
-# 原著：麻雀放浪記の凄腕玄人。イカサマと実力の融合。
-# 効果：WIN_DECLARED_PRE 自胡時 +1 番（基本ボーナス）+ 累積ボーナス。
-#       初回 +1、2 回目 +2、3 回目 +3 …（1 + wins_before）。
-#       skill.params["wins"] で勝利回数を追跡。
+# 局进吾 — 角色被动「阶升必杀」
+# ability_id: char_tetsuya_passive_v1（语义冻结）
+# 效果：WIN_DECLARED_PRE 自胡时 +(1+wins)；params["wins"] 累计胜利次数。
 extends SkillHook
 
 func on_event(skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:

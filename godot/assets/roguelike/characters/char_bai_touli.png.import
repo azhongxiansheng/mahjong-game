@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bsygkobkug2p8"
-path="res://.godot/imported/char_kaiji.png-892952bb4acf66f4ade08ed1c3243f8e.ctex"
+uid="uid://c2keat11157uq"
+path="res://.godot/imported/char_bai_touli.png-a44bb2de4c848b10b52b41c43b29459f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/roguelike/characters/char_kaiji.png"
-dest_files=["res://.godot/imported/char_kaiji.png-892952bb4acf66f4ade08ed1c3243f8e.ctex"]
+source_file="res://assets/roguelike/characters/char_bai_touli.png"
+dest_files=["res://.godot/imported/char_bai_touli.png-a44bb2de4c848b10b52b41c43b29459f.ctex"]
 
 [params]
 

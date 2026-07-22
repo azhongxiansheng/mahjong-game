@@ -2,7 +2,7 @@ class_name RunUi
 
 # 肉鸽流程共享 UI helper。
 #
-# attach_background：给 run-flow 面板铺斗牌传说风氛围背景 + 暗角。
+# attach_background：给 run-flow 面板铺暗色麻将桌氛围背景 + 暗角。
 # 背景资产缺失时静默跳过（不影响功能）。
 
 const RUN_BG_PATH := "res://assets/run_bg.png"

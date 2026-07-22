@@ -1,7 +1,6 @@
-# 宫永照 — 角色被动「照魔鏡」
-# 原著：连续和了时每次 han 累积增加（无上限）。
-# 效果：每次胡牌 +1 番，且 bonus 不重置（同局内持续累积）。
-# 用 SkillResource.params["streak"] 存计数器。
+# 连曜真 — 角色被动「叠曜连斩」
+# ability_id: char_teru_passive_v1（语义冻结）
+# 效果：每次胡牌 +N 番（N=同局连胡次数）；用 params["streak"] 计数。
 extends SkillHook
 
 func on_event(skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:

@@ -1,7 +1,7 @@
-# 天江衣 — 角色被动「海底支配」
-# 原著：衣は海底を支配する。海底摸月 / 河底撈魚を完全コントロール。
-# 効果 1：HAITEI / HOUTEI 自胡時 +3 番。
-# 効果 2：TILE_DRAWN 時、牌墙残り 3 枚を owner に reveal（海底タイミング読み）。
+# 渊汐 — 角色被动「底牌潮掌」
+# ability_id: char_koromo_passive_v1（语义冻结）
+# 效果 1：HAITEI / HOUTEI 自胡时 +3 番。
+# 效果 2：TILE_DRAWN 时，牌墙顶 3 枚 reveal 给 owner。
 extends SkillHook
 
 const HAITEI_BONUS: int = 3

@@ -103,7 +103,7 @@ func test_run_selected_character_populates_live_player_avatar() -> void:
 	var table := _make_table()
 	var flow := RunFlow.new()
 	flow._run_state = RunState.new(20260720)
-	flow._run_state.selected_character_id = &"akagi"
+	flow._run_state.selected_character_id = &"lin_yeche"
 	assert_true(flow.has_method("_apply_player_persona_to_table"),
 		"RunFlow 必须把已选角色接到生产牌桌，而不只传能力")
 	if not flow.has_method("_apply_player_persona_to_table"):
@@ -112,11 +112,14 @@ func test_run_selected_character_populates_live_player_avatar() -> void:
 	flow.call("_apply_player_persona_to_table", table)
 	await get_tree().process_frame
 	var player := table._table.seat_panels[0] as SeatPanel
-	assert_eq(player._persona_name, "赤木")
-	assert_not_null(player._portrait_rect,
-		"已有原创 portrait 的已选角色必须显示 seat0 头像")
+	assert_eq(player._persona_name, "林夜彻")
+	# Gate B 前 portrait 文件可能尚未入库：有图才校验 avatar 几何，无图不得崩溃
 	if player._portrait_rect != null:
 		_assert_rect_almost_eq(_global_aabb(player._portrait_rect,
 			Rect2(Vector2.ZERO, player._portrait_rect.size)),
 			TableLayout.avatar_rect(0), 0.02, "seat0 live avatar")
+	else:
+		var ch: Character = CharacterPool.find(&"lin_yeche")
+		assert_false(ch != null and ch.portrait_path != "" and ResourceLoader.exists(ch.portrait_path),
+			"若 portrait 已存在则 seat0 必须显示头像")
 	flow.free()

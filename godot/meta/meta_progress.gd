@@ -90,7 +90,7 @@ static func unlock_threshold(key: StringName) -> int:
 	match key:
 		&"starter_aggro", &"starter_fast", &"starter_control":
 			return 0
-		&"akagi", &"kaiji", &"washizu":
+		&"lin_yeche", &"qiu_jue", &"bai_touli":
 			return 0
 		&"relic_lucky_cat_v1":
 			return 0
