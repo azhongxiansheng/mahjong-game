@@ -5,6 +5,7 @@
 > 规划入口：[GitHub Issue #212](https://github.com/jingx8885/mahjong-game/issues/212)
 > Master Epic：[GitHub Issue #213](https://github.com/jingx8885/mahjong-game/issues/213)
 > 产品范围：E0–E5、E7；**不存在 E6**
+> 2026-07-22 决策锁：入口壳 / `SessionIntent` / `GameSessionConfig` 三层分离；生产级原创大厅；1 首可听二次元大厅 BGM；12 角色采用全新美术方向；生产注销 5 个肉鸽 Autoload。
 
 ## 1. 背景与代码事实
 
@@ -59,6 +60,16 @@
 | 单次话语奖励 | 最多 1 个最高匹配道具，直接到账 | 不提供三选一 |
 | 语音/转写留存 | 仅房间生命周期内的有界内存 | 不写磁盘，不建立证据存储 |
 
+### 2.4 已确认实施决策
+
+1. **会话三层分离**：[#225](https://github.com/jingx8885/mahjong-game/issues/225) 只拥有生产入口壳；[#228](https://github.com/jingx8885/mahjong-game/issues/228) 拥有大厅选择态 `SessionIntent`；[#231](https://github.com/jingx8885/mahjong-game/issues/231) 首次定义正式 `GameSessionConfig`、校验/序列化和 `SessionIntent → GameSessionConfig` 转换。
+2. **生产级原创大厅**：E1 不以纯线框或占位壳作为最终大厅验收；参考雀魂仅限信息层级和入口权重，背景、面板、角色、动效、文案和音频全部原创。
+3. **首发 BGM**：交付 1 首可听、可循环的二次元风格大厅 BGM；通过仓库既有 new-api 配置调用 Suno 模型生成，运行时客户端不调用生成 API。
+4. **全新角色美术**：12 名角色不沿用现有 4 张原创向立绘作为生产身份。先确认世界观、12 人身份/能力映射和美术 brief，再确认小批量样张；两道闸门通过后才批量生成并进入生产资源树。
+5. **生产注销肉鸽 Autoload**：从 `project.godot` 注销 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`；对应脚本可保留供 legacy 测试显式实例化。
+
+E0 的 #222–#224 仍是 E1 业务代码的硬闸门；上述决策锁只消除歧义，不构成跳过 E0 的授权。
+
 ## 3. 用户与核心路径
 
 首发用户是希望快速开始一局四人日麻的桌面玩家，以及希望用角色垃圾话和道具改变牌局节奏的轻竞技玩家。无需注册账号，首次启动获得签名游客身份。
@@ -104,7 +115,7 @@ flowchart TD
 [东风战 / 半庄战] × [标准场 / 嘴强欢乐场] → 开始
 ```
 
-UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截图共同作为验收证据。BGM 与 SFX 可独立控制；不存在语音设置入口。
+UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截图共同作为验收证据。大厅最终交付为生产级原创视觉，不接受纯线框占位作为 E1 完成态。BGM 与 SFX 可独立控制；大厅默认播放 1 首可循环原创 BGM；不存在语音设置入口。
 
 ### 3.2 模式矩阵
 
@@ -129,15 +140,19 @@ UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截
 
 ### FR-LOBBY 大厅与去肉鸽
 
-- **FR-LOBBY-01**：生产主场景必须是原创大厅，不再进入 Run Flow。
-- **FR-LOBBY-02**：练习与公共匹配是右侧一级大入口；局制与模式使用同一右侧二级抽屉。
-- **FR-LOBBY-03**：角色图鉴、道具图鉴、规则说明和 BGM/SFX 设置可从大厅打开并返回。
+- **FR-LOBBY-01**：生产主场景必须是原创大厅入口壳，不再进入 Run Flow；生产级视觉由 E1-03 收口。
+- **FR-LOBBY-01A**：生产 `project.godot` 不注册 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`。
+- **FR-LOBBY-02**：练习与公共匹配是右侧一级大入口；局制与模式使用同一右侧二级抽屉；抽屉只输出 `SessionIntent`，不得提前定义正式 `GameSessionConfig`。
+- **FR-LOBBY-03**：角色图鉴、道具图鉴、规则说明和 BGM/SFX 设置可从大厅打开并返回；图鉴不展示 HP、金币、卡包、声望、战令或其他 Run-only 内容。
+- **FR-LOBBY-03A**：大厅提供 1 首已入库的原创 BGM；BGM 与 SFX 音量独立可控；不存在语音设置入口。
 - **FR-LOBBY-04**：生产导航、Autoload 和新会话数据不再读取或写入 RunState、HP、金币、章节、商店、抽卡、营地、战令或 Run 存档。
 - **FR-LOBBY-05**：旧 Run 代码只按实际依赖外科手术式退出生产路径；不在同一 Issue 清扫所有 legacy 文件。
+- **FR-LOBBY-06**：1600×900 大厅使用原创背景、卡片、角色展示和抽屉动效达到生产视觉；不得复制雀魂资产、商标、音频、角色或像素布局。
 
 ### FR-SESSION 统一会话与电脑练习
 
-- **FR-SESSION-01**：使用一个 `GameSessionConfig` 表示 `room_kind`、`round_kind`、`game_mode`、参与者和随机种子。
+- **FR-SESSION-00**：大厅 UI 使用 `SessionIntent` 表示玩家选择的 `room_kind`、`round_kind`、`game_mode` 和可选角色；不得包含权威 seed、session ID、rule version 或服务端凭证。
+- **FR-SESSION-01**：`GameSessionConfig` 是唯一可验证、可序列化、可驱动牌局构造的正式配置；由 E2-01 将 `SessionIntent` 转换并补齐参与者、随机种子、session ID 与 rule version。
 - **FR-SESSION-02**：公开枚举值固定为：
   - `GameMode`: `STANDARD | TRASH_TALK`
   - `RoomKind`: `PRACTICE | PUBLIC_CASUAL`
@@ -183,6 +198,17 @@ UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截
 - **FR-CHARACTER-02**：每名新角色恰好映射一个现有 `ability_id` 的能力语义，迁移阶段不重新平衡能力。
 - **FR-CHARACTER-03**：`starting_hp`、`starting_gold`、`recommended_pack`、`unlock_renown` 不进入新生产角色契约。
 - **FR-CHARACTER-04**：原创角色为五类 Momentum 属性提供 affinity，并拥有可审阅的 13+ 挑衅文案。
+- **FR-CHARACTER-05**：12 名角色采用完全新美术方向，不允许把旧 IP 肖像改名、改色后作为原创立绘。
+- **FR-CHARACTER-06**：第一道确认闸门覆盖 12 组新 ID、显示名、人设摘要、既有 `ability_id` 语义映射和美术 brief；第二道确认闸门覆盖小批量立绘样张。两道闸门均由用户确认后才允许批量生成和入库。
+- **FR-CHARACTER-07**：12 个 `CharacterPool.ability_id` 必须均可经 `BossAbilityFactory` 构建和注入；当前后 6 个角色的工厂映射缺口必须在 E1-06 修复。
+- **FR-CHARACTER-08**：`Character.to_dict()` / `from_dict()` 必须保留 `portrait_path`，且 12 个生产立绘路径均可加载。
+
+### FR-ASSET-GEN 原创资产生成
+
+- **FR-ASSET-GEN-01**：BGM 通过仓库既有 new-api 配置下的 Suno 模型生成；立绘可使用 Grok 或 new-api 的 image-2 / nano banana 模型。调用前必须以最小真实请求核对当时有效的模型名、参数、返回格式和费用边界。
+- **FR-ASSET-GEN-02**：生成凭证只读既有环境变量或本地配置，禁止提交 API key、base URL 私密值、cookie、token 或 `.env`。
+- **FR-ASSET-GEN-03**：`_raw_*`、`_staging*` 和失败中间产物不入库；只有通过用户确认、版权来源审计和资源加载验证的最终资产才能进入生产目录。
+- **FR-ASSET-GEN-04**：游戏运行时不连接付费生成 API，只消费已经入库并随桌面包交付的音频与图像。
 
 ### FR-DESKTOP 桌面交付
 
