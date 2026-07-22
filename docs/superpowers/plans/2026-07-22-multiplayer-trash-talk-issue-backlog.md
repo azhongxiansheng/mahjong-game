@@ -5,7 +5,7 @@
 > 创建日期：2026-07-22
 > GitHub 对象：1 个规划入口 + 1 个 Master + 7 个 Epic + 39 个叶子 Issue = 48 个 Issue
 > 规划状态：PR #260、E0-01 PR #261 已人工合并；#221 已关闭，#222–#224 仍是 E1 开工硬闸门
-> 决策锁：入口壳 / `SessionIntent` / `GameSessionConfig` 三层分离；生产级原创大厅；1 首 Suno 大厅 BGM；全新 12 角色美术；生产注销 5 个肉鸽 Autoload
+> 决策锁：入口壳 / `SessionIntent` / `GameSessionConfig` 三层分离；生产级原创大厅；1 首 Suno 大厅 BGM；全新 12 角色美术；生产注销 5 个肉鸽 Autoload；RewardWindow 和牌取消、终场非和牌仅展示、其他有效结算发四件；同席同 `item_id` 可多实例且被动逐实例叠加；`ITEM_USE` 仅为命令；角色 DISARM 不回滚已发生副作用
 
 ## 1. 标签与里程碑契约
 
@@ -56,9 +56,9 @@
 | Issue | P | Type | 依赖 | 一句话验收 |
 |---|---|---|---|---|
 | [#231 E2-01 GameSessionConfig](https://github.com/jingx8885/mahjong-game/issues/231) | P0 | engineering | E1、#228 | 正式 Config、Intent→Config、四个稳定枚举、验证和序列化可驱动练习场 |
-| [#232 E2-02 统一行动/事件接口](https://github.com/jingx8885/mahjong-game/issues/232) | P0 | engineering | #231 | 玩家/AI 操作复用真实 BattleController 并可被回放消费 |
+| [#232 E2-02 统一行动/事件接口](https://github.com/jingx8885/mahjong-game/issues/232) | P0 | engineering | #231 | 玩家/AI 复用真实引擎；仅以 fixture 冻结 E5 事件 schema/偏序，不发任何 E5 业务事件 |
 | [#233 E2-03 东风/半庄 1+3 AI](https://github.com/jingx8885/mahjong-game/issues/233) | P0 | feature | #232 | 两种局制整场可玩、推进正确、分数守恒 |
-| [#234 E2-04 模式硬隔离](https://github.com/jingx8885/mahjong-game/issues/234) | P0 | feature | #231–#232 | STANDARD 不创建角色/道具/Momentum/语音，欢乐场才启用 |
+| [#234 E2-04 模式硬隔离](https://github.com/jingx8885/mahjong-game/issues/234) | P0 | feature | #231–#232 | STANDARD 不创建角色/道具/RewardWindow/Momentum/语音，欢乐场才启用 |
 | [#235 E2-05 结算与导航](https://github.com/jingx8885/mahjong-game/issues/235) | P0 | feature | #233–#234 | 排名、重赛、返回大厅完整且不产生肉鸽奖励 |
 
 ### E3 服务端权威与公共匹配
@@ -70,8 +70,8 @@
 | [#238 E3-03 公共队列](https://github.com/jingx8885/mahjong-game/issues/238) | P0 | feature | #236–#237 | 加入/查询/取消幂等，不同局制/模式不混池 |
 | [#239 E3-04 30 秒 AI 补位](https://github.com/jingx8885/mahjong-game/issues/239) | P0 | feature | #238 | 四真人立即开房，1–3 真人超时后只创建一个补位房间 |
 | [#240 E3-05 Headless Worker 权威](https://github.com/jingx8885/mahjong-game/issues/240) | P0 | engineering | #232、#239 | Worker 独占牌墙/合法性/AI/技能/道具/事件，客户端只投影 |
-| [#241 E3-06 快照与重连](https://github.com/jingx8885/mahjong-game/issues/241) | P1 | feature | #240 | 30 秒内恢复、超时 AI 接管、本局安全归还控制 |
-| [#242 E3-07 幂等/非法行动/回放](https://github.com/jingx8885/mahjong-game/issues/242) | P1 | test | #240–#241 | 重复命令不重复应用，伪造发奖被拒，事件摘要可重放 |
+| [#241 E3-06 快照与重连](https://github.com/jingx8885/mahjong-game/issues/241) | P1 | feature | #240 | 基础快照/续传与版本化 module provider 包络可 round-trip；不提前实现 E5 字段 |
+| [#242 E3-07 幂等/非法行动/回放](https://github.com/jingx8885/mahjong-game/issues/242) | P1 | test | #240–#241 | 重复/非法命令、服务端事件伪造、事件缺口与扩展快照连续性受真实 Worker 拒绝/检出 |
 
 ### E4 实时语音与双层 STT
 
@@ -80,20 +80,20 @@
 | [#243 E4-01 Godot PTT/PCM](https://github.com/jingx8885/mahjong-game/issues/243) | P0 | feature | E3 | 仅 PTT 采集 PCM16/16k/mono/20ms，标准场不请求权限 |
 | [#244 E4-02 四座位语音中继](https://github.com/jingx8885/mahjong-game/issues/244) | P0 | engineering | #237、#243 | 同房鉴权广播、有界背压、断开清缓冲、不落盘 |
 | [#245 E4-03 whisper 模型管理](https://github.com/jingx8885/mahjong-game/issues/245) | P0 | engineering | #243 | manifest、断点续传、SHA-256、原子启用跨 macOS/Windows |
-| [#246 E4-04 中英日字幕](https://github.com/jingx8885/mahjong-game/issues/246) | P0 | feature | #243、#245 | partial/final 正确替换；公共本地字幕不能发奖 |
-| [#247 E4-05 faster-whisper/VAD](https://github.com/jingx8885/mahjong-game/issues/247) | P0 | engineering | #244 | 权威 final 绑定房/座位/局序，空白/失败不进入评分 |
+| [#246 E4-04 中英日字幕](https://github.com/jingx8885/mahjong-game/issues/246) | P0 | feature | #243、#245 | partial/final 正确替换；公共本地字幕不能发奖，实际到账只认 ITEM_GRANTED |
+| [#247 E4-05 faster-whisper/VAD](https://github.com/jingx8885/mahjong-game/issues/247) | P0 | engineering | #244 | 遵从 Worker 唯一 deadline；1500ms 与 CLAIM 并行，荣和中止且迟到不跨窗 |
 | [#248 E4-06 new-api 回退](https://github.com/jingx8885/mahjong-game/issues/248) | P1 | engineering | #247 | 最终片段回退、超时/熔断/去重、真实接口最小请求 |
 
 ### E5 确定性垃圾话与道具
 
 | Issue | P | Type | 依赖 | 一句话验收 |
 |---|---|---|---|---|
-| [#249 E5-01 多语言规则库](https://github.com/jingx8885/mahjong-game/issues/249) | P0 | docs | #230 | 12 角色/可发道具中英日规则、affinity、上下文和稳定 ID 完整 |
-| [#250 E5-02 TextAnalyzer 扩展](https://github.com/jingx8885/mahjong-game/issues/250) | P0 | engineering | #249 | 标准化/关键词/模板/版本确定性，无 LLM/向量依赖 |
-| [#251 E5-03 角色/道具/牌局上下文](https://github.com/jingx8885/mahjong-game/issues/251) | P0 | engineering | #250、#240 | 只使用 Worker 真实状态过滤和评分，练习/公共复用纯逻辑 |
-| [#252 E5-04 Momentum/冷却/决胜](https://github.com/jingx8885/mahjong-game/issues/252) | P0 | feature | #251 | 每 utterance 至多一个奖励，重复/冷却/同分稳定 |
-| [#253 E5-05 权威道具生命周期](https://github.com/jingx8885/mahjong-game/issues/253) | P0 | feature | #252 | 发放/持有/使用/效果进入统一事件流并可重放 |
-| [#254 E5-06 反馈与平衡夹具](https://github.com/jingx8885/mahjong-game/issues/254) | P1 | feature | #246、#253 | 字幕/命中/到账/发动清晰，无隐藏信息泄漏，有频率基线 |
+| [#249 E5-01 多语言规则库](https://github.com/jingx8885/mahjong-game/issues/249) | P0 | docs | #230 | 12 角色/道具中英日规则、AI 文本模板、affinity/标签和稳定 ID 完整 |
+| [#250 E5-02 TextAnalyzer 扩展](https://github.com/jingx8885/mahjong-game/issues/250) | P0 | engineering | #249 | final/AI 文本标准化为窗口可累计整数特征，无 LLM/向量依赖 |
+| [#251 E5-03 角色/道具/牌局上下文](https://github.com/jingx8885/mahjong-game/issues/251) | P0 | engineering | #250、#232 | 只用练习/公共权威端的公开状态生成带黄金 fixture 的 4×4 整数矩阵 |
+| [#252 E5-04 六巡窗口与稳定分配](https://github.com/jingx8885/mahjong-game/issues/252) | P0 | feature | #251、公共快照 #241 | 24 弃+CLAIM 双边界及 FULL_GRANT/DISPLAY_ONLY/CANCELLED_BY_WIN 三出口可回放 |
+| [#253 E5-05 权威道具生命周期](https://github.com/jingx8885/mahjong-game/issues/253) | P0 | feature | #252、公共路径 #240–#241 | 多实例精确使用/被动叠加、GRANTED/CONSUMED/APPLIED 与不回滚武装可回放 |
+| [#254 E5-06 反馈与平衡夹具](https://github.com/jingx8885/mahjong-game/issues/254) | P1 | feature | #246、#253 | 三出口反馈明确；库存只投影实例事件，可滚动且有平衡基线 |
 
 ### E7 部署与桌面 Alpha
 

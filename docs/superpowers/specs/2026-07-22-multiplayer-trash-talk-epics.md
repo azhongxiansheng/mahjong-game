@@ -126,14 +126,16 @@ GameSessionConfig（E2-01，正式会话）
 
 E2-01 首次定义正式类型并消费 E1-04 冻结的 Intent；练习场固定 `participants = [HUMAN, AI, AI, AI]`。`room_kind=PUBLIC_CASUAL` 不允许通过本地练习启动器直接实例化权威牌局。
 
+E2-02 冻结并可回放消费 `REWARD_WINDOW_OPENED/CLOSING/SETTLED/CANCELLED`、条件式 `ITEM_GRANTED` 与 `CHARACTER_ABILITY_ARMED/DISARMED`；只建立事件包络、schema、合法偏序和 fixture，不在生产路径发射这些事件、推进窗口或写库存/武装，也不在 E2 偷跑 E5。
+
 ### 模式隔离
 
 | 组件 | STANDARD | TRASH_TALK |
 |---|---|---|
 | 日麻规则、AI、结算 | 启用 | 启用 |
-| 角色能力 | 不创建 | 启用 |
+| 角色能力 | 不创建 | 创建；被动首窗默认 unarmed，仅 affinity 命中后武装目标窗 |
 | 道具库存与命令 | 不创建/拒绝 | 启用 |
-| Momentum/TextAnalyzer | 不创建 | 启用 |
+| RewardWindow/Momentum/TextAnalyzer | 不创建 | 启用 |
 | 麦克风/PTT/STT | 不请求/不创建 | 启用 |
 
 ### 完成定义
@@ -170,6 +172,7 @@ E2-01 首次定义正式类型并消费 E1-04 冻结的 Intent；练习场固定
 - Redis 保存可重建的队列、ticket、房间租约、Worker 注册；不保存永久账号或权威牌局状态。
 - Headless Worker 负责牌墙、随机数、回合、合法性、AI、角色、道具、发奖和事件序列。
 - 客户端只提交命令和显示权威事件，不能提交计算结果或隐藏信息。
+- `ROOM_SNAPSHOT` 以最后 `server_seq` 为边界恢复当前座位可见状态。#241 在 E3 冻结基础包络与稳定 module key/version 的 snapshot provider 扩展机制，并以测试 provider 验证 round-trip；不提前实现 E5。#252/#253 在 E5 分别提供窗口 DTO/provider 与多实例库存/active/pending DTO/provider，STANDARD 不注册它们。#242 在 E3 只验证通用幂等、非法行动、服务端事件伪造拒绝和扩展包络连续性；三出口、库存、武装的真实 Worker 回放归 #252/#253。
 
 ### 匹配时序
 
@@ -232,6 +235,7 @@ sequenceDiagram
 - 公共服务端：faster-whisper small + VAD 产生权威最终文本。
 - 回退：主服务超时或失败后，仅最终片段调用 new-api `/v1/audio/transcriptions`；同 utterance 最多采用一次结果。
 - 练习场本地最终文本可进入本地权威评分；公共场本地文本只显示。
+- 第 24 次弃牌由 #252/Worker 记录 `closing_boundary_server_seq` 和唯一 `grace_deadline_at`；#247/STT 不创建第二个权威计时器，只按该边界/deadline 返回或取消 final。宽限与 CLAIM 并行；荣和立即取消，迟到 final 不得进入当前或下一窗口。
 
 ### 完成定义
 
@@ -249,55 +253,64 @@ sequenceDiagram
 
 ### 目标
 
-扩展 `TextAnalyzer` 与 `Momentum`，将中英日角色人设、道具设定和服务端牌局上下文转化为确定性候选；每次话语最多直接发放一个最高匹配道具。
+扩展 `TextAnalyzer`，并将 `Momentum` 收敛为五类 affinity/标签枚举源，旧技能倍率退出生产；按 24 次权威弃牌形成约六巡奖励窗口，开窗公开 4 件道具。无和牌的完整窗/非终场流局以 4×4 整数矩阵一对一发四件；任意和牌取消且不评分；终场非和牌只评分展示。实际奖励进入可重复持有同种道具的多实例库存，affinity 匹配时自动武装下一窗口角色被动。
 
 ### 子 Issue
 
 - [#249 E5-01](https://github.com/jingx8885/mahjong-game/issues/249)：原创多语言角色/道具规则库。
 - [#250 E5-02](https://github.com/jingx8885/mahjong-game/issues/250)：文本标准化、关键词、模板与版本。
 - [#251 E5-03](https://github.com/jingx8885/mahjong-game/issues/251)：角色、道具、牌局上下文评分。
-- [#252 E5-04](https://github.com/jingx8885/mahjong-game/issues/252)：Momentum、冷却和稳定决胜。
+- [#252 E5-04](https://github.com/jingx8885/mahjong-game/issues/252)：六巡窗口、4×4 分配和稳定决胜。
 - [#253 E5-05](https://github.com/jingx8885/mahjong-game/issues/253)：权威道具生命周期与回放。
 - [#254 E5-06](https://github.com/jingx8885/mahjong-game/issues/254)：字幕命中、到账/发动反馈和平衡夹具。
 
 ### 确定性规则
 
 ```text
-最终转写
-→ 文本标准化
-→ 关键词/模板命中
-→ 角色 affinity
-→ 道具标签
-→ 权威牌局上下文过滤
-→ 候选排序(priority DESC, specificity DESC, rule_id ASC)
-→ 冷却/幂等检查
-→ 至多一个 item_granted
+权威开局提交后、第一 TURN_PROMPT 前开窗
+→ 按 seed/hand_seq/window_index/rule_version 公开 4 件互不重复道具
+→ 累计 24 次权威弃牌内四席 final 与 AI 确定性模板文本
+→ 第 24 弃立即 CLOSING；1500ms 与 CLAIM 并行，只收 PTT_END.server_seq <= closing_boundary_server_seq 的 final
+├─ 任意和牌：REWARD_WINDOW_CANCELLED；不评分、不分配、不发奖
+└─ 无和牌：以 CLAIM 完成序号冻结 context_boundary_server_seq，再进行确定性评分/24 种双射
+   ├─ 比赛继续的满 24 或非终场流局：SETTLED(FULL_GRANT) + seat 0..3 四次 ITEM_GRANTED
+   └─ 终场非和牌：SETTLED(DISPLAY_ONLY) + 0 ITEM_GRANTED
+→ 实际发奖进入多实例库存；affinity 命中才武装下一窗口角色被动
 ```
 
-规则库必须有稳定 `rule_version` 和 `rule_id`。同一转写、角色、牌局状态和规则版本必须得到完全一致的结果。STT、LLM、客户端、UI 动画均没有发奖权。
+规则库必须有稳定 `rule_version`、`rule_id` 和 `assignment_version`。同一 seed、权威事件、窗口文本序列、角色、公开牌局状态与规则版本必须得到完全一致的奖池、出口、矩阵/取消结果、分配和发奖数。语音边界与 CLAIM 后公开上下文边界分别记录，不得混用。STT、LLM、客户端、UI 动画均没有发奖权。
+
+出口优先级固定为 `CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT`；终场和牌只走取消，不再叠加展示出口。
+
+事件顺序不得变体：屏障为 `claim_is_terminal AND (all_eligible_utterances_are_terminal OR now >= grace_deadline_at)`。`claim_is_terminal` 只在「全部 CLAIM 资格动作终态且非和牌鸣牌已应用」或「没有开放 CLAIM 且权威结果已确定为流局/终场非和牌」时为 true；后一种无 CLAIM 路径在结果判定事务内立即置 true。满 24 无和牌时 `discard → CLOSING → 屏障 → SETTLED(FULL_GRANT) → ITEM_GRANTED(seat 0..3) → DISARM → next OPEN/ARM → 下一普通行动`，不发 HAND_SETTLED；非终场流局为 `CLOSING → 屏障 → SETTLED(FULL_GRANT) → 4 ITEM_GRANTED → DISARM → HAND_SETTLED → 下一局 OPEN/ARM`；和牌为 `CANCELLED → DISARM → HAND_SETTLED`；终场非和牌为 `CLOSING → 屏障 → SETTLED(DISPLAY_ONLY) → DISARM → HAND_SETTLED → MATCH_SETTLED`。不存在第二种 GRANT 事件；当前窗口被动在 CLAIM 期间仍有效。
 
 ### 道具事件
 
-`ITEM_GRANTED` 至少包含：
+RewardWindow 权威状态用 `window_exit=FULL_GRANT | DISPLAY_ONLY | CANCELLED_BY_WIN` 表示三种终态，OPEN/CLOSING 时为 null。`REWARD_WINDOW_SETTLED.outcome` 只允许 `FULL_GRANT | DISPLAY_ONLY`，记录窗口、两类边界、四件公开奖池、4×4 矩阵摘要、四席分配、结算原因、转写摘要和 `grant_count`；`REWARD_WINDOW_CANCELLED.cancel_reason` 固定为 `CANCELLED_BY_WIN` 且不含 outcome。#232 只冻结这些事件 kind/schema 与合法偏序，生产路径不得发射任何 `REWARD_WINDOW_*`、`ITEM_GRANTED` 或 `CHARACTER_ABILITY_*`。#252 独占全部 `REWARD_WINDOW_*` 业务发射与 phase/exit 转换；#253 在同一权威事务内消费 settle，且仅对 `FULL_GRANT` 随后按 seat 0–3 每席产生一个 `ITEM_GRANTED`、更新库存与 pending。`DISPLAY_ONLY` 为零发奖。后者至少包含：
 
 ```json
 {
-  "rule_version": "v1",
-  "rule_id": "stable_rule_id",
+  "window_id": "hand_3_window_1",
+  "rule_version": "reward_v2",
+  "assignment_version": "assign_v1",
+  "matched_rule_ids": ["stable_rule_id"],
   "item_id": "stable_item_id",
+  "item_instance_id": "stable_instance_id",
   "seat": 0,
   "hand_seq": 3,
-  "utterance_id": "stable_utterance_id"
+  "score": 2700,
+  "affinity_match": true,
+  "armed_for_window_id": "hand_3_window_2"
 }
 ```
 
-获得、持有、使用、效果结算必须进入统一权威事件流；重复 utterance 或回放不得重复发奖。标准场拒绝所有道具命令。
+`REWARD_WINDOW_CANCELLED` 只用于权威和牌，记录 cancel reason/server seq、可空 closing boundary、`grace_aborted`、`scored=false` 与 `grant_count=0`；它不含矩阵且与 settle 互斥。`ITEM_USE` 只属于命令集合；权威结果只使用 `ITEM_CONSUMED` 和/或 `ITEM_APPLIED`，不增加使用回声事件。库存新增只认 `ITEM_GRANTED`，移除只认指定实例的 `ITEM_CONSUMED` 或 `MATCH_SETTLED`，效果只认 `ITEM_APPLIED`。同一玩家可持有同 `item_id` 多实例；相同 ID 的持续被动实例逐实例注册、触发并按既有 hook 顺序叠加，不得按 ID 去重。角色 arm 使用独立 `active_window_id/pending_window_id`；OPEN 消费 pending 为 active，DISARM 只清 active，不能清刚由 `FULL_GRANT` 登记给下一窗的 pending。`GAME_BEGIN`-only 三项为 `char_washizu_passive_v1`、`char_awai_passive_v1`、`char_toki_passive_v1`，arm 时执行现有 hook 等价效果；DISARM 仅停止后续派发，已发生的揭示/清振听不回滚。整场结束清空；UI 仅投影权威事件并滚动/分页，Alpha 不实现套装。标准场不创建相关模块。
 
 ### 完成定义
 
 - 12 角色与全部可发放道具均有中英日规则和五类 Momentum affinity。
-- 正例、反例、同分、上下文、冷却、重复和回放夹具全部通过。
-- UI 清楚区分字幕、命中、到账和发动，不暴露隐藏信息。
+- 满 24 + CLAIM 全过/非和牌鸣牌、24 弃荣和、中途自摸、非终场流局、终场非和牌展示、语音/上下文双边界、1500ms 抢占、真人/AI/静默、全零/黄金矩阵、首窗 unarmed、arm/disarm、同分多解、同 ID 双实例、重复与回放夹具全部通过。
+- UI 清楚区分四件公开奖池、窗口进度、字幕、实际到账、终场仅展示和和牌取消；多件库存、道具发动和角色被动武装可追踪，累计库存可滚动或分页且不暴露隐藏信息。
 - 不出现三选一、商店、抽卡、金币或 Run 奖励。
 
 ## E7 部署与桌面 Alpha

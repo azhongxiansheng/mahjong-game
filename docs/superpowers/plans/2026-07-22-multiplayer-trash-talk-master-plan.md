@@ -15,6 +15,9 @@
 5. 每个 PR 使用中文标题/正文，包含影响模块、验证命令和真实结果，关联 `Closes #<issue>`，指派当前维护者，等待人工合并。
 6. 不直接推送 `main`，不自动合并，不把多个叶子 Issue 偷渡到同一 PR。
 7. 意外代码、脚本、配置、锁文件或业务资源出现时立即停止并询问；孤立 `.uid` 等本地元数据只忽略，不提交。
+8. 每个叶子 Issue 必须先运行独立 Grok Plan 会话；主 agent 审核计划、依赖、文件边界和 Red 用例后，才允许在该 Issue 的独立 worktree 启动 Grok 写权限会话。
+9. Grok 实现后由主 agent 独立审阅完整 diff，并按风险亲自复跑 import、局部/全量 GUT、截图、Go/Redis/WS 或真实第三方最小请求；不得以 Grok 自述或 `--check` 结果代替验收。发现 P0/P1/P2 时，将文件、失败命令、复现证据和最小修复边界发回原 Grok 会话，修复后重新走同一验证门禁。
+10. 只并行开发依赖图上互不阻塞、worktree 与主要写文件不重叠的叶子 Issue；同一 Issue/同一 worktree 同时只允许一个写入者。每个 PR 仍单独人工合并，后继 Issue 必须基于最新 `origin/main`，不得从未合并兄弟分支叠加。
 
 ## 2. 分阶段实施
 
@@ -36,7 +39,7 @@
 
 - 先以仓库现有 `BattleController`、`NetworkedBattleController`、`LocalLoopbackServer`、`Action`、`NetworkedEvent` 为事实源。
 - 固化独立 Go Control Plane、Redis 临时状态、Godot Headless Worker 权威牌局、语音/STT 服务的边界。
-- 固化 HTTP、牌局 WebSocket、语音 WebSocket 包络、版本字段、稳定错误码和 `ITEM_GRANTED` 契约。
+- 固化 HTTP、牌局 WebSocket、语音 WebSocket 包络、版本字段、稳定错误码，以及 RewardWindow 三出口、`REWARD_WINDOW_CANCELLED` 和条件式 `ITEM_GRANTED` 契约。
 - 根目录 `main.go` 不扩张；新增服务必须使用独立目录和 Go module。
 
 #### E0-04 测试矩阵
@@ -73,9 +76,9 @@
 #### 核心实现
 
 - **#231**：首次新增纯数据 `GameSessionConfig`，稳定枚举值与验证/序列化；拥有 `SessionIntent → GameSessionConfig` 的唯一转换，练习启动器只消费正式配置，不消费 RunState 或 UI 裸字典。
-- **#232**：将玩家和 AI 的出牌、鸣牌、立直、和牌、跳过、道具命令统一为命令；将结果统一为事件。优先适配现有引擎，不复制规则层。
+- **#232**：将玩家和 AI 的出牌、鸣牌、立直、和牌、跳过、道具命令统一为命令；将结果统一为事件，并冻结 `REWARD_WINDOW_OPENED/CLOSING/SETTLED/CANCELLED`、仅 `FULL_GRANT` 允许出现的四次 `ITEM_GRANTED` 与 `CHARACTER_ABILITY_ARMED/DISARMED` 的可回放事件 kind/schema 和合法偏序。#232 的生产适配层不得发射任何 `REWARD_WINDOW_*`、`ITEM_GRANTED` 或 `CHARACTER_ABILITY_*`，不得推进窗口 phase 或写库存/active/pending；测试只以 fixture 验证 schema、偏序和 replay 消费。全部 `REWARD_WINDOW_*` 业务发射归 #252，条件式 `ITEM_GRANTED` 与库存/武装业务事件归 #253。`ITEM_USE` 只作为命令，结果只使用 `ITEM_CONSUMED` 和/或 `ITEM_APPLIED`，不定义回声事件。优先适配现有引擎，不复制规则层。
 - **#233**：用真实 `GameDriver` 参数支持东风 4 局和半庄 8 局，完成玩家 seat 0 + 3 AI 的可玩闭环。
-- **#234**：在会话构造阶段决定模块依赖；STANDARD 不实例化角色/道具/Momentum/语音，TRASH_TALK 才注入。
+- **#234**：在会话构造阶段决定模块依赖；STANDARD 不实例化角色/道具/RewardWindow/Momentum/语音，TRASH_TALK 才创建角色能力对象并注入其余模块；角色被动首窗默认 unarmed。
 - **#235**：整场结算展示四席分数/排名；重赛创建新 session/seed；退出释放场景与音频资源。
 
 #### TDD 门禁
@@ -116,9 +119,10 @@
 #### #241–#242 重连与对抗测试
 
 - Worker 保留 30 秒 seat lease；超时 AI 接管，玩家本局内可在安全行动边界取回。
+- 快照以最后 `server_seq` 为续传边界；#241 在 E3 只实现基础包络、稳定 module key/version 与 snapshot provider 组合/恢复接口，并以测试 provider 验证透明 round-trip，不等待或猜测 E5 字段。
 - 每个 `command_id` 缓存处理结果；重复提交返回原结果。
-- 用真实 Worker 测试非法座位、错回合、非法牌、伪造 `ITEM_GRANTED`、事件缺口和 state hash 分叉。
-- 保留 M12 replay E2E，证明同 seed/命令流的确定性。
+- #242 在 E3 用真实 Worker 测试非法座位、错回合、非法牌、客户端伪造服务端专属 `ITEM_GRANTED`、重复命令、事件缺口、state hash 分叉与测试 provider 快照连续性；不提前实现 RewardWindow 业务。
+- #232 提供通用 replay 消费骨架；#252/#253 在 E5 提供并验证真实三出口、库存/武装 provider、冲突出口和展示零发奖回放，保留 M12 replay E2E 并证明同 seed/命令流确定性。
 
 **Phase 3 出口：** 公共匹配可在本地真实多进程拓扑运行；#236–#242 关闭。公网未验证时仍明确标注未端到端验证。
 
@@ -136,8 +140,8 @@
 - **#243**：PTT 状态机、权限、PCM16/16k/mono/20ms 分帧、播放和释放；STANDARD 无语音节点。
 - **#244**：独立语音 WebSocket；房间/座位鉴权、有界队列、丢弃旧帧；不写磁盘。
 - **#245**：模型 manifest、断点续传、SHA-256、临时文件与原子启用、平台可写路径。
-- **#246**：partial/final 字幕按 utterance 替换、座位指示、超时布局；公共本地字幕不得进入评分。
-- **#247**：VAD 分段与 faster-whisper small；最终文本绑定 room/seat/hand_seq/utterance。
+- **#246**：partial/final 字幕按 utterance 替换、座位指示、超时布局；公共本地字幕不得进入评分。实际到账反馈只认 `ITEM_GRANTED`；`SETTLED(DISPLAY_ONLY)` 只展示“未发放”，取消只展示作废。
+- **#247**：VAD 分段与 faster-whisper small；最终文本绑定 room/seat/hand_seq/utterance/window。#252/Worker 是 `grace_deadline_at` 与窗口相位的唯一权威；#247 不创建第二个权威计时器，只按 Worker 给出的边界/deadline 返回或取消 final。第 24 弃后宽限与 CLAIM 并行，荣和立即中止，迟到结果不跨窗。
 - **#248**：主服务超时才回退 new-api；只发送最终片段；去重、熔断、恢复探测和密钥日志红线。
 
 #### 真实验证
@@ -153,28 +157,37 @@
 #### #249 内容规则库
 
 - 为 12 名原创角色建立五类 Momentum affinity 与中英日原创 13+ 文案。
-- 为所有可发放道具建立稳定 ID、属性标签、上下文、优先级、具体度和多语言模式。
+- 为所有可发放道具建立稳定 ID、属性标签、公开上下文、优先级、具体度和多语言模式；同一玩家可跨窗口重复持有同一 item 的不同 `item_instance_id`。
+- 为 AI 建立版本化角色/公开牌局情境文本模板；每 AI 席每窗至多一条，在该席本窗第一次权威弃牌后确定性选择；进入 `FULL_GRANT/DISPLAY_ONLY` 前仍未弃牌则按静默，`CANCELLED_BY_WIN` 不评分；AI 不合成语音。
+- 规则 schema 固定四个 0..1000 整数分项、每 seat/window/rule 只计一次，并提供全零与有文本的黄金数值 fixture。
 - schema 校验必须保证角色、道具、语言和 rule ID 无缺失/重复。
 
 #### #250–#252 分析与决胜
 
-- Red：中英日大小写、全半角、标点、空白、正例、反例、同分、上下文不符、重复与冷却。
-- 标准化后只执行关键词/模板，不调用 LLM、向量服务或随机数。
-- 使用 Worker 的真实牌局事件生成上下文，不接受客户端自报。
-- 排序固定为 `priority DESC → specificity DESC → rule_id ASC`；每 utterance 至多一个奖励。
-- 冷却与幂等使用权威 `hand_seq`、规则版本、utterance ID，不使用客户端时钟。
+- 权威开局状态提交后、第一条 `TURN_PROMPT` 前开启首窗并公开四件道具；首窗被动均为 unarmed。
+- Red：中英日大小写、全半角、标点、空白、正例、反例、真人/AI/静默、满 24 + CLAIM 全过/鸣牌/荣和、中途自摸、非终场流局、终场展示、全零矩阵、同分多解和重复出口。
+- 标准化后只执行关键词/模板，不调用 LLM、向量服务或随机数；`Momentum.skill_effect_multiplier()` 不进入生产路径。
+- 使用权威端公开牌局事件生成上下文（练习=本地权威，公共=Worker），不接受客户端自报，不读取隐藏牌。
+- #252/Worker 独占全部 `REWARD_WINDOW_OPENED/CLOSING/SETTLED/CANCELLED` 的业务发射，以及窗口 phase、三值 `window_exit`、`closing_boundary_server_seq`、`context_boundary_server_seq`、`grace_deadline_at` 与结算屏障的写入；`REWARD_WINDOW_SETTLED.outcome` 仅两值，取消事件只带 `cancel_reason=CANCELLED_BY_WIN`。其他模块不得从本地时间或 UI 推断。第 24 弃立即 CLOSING，CLAIM 与剩余宽限并行；荣和抢占 cancel；无和牌时以 CLAIM 完成序号冻结上下文。没有开放 CLAIM 的流局/终场非和牌在权威结果判定事务内直接令 `claim_is_terminal=true`，并以该判定序号冻结上下文。非终场流局走 `FULL_GRANT`；终场非和牌走 `DISPLAY_ONLY`。
+- 顺序唯一，屏障为 `claim_is_terminal AND (all_eligible_utterances_are_terminal OR now >= grace_deadline_at)`：满 24 无和牌 `CLOSING → SETTLED(FULL_GRANT) → 4×ITEM_GRANTED → DISARM → next OPEN/ARM`，不发 HAND_SETTLED；非终场流局 `CLOSING → SETTLED(FULL_GRANT) → 4×ITEM_GRANTED → DISARM → HAND_SETTLED → 下一局 OPEN/ARM`；和牌 `CANCELLED → DISARM → HAND_SETTLED`；终场非和牌 `CLOSING → SETTLED(DISPLAY_ONLY) → DISARM → HAND_SETTLED → MATCH_SETTLED`。#252 发齐窗口事件但不发 `ITEM_GRANTED`；#253 在同一权威事务内唯一发出条件式 `ITEM_GRANTED` 并更新库存/pending。不存在第二种 GRANT 事件。
+- 生成 4×4 定点整数矩阵，枚举 24 种双射，按总分最大、seat 0–3 的 item ID 向量字典序最小稳定决胜。
+- 幂等使用 `window_id`、出口、规则/分配版本、utterance ID 与权威事件序号，不使用客户端时钟；同窗 settle 与 cancel 互斥，展示出口禁止后续 grant。
 
 #### #253 道具权威事件
 
-- `ITEM_GRANTED`、`ITEM_USE`、`ITEM_APPLIED` 进入统一事件流和回放。
-- 库存只由 Worker 改变；STANDARD 在协议入口拒绝道具命令。
+- `REWARD_WINDOW_OPENED/CLOSING/SETTLED/CANCELLED`、条件式四次 `ITEM_GRANTED`、`ITEM_CONSUMED`、`ITEM_APPLIED`、`CHARACTER_ABILITY_ARMED/DISARMED` 进入统一事件流和回放。`ITEM_USE` 仅是命令，不是事件；新增库存只认 GRANTED，移除只认指定实例 CONSUMED 或 MATCH_SETTLED，效果只认 APPLIED；`SETTLED` 不直接改库存。
+- 库存只由权威端改变（练习=本地权威，公共=Worker）；STANDARD 在协议入口拒绝道具命令。
+- 库存为同场多件实例集合，Alpha 不设人为容量上限；同一玩家可重复持有同 `item_id`，每次使用/消耗只作用于命令指定的 `item_instance_id`。相同 `item_id` 的持续被动实例各自注册、各自触发，并按既有 hook 顺序叠加，不得按 ID 去重。道具持续到使用/消耗或整场结束，不被新奖励替换。未来套装效果另行立项，本期不实现套装计算或 UI。
+- affinity 只在实际 `ITEM_GRANTED` 时判定；武装状态拆为 `active_window_id/pending_window_id`。目标 OPEN 原子消费 pending 为 active；GRANT 可写下一窗 pending；DISARM 只清当前 active，不能清刚登记的 next pending。`DISPLAY_ONLY/CANCELLED_BY_WIN` 不登记新 pending。
+- arm 只门控角色 hook 是否接收事件；不得统一清空 `SkillResource.params`，12 个技能的既有状态生命周期由 #253 逐项回归保持。
+- 当前 `GAME_BEGIN` 三项 `char_washizu_passive_v1`、`char_awai_passive_v1`、`char_toki_passive_v1` 由 #253 在 `CHARACTER_ABILITY_ARMED` 上执行各自现有 hook 的等价激活效果；#230 冻结原始语义，禁止改绑到 `yamagan_v1`、`toki_foresight_v1` 等近义但身份不同的卡池能力。DISARM 只停止后续 hook 派发，ARM 时已经发生的信息揭示、清振听等一次性权威副作用不回滚。
 - 复用现有道具/遗物钩子的牌局效果，移除其商店、金币、Run 获取方式，不重新实现同一效果。
 
 #### #254 UI 与平衡
 
-- 展示 final 字幕、命中属性、道具到账、使用和效果；不得透露隐藏牌。
-- 失败、无匹配、冷却与 STT 失败不能伪装成奖励。
-- 用固定中英日夹具与模拟对局记录每局奖励数量和道具分布，作为 Alpha 平衡基线。
+- 展示四件公开奖池、窗口进度、final 字幕、四席分配、多件库存、道具到账/使用/效果和角色被动武装；#254 的库存数字只投影 `ITEM_GRANTED/ITEM_CONSUMED/MATCH_SETTLED`，效果只投影 `ITEM_APPLIED`，不得从 `SETTLED` 或动画推断。累计实例滚动/分页且不得透露隐藏牌。
+- UI 必须区分 `FULL_GRANT` 实际到账、`DISPLAY_ONLY`“仅本场统计，未发放”和 `CANCELLED_BY_WIN`“和牌优先，本窗作废”；STT 失败/超时或取消不能伪装成评分/发奖。
+- 用固定中英日/AI/静默与三出口夹具记录每局窗口 outcome、库存量、同 ID 实例数、道具分布和 affinity 激活率，作为 Alpha 平衡基线。
 
 **Phase 5 出口：** 练习与公共欢乐场确定性发奖/使用/回放通过；#249–#254 关闭。
 
@@ -211,9 +224,9 @@
 | HTTP/WS 包络与错误码 | E3-01/E3-02 合并 | 只做向后兼容字段增加；破坏性变化提升 protocol version |
 | 权威事件与 state hash | E3-05 合并 | Worker 与客户端同时升级并有 replay fixture |
 | PCM/语音帧格式 | E4-01/E4-02 合并 | 通过 voice protocol version 变更 |
-| STT 结果包络 | E4-05 合并 | 同 utterance 的幂等键不可变 |
-| 垃圾话规则 schema 与排序 | E5-02/E5-04 合并 | 提升 rule_version；旧回放继续引用旧版本 fixture |
-| 道具事件 schema | E5-05 合并 | 必须保持 replay 向后兼容或迁移 fixture |
+| STT 结果包络与 1500ms/CLAIM 闸门 | E4-05 合并 | 同 utterance 的幂等键、PTT 结束序号、窗口归属和和牌抢占语义不可变 |
+| 垃圾话规则、三出口窗口与分配算法 | E5-02/E5-04 合并 | 语音/上下文边界分离；提升 rule_version/assignment_version；旧回放引用旧 fixture |
+| 重复实例库存与道具/技能事件 schema | E5-05 合并 | 不得退化为单槽或按 item_id 合并；必须保持 replay 向后兼容或迁移 fixture |
 
 ## 4. 验证命令与证据
 
@@ -258,7 +271,11 @@ rg -n 'E6|语音举报|自动禁言|按座位静音|全局关闭语音' \
 | Redis 并发产生重复房间 | ticket 幂等键 + 原子匹配/租约测试 |
 | PCM WebSocket 背压影响牌局 | 独立通道、有界队列、丢弃旧音频帧 |
 | 本地与服务端 STT 不一致 | 公共场只采用服务端 final；本地只显示 |
+| 第 24 弃同时存在 CLAIM 与 STT 宽限 | 语音边界在弃牌时冻结；CLAIM 并行且用独立上下文边界；荣和立即 cancel 并中止宽限，无和牌才在下一普通行动前 settle |
+| 同窗 cancel/settle 或终场错误发奖 | 三出口状态机互斥；replay 拒绝冲突转换，`DISPLAY_ONLY/CANCELLED_BY_WIN` 强制 `grant_count=0` |
 | 模型/LLM 结果不确定影响公平 | 只把文本交给确定性版本规则；模型无发奖权 |
+| 4×4 最优分配存在并列或跨平台浮点差异 | 使用定点整数分数，枚举 24 种双射并按 seat/item ID 字典序决胜，记录 assignment_version |
+| 多件/同种重复库存导致积压或未来套装反向侵入 Alpha | Alpha 保持独立 ItemInstance、无替换且按 instance 精确使用；统计同 ID 数量，未来套装只扫描集合，套装计算与 UI 另行立项 |
 | 角色原创替换遗漏旧 IP | 12 项映射表 + 生产资源 `rg` 审计 + 资源加载测试 |
 | 资产生成渠道或凭证漂移 | 调用前最小真实请求；只读既有环境配置；PR 审计无密钥；中间产物不入库 |
 | 规划跨度大导致跨 Issue 偷渡 | 39 个叶子 Issue 单独 worktree/PR，父 Epic 原生层级审计 |
@@ -274,5 +291,6 @@ rg -n 'E6|语音举报|自动禁言|按座位静音|全局关闭语音' \
 - [x] 规划 PR [#260](https://github.com/jingx8885/mahjong-game/pull/260) 已验证并人工合并。
 - [x] E0-01 PR [#261](https://github.com/jingx8885/mahjong-game/pull/261) 已人工合并，#221 已关闭。
 - [x] 用户锁定入口/Intent/Config 三层切片、生产级大厅、单曲 Suno BGM、全新角色美术和 5 个 Autoload 注销决策。
-- [ ] 本次纯文档决策修订 PR 人工合并，并同步 #225–#231 正文。
+- [x] 用户锁定 RewardWindow 三出口：和牌取消、终场非和牌仅展示、非终场流局/满 24 无和牌发四件，以及同席同道具多实例。
+- [ ] 本次纯文档决策修订 PR 人工合并，并同步受影响 Issue 正文。
 - [ ] 完成并关闭 E0 #222–#224；在 Phase 0 出口满足前不开始 E1 业务代码。

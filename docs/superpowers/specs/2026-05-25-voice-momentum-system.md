@@ -1,13 +1,11 @@
-# 气势系统（Voice Momentum）设计规范
+# 气势系统（Voice Momentum）历史属性参考
 
 - 日期：2026-05-25
-- 状态：v1 foundation
+- 状态：historical-reference-only；已被 `2026-07-22-multiplayer-trash-talk-prd.md` 的六巡奖励窗口契约取代
 
-## 1. 概述
+> 本文只保留五类属性名称供历史代码和迁移查阅。桌面 Alpha 的现行契约为：24 次权威弃牌窗口、公开四道具、确定性一对一分配、同场多实例库存，以及实际发奖的 affinity 命中后自动武装下一窗口角色被动。窗口出口以现行 PRD 为准：任意和牌取消且不评分/不发奖，终场非和牌只评分展示，只有 `FULL_GRANT` 产生四件道具。不得据本文实现 LLM 决策、单句话即时发奖、文字按钮输入、技能倍率主路径，或恢复“和牌也提前发奖”的旧解释。
 
-玩家在对局中说话或输入文字 → AI 分析文本属性 → 生成"气势值" → 气势影响技能效果倍率。
-
-## 2. 属性模型
+## 五类历史属性
 
 5 种属性：
 | 属性 | 对应牌/技能类型 | 台词风格 |
@@ -18,30 +16,8 @@
 | 热血 (PASSION) | 立直、一发 | 中二、燃烧的台词 |
 | 神秘 (MYSTIC) | 字牌、役满 | 深沉、超自然的台词 |
 
-## 3. 气势值计算
+## 现行迁移规则
 
-momentum = base_attribute_score * character_affinity * context_bonus
-
-- base_attribute_score: AI 分析输入文本的属性得分 (0.0 - 1.0)
-- character_affinity: 角色对该属性的亲和度 (0.5 - 2.0)
-- context_bonus: 场况加成 (被追分时热血+50%、领先时冷静+50% 等)
-
-## 4. 气势影响
-
-- momentum 0.0-0.3: 无效果
-- momentum 0.3-0.6: 技能效果 +25%
-- momentum 0.6-0.8: 技能效果 +50%
-- momentum 0.8-1.0: 技能效果 +100%, 视觉特效加强
-
-气势影响 SkillCtx.han_deltas 的乘数,而非摸牌顺序(保证日麻公平性)。
-
-## 5. 输入方式
-
-- 语音输入: Whisper STT → 文本 (v2)
-- 文字输入: 直接打字 (v1)
-- 预设台词: 按钮快速发送 (v1)
-
-## 6. AI 分析
-
-v1: 关键词匹配 + 简单情感分析
-v2: LLM 分析 (Claude/GPT)
+- `Momentum.Attribute` 五个枚举可继续作为角色 affinity 与道具标签的稳定标识。
+- `Momentum.skill_effect_multiplier()` 与旧浮点气势累计不进入桌面 Alpha 生产路径。
+- 文本只产生版本化整数特征；窗口三出口、矩阵/取消、条件式发奖、重复 `item_instance_id` 库存和技能 arm 以 `2026-07-22-multiplayer-trash-talk-prd.md` 为唯一权威。
