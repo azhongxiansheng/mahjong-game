@@ -22,12 +22,12 @@ func _ready() -> void:
 
 
 func request_practice() -> void:
-	_set_status("电脑练习：入口已触发（对局与规则选择尚未接入）")
+	_set_status("电脑练习即将开放")
 	practice_pressed.emit()
 
 
 func request_match() -> void:
-	_set_status("公共匹配：入口已触发（联网与队列尚未接入）")
+	_set_status("公共匹配即将开放")
 	match_pressed.emit()
 
 
@@ -45,13 +45,13 @@ func _build_ui() -> void:
 
 	var title := Label.new()
 	title.name = "Title"
-	title.text = "麻将"
+	title.text = "虚席馆"
 	DT.apply_title_style(title)
 	root.add_child(title)
 
 	var subtitle := Label.new()
 	subtitle.name = "Subtitle"
-	subtitle.text = "大厅入口壳（E1-01）"
+	subtitle.text = "选择一种游戏方式"
 	DT.apply_subtitle_style(subtitle)
 	root.add_child(subtitle)
 
@@ -70,7 +70,7 @@ func _build_ui() -> void:
 	practice_btn.owner = self
 
 	var practice_hint := Label.new()
-	practice_hint.text = "1 人 + 3 AI（挂点就绪，功能后续接入）"
+	practice_hint.text = "1 人 + 3 AI"
 	DT.apply_caption_style(practice_hint)
 	entries.add_child(practice_hint)
 
@@ -82,13 +82,13 @@ func _build_ui() -> void:
 	match_btn.owner = self
 
 	var match_hint := Label.new()
-	match_hint.text = "真人优先 / AI 补位（挂点就绪，联网后续接入）"
+	match_hint.text = "真人优先 / AI 补位"
 	DT.apply_caption_style(match_hint)
 	entries.add_child(match_hint)
 
 	_status_label = Label.new()
 	_status_label.name = "StatusLabel"
-	_status_label.text = "选择入口开始（当前仅导航壳）"
+	_status_label.text = "请选择游戏方式"
 	DT.apply_caption_style(_status_label)
 	root.add_child(_status_label)
 
