@@ -82,6 +82,7 @@ func test_all_scenes_and_resources_load() -> void:
 # 确认关键场景可实例化(load + instantiate)
 func test_critical_scenes_instantiate() -> void:
 	var critical: Array[String] = [
+		"res://ui/lobby/lobby_shell.tscn",
 		"res://ui/run/run_flow.tscn",
 		"res://ui/four_player_table/playable_table.tscn",
 		"res://ui/four_player_table/four_player_table.tscn",

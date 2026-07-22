@@ -220,7 +220,7 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 5. **改 PNG / 新 `class_name` 后必须** `godot --headless --path godot --import` —— 否则 ctex 全黑或 Parse Error 雪崩。
 6. **牌面契约**：`assets/mahjong_tiles_riichi/<key>.png` 文件名不变；**272×389**；face 用 **WHITE** modulate（dim 用遮罩）；赤宝走 **`0m/0p/0s`** 真图。
 7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
-8. **主路径**：`ui/run/run_flow.tscn` + `ui/four_player_table/`。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
+8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
 9. **网络改动**须显式声明未端到端验证。
 10. **资产生成**：`godot/tools/asset_gen/`；先 smoke 锁风格；staging QA 后 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。可用 Grok 内置 game-asset skills 补图标，仍遵守文件名与 import 纪律。
 11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。

@@ -226,13 +226,12 @@ func _on_tutorial_pressed() -> void:
 	_on_close()
 
 
-# 放弃本场 Run — 弹 ConfirmDialog,确认 → SaveSystem.clear_run() + 退出战斗。
-# 用 get_tree().reload_current_scene() 简洁地把当前场景重置,回到 run_flow 起点
-# (检测无存档 → starter picker)。
+# 放弃本场 Run — 弹 ConfirmDialog,确认 → SaveSystem.clear_run() + 回生产大厅壳。
+# E1-01：生产主入口是 lobby_shell，不得 reload 假定当前场景仍是 run_flow。
 func _on_quit_run_pressed() -> void:
 	var d := ConfirmDialog.show_dialog(
 		"放弃当前 Run?",
-		"你的 Run 进度将被清除,这是不可逆操作。回到主菜单后请重新开始。",
+		"你的 Run 进度将被清除,这是不可逆操作。回到大厅后请重新开始。",
 		"确认放弃", "取消", true)
 	d.confirmed.connect(_on_quit_confirmed)
 	get_tree().root.add_child(d)
@@ -242,10 +241,10 @@ func _on_quit_confirmed() -> void:
 	var ss = get_node_or_null("/root/SaveSystem")
 	if ss:
 		ss.clear_run()
-	# 关 settings overlay 然后 reload current_scene 回 run_flow start
+	# 关 settings overlay，再切到生产大厅壳（非 Run Flow）
 	_on_close()
-	# defer 避免 reload 时还在 settings 的 _input 解栈链上
-	get_tree().call_deferred("reload_current_scene")
+	# defer 避免 change_scene 时还在 settings 的 _input 解栈链上
+	get_tree().call_deferred("change_scene_to_file", LobbyShell.SCENE_PATH)
 
 
 func _on_close() -> void:
