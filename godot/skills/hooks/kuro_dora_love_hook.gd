@@ -1,7 +1,4 @@
-# 松実玄 — ドラの愛 能力版（拡張）
-# WIN_DECLARED_PRE 自胡時 +2 extra Dora。
-# DORA_REVEALED 發生時 +1 追加 Dora。
-# 触発：WIN_DECLARED_PRE / DORA_REVEALED
+# 可抽能力「宝牌吸引」— id: kuro_dora_love_v1（非角色被动）
 extends SkillHook
 
 const WIN_EXTRA_DORA: int = 2

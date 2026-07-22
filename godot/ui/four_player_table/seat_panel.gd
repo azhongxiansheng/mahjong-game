@@ -70,9 +70,9 @@ var _seat_id: int = 0
 var _seat_wind: int = TileId.E
 var _score: int = 25000
 # AI 性格化:替代默认"AI 1/2/3"用具体人物名+打法风格,让玩家从一眼看出
-# 对面 3 家不是一团抽象的 AI,而是"赤木·激进 / 开司·速胡 / 鹫巢·防守"。
+# 对面 3 家不是一团抽象的 AI,而是带名字与打法标签的 persona。
 # seat_display_name 优先用 _persona_name (非空时);_persona_style 显示在
-# seat_info 行做后缀(如 "赤木·东·激进")。
+# seat_info 行做后缀(如 "名·东·激进")。
 var _persona_name: String = ""
 var _persona_style: String = ""
 # AI 立绘:set_ai_persona 时设;_emote_state 控制 modulate 调色情绪。

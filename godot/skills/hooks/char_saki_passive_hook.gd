@@ -1,6 +1,6 @@
-# 宫永咲 — 角色被动「嶺上の華」
-# 原著：嶺上开花的天才，杠后必然胡牌。
-# 效果：胡牌时额外 +2 Dora（模拟嶺上的强运加成）。
+# 华岭澄 — 角色被动「宝华绽放」
+# ability_id: char_saki_passive_v1（语义冻结）
+# 效果：胡牌时额外 +2 Dora。
 extends SkillHook
 
 const BONUS_DORA: int = 2

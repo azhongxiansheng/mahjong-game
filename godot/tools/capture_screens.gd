@@ -1,7 +1,7 @@
 extends SceneTree
 
 # 一次性视觉验证工具：实例化 run-flow / 战斗桌场景，渲染若干帧后把视口
-# 截图存到 /tmp，供人工核对新资产 + Akagi 主题的实际渲染效果。
+# 截图存到 /tmp，供人工核对新资产与牌桌渲染效果。
 #
 # 跑法（必须带窗口渲染，不能 --headless）：
 #   godot --path godot -s tools/capture_screens.gd
@@ -64,8 +64,8 @@ func _capture_battle_with_state() -> void:
 	# 静态引用 PlayableTable 会把 Anima(依赖 ANIMA autoload)拖进早期编译。
 	var table = load("res://ui/four_player_table/playable_table.gd").new()
 	root.add_child(table)
-	table.set_player_persona("赤木",
-		"res://assets/roguelike/characters/char_akagi.png")
+	table.set_player_persona("林夜彻",
+		"res://assets/roguelike/characters/char_lin_yeche.png")
 	# BattleController 跑一个确定 seed 起手,state 立刻有 4 家 13 张手牌 + 庄家
 	var bc := BattleController.new(42, 0, false, TileId.E)
 	# bind 桌面到这个 state,seat 0 可见手牌、dora 指示牌、立直棒 0、当前 seat 高亮

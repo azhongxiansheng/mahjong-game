@@ -1,7 +1,6 @@
-# 東横桃子 — 角色被動「ステルス」
-# 原著：存在感を消して、他家に認知されにくいステルス能力。
-# 効果：RIICHI_DECLARED 時、primed フラグを立てる。
-#       次の WIN_DECLARED_PRE 自胡時 +1 番（ステルス立直の優位性）。
+# 影立静 — 角色被动「消影一发」
+# ability_id: char_momoko_passive_v1（语义冻结）
+# 效果：RIICHI_DECLARED 时 primed；下次 WIN_DECLARED_PRE 自胡 +1 番后清除。
 extends SkillHook
 
 const STEALTH_BONUS: int = 1

@@ -198,44 +198,44 @@ static func all_abilities() -> Array:
 		"一发窗口延长至 2 巡（v1：自胡 +1 番）",
 		Rarity.Kind.EPIC, "res://skills/hooks/riichi_kago_hook.gd"))
 
-	# 角色被动能力
-	pool.append(_mk_ability(&"char_akagi_passive_v1", "赤木·鬼読み",
+	# 角色被动（ability_id 冻结；显示名为独立中二技名，非姓名拆字）
+	pool.append(_mk_ability(&"char_akagi_passive_v1", "林夜彻·脊读鬼神",
 		"每次摸牌后透视下家 1 张手牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_akagi_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_kaiji_passive_v1", "开司·逆境覚醒",
+	pool.append(_mk_ability(&"char_kaiji_passive_v1", "裘绝·绝崖翻盘",
 		"分数 < 15000 时胡牌 +2 番（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kaiji_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_washizu_passive_v1", "鹲巣·鷲巣麻雀",
+	pool.append(_mk_ability(&"char_washizu_passive_v1", "白透璃·万透镜华",
 		"开局透视所有对手各 2 张手牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_washizu_passive_hook.gd"))
 
-	pool.append(_mk_ability(&"char_saki_passive_v1", "宫永咲·嶺上の華",
+	pool.append(_mk_ability(&"char_saki_passive_v1", "华岭澄·宝华绽放",
 		"胡牌时额外 +2 Dora（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_saki_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_teru_passive_v1", "宫永照·照魔鏡",
+	pool.append(_mk_ability(&"char_teru_passive_v1", "连曜真·叠曜连斩",
 		"每次胡牌 +N 番（N=连续胡牌次数，累积）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_teru_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_awai_passive_v1", "大星淡·絶対安全圏",
+	pool.append(_mk_ability(&"char_awai_passive_v1", "安澄青·无风净界",
 		"开局清振听 + 预知下张摸牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_awai_passive_hook.gd"))
 
-	pool.append(_mk_ability(&"char_koromo_passive_v1", "天江衣·海底支配",
-		"海底/河底胡牌 +3 番 + 摸牌時残り 3 枚透視（角色被动）",
+	pool.append(_mk_ability(&"char_koromo_passive_v1", "渊汐·底牌潮掌",
+		"海底/河底胡牌 +3 番 + 摸牌时墙顶 3 枚透视（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_koromo_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_nodoka_passive_v1", "原村和·デジタル",
-		"胡牌 +1 番 + 対手聴牌時に手牌 1 枚透視（角色被动）",
+	pool.append(_mk_ability(&"char_nodoka_passive_v1", "纪枢·概率圣裁",
+		"胡牌 +1 番 + 对手听牌时透视手牌 1 枚（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_nodoka_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_toki_passive_v1", "園城寺怜·一巡先見",
-		"開局時に全 4 席の次の摸牌を透視（角色被动）",
+	pool.append(_mk_ability(&"char_toki_passive_v1", "先示·四席窥运",
+		"开局时透视全 4 席下一摸（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_toki_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_kuro_passive_v1", "松実玄·ドラの愛",
-		"胡牌時に +2 extra Dora（角色被动）",
+	pool.append(_mk_ability(&"char_kuro_passive_v1", "宝络绯·赤线缠宝",
+		"胡牌时 +2 extra Dora（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kuro_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_momoko_passive_v1", "東横桃子·ステルス",
-		"立直後の胡牌 +1 番（角色被动）",
+	pool.append(_mk_ability(&"char_momoko_passive_v1", "影立静·消影一发",
+		"立直后下一次自胡 +1 番（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_momoko_passive_hook.gd"))
-	pool.append(_mk_ability(&"char_tetsuya_passive_v1", "哲也·玄人技",
-		"胡牌每回 +1 番累積（角色被动）",
+	pool.append(_mk_ability(&"char_tetsuya_passive_v1", "局进吾·阶升必杀",
+		"胡牌每回累加加番（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_tetsuya_passive_hook.gd"))
 
 	# M7 收尾：M6 唯一 holdout（plan-6 §8.10 #12）
@@ -243,30 +243,30 @@ static func all_abilities() -> Array:
 		"每局 1 次手牌↔弃牌河交换（v1 简化：自胡 +3 番 + 消耗）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/tougenkyo_hook.gd"))
 
-	# M12 新增角色能力（8 张）
-	pool.append(_mk_ability(&"hisa_bad_wait_v1", "久・悪待ち",
-		"任意自胡 +2 番（悪待ち熟練表現）",
+	# M12 可抽 ability（id 冻结；显示文案原创化，与 12 人被动身份分离）
+	pool.append(_mk_ability(&"hisa_bad_wait_v1", "恶听熟手",
+		"任意自胡 +2 番（恶听熟练表现）",
 		Rarity.Kind.EPIC, "res://skills/hooks/hisa_bad_wait_hook.gd"))
-	pool.append(_mk_ability(&"mako_memory_v1", "記憶力",
-		"巡数 >= 6 時摸牌後に牌墙トップ 3 枚 reveal",
+	pool.append(_mk_ability(&"mako_memory_v1", "牌墙记忆",
+		"巡数 >= 6 时摸牌后透视牌墙顶 3 枚",
 		Rarity.Kind.EPIC, "res://skills/hooks/mako_memory_hook.gd"))
-	pool.append(_mk_ability(&"koromo_haitei_ability_v1", "海底支配",
-		"HAITEI/HOUTEI 自胡 +3 番 + 満貫下限",
+	pool.append(_mk_ability(&"koromo_haitei_ability_v1", "底牌压制",
+		"HAITEI/HOUTEI 自胡 +3 番 + 满贯下限",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/koromo_haitei_ability_hook.gd"))
-	pool.append(_mk_ability(&"toki_foresight_v1", "先見",
-		"GAME_BEGIN 全 4 席の次摸牌 reveal（コスト -1000 点）",
+	pool.append(_mk_ability(&"toki_foresight_v1", "巡初窥摸",
+		"GAME_BEGIN 全 4 席下一摸 reveal（代价 -1000 点）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/toki_foresight_hook.gd"))
-	pool.append(_mk_ability(&"kuro_dora_love_v1", "ドラの愛",
-		"自胡 +2 Dora + DORA_REVEALED 時 +1 追加 Dora",
+	pool.append(_mk_ability(&"kuro_dora_love_v1", "宝牌吸引",
+		"自胡 +2 Dora + DORA_REVEALED 时 +1 追加 Dora",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/kuro_dora_love_hook.gd"))
-	pool.append(_mk_ability(&"momoko_stealth_ability_v1", "ステルス",
-		"RIICHI 後の自胡 +1 番",
+	pool.append(_mk_ability(&"momoko_stealth_ability_v1", "潜影立直",
+		"立直后的自胡 +1 番",
 		Rarity.Kind.EPIC, "res://skills/hooks/momoko_stealth_ability_hook.gd"))
-	pool.append(_mk_ability(&"tsubame_gaeshi_v1", "燕返し",
-		"自胡 +3 番（一回限り・消滅）",
+	pool.append(_mk_ability(&"tsubame_gaeshi_v1", "燕返一击",
+		"自胡 +3 番（仅一次·消耗）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/tsubame_gaeshi_hook.gd"))
-	pool.append(_mk_ability(&"streak_escalation_v1", "連勝エスカレーション",
-		"連勝ごとに +N 番累積（流局リセット）",
+	pool.append(_mk_ability(&"streak_escalation_v1", "连胜攀升",
+		"连胜每次 +N 番累积（流局重置）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/streak_escalation_hook.gd"))
 
 	# M12 新増 Boss 変種能力（3 張）

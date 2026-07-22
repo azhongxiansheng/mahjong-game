@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b67gfbq6h1nms"
-path="res://.godot/imported/char_akagi.png-a3a617806fc0467267bfb19d5e5370b5.ctex"
+uid="uid://cl1tihienqtq4"
+path="res://.godot/imported/char_xian_shi.png-c8eba142df471293af007f5d59f18dee.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/roguelike/characters/char_akagi.png"
-dest_files=["res://.godot/imported/char_akagi.png-a3a617806fc0467267bfb19d5e5370b5.ctex"]
+source_file="res://assets/roguelike/characters/char_xian_shi.png"
+dest_files=["res://.godot/imported/char_xian_shi.png-c8eba142df471293af007f5d59f18dee.ctex"]
 
 [params]
 

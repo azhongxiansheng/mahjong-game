@@ -298,7 +298,7 @@ func test_top_seat_label_matches_reference_short_name_layout() -> void:
 	add_child_autofree(panel)
 	await get_tree().process_frame
 	panel.set_ai_persona("金老", "防守",
-		"res://assets/roguelike/characters/char_akagi.png")
+		"res://tests/_fixtures/portrait_fixture.png")
 	await get_tree().process_frame
 	assert_eq(panel.cluster_anchor(), Vector2(1110.0, 85.0),
 		"对家头像锚点保持参考坐标")
@@ -333,8 +333,8 @@ func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
 	panel.set_seat_id(0)
 	add_child_autofree(panel)
 	await get_tree().process_frame
-	panel.set_ai_persona("赤木", "",
-		"res://assets/roguelike/characters/char_akagi.png")
+	panel.set_ai_persona("林夜彻", "",
+		"res://tests/_fixtures/portrait_fixture.png")
 	panel.set_active(true)
 	panel.bind_seat(_seat_with_tiles(0, 13))
 	panel.apply_reference_hand_layout()

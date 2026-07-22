@@ -26,10 +26,10 @@ HERE = Path(__file__).resolve().parent
 STAGING_DIR = HERE / "_staging_sheets"
 RAW_DIR = HERE / "_raw_sheets"
 
-_AKAGI = (
+_DRAMA_STYLE = (
     "Each tile is an upright aged ivory-bone rectangle with rounded corners "
     "and a subtle bevel, crisply carved engraving, strong directional "
-    "shading, gritty 1990s Akagi seinen-manga gambling aesthetic. All tiles "
+    "shading, gritty 1990s seinen-manga gambling aesthetic. All tiles "
     "identical in size. CRITICAL LAYOUT: the tiles are spread out across the "
     "full width of a wide landscape image, widely separated, with a large "
     "empty transparent gap — at least half a tile wide — between every pair "
@@ -113,7 +113,7 @@ def _gen_sheet(sheet_key: str, out_dir: Path) -> list[str]:
     a cramped layout where tiles touch is regenerated (up to _MAX_TRIES).
     """
     keys, body = _SHEETS[sheet_key]
-    prompt = body + " " + _AKAGI
+    prompt = body + " " + _DRAMA_STYLE
     RAW_DIR.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, _MAX_TRIES + 1):

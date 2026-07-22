@@ -1,6 +1,6 @@
-# 鹲巣 — 角色被动「鷲巣麻雀」
-# 原著：鷲巣麻雀中 3/4 牌是透明的，对手可看到。鷲巣靠信息压制。
-# 效果：开局时看到所有 3 个对手各 2 张手牌（共 6 张透明牌）。
+# 白透璃 — 角色被动「万透镜华」
+# ability_id: char_washizu_passive_v1（GAME_BEGIN 身份锁；语义冻结）
+# 效果：开局看到所有 3 个对手各 2 张手牌（共 6 张）。
 extends SkillHook
 
 const REVEAL_PER_OPPONENT: int = 2

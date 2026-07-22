@@ -36,14 +36,21 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"riichi_kago_v1": [&"WIN_DECLARED_PRE"],
 	# M7 收尾：tougenkyo_v1（M6 holdout）
 	&"tougenkyo_v1": [&"WIN_DECLARED_PRE"],
-	# 角色被动
+	# 角色被动（12 个 char_*_passive_v1；triggers 与 hook 分支一致）
 	&"char_akagi_passive_v1": [&"TILE_DRAWN"],
 	&"char_kaiji_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_washizu_passive_v1": [&"GAME_BEGIN"],
 	&"char_saki_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_teru_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_awai_passive_v1": [&"GAME_BEGIN"],
-	# M12 新增角色能力
+	# E1-06：补齐后 6 角色工厂登记（不得用近义 M12 卡池 id 顶替）
+	&"char_koromo_passive_v1": [&"HAITEI", &"HOUTEI", &"TILE_DRAWN"],
+	&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"HAND_FORMED"],
+	&"char_toki_passive_v1": [&"GAME_BEGIN"],
+	&"char_kuro_passive_v1": [&"WIN_DECLARED_PRE"],
+	&"char_momoko_passive_v1": [&"RIICHI_DECLARED", &"WIN_DECLARED_PRE"],
+	&"char_tetsuya_passive_v1": [&"WIN_DECLARED_PRE"],
+	# M12 新增角色能力（卡池 / gacha；身份 ≠ 角色被动）
 	&"hisa_bad_wait_v1": [&"WIN_DECLARED_PRE"],
 	&"mako_memory_v1": [&"TILE_DRAWN"],
 	&"koromo_haitei_ability_v1": [&"HAITEI", &"HOUTEI"],
