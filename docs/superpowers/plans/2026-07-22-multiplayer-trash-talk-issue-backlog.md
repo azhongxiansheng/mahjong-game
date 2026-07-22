@@ -4,6 +4,8 @@
 > Master Epic：[Issue #213](https://github.com/jingx8885/mahjong-game/issues/213)
 > 创建日期：2026-07-22
 > GitHub 对象：1 个规划入口 + 1 个 Master + 7 个 Epic + 39 个叶子 Issue = 48 个 Issue
+> 规划状态：PR #260、E0-01 PR #261 已人工合并；#221 已关闭，#222–#224 仍是 E1 开工硬闸门
+> 决策锁：入口壳 / `SessionIntent` / `GameSessionConfig` 三层分离；生产级原创大厅；1 首 Suno 大厅 BGM；全新 12 角色美术；生产注销 5 个肉鸽 Autoload
 
 ## 1. 标签与里程碑契约
 
@@ -42,18 +44,18 @@
 
 | Issue | P | Type | 依赖 | 一句话验收 |
 |---|---|---|---|---|
-| [#225 E1-01 生产入口切换](https://github.com/jingx8885/mahjong-game/issues/225) | P0 | feature | E0 | 启动和返回进入原创大厅，Run Flow 不再可达 |
-| [#226 E1-02 肉鸽依赖退出生产](https://github.com/jingx8885/mahjong-game/issues/226) | P0 | engineering | #225 | 新会话不读写章节/HP/金币/商店/抽卡/营地/Run 存档/战令 |
-| [#227 E1-03 1600×900 大厅](https://github.com/jingx8885/mahjong-game/issues/227) | P0 | feature | #225 | ASCII 几何、响应式布局、原创角色区和截图验收通过 |
-| [#228 E1-04 规则抽屉](https://github.com/jingx8885/mahjong-game/issues/228) | P0 | feature | #227 | 两个入口输出东风/半庄 × 标准/欢乐完整配置 |
-| [#229 E1-05 图鉴与 BGM/SFX](https://github.com/jingx8885/mahjong-game/issues/229) | P1 | feature | #227 | 图鉴/规则可达，BGM/SFX 可控，不存在语音控制 |
-| [#230 E1-06 12 名原创角色](https://github.com/jingx8885/mahjong-game/issues/230) | P0 | feature | #222 | 旧 IP 身份退出生产，12 个既有能力语义一一映射 |
+| [#225 E1-01 生产入口切换](https://github.com/jingx8885/mahjong-game/issues/225) | P0 | feature | E0 | 启动/返回进入大厅入口壳，Run Flow 生产不可达；不拥有 Intent 或正式 Config |
+| [#226 E1-02 肉鸽依赖退出生产](https://github.com/jingx8885/mahjong-game/issues/226) | P0 | engineering | #225 | 新会话无肉鸽读写；5 个指定 Autoload 从生产配置注销，脚本保留 |
+| [#227 E1-03 1600×900 大厅](https://github.com/jingx8885/mahjong-game/issues/227) | P0 | feature | #225 | 生产级原创大厅的几何、视觉、角色区、动效和截图验收通过 |
+| [#228 E1-04 规则抽屉](https://github.com/jingx8885/mahjong-game/issues/228) | P0 | feature | #227 | 两个入口输出东风/半庄 × 标准/欢乐的完整 `SessionIntent`；不定义正式 Config |
+| [#229 E1-05 图鉴与 BGM/SFX](https://github.com/jingx8885/mahjong-game/issues/229) | P1 | feature | #227 | 图鉴过滤 Run-only；1 首 Suno 大厅 BGM 可听；BGM/SFX 可控且无语音控制 |
+| [#230 E1-06 12 名原创角色](https://github.com/jingx8885/mahjong-game/issues/230) | P0 | feature | #222 | 全新 12 角色经两道确认闸门入库；12 个能力工厂映射和 portrait 序列化通过 |
 
 ### E2 统一电脑对战
 
 | Issue | P | Type | 依赖 | 一句话验收 |
 |---|---|---|---|---|
-| [#231 E2-01 GameSessionConfig](https://github.com/jingx8885/mahjong-game/issues/231) | P0 | engineering | E1 | 四个稳定枚举、验证和序列化可驱动练习场 |
+| [#231 E2-01 GameSessionConfig](https://github.com/jingx8885/mahjong-game/issues/231) | P0 | engineering | E1、#228 | 正式 Config、Intent→Config、四个稳定枚举、验证和序列化可驱动练习场 |
 | [#232 E2-02 统一行动/事件接口](https://github.com/jingx8885/mahjong-game/issues/232) | P0 | engineering | #231 | 玩家/AI 操作复用真实 BattleController 并可被回放消费 |
 | [#233 E2-03 东风/半庄 1+3 AI](https://github.com/jingx8885/mahjong-game/issues/233) | P0 | feature | #232 | 两种局制整场可玩、推进正确、分数守恒 |
 | [#234 E2-04 模式硬隔离](https://github.com/jingx8885/mahjong-game/issues/234) | P0 | feature | #231–#232 | STANDARD 不创建角色/道具/Momentum/语音，欢乐场才启用 |
@@ -120,3 +122,4 @@ flowchart LR
 - Master 关闭前必须通过 macOS/Windows 公网四客户端 Alpha 和“无 E6”审计。
 - 若需求改变，先更新总 PRD、Epic PRD、对应 Issue 和本 backlog，再改业务代码。
 - 不允许将新工作挂到 E6；需要语音安全/玩家控制时必须另行产品决策和新编号。
+- Suno、Grok、image-2、nano banana 的调用只使用既有本地/new-api 配置，凭证和 staging 中间产物不入库；运行时客户端不调用生成 API。

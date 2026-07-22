@@ -46,24 +46,26 @@
 
 ### 目标
 
-用 1600×900 原创大厅替换 Run Flow 生产入口，切断肉鸽状态与新会话的关系，并把全部 12 名角色迁移为原创角色，保留其能力语义。
+用生产级 1600×900 原创大厅替换 Run Flow 生产入口，按“入口壳 → `SessionIntent` → `GameSessionConfig`”分离 UI 与正式会话契约，注销指定肉鸽 Autoload，交付 1 首可听大厅 BGM，并把全部 12 名角色迁移为全新原创角色，保留其能力语义。
 
 ### 子 Issue
 
-- [#225 E1-01](https://github.com/jingx8885/mahjong-game/issues/225)：生产入口替换为大厅。
-- [#226 E1-02](https://github.com/jingx8885/mahjong-game/issues/226)：移除肉鸽生产依赖。
-- [#227 E1-03](https://github.com/jingx8885/mahjong-game/issues/227)：1600×900 大厅和角色常驻区。
-- [#228 E1-04](https://github.com/jingx8885/mahjong-game/issues/228)：练习/匹配入口和规则抽屉。
-- [#229 E1-05](https://github.com/jingx8885/mahjong-game/issues/229)：图鉴、规则与 BGM/SFX 控制。
-- [#230 E1-06](https://github.com/jingx8885/mahjong-game/issues/230)：12 名原创角色与能力映射。
+- [#225 E1-01](https://github.com/jingx8885/mahjong-game/issues/225)：生产入口壳替换；不拥有选择态或正式配置。
+- [#226 E1-02](https://github.com/jingx8885/mahjong-game/issues/226)：移除肉鸽生产依赖并注销 5 个指定 Autoload，脚本保留。
+- [#227 E1-03](https://github.com/jingx8885/mahjong-game/issues/227)：生产级 1600×900 大厅和角色常驻区。
+- [#228 E1-04](https://github.com/jingx8885/mahjong-game/issues/228)：练习/匹配入口、规则抽屉和 `SessionIntent`。
+- [#229 E1-05](https://github.com/jingx8885/mahjong-game/issues/229)：Run-only 过滤图鉴、规则、1 首大厅 BGM 与 BGM/SFX 控制。
+- [#230 E1-06](https://github.com/jingx8885/mahjong-game/issues/230)：全新 12 名原创角色、两道美术确认闸门、能力工厂映射与立绘序列化。
 
 ### 行为约束
 
 - 生产启动、返回大厅、再来一局均不能进入 `ui/run/run_flow.tscn`。
-- `SaveSystem` 的 Run 存档不能阻塞大厅启动；旧存档无需迁移到新会话。
+- 生产 `project.godot` 不注册 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`；旧存档无需迁移到新会话，对应脚本可保留供 legacy 测试显式实例化。
 - 角色生产契约只保留原创身份、能力映射、立绘和 Momentum affinity；HP、金币、卡包、声望解锁退出生产契约。
-- 大厅参考雀魂的“左角色、右主入口、二级规则抽屉、顶底功能区”层级，但视觉资产与文案必须原创。
-- 设置只包含 BGM/SFX 等非语音项目。
+- 大厅参考雀魂的“左角色、右主入口、二级规则抽屉、顶底功能区”层级，但背景、视觉资产、角色、文案、动效和音频必须原创，并达到生产视觉而非线框占位。
+- `SessionIntent` 只属于大厅 UI；正式 `GameSessionConfig` 及其校验、序列化和 Intent 转换只属于 E2-01。
+- 设置只包含 BGM/SFX 等非语音项目；大厅交付 1 首通过既有 new-api Suno 模型生成并入库的可循环原创 BGM。
+- 12 名角色先确认身份/能力/美术 brief，再确认小批量样张；两道用户确认闸门通过后才批量生成和入库。
 
 ### UI 验收契约
 
@@ -81,9 +83,10 @@
 
 ### 完成定义
 
-- 启动即进入大厅，四个规则维度均可正确生成 `GameSessionConfig`。
+- 启动即进入生产级大厅；四个规则维度均可生成合法 `SessionIntent`，且 E1 不提前定义正式 `GameSessionConfig`。
 - 生产主路径不存在章节、HP、金币、商店、抽卡、营地、战令或 Run 存档 UI。
-- 12 名角色无旧 IP 名称、文案、立绘和生产引用，能力映射回归测试通过。
+- 5 个指定肉鸽 Autoload 已从生产配置注销；1 首大厅 BGM 可听且音量可控。
+- 12 名角色无旧 IP 名称、文案、立绘和生产引用；12 个 `CharacterPool.ability_id` 均可经工厂构建/注入，`portrait_path` 序列化与加载回归通过。
 
 ## E2 统一电脑对战
 
@@ -107,15 +110,21 @@
 ### 会话契约
 
 ```text
-GameSessionConfig
+SessionIntent（E1-04，大厅 UI）
 ├── room_kind: PRACTICE | PUBLIC_CASUAL
 ├── round_kind: EAST | HANCHAN
 ├── game_mode: STANDARD | TRASH_TALK
+└── selected_character_id?（可选 UI 选择）
+
+        │ E2-01 唯一转换
+        ▼
+GameSessionConfig（E2-01，正式会话）
+├── room_kind / round_kind / game_mode
 ├── participants[4]: HUMAN | AI
 └── seed / session_id / rule_version
 ```
 
-练习场固定 `participants = [HUMAN, AI, AI, AI]`。`room_kind=PUBLIC_CASUAL` 不允许通过本地练习启动器直接实例化权威牌局。
+E2-01 首次定义正式类型并消费 E1-04 冻结的 Intent；练习场固定 `participants = [HUMAN, AI, AI, AI]`。`room_kind=PUBLIC_CASUAL` 不允许通过本地练习启动器直接实例化权威牌局。
 
 ### 模式隔离
 
