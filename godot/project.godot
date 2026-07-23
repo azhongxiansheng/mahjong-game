@@ -21,16 +21,11 @@ config/features=PackedStringArray("4.5")
 DT="*res://ui/design_tokens.gd"
 GameManager="*res://scripts/game_manager.gd"
 TextureExtractor="*res://scripts/texture_extractor.gd"
-SaveSystem="*res://meta/save_system.gd"
-MetaProgress="*res://meta/meta_progress.gd"
 AudioManager="*res://audio/audio_manager.gd"
 SettingsManager="*res://meta/settings_manager.gd"
 DebugOverlay="*res://meta/debug_overlay.gd"
 StatsManager="*res://meta/stats_manager.gd"
 Log="*res://meta/log.gd"
-SaveToast="*res://meta/save_toast.gd"
-DailyQuest="*res://meta/daily_quest.gd"
-BattlePass="*res://meta/battle_pass.gd"
 ANIMA="*res://addons/anima/core/constants.gd"
 
 [display]

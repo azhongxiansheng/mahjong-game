@@ -1,9 +1,9 @@
 class_name SettingsOverlay extends Control
 
-# 设置 overlay — ESC 唤起,1 个滑条(SFX 音量)+ 关闭按钮。
+# 设置 overlay — ESC 唤起,音量/全屏/帧率/鸣牌倒计时 + 战绩 + 关闭。
 # 暗背景 + 中央 Panel,接 SettingsManager 持久化。
 #
-# 由 PlayableTable / RunFlow 在 _input 监到 ESC 时实例化挂到根。
+# 由 PlayableTable 等在 _input 监到 ESC 时实例化挂到根。
 
 signal closed
 
@@ -146,24 +146,11 @@ func _ready() -> void:
 	_claim_value_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
 	panel.add_child(_claim_value_label)
 
-	# 重看新手引导
-	var tut_btn := DT.make_button("重看新手引导", DT.BtnRole.SECONDARY, Vector2(160, 36))
-	tut_btn.position = Vector2(160, 174)
-	tut_btn.pressed.connect(_on_tutorial_pressed)
-	panel.add_child(tut_btn)
-
 	# 底部操作行
 	var stats_btn := DT.make_button("查看战绩", DT.BtnRole.SECONDARY, Vector2(120, 40))
 	stats_btn.position = Vector2(40, PANEL_H - 60)
 	stats_btn.pressed.connect(_on_stats_pressed)
 	panel.add_child(stats_btn)
-
-	var ss = get_node_or_null("/root/SaveSystem")
-	if ss and ss.has_save():
-		var quit_btn := DT.make_button("放弃本场", DT.BtnRole.DANGER, Vector2(120, 40))
-		quit_btn.position = Vector2(170, PANEL_H - 60)
-		quit_btn.pressed.connect(_on_quit_run_pressed)
-		panel.add_child(quit_btn)
 
 	var close_btn := DT.make_button("关闭 (ESC)", DT.BtnRole.PRIMARY, Vector2(140, 40))
 	close_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
@@ -216,35 +203,6 @@ func _on_fps_selected(idx: int) -> void:
 	if idx < 0 or idx >= FPS_PRESETS.size():
 		return
 	_sm().set_framerate_cap(int(FPS_PRESETS[idx]))
-
-
-func _on_tutorial_pressed() -> void:
-	# 关闭本 overlay,在 root 弹 TutorialOverlay
-	var t := TutorialOverlay.new()
-	t.name = "_tutorial_overlay_root"
-	get_tree().root.add_child(t)
-	_on_close()
-
-
-# 放弃本场 Run — 弹 ConfirmDialog,确认 → SaveSystem.clear_run() + 回生产大厅壳。
-# E1-01：生产主入口是 lobby_shell，不得 reload 假定当前场景仍是 run_flow。
-func _on_quit_run_pressed() -> void:
-	var d := ConfirmDialog.show_dialog(
-		"放弃当前 Run?",
-		"你的 Run 进度将被清除,这是不可逆操作。回到大厅后请重新开始。",
-		"确认放弃", "取消", true)
-	d.confirmed.connect(_on_quit_confirmed)
-	get_tree().root.add_child(d)
-
-
-func _on_quit_confirmed() -> void:
-	var ss = get_node_or_null("/root/SaveSystem")
-	if ss:
-		ss.clear_run()
-	# 关 settings overlay，再切到生产大厅壳（非 Run Flow）
-	_on_close()
-	# defer 避免 change_scene 时还在 settings 的 _input 解栈链上
-	get_tree().call_deferred("change_scene_to_file", LobbyShell.SCENE_PATH)
 
 
 func _on_close() -> void:

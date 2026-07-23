@@ -1,20 +1,40 @@
 extends GutTest
 
-# SaveToast autoload + SaveSystem signal emit 测试。
+# SaveToast + SaveSystem 显式实例化测试（E1-02：不再依赖 Autoload）。
+
+const SaveToastScript: GDScript = preload("res://meta/save_toast.gd")
+const SaveSystemScript: GDScript = preload("res://meta/save_system.gd")
+
+var _toast_node: Node = null
+var _ss_node: Node = null
 
 
 func _toast() -> Node:
-	return get_tree().root.get_node("/root/SaveToast")
+	return _toast_node
 
 
 func _save_system() -> Node:
-	return get_tree().root.get_node("/root/SaveSystem")
+	return _ss_node
 
 
-# ---- autoload 注册 ----
+func before_each() -> void:
+	_ss_node = SaveSystemScript.new()
+	add_child_autofree(_ss_node)
+	_toast_node = SaveToastScript.new()
+	add_child_autofree(_toast_node)
+	_ss_node.clear_run()
 
-func test_save_toast_autoload_registered() -> void:
-	assert_not_null(_toast(), "/root/SaveToast 应已挂载")
+
+func after_each() -> void:
+	if is_instance_valid(_ss_node) and _ss_node.has_method("clear_run"):
+		_ss_node.clear_run()
+	_ss_node = null
+	_toast_node = null
+
+
+func test_save_toast_is_explicitly_loadable() -> void:
+	assert_not_null(_toast(), "SaveToast 脚本应可显式实例化")
+	assert_not_null(SaveToastScript)
 
 
 # ---- SaveSystem.save_completed signal ----
