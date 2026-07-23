@@ -159,13 +159,26 @@ UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截
 ### FR-SESSION 统一会话与电脑练习
 
 - **FR-SESSION-00**：大厅 UI 使用 `SessionIntent` 表示玩家选择的 `room_kind`、`round_kind`、`game_mode` 和可选角色；不得包含权威 seed、session ID、rule version 或服务端凭证。
-- **FR-SESSION-01**：`GameSessionConfig` 是唯一可验证、可序列化、可驱动牌局构造的正式配置；由 E2-01 将 `SessionIntent` 转换并补齐参与者、随机种子、session ID 与 rule version。
-- **FR-SESSION-02**：公开枚举值固定为：
-  - `GameMode`: `STANDARD | TRASH_TALK`
-  - `RoomKind`: `PRACTICE | PUBLIC_CASUAL`
-  - `RoundKind`: `EAST | HANCHAN`
-  - `ParticipantKind`: `HUMAN | AI`
-- **FR-SESSION-03**：练习场固定玩家 seat 0，其余三席为 AI；所有操作通过统一命令/事件接口进入既有日麻引擎。
+- **FR-SESSION-01**：`GameSessionConfig` 是唯一可验证、可序列化、可驱动牌局构造的正式配置；由 E2-01 将 `SessionIntent` 转换并补齐参与者、四席 `character_ids`、随机种子、session ID 与 rule version。
+- **FR-SESSION-01a（角色方案 A）**：`STANDARD` 与 `TRASH_TALK` 均在 Config 中记录四席角色身份/外观（`character_ids[4]`）；`STANDARD` 后续绝不创建角色能力对象。练习场 seat0 使用 `SessionIntent.selected_character_id`，空则默认大厅常驻 `CharacterPool.all()[0]`；三 AI 从其余角色按 `seed` 用跨平台稳定 **unsigned 32-bit Numerical Recipes LCG** 确定性选择且不重复。练习 `create_validated`/`from_dict` 拒绝重复 `character_ids`；`PUBLIC_CASUAL` 允许重复。
+  练习场三 AI 角色抽取（Fisher-Yates + LCG）**必须**按下列逐步规范实现，不得改用 `RandomNumberGenerator` 或其它 LCG 常数：
+  1. **state 初值**：`state = seed & 0xffffffff`（把 int64 `seed` 规范化为 unsigned 32-bit；不 `abs`、不 31-bit mask）。
+  2. **先排除玩家角色**：从 `CharacterPool.all()` 取出全部角色稳定 id，剔除 seat0 已占用的玩家 `character_id`，得到候选列表（长度 `n`）。
+  3. **候选排序**：将候选按角色稳定 id 的 **Unicode code point 升序**排序（对 ASCII 标识符等价于字典序；跨平台字符串比较结果必须一致）。
+  4. **Fisher-Yates（递减）**：对 `i` 从 `n-1` 递减到 `1`（含）执行：
+     - 先计算 `state = (state * 1664525 + 1013904223) & 0xffffffff`；
+     - 再令 `j = state % (i + 1)`；
+     - 交换候选下标 `i` 与 `j`。
+  5. **取前三个 AI**：洗牌完成后取候选前 3 个 id，依次填入 `character_ids[1..3]`（与 seat0 玩家 id 组成四席、互不重复）。
+- **FR-SESSION-01b（公共 authority）**：`PUBLIC_CASUAL` 的 authority context 必须显式提供 `room_kind` / `round_kind` / `game_mode` / `participants` / `character_ids` / `seed` / `session_id` / `rule_version`；`room_kind` 必须为 `PUBLIC_CASUAL`；authority 的 `round_kind`/`game_mode` 必须与 `SessionIntent` 一致，否则稳定错误 `AUTHORITY_MISMATCH`。最终公共 Config 的 room/round/mode 取自 authority，客户端不得用 Intent 把 `STANDARD`/`EAST` 伪造成 `TRASH_TALK`/`HANCHAN`。本地权威 typed context 中 `seed` 只接受真正整型（`TYPE_INT`）。
+- **FR-SESSION-01c（seed wire）**：内部 `seed` 为 Godot int（int64）；`to_dict` 的 wire `seed` 为规范十进制字符串；`from_dict` 只接受规范十进制字符串并无损恢复 int64，拒绝 JSON number/float/null/非数字/溢出（避免超过 2^53 失真）。
+- **FR-SESSION-02**：公开枚举以 GDScript 命名 enum 定义（稳定整数值），并保留冻结 wire 字符串映射：
+  - `GameMode`: `STANDARD=0 | TRASH_TALK=1`
+  - `RoomKind`: `PRACTICE=0 | PUBLIC_CASUAL=1`
+  - `RoundKind`: `EAST=0 | HANCHAN=1`
+  - `ParticipantKind`: `HUMAN=0 | AI=1`
+  Config 须能经 `mode_id()` 稳定还原 8 个 `mode_id`（与 Intent 同构）。
+- **FR-SESSION-03**：练习场固定玩家 seat 0，其余三席为 AI（`participants = [HUMAN, AI, AI, AI]`）；所有操作通过统一命令/事件接口进入既有日麻引擎。
 - **FR-SESSION-04**：东风/半庄必须正确处理场风、局序、庄家、连庄、本场棒、立直棒和最终排名。
 - **FR-SESSION-05**：整场结束后只提供“再来一局”和“返回大厅”，不产生肉鸽奖励。
 

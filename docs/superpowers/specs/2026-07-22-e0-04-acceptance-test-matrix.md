@@ -90,7 +90,7 @@ L5b 是**真实语音/STT 证据族**的总称，不是「必须一次凑齐全�
 | `rule_version` | #249–#251 规则库与评分；#231 `GameSessionConfig.rule_version` | 字符串稳定 ID；变更必须同时更新黄金矩阵 fixture；旧回放绑定旧 `rule_version` 字节级可重放 | 全零/有文本黄金 fixture；同输入字节级一致（#250/#251） |
 | `assignment_version` | #252 4×4 双射与字典序决胜 | 与 `rule_version` 解耦；只影响分配算法记录，不改评分分项语义 | 同分多解字典序最小向量；24 种双射最大化总分 |
 | 模块 `schema_version`（snapshot provider） | #241 包络；#252 窗口 DTO；#253 库存/武装 DTO | 每个 `module_key` 恰好一个 provider；未知**必需**版本 → 稳定错误且**不部分应用**快照 | 测试 provider + E5 provider round-trip；STANDARD 不注册欢乐模块 key |
-| `GameSessionConfig` / Intent 枚举值 | #228 Intent；#231 Config | 稳定枚举名与协议值；非法组合不得进入牌桌 | 8 种入口组合转换测试 |
+| `GameSessionConfig` / Intent 枚举值 | #228 Intent；#231 Config | GDScript 命名 enum + 冻结 wire；非法组合不得进入牌桌；Config 含 `character_ids[4]`（方案 A）；`mode_id()` 还原 8 组合；wire `seed` 十进制字符串 int64 无损；公共 authority 绑定 room/round/mode | 8 种入口组合转换 + seed round-trip + authority mismatch GUT |
 | 音频帧契约 | #243/#244 | PCM16 LE / 16 kHz / mono / 20 ms **固定**；不版本漂移，若变更视为新协议并升 `protocol_version` | 双客户端环回帧校验 |
 | Godot / CI | `.github/workflows/core-tests.yml` | CI：`GODOT_VERSION=4.5-stable`；本地开发可验证 4.6.x，但合并门禁以 CI 与全量 GUT 为准 | CI 绿 + 全量 GUT |
 
@@ -313,7 +313,7 @@ settle 与 cancel **互斥**；取消后禁止 settle；展示后禁止 grant。
 
 | Issue | 标题摘要 | 关键验收点 | 最低层 | 验证命令/方式 | 阻断依赖 | 网络 |
 |---|---|---|---|---|---|---|
-| #231 E2-01 | GameSessionConfig | 稳定枚举；Intent→Config 唯一转换；练习 `[HUMAN,AI,AI,AI]`；to/from_dict；8 组合 | L1+L2 | Config/转换 GUT；非法 Intent 稳定错误 | #228 | — |
+| #231 E2-01 | GameSessionConfig | 命名 enum+wire；Intent→Config 唯一转换；练习 `[HUMAN,AI,AI,AI]`；`character_ids[4]` 方案 A；练习禁重复/公共可重复；authority 绑定 room/round/mode（`AUTHORITY_MISMATCH`）；wire seed 字符串 int64；`mode_id()`；copy-on-read；PracticeSessionLauncher | L1+L2 | Config/转换/启动器 GUT；非法 Intent/authority/wire 稳定错误；**练习 AI 角色选择黄金向量**（seat0=`lin_yeche`，算法见 PRD FR-SESSION-01a）：seed `0` → `[lin_yeche, xian_shi, hua_ling, ying_li]`；seed `12345` → `[lin_yeche, an_cheng, bao_luo, ji_shu]`；seed `-1` → `[lin_yeche, an_cheng, bao_luo, lian_yao]`；seed `0x80000000`（2147483648）→ `[lin_yeche, bai_touli, ju_jin, hua_ling]` | #228 | — |
 | #232 E2-02 | 统一行动/事件 | 既有操作走统一接口；AI 同入口；**仅 fixture** 冻 REWARD/ITEM/ABILITY schema 与偏序；生产不发射 E5 业务事件 | L1+L2 | 接口 GUT + E5 schema fixture/replay（无业务副作用） | #231 | — |
 | #233 E2-03 | 东风/半庄 1+3 AI | 局数/场风/庄/本场/立直棒；玩家全操作；分数守恒 | L1+L2+手测 | 固定 seed 整场 GUT；桌面主路径 | #231/#232 | — |
 | #234 E2-04 | 标准/欢乐硬隔离 | **四零**见 §5.4；TRASH_TALK 首窗 unarmed；运行中不可切模式；同日麻基础规则 | L1+L2+L3 | 构造期隔离 GUT；伪造欢乐事件负向测试 | #231–#233；角色 #230 | — |

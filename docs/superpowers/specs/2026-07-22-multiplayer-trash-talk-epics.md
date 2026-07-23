@@ -121,10 +121,11 @@ SessionIntent（E1-04，大厅 UI）
 GameSessionConfig（E2-01，正式会话）
 ├── room_kind / round_kind / game_mode
 ├── participants[4]: HUMAN | AI
+├── character_ids[4]（方案 A：两模式均记录身份/外观；STANDARD 不创建能力）
 └── seed / session_id / rule_version
 ```
 
-E2-01 首次定义正式类型并消费 E1-04 冻结的 Intent；练习场固定 `participants = [HUMAN, AI, AI, AI]`。`room_kind=PUBLIC_CASUAL` 不允许通过本地练习启动器直接实例化权威牌局。
+E2-01 首次定义正式类型并消费 E1-04 冻结的 Intent；练习场固定 `participants = [HUMAN, AI, AI, AI]`，seat0 角色来自 Intent（空则 `CharacterPool.all()[0]`），三 AI 按 seed 用 unsigned 32-bit LCG 稳定不重复选择（练习拒绝重复 `character_ids`）。`room_kind=PUBLIC_CASUAL` 的 authority context 须提供 `room_kind`/`round_kind`/`game_mode`/`participants`/`character_ids`/`seed`/`session_id`/`rule_version`；room 必须为 `PUBLIC_CASUAL`，round/mode 与 Intent 不一致返回 `AUTHORITY_MISMATCH`；最终 Config 的 room/round/mode 来自 authority。wire `seed` 为规范十进制字符串（int64 无损）。不允许通过本地练习启动器直接实例化权威牌局。
 
 E2-02 冻结并可回放消费 `REWARD_WINDOW_OPENED/CLOSING/SETTLED/CANCELLED`、条件式 `ITEM_GRANTED` 与 `CHARACTER_ABILITY_ARMED/DISARMED`；只建立事件包络、schema、合法偏序和 fixture，不在生产路径发射这些事件、推进窗口或写库存/武装，也不在 E2 偷跑 E5。
 
