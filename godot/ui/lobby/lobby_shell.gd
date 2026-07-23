@@ -1,10 +1,11 @@
 class_name LobbyShell extends Control
 
-# 生产主入口壳（E1-01 / #225 + E1-03 / #227 + E1-04 / #228）。
-# 1600×900 生产大厅布局、规则抽屉与 SessionIntent 输出。
+# 生产主入口壳（E1-01 / #225 + E1-03 / #227 + E1-04 / #228 + E1-05 / #229）。
+# 1600×900 生产大厅布局、规则抽屉、资料馆、音量弹层与 SessionIntent 输出。
 # 不定义正式会话配置，不启动牌局，不联网。
 
 const SCENE_PATH := "res://ui/lobby/lobby_shell.tscn"
+const LOBBY_BGM_PATH := "res://assets/bgm/lobby_xuxiguan.ogg"
 
 ## 电脑练习入口挂点（打开规则抽屉）。
 signal practice_pressed
@@ -25,6 +26,12 @@ var _status_label: Label = null
 var _drawer_host: Control = null
 var _rule_drawer: RuleDrawer = null
 var _drawer_source: Control = null
+var _codex_host: Control = null
+var _codex_overlay: LobbyCodexOverlay = null
+var _codex_source: Control = null
+var _audio_host: Control = null
+var _audio_popup: LobbyAudioPopup = null
+var _audio_source: Control = null
 
 
 func _ready() -> void:
@@ -32,6 +39,13 @@ func _ready() -> void:
 	DesignTokens.style_full_panel(self)
 	_build_ui()
 	set_process_input(true)
+	_request_lobby_bgm()
+
+
+func _exit_tree() -> void:
+	var am := get_node_or_null("/root/AudioManager")
+	if am != null and am.has_method("stop_bgm"):
+		am.stop_bgm()
 
 
 func request_practice() -> void:
@@ -45,12 +59,22 @@ func request_match() -> void:
 
 
 func _input(event: InputEvent) -> void:
-	if _drawer_host == null or not _drawer_host.visible:
+	if not (event is InputEventKey and event.pressed and not event.echo):
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_close_rule_drawer()
-			get_viewport().set_input_as_handled()
+	if event.keycode != KEY_ESCAPE:
+		return
+	# 上层优先：资料馆 > 音量弹层 > 规则抽屉
+	if _codex_host != null and _codex_host.visible:
+		_close_codex()
+		get_viewport().set_input_as_handled()
+		return
+	if _audio_host != null and _audio_host.visible:
+		_close_audio_popup()
+		get_viewport().set_input_as_handled()
+		return
+	if _drawer_host != null and _drawer_host.visible:
+		_close_rule_drawer()
+		get_viewport().set_input_as_handled()
 
 
 func _build_ui() -> void:
@@ -126,6 +150,63 @@ func _build_ui() -> void:
 	_rule_drawer.cancelled.connect(_close_rule_drawer)
 	for hook_node in _rule_drawer.get_hook_nodes():
 		_register_hook(hook_node)
+
+	# #229 资料馆：冷启动隐藏；三入口复用唯一全屏层
+	_codex_host = Control.new()
+	_codex_host.name = "CodexHost"
+	_codex_host.visible = false
+	_codex_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_codex_host.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_codex_host)
+	_register_hook(_codex_host)
+
+	_codex_overlay = LobbyCodexOverlay.new()
+	_codex_host.add_child(_codex_overlay)
+	_codex_overlay.closed.connect(_close_codex)
+	for hook_node in _codex_overlay.get_hook_nodes():
+		_register_hook(hook_node)
+
+	# #229 音量弹层：冷启动隐藏；BGM/SFX 复用唯一弹层
+	_audio_host = Control.new()
+	_audio_host.name = "AudioPopupHost"
+	_audio_host.visible = false
+	_audio_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_audio_host.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_audio_host)
+	_register_hook(_audio_host)
+
+	_audio_popup = LobbyAudioPopup.new()
+	_audio_host.add_child(_audio_popup)
+	_audio_popup.closed.connect(_close_audio_popup)
+	for hook_node in _audio_popup.get_hook_nodes():
+		_register_hook(hook_node)
+
+	# 底部资料 / 音量入口：按钮既有 signal 外再打开真实层（不重复 emit）
+	var char_btn := get_node_or_null("%CharacterCodexButton") as Button
+	if char_btn:
+		char_btn.pressed.connect(func() -> void:
+			_open_codex(&"characters", char_btn)
+		)
+	var item_btn := get_node_or_null("%ItemCodexButton") as Button
+	if item_btn:
+		item_btn.pressed.connect(func() -> void:
+			_open_codex(&"items", item_btn)
+		)
+	var rules_btn := get_node_or_null("%RulesButton") as Button
+	if rules_btn:
+		rules_btn.pressed.connect(func() -> void:
+			_open_codex(&"rules", rules_btn)
+		)
+	var bgm_btn := get_node_or_null("%BgmButton") as Button
+	if bgm_btn:
+		bgm_btn.pressed.connect(func() -> void:
+			_open_audio_popup(bgm_btn)
+		)
+	var sfx_btn := get_node_or_null("%SfxButton") as Button
+	if sfx_btn:
+		sfx_btn.pressed.connect(func() -> void:
+			_open_audio_popup(sfx_btn)
+		)
 
 
 ## 代码构建子节点时须在已挂到本壳之后设 owner，%UniqueName 才挂到 LobbyShell。
@@ -416,6 +497,9 @@ func _set_status(text: String) -> void:
 func _open_rule_drawer(room_kind: StringName, source: Control) -> void:
 	if _drawer_host == null or _rule_drawer == null:
 		return
+	# 永远只保留一层：开抽屉前关掉资料馆 / 音量弹层。
+	_close_codex(false)
+	_close_audio_popup(false)
 	_drawer_source = source
 	_drawer_host.visible = true
 	_drawer_host.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -423,7 +507,7 @@ func _open_rule_drawer(room_kind: StringName, source: Control) -> void:
 	_rule_drawer.open_for(room_kind)
 
 
-func _close_rule_drawer() -> void:
+func _close_rule_drawer(restore_focus: bool = true) -> void:
 	if _drawer_host == null:
 		return
 	if _rule_drawer:
@@ -431,7 +515,8 @@ func _close_rule_drawer() -> void:
 	_drawer_host.visible = false
 	_drawer_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_set_status("请选择游戏方式")
-	if _drawer_source and is_instance_valid(_drawer_source) and _drawer_source.focus_mode != Control.FOCUS_NONE:
+	if restore_focus and _drawer_source and is_instance_valid(_drawer_source) \
+			and _drawer_source.focus_mode != Control.FOCUS_NONE:
 		_drawer_source.grab_focus()
 	_drawer_source = null
 
@@ -439,3 +524,58 @@ func _close_rule_drawer() -> void:
 func _on_rule_drawer_confirmed(intent: SessionIntent) -> void:
 	session_intent_confirmed.emit(intent)
 	_close_rule_drawer()
+
+
+func _open_codex(page: StringName, source: Control) -> void:
+	if _codex_host == null or _codex_overlay == null:
+		return
+	_close_rule_drawer(false)
+	_close_audio_popup(false)
+	_codex_source = source
+	_codex_host.visible = true
+	_codex_host.mouse_filter = Control.MOUSE_FILTER_STOP
+	_codex_overlay.open_on_page(page)
+
+
+func _close_codex(restore_focus: bool = true) -> void:
+	if _codex_host == null:
+		return
+	_codex_host.visible = false
+	_codex_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if restore_focus and _codex_source and is_instance_valid(_codex_source) \
+			and _codex_source.focus_mode != Control.FOCUS_NONE:
+		_codex_source.grab_focus()
+	_codex_source = null
+
+
+func _open_audio_popup(source: Control) -> void:
+	if _audio_host == null or _audio_popup == null:
+		return
+	_close_rule_drawer(false)
+	_close_codex(false)
+	_audio_source = source
+	_audio_host.visible = true
+	_audio_host.mouse_filter = Control.MOUSE_FILTER_STOP
+	_audio_popup.open_popup()
+
+
+func _close_audio_popup(restore_focus: bool = true) -> void:
+	if _audio_host == null:
+		return
+	_audio_host.visible = false
+	_audio_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if restore_focus and _audio_source and is_instance_valid(_audio_source) \
+			and _audio_source.focus_mode != Control.FOCUS_NONE:
+		_audio_source.grab_focus()
+	_audio_source = null
+
+
+func _request_lobby_bgm() -> void:
+	var am := get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+	var sm := get_node_or_null("/root/SettingsManager")
+	if sm != null and "bgm_volume" in am:
+		am.bgm_volume = float(sm.bgm_volume)
+	if am.has_method("play_bgm"):
+		am.play_bgm(LOBBY_BGM_PATH)

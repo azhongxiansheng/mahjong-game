@@ -102,8 +102,12 @@ func set_framerate_cap(fps: int) -> void:
 
 func _apply_to_audio() -> void:
 	var am = get_node_or_null("/root/AudioManager")
-	if am != null and "sfx_volume" in am:
+	if am == null:
+		return
+	if "sfx_volume" in am:
 		am.sfx_volume = sfx_volume
+	if "bgm_volume" in am:
+		am.bgm_volume = bgm_volume
 
 
 func _apply_fullscreen() -> void:

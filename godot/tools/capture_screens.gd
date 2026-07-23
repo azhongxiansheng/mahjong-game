@@ -53,6 +53,9 @@ func _run() -> void:
 		await process_frame
 	# E1-04：规则抽屉展开态（真实打开后再截）。
 	await _capture_lobby_rule_drawer()
+	# E1-05：资料馆与音量弹层展开态。
+	await _capture_lobby_codex()
+	await _capture_lobby_audio_popup()
 	# 额外:一张「带牌局的战斗桌」截图,真实绑定 BattleState 让 38 张麻将牌、
 	# dealer 标记、当前回合金边、座位分数都一起亮相,证明对战可玩。
 	await _capture_battle_with_state()
@@ -75,6 +78,50 @@ func _capture_lobby_rule_drawer() -> void:
 		await process_frame
 	var img := root.get_texture().get_image()
 	var out := "/tmp/shot_lobby_rule_drawer.png"
+	img.save_png(out)
+	print("[capture] saved ", out)
+	shell.queue_free()
+	await process_frame
+
+
+func _capture_lobby_codex() -> void:
+	var packed := load("res://ui/lobby/lobby_shell.tscn") as PackedScene
+	if packed == null:
+		print("[capture] cannot load lobby_shell for codex shot")
+		return
+	var shell := packed.instantiate()
+	root.add_child(shell)
+	for _i in range(20):
+		await process_frame
+	var btn := shell.get_node_or_null("%CharacterCodexButton") as Button
+	if btn:
+		btn.pressed.emit()
+	for _i in range(40):
+		await process_frame
+	var img := root.get_texture().get_image()
+	var out := "/tmp/shot_lobby_codex.png"
+	img.save_png(out)
+	print("[capture] saved ", out)
+	shell.queue_free()
+	await process_frame
+
+
+func _capture_lobby_audio_popup() -> void:
+	var packed := load("res://ui/lobby/lobby_shell.tscn") as PackedScene
+	if packed == null:
+		print("[capture] cannot load lobby_shell for audio popup shot")
+		return
+	var shell := packed.instantiate()
+	root.add_child(shell)
+	for _i in range(20):
+		await process_frame
+	var btn := shell.get_node_or_null("%BgmButton") as Button
+	if btn:
+		btn.pressed.emit()
+	for _i in range(40):
+		await process_frame
+	var img := root.get_texture().get_image()
+	var out := "/tmp/shot_lobby_audio_popup.png"
 	img.save_png(out)
 	print("[capture] saved ", out)
 	shell.queue_free()
