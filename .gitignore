@@ -19,3 +19,11 @@ build/
 .railway/
 .playwright-mcp/
 .worktrees/
+
+# 已确认无需纳入版本的本地 Godot 脚本 UID
+/godot/cap_run2.gd.uid
+/godot/tests/_fixtures/scripted_decision_port.gd.uid
+/godot/tests/ui/four_player_table/test_table_layout.gd.uid
+/godot/tests/ui/test_control_kit.gd.uid
+/godot/tests/ui/test_run_shell_polish.gd.uid
+/godot/ui/four_player_table/table_layout.gd.uid
