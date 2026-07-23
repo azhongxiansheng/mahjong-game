@@ -96,7 +96,8 @@ docker build -t mahjong .
 ## Godot architecture
 
 ### Autoloads（见 `project.godot`）
-含 `DT`、`GameManager`、`TextureExtractor`、`SaveSystem`、`MetaProgress`、`AudioManager`、`SettingsManager`、`DebugOverlay`、`StatsManager`、`Log`、`ANIMA` 等。
+生产仅注册 `DT`、`GameManager`、`TextureExtractor`、`AudioManager`、`SettingsManager`、`DebugOverlay`、`StatsManager`、`Log`、`ANIMA`。
+E1-02 起 `SaveSystem`、`MetaProgress`、`SaveToast`、`DailyQuest`、`BattlePass` 不再是生产 Autoload；对应脚本仅供 legacy Run / GUT 显式实例化。
 
 **`TextureExtractor`**：按名加载 `res://assets/mahjong_tiles_riichi/<key>.png`（38 张），`get_tile_texture(key)` 供牌桌渲染。
 

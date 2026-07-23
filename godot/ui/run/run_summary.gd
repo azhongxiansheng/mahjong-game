@@ -163,9 +163,15 @@ static func format_renown_placeholder(won: bool) -> String:
 		return "声望 +50"
 	return "声望 +5"
 
+# M5 第 3 步：MetaProgress 脚本常量（E1-02 后不再走 Autoload，用 preload）
+const _META_PROGRESS_SCRIPT: GDScript = preload("res://meta/meta_progress.gd")
+
+
 # M5 第 3 步：MetaProgress 已存在时显示真声望增量 + 累计 + 跨 Run 战绩
 static func format_renown_with_meta(won: bool, total_renown: int, runs_completed: int, runs_won: int) -> String:
-	var amount: int = MetaProgress.RENOWN_RUN_WON if won else MetaProgress.RENOWN_RUN_FAILED
+	var amount: int = (
+		_META_PROGRESS_SCRIPT.RENOWN_RUN_WON if won else _META_PROGRESS_SCRIPT.RENOWN_RUN_FAILED
+	)
 	var lines: Array[String] = []
 	lines.append("声望 +%d" % amount)
 	lines.append("累计声望: %d" % total_renown)

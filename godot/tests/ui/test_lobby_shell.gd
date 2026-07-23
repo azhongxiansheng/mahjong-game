@@ -117,30 +117,20 @@ func test_loading_screen_targets_lobby_not_run_flow() -> void:
 	assert_false(source.contains("run_flow.tscn"), "loading_screen 不得再跳转 Run Flow")
 
 
-func test_settings_quit_returns_to_lobby_not_run_flow_reload() -> void:
+func test_settings_has_no_run_or_save_system_exit_path() -> void:
 	var script: GDScript = load("res://ui/settings_overlay.gd")
 	assert_not_null(script)
 	var source: String = script.source_code
-	var callback_start := source.find("func _on_quit_confirmed()")
-	assert_gte(callback_start, 0, "settings_overlay 应实现 _on_quit_confirmed")
-	var callback_end := source.find("\nfunc ", callback_start + 1)
-	if callback_end < 0:
-		callback_end = source.length()
-	var callback_source := source.substr(callback_start, callback_end - callback_start)
-	# 允许字面路径或 LobbyShell.SCENE_PATH 常量引用
-	var targets_lobby: bool = (
-		callback_source.contains("lobby_shell.tscn")
-		or callback_source.contains("LobbyShell.SCENE_PATH")
-	)
-	assert_true(targets_lobby, "放弃/退出确认应 change_scene 到大厅壳")
-	assert_true(
-		callback_source.contains("change_scene_to_file"),
-		"退出路径须显式 change_scene_to_file（不得仅 reload 假定仍是 run_flow）"
-	)
-	assert_false(
-		callback_source.contains("reload_current_scene"),
-		"退出确认不得再用 reload_current_scene 当作回主菜单"
-	)
+	for forbidden in [
+		"SaveSystem",
+		"TutorialOverlay",
+		"_on_tutorial_pressed",
+		"_on_quit_run_pressed",
+		"_on_quit_confirmed",
+		"放弃本场",
+		"重看新手引导",
+	]:
+		assert_false(source.contains(forbidden), "设置页不得保留旧入口：%s" % forbidden)
 
 
 func test_capture_tool_includes_lobby_shell() -> void:

@@ -51,6 +51,13 @@ func _ready() -> void:
 	z_index = 100
 
 
+# 生产战绩页不展示肉鸽 Run 相关成就（数据仍保留在 StatsManager 内）。
+const HIDDEN_ACHIEVEMENT_IDS: Array[String] = [
+	"first_run_won",
+	"five_runs_won",
+]
+
+
 func _build_stats_column(parent: Control, x: int, y: int, w: int) -> void:
 	var sm = _sm()
 	var lines: Array[String] = [
@@ -65,9 +72,6 @@ func _build_stats_column(parent: Control, x: int, y: int, w: int) -> void:
 		"岭上开花: %d" % sm.rinshan_count,
 		"",
 		"役満: %d   双倍役満: %d" % [sm.yakuman_count, sm.double_yakuman_count],
-		"",
-		"Run 开局: %d" % sm.runs_started,
-		"通关: %d   失败: %d" % [sm.runs_won, sm.runs_failed],
 		"",
 		"单局最高: %d 点" % sm.highest_single_hand_score,
 		"终身胡得分: %d 点" % sm.total_points_won,
@@ -90,8 +94,17 @@ func _build_achievements_column(parent: Control, x: int, y: int, w: int) -> void
 	grid.size = Vector2(w, PANEL_H - 160)
 	parent.add_child(grid)
 
-	var unlocked_count: int = unlocked.size()
-	var total: int = ach.size()
+	var visible_ids: Array = []
+	for id in ach.keys():
+		if String(id) in HIDDEN_ACHIEVEMENT_IDS:
+			continue
+		visible_ids.append(id)
+
+	var unlocked_count: int = 0
+	for id in visible_ids:
+		if unlocked.has(id):
+			unlocked_count += 1
+	var total: int = visible_ids.size()
 	var hdr := Label.new()
 	hdr.text = "成就 (%d / %d)" % [unlocked_count, total]
 	hdr.add_theme_font_size_override("font_size", DT.FONT_SUBTITLE)
@@ -106,7 +119,7 @@ func _build_achievements_column(parent: Control, x: int, y: int, w: int) -> void
 	inner.custom_minimum_size = Vector2(w - 20, 0)
 	scroll.add_child(inner)
 
-	for id in ach.keys():
+	for id in visible_ids:
 		var meta: Dictionary = ach[id]
 		var nm: String = String(meta.get("name", id))
 		var desc: String = String(meta.get("desc", ""))

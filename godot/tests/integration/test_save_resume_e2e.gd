@@ -4,19 +4,27 @@ extends GutTest
 #
 # 模拟 RunFlow 启动 → 玩 N 节点 → 退出 → 重启 → 继续。
 # 不实例化 RunFlow（UI），直接模拟其状态机的存读路径。
+# E1-02：不再依赖 Autoload，显式 load().new()。
+
+const SaveSystemScript: GDScript = preload("res://meta/save_system.gd")
+
+var _instance: Node = null
+
 
 func _save_system() -> Node:
-	return get_tree().root.get_node_or_null("SaveSystem")
+	return _instance
+
 
 func before_each() -> void:
-	var ss := _save_system()
-	if ss:
-		ss.clear_run()
+	_instance = SaveSystemScript.new()
+	add_child_autofree(_instance)
+	_instance.clear_run()
+
 
 func after_each() -> void:
-	var ss := _save_system()
-	if ss:
-		ss.clear_run()
+	if is_instance_valid(_instance) and _instance.has_method("clear_run"):
+		_instance.clear_run()
+	_instance = null
 
 # ---- 启动检测 ----
 

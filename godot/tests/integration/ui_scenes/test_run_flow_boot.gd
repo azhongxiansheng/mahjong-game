@@ -7,13 +7,15 @@ extends GutTest
 # 场景过渡接线（之前只有 RunState 逻辑层 e2e，无 UI 场景层覆盖）。
 
 const RUN_FLOW := preload("res://ui/run/run_flow.tscn")
+const SaveSystemScript: GDScript = preload("res://meta/save_system.gd")
 
 
 func before_each() -> void:
 	# 清掉可能存在的真实存档，保证 RunFlow._ready 走 starter picker 而非续档。
-	var ss := get_tree().root.get_node_or_null("SaveSystem")
-	if ss and ss.has_method("clear_run"):
-		ss.clear_run()
+	# E1-02：SaveSystem 不再是 Autoload，用显式实例清盘。
+	var ss: Node = SaveSystemScript.new()
+	ss.clear_run()
+	ss.free()
 
 
 func test_boots_to_starter_pack_picker() -> void:

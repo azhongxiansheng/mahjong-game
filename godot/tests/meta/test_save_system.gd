@@ -1,24 +1,32 @@
 extends GutTest
 
 # 麻将王 — M5 第 2 步：SaveSystem 真持久化单测（替 M4 占位测）
+# E1-02：不再依赖 Autoload，显式 load().new() 实例化 legacy 脚本。
+
+const SaveSystemScript: GDScript = preload("res://meta/save_system.gd")
+
+var _instance: Node = null
+
 
 func _save_system() -> Node:
-	return get_tree().root.get_node_or_null("SaveSystem")
+	return _instance
+
 
 func before_each() -> void:
-	# 每个测试用例开头清理可能残留的存档
-	var ss := _save_system()
-	if ss:
-		ss.clear_run()
+	_instance = SaveSystemScript.new()
+	add_child_autofree(_instance)
+	_instance.clear_run()
+
 
 func after_each() -> void:
-	# 收尾也清理，避免测试间相互污染
-	var ss := _save_system()
-	if ss:
-		ss.clear_run()
+	if is_instance_valid(_instance) and _instance.has_method("clear_run"):
+		_instance.clear_run()
+	_instance = null
 
-func test_save_system_is_autoload():
+
+func test_save_system_is_explicitly_loadable():
 	assert_not_null(_save_system())
+	assert_not_null(SaveSystemScript)
 
 func test_has_save_starts_false():
 	assert_false(_save_system().has_save())

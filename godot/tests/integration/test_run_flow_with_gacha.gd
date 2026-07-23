@@ -9,19 +9,26 @@ extends GutTest
 #   3. MetaProgress 累计声望正确
 
 const HARD_NODE_LIMIT: int = 100
+const MetaProgressScript: GDScript = preload("res://meta/meta_progress.gd")
+const SaveSystemScript: GDScript = preload("res://meta/save_system.gd")
+
+var _mp_instance: Node = null
+
 
 func _mp() -> Node:
-	return get_tree().root.get_node_or_null("MetaProgress")
+	return _mp_instance
+
 
 func before_each() -> void:
-	var mp := _mp()
-	if mp:
-		mp.reset()
+	_mp_instance = MetaProgressScript.new()
+	add_child_autofree(_mp_instance)
+	_mp_instance.reset()
+
 
 func after_each() -> void:
-	var mp := _mp()
-	if mp:
-		mp.reset()
+	if is_instance_valid(_mp_instance) and _mp_instance.has_method("reset"):
+		_mp_instance.reset()
+	_mp_instance = null
 
 # RunFlow 战斗节点结算后的核心逻辑：抽 1 张 → 记保底 → 加进 deck
 func _hook_node_gacha(rs: RunState) -> GachaResult:
@@ -105,7 +112,7 @@ func test_meta_progress_two_runs_compound():
 	mp.add_renown_for_run(true)   # +50
 	assert_eq(mp.runs_completed, 2)
 	assert_eq(mp.runs_won, 1)
-	assert_eq(mp.renown, MetaProgress.RENOWN_RUN_FAILED + MetaProgress.RENOWN_RUN_WON)
+	assert_eq(mp.renown, MetaProgressScript.RENOWN_RUN_FAILED + MetaProgressScript.RENOWN_RUN_WON)
 
 # ---- PityState 持久化 ----
 
@@ -130,10 +137,8 @@ func test_save_load_preserves_player_deck_and_pity():
 	rs.pity_state.record_draw(Rarity.Kind.COMMON)
 	rs.pity_state.record_draw(Rarity.Kind.UNCOMMON)
 
-	var ss := get_tree().root.get_node_or_null("SaveSystem")
-	if ss == null:
-		assert_true(false, "SaveSystem autoload 缺失")
-		return
+	var ss: Node = SaveSystemScript.new()
+	add_child_autofree(ss)
 	ss.clear_run()
 	ss.save_run(rs)
 	var loaded = ss.load_run()
