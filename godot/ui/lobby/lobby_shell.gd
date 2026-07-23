@@ -1,15 +1,17 @@
 class_name LobbyShell extends Control
 
-# 生产主入口壳（E1-01 / #225 + E1-03 / #227）。
-# 1600×900 生产大厅布局与稳定交互挂点；规则选择态归 #228。
-# 本壳仅导航与信号挂点，不含会话配置、联网或肉鸽路径。
+# 生产主入口壳（E1-01 / #225 + E1-03 / #227 + E1-04 / #228）。
+# 1600×900 生产大厅布局、规则抽屉与 SessionIntent 输出。
+# 不定义正式会话配置，不启动牌局，不联网。
 
 const SCENE_PATH := "res://ui/lobby/lobby_shell.tscn"
 
-## 电脑练习入口挂点（后续 #228 接规则抽屉；本 Issue 仅发 signal）。
+## 电脑练习入口挂点（打开规则抽屉）。
 signal practice_pressed
-## 公共匹配入口挂点（后续 #228/#238；本 Issue 仅发 signal，不假装已匹配）。
+## 公共匹配入口挂点（打开同一规则抽屉；不假装已匹配）。
 signal match_pressed
+## 规则抽屉确认后输出的纯 UI 意图（E1-04）。
+signal session_intent_confirmed(intent: SessionIntent)
 signal notice_pressed
 signal help_pressed
 signal settings_pressed
@@ -20,22 +22,35 @@ signal bgm_pressed
 signal sfx_pressed
 
 var _status_label: Label = null
+var _drawer_host: Control = null
+var _rule_drawer: RuleDrawer = null
+var _drawer_source: Control = null
 
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(DesignTokens.VIEW_W, DesignTokens.VIEW_H)
 	DesignTokens.style_full_panel(self)
 	_build_ui()
+	set_process_input(true)
 
 
 func request_practice() -> void:
-	_set_status("电脑练习即将开放")
 	practice_pressed.emit()
+	_open_rule_drawer(&"PRACTICE", get_node_or_null("%PracticeButton") as Control)
 
 
 func request_match() -> void:
-	_set_status("公共匹配即将开放")
 	match_pressed.emit()
+	_open_rule_drawer(&"PUBLIC_CASUAL", get_node_or_null("%MatchButton") as Control)
+
+
+func _input(event: InputEvent) -> void:
+	if _drawer_host == null or not _drawer_host.visible:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_ESCAPE:
+			_close_rule_drawer()
+			get_viewport().set_input_as_handled()
 
 
 func _build_ui() -> void:
@@ -96,14 +111,21 @@ func _build_ui() -> void:
 		if found:
 			_register_hook(found)
 
-	# #228 宿主：隐藏、空、不拦截输入
-	var drawer_host := Control.new()
-	drawer_host.name = "RuleDrawerHost"
-	drawer_host.visible = false
-	drawer_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	drawer_host.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(drawer_host)
-	_register_hook(drawer_host)
+	# #228 宿主：冷启动隐藏且不拦截输入；始终挂唯一规则抽屉实例
+	_drawer_host = Control.new()
+	_drawer_host.name = "RuleDrawerHost"
+	_drawer_host.visible = false
+	_drawer_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_drawer_host.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(_drawer_host)
+	_register_hook(_drawer_host)
+
+	_rule_drawer = RuleDrawer.new()
+	_drawer_host.add_child(_rule_drawer)
+	_rule_drawer.confirmed.connect(_on_rule_drawer_confirmed)
+	_rule_drawer.cancelled.connect(_close_rule_drawer)
+	for hook_node in _rule_drawer.get_hook_nodes():
+		_register_hook(hook_node)
 
 
 ## 代码构建子节点时须在已挂到本壳之后设 owner，%UniqueName 才挂到 LobbyShell。
@@ -389,3 +411,31 @@ func _make_utility_button(btn_name: String, text: String, pressed_signal: Signal
 func _set_status(text: String) -> void:
 	if _status_label:
 		_status_label.text = text
+
+
+func _open_rule_drawer(room_kind: StringName, source: Control) -> void:
+	if _drawer_host == null or _rule_drawer == null:
+		return
+	_drawer_source = source
+	_drawer_host.visible = true
+	_drawer_host.mouse_filter = Control.MOUSE_FILTER_STOP
+	_set_status("选择局制与玩法")
+	_rule_drawer.open_for(room_kind)
+
+
+func _close_rule_drawer() -> void:
+	if _drawer_host == null:
+		return
+	if _rule_drawer:
+		_rule_drawer.close_visual()
+	_drawer_host.visible = false
+	_drawer_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_set_status("请选择游戏方式")
+	if _drawer_source and is_instance_valid(_drawer_source) and _drawer_source.focus_mode != Control.FOCUS_NONE:
+		_drawer_source.grab_focus()
+	_drawer_source = null
+
+
+func _on_rule_drawer_confirmed(intent: SessionIntent) -> void:
+	session_intent_confirmed.emit(intent)
+	_close_rule_drawer()

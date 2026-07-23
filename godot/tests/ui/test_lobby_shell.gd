@@ -1,8 +1,7 @@
 extends GutTest
 
 # E1-01 (#225)：生产入口换大厅壳 — 导航契约 GUT。
-# 只断言入口壳 / main_scene / 稳定挂点；不覆盖 SessionIntent、GameSessionConfig、
-# 规则抽屉或生产级视觉。
+# 只断言入口壳 / main_scene / 稳定挂点；SessionIntent 与规则抽屉由 #228 单独覆盖。
 
 const LOBBY_SCENE := "res://ui/lobby/lobby_shell.tscn"
 const RUN_FLOW_SCENE := "res://ui/run/run_flow.tscn"
@@ -86,11 +85,10 @@ func test_practice_and_match_buttons_call_hooks() -> void:
 	assert_signal_emitted(shell, "match_pressed")
 
 
-func test_lobby_script_has_no_session_intent_or_game_session_config() -> void:
+func test_lobby_script_has_no_formal_session_config_or_run_dependency() -> void:
 	var script: GDScript = load("res://ui/lobby/lobby_shell.gd")
 	assert_not_null(script, "lobby_shell.gd 应存在")
 	var source: String = script.source_code
-	assert_false(source.contains("SessionIntent"), "E1-01 不得引入 SessionIntent")
 	assert_false(source.contains("GameSessionConfig"), "E1-01 不得引入 GameSessionConfig")
 	assert_false(source.contains("SaveSystem"), "大厅冷启动不得读取肉鸽存档")
 	assert_false(source.contains("ContinuePrompt"), "大厅冷启动不得弹继续 Run 提示")

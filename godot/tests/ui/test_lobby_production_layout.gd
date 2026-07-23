@@ -1,7 +1,7 @@
 extends GutTest
 
 # E1-03（#227）：生产级 1600×900 大厅布局与稳定交互挂点。
-# 规则选择态归 #228；图鉴内容与音频业务归 #229，本文件只钉住宿主和信号。
+# 规则选择态由 #228 接入；图鉴内容与音频业务归 #229。
 
 const LOBBY_SCENE := "res://ui/lobby/lobby_shell.tscn"
 const DESIGN_SIZE := Vector2(1600, 900)
@@ -158,12 +158,12 @@ func test_keyboard_focus_reaches_primary_and_utility_actions() -> void:
 	)
 
 
-func test_rule_drawer_host_is_empty_hidden_and_non_interactive() -> void:
+func test_rule_drawer_host_is_hidden_and_non_interactive_on_cold_start() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	var host := shell.get_node("%RuleDrawerHost") as Control
-	assert_false(host.visible, "#227 只提供隐藏的规则抽屉宿主")
-	assert_eq(host.get_child_count(), 0, "#227 不得提前实现 #228 的规则选择内容")
+	assert_false(host.visible, "大厅冷启动不应直接展开规则抽屉")
+	assert_eq(host.get_child_count(), 1, "#228 应在既有宿主内只挂一个规则抽屉")
 	assert_eq(host.mouse_filter, Control.MOUSE_FILTER_IGNORE, "隐藏宿主不得拦截大厅输入")
 
 
@@ -171,7 +171,6 @@ func test_e1_03_does_not_cross_into_session_voice_or_run_implementation() -> voi
 	var script: GDScript = load("res://ui/lobby/lobby_shell.gd")
 	assert_not_null(script)
 	for forbidden in [
-		"SessionIntent",
 		"GameSessionConfig",
 		"run_flow",
 		"RunState",
