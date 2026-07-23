@@ -51,7 +51,7 @@ func load_game_async():
 	
 	print("Load complete, transitioning to main...")
 	await get_tree().process_frame
-	get_tree().change_scene_to_file("res://ui/run/run_flow.tscn")
+	get_tree().change_scene_to_file("res://ui/lobby/lobby_shell.tscn")
 
 func _load_phase(message: String, to: int):
 	if status_label:

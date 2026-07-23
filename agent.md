@@ -50,7 +50,7 @@ godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
 ## 红线（摘要）
 
 - 不扩张 `main.go`；不新增根目录状态报告 md；不信根目录 200+ 陈旧笔记。
-- 主路径：`ui/run` + `ui/four_player_table`（非微信登录 / 非中式 `game_ui`）。
+- 主路径：`ui/lobby` + `ui/four_player_table`；`ui/run` 已退出生产入口（非微信登录 / 非中式 `game_ui`）。
 - 改资产或 `class_name` 后必须 `--import`；牌面 272×389 文件名契约；WHITE modulate；赤宝 `0m/0p/0s`。
 - 滤波：LINEAR_WITH_MIPMAPS（勿写回 NEAREST）。
 - `class_name` 全局唯一；资产中间产物不入库。

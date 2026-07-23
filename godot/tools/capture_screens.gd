@@ -7,6 +7,7 @@ extends SceneTree
 #   godot --path godot -s tools/capture_screens.gd
 
 const SHOTS := [
+	["res://ui/lobby/lobby_shell.tscn", "lobby_shell"],
 	["res://ui/run/starter_pack_picker.tscn", "starter_picker"],
 	["res://ui/run/character_picker.tscn", "character_picker"],
 	["res://ui/run/continue_prompt.tscn", "continue_prompt"],

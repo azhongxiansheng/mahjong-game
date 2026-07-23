@@ -13,7 +13,7 @@ config_version=5
 config/name="MahjongGame"
 config/description="自主开发的棋牌游戏项目"
 config/version="0.1.0"
-run/main_scene="res://ui/run/run_flow.tscn"
+run/main_scene="res://ui/lobby/lobby_shell.tscn"
 config/features=PackedStringArray("4.5")
 
 [autoload]

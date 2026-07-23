@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **简单优先 + 外科手术式修改**：最小改动，不顺手重构无关代码。
 - **计划与 UI 确认**：实现前给可执行计划；UI 分档 —— 简单 ASCII / 复杂草图+取舍（可选截图）/ 复杂流程 Mermaid。
 - **验证驱动**：功能/缺陷优先 TDD + GUT；改 class/资产后必须 `godot --headless --path godot --import`；声称完成须附命令与结果。禁止 mock 顶替核心规则逻辑。
-- **主路径**：`ui/run/run_flow.tscn` + `ui/four_player_table/`；勿接中式 `game_ui` / 微信登录遗留为主路径。
+- **主路径**：`ui/lobby/lobby_shell.tscn`（生产入口）+ `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口（legacy 可显式实例化）；勿接中式 `game_ui` / 微信登录遗留为主路径。
 - **牌面契约**：`mahjong_tiles_riichi` 文件名 + 272×389；WHITE modulate；赤宝 `0m/0p/0s`；滤波 LINEAR_WITH_MIPMAPS。
 - **不扩张 `main.go`**；不新增根目录状态报告 markdown；不信根目录 200+ 陈旧笔记。
 - **提交即推送**：本地已 commit 默认尽快 push，除非用户明确要求只留本地。
@@ -27,8 +27,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo contains **two unrelated trees** that share a directory but not a build:
 
-1. **`godot/`** — a Godot 4.5 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/run/run_flow.tscn`** (set in `godot/project.godot`). Tree layout:
-   - `ui/run/` — 肉鸽 Run 主路径（角色选择、章节地图、商店、奖励、事件等）
+1. **`godot/`** — a Godot 4.5 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/lobby/lobby_shell.tscn`** (set in `godot/project.godot`; E1-01). Tree layout:
+   - `ui/lobby/` — 生产大厅入口壳（练习/匹配挂点；选择态与正式配置分属后续 Issue）
+   - `ui/run/` — 肉鸽 Run 流（已退出生产入口；legacy / GUT 可显式实例化）
    - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
    - `core/` — pure-logic 日麻 engine：
      - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall`（含 dead wall API）
@@ -56,7 +57,7 @@ The 200+ root-level markdown files (`PHASE*.md`, `RAILWAY_*.md`, `*_FINAL_*.md`,
 ### Godot client
 ```bash
 godot -e --path godot
-# main scene = ui/run/run_flow.tscn
+# main scene = ui/lobby/lobby_shell.tscn
 godot --path godot
 godot --path godot -s tools/capture_screens.gd   # /tmp/shot_*.png
 ```
@@ -352,7 +353,7 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 5. **改 PNG / 新 `class_name` 后必须** `godot --headless --path godot --import` —— 否则 ctex 全黑或 Parse Error 雪崩。
 6. **牌面契约**：`assets/mahjong_tiles_riichi/<key>.png` 文件名不变；**272×389**；face 用 **WHITE** modulate（dim 用遮罩）；赤宝走 **`0m/0p/0s`** 真图。
 7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
-8. **主路径**：`ui/run/run_flow.tscn` + `ui/four_player_table/`。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
+8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
 9. **网络改动**须显式声明未端到端验证。
 10. **资产生成**：`godot/tools/asset_gen/`；先 smoke 锁风格；staging QA 后 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。可用 Grok 内置 game-asset skills 补图标，仍遵守文件名与 import 纪律。
 11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。

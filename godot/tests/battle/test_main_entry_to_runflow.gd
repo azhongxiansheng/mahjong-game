@@ -1,17 +1,17 @@
 extends GutTest
 
-# 麻将王 — 验证主入口通往 RunFlow（不走遗留 main_simple）
+# 历史名保留：原「主入口 → RunFlow」断言。
+# E1-01 (#225) 后生产入口改为大厅壳；RunFlow 仅作 legacy 可实例化场景保留。
 #
-# loading_screen.gd 应 change_scene 到 run_flow.tscn。
-# 这里验证脚本源码中的跳转路径（静态解析，不需要实际跑场景）。
+# loading_screen / main_scene 导航契约以 tests/ui/test_lobby_shell.gd 为准。
 
-func test_loading_screen_targets_run_flow():
+func test_loading_screen_does_not_target_run_flow():
 	var script: GDScript = load("res://scripts/loading_screen.gd")
 	assert_not_null(script, "loading_screen.gd 应存在")
 	var source: String = script.source_code
-	assert_true(
+	assert_false(
 		source.contains("run_flow.tscn"),
-		"loading_screen 应跳转到 run_flow.tscn"
+		"loading_screen 不得再跳转到 run_flow.tscn（生产入口是大厅壳）"
 	)
 	assert_false(
 		source.contains("main_simple_new.tscn"),
@@ -20,7 +20,7 @@ func test_loading_screen_targets_run_flow():
 
 func test_run_flow_scene_exists():
 	var scene: PackedScene = load("res://ui/run/run_flow.tscn")
-	assert_not_null(scene, "run_flow.tscn 场景文件应存在")
+	assert_not_null(scene, "run_flow.tscn 场景文件应存在（legacy / GUT 显式实例化）")
 
 func test_run_flow_scene_instantiates():
 	var scene: PackedScene = load("res://ui/run/run_flow.tscn")
