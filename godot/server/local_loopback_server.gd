@@ -29,6 +29,8 @@ var _command_cache: Dictionary = {}
 var _participants: Array = []
 # 本局起始分：仅 start 成功后冻结；失败 start 不得污染（空 = 未冻结）
 var _hand_start_scores: Array = []
+# E2-04：构造期模式模块包（STANDARD 四零 / TRASH_TALK 最小对象）
+var mode_modules: ModeModuleBundle = null
 
 
 func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
@@ -41,12 +43,16 @@ func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
 	_command_cache = {}
 	_hand_start_scores = []
 	_participants = [&"HUMAN", &"AI", &"AI", &"AI"]
+	mode_modules = null
 	if config != null:
 		_room_id = config.session_id
 		var parts: Array = config.participants
 		if parts.size() == 4:
 			_participants = parts.duplicate()
+		mode_modules = ModeModuleBundle.from_config(config)
 		_bc = BattleController.new(config.seed, dealer_seat, false, TileId.E, 0)
+		if _bc != null:
+			_bc.bind_mode_modules(mode_modules)
 	else:
 		_room_id = ""
 		_bc = null
@@ -145,6 +151,39 @@ func events_since(recipient_seat: int, after_server_seq: int) -> Array:
 	return out
 
 
+## E2-04 真实生产事件发布边界。
+## STANDARD 拒绝欢乐 kind 且 server_seq/journal 零变化；
+## TRASH_TALK 仅在 NetworkedEvent schema 合法时写入四席 journal（不实现 E5 业务副作用）。
+func try_publish_business_event(kind: String, payload: Dictionary) -> bool:
+	if _rollback_failed:
+		return false
+	if not _started:
+		return false
+	if kind.is_empty():
+		return false
+	if mode_modules != null and not mode_modules.accepts_event_kind(kind):
+		return false
+	# 候选 seq：校验全部成功前不得推进 _server_seq / 写 journal
+	var candidate: int = _server_seq + 1
+	var pl: Dictionary = payload.duplicate(true) if typeof(payload) == TYPE_DICTIONARY else {}
+	var prepared: Array = []
+	for seat in range(4):
+		var vh: String = ProtocolViewCodec.compute_view_hash(pl)
+		if vh.is_empty() or vh.length() != 64:
+			return false
+		var ne: NetworkedEvent = NetworkedEvent.make(kind, candidate, _room_id, pl, vh)
+		if ne == null:
+			return false
+		var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
+		if cloned == null:
+			return false
+		prepared.append(cloned)
+	_server_seq = candidate
+	for seat2 in range(4):
+		(_journals[seat2] as Array).append(prepared[seat2])
+	return true
+
+
 func submit_action(action: Action) -> CommandResult:
 	if action == null:
 		return _reject_result("", "INVALID_ACTION")
@@ -180,6 +219,12 @@ func submit_action(action: Action) -> CommandResult:
 		var cr_st := _reject_result(cmd, "INVALID_ACTION")
 		_cache_command(cmd, fp, cr_st)
 		return _clone_cr(cr_st)
+
+	# E2-04：STANDARD 模式门控拒绝欢乐命令（MODE_FORBIDDEN，与 E5 NOT_ENABLED 可区分）
+	if mode_modules != null and not mode_modules.accepts_command_kind(action.kind):
+		var cr_mode := _reject_result(cmd, "MODE_FORBIDDEN")
+		_cache_command(cmd, fp, cr_mode)
+		return _clone_cr(cr_mode)
 
 	# apply 前捕获 ARS；capture/hash 失败 → 非缓存 EVENT_PUBLISH_FAILED 且不 apply
 	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)

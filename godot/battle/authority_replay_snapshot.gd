@@ -242,23 +242,28 @@ static func _validate_restore_shape(d: Dictionary) -> bool:
 		return false
 
 	var momentum: Dictionary = d["momentum_scores"] as Dictionary
-	if momentum.size() != Momentum.Attribute.size():
-		return false
-	var momentum_sum: float = 0.0
-	for key in momentum.keys():
-		if typeof(key) != TYPE_STRING or not (key as String).is_valid_int():
+	# E2-04：空 scores + total=0 → STANDARD null Momentum；否则须完整 Attribute 字典
+	if momentum.is_empty():
+		if not is_equal_approx(float(d["momentum_total"]), 0.0):
 			return false
-		var attr: int = (key as String).to_int()
-		if attr < 0 or attr >= Momentum.Attribute.size() or key != str(attr):
+	else:
+		if momentum.size() != Momentum.Attribute.size():
 			return false
-		if typeof(momentum[key]) != TYPE_FLOAT:
+		var momentum_sum: float = 0.0
+		for key in momentum.keys():
+			if typeof(key) != TYPE_STRING or not (key as String).is_valid_int():
+				return false
+			var attr: int = (key as String).to_int()
+			if attr < 0 or attr >= Momentum.Attribute.size() or key != str(attr):
+				return false
+			if typeof(momentum[key]) != TYPE_FLOAT:
+				return false
+			momentum_sum += momentum[key]
+		var expected_momentum: float = clampf(
+			momentum_sum / float(Momentum.Attribute.size()), 0.0, 1.0
+		)
+		if not is_equal_approx(d["momentum_total"], expected_momentum):
 			return false
-		momentum_sum += momentum[key]
-	var expected_momentum: float = clampf(
-		momentum_sum / float(Momentum.Attribute.size()), 0.0, 1.0
-	)
-	if not is_equal_approx(d["momentum_total"], expected_momentum):
-		return false
 
 	if not _validate_seat_shapes(d["seats"] as Array):
 		return false
@@ -1239,14 +1244,17 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 
 	st.kuikae_restricted = (d.get("kuikae", [[], [], [], []]) as Array).duplicate(true)
 
-	# momentum
-	if st.momentum == null:
-		st.momentum = Momentum.new()
+	# momentum：空 scores → STANDARD null；非空 → 回填（不得强制 new 污染 STANDARD）
 	var ms: Dictionary = d.get("momentum_scores", {}) as Dictionary
-	for k in ms.keys():
-		var attr: int = int(k)
-		st.momentum.scores[attr] = float(ms[k])
-	st.momentum._recalculate_total()
+	if ms.is_empty():
+		st.momentum = null
+	else:
+		if st.momentum == null:
+			st.momentum = Momentum.new()
+		for k in ms.keys():
+			var attr: int = int(k)
+			st.momentum.scores[attr] = float(ms[k])
+		st.momentum._recalculate_total()
 
 	# dora / ura：引用 wall map 中同 iid 实体
 	if st.dora_indicators == null:

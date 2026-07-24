@@ -4,7 +4,7 @@ extends GutTest
 const _ERROR_CODES: Array[StringName] = [
 	&"INVALID_ACTION", &"WRONG_HAND", &"WRONG_DECISION", &"WRONG_SEAT",
 	&"WRONG_PHASE", &"NOT_OFFERED", &"ALREADY_RESPONDED", &"ENTITY_NOT_FOUND",
-	&"RULE_REJECTED", &"NOT_ENABLED", &"REPLAY_MISMATCH",
+	&"RULE_REJECTED", &"NOT_ENABLED", &"MODE_FORBIDDEN", &"REPLAY_MISMATCH",
 ]
 
 
@@ -65,10 +65,11 @@ func test_action_resolution_error_code_allowlist_and_rejected() -> void:
 		[ActionResolution.ENTITY_NOT_FOUND, &"ENTITY_NOT_FOUND"],
 		[ActionResolution.RULE_REJECTED, &"RULE_REJECTED"],
 		[ActionResolution.NOT_ENABLED, &"NOT_ENABLED"],
+		[ActionResolution.MODE_FORBIDDEN, &"MODE_FORBIDDEN"],
 		[ActionResolution.REPLAY_MISMATCH, &"REPLAY_MISMATCH"],
 	]
-	assert_eq(pairs.size(), 11)
-	assert_eq(_ERROR_CODES.size(), 11)
+	assert_eq(pairs.size(), 12)
+	assert_eq(_ERROR_CODES.size(), 12)
 	for pair in pairs:
 		var const_val: StringName = pair[0]
 		var literal: StringName = pair[1]

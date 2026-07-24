@@ -14,6 +14,8 @@ var registry: SkillRegistry = null
 var scheduler: SkillScheduler = null
 var ai: SimpleAi = null
 var events: Array = []
+# E2-04：会话模式模块；null = legacy 无模式门控路径
+var mode_modules: ModeModuleBundle = null
 
 
 func run_to_end() -> Dictionary:

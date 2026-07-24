@@ -52,6 +52,30 @@ func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, 
 		ai = HeuristicAi.new(seed + 1)
 	else:
 		ai = SimpleAi.new(seed + 1)
+	# E2-04：无 mode_modules 时 legacy 保留 Momentum
+	_apply_momentum_for_mode()
+
+
+## E2-04：注入会话模式模块并按模式装配 Momentum / 门控。
+func bind_mode_modules(modules: ModeModuleBundle) -> void:
+	mode_modules = modules
+	_apply_momentum_for_mode()
+
+
+func _apply_momentum_for_mode() -> void:
+	if state == null:
+		return
+	if mode_modules != null and mode_modules.is_standard():
+		state.momentum = null
+	elif mode_modules != null and mode_modules.is_trash_talk():
+		if mode_modules.momentum != null:
+			state.momentum = mode_modules.momentum
+		elif state.momentum == null:
+			state.momentum = Momentum.new()
+	else:
+		# legacy：mode_modules == null
+		if state.momentum == null:
+			state.momentum = Momentum.new()
 
 # ---- 主入口 ----
 
@@ -971,6 +995,9 @@ func _impl_apply_action(action: Action, source: StringName = ActionSource.HUMAN)
 		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
 	if not ActionSource.is_valid(source):
 		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	# E2-04：模式硬隔离门控（可区分 MODE_FORBIDDEN；先于 E5 NOT_ENABLED）
+	if mode_modules != null and not mode_modules.accepts_command_kind(action.kind):
+		return ActionResolution.rejected(ActionResolution.MODE_FORBIDDEN)
 	if action.kind == "ITEM_USE":
 		return ActionResolution.rejected(ActionResolution.NOT_ENABLED)
 

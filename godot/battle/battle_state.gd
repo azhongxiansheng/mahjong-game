@@ -49,7 +49,8 @@ var haitei_forced_seat: int = -1
 var extra_dora_count: Array[int] = [0, 0, 0, 0]
 var extra_red_dora_count: Array[int] = [0, 0, 0, 0]
 var kuikae_restricted: Array = [[], [], [], []]
-var momentum: Momentum = Momentum.new()
+# E2-04：默认可 null；STANDARD 会话保持 null，legacy/TRASH_TALK 由控制器装配
+var momentum: Momentum = null
 
 static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int, round_wind_arg: int = TileId.E, hand_seq_arg: int = 0) -> BattleState:
 	# round_wind_arg: M8 半庄战支持。默认东（兼容 M7）；半庄战南场由 GameDriver
