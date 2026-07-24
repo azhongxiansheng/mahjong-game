@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grok tmux 计划开发验收"
+  short_description: "同一可见 TUI 完成 Plan 确认、开发与独立验收"
+  default_prompt: "使用 $grok-cli-development 在同一个可见 macOS Terminal + tmux TUI 中驱动 Grok：先给 Plan 并等待用户确认，确认后原地继续开发；最终再独立 Review 与复测。"
