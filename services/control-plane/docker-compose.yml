@@ -1,0 +1,13 @@
+# 本地 Redis 开发拓扑（E3-01）。
+# 启动: docker compose -f docker-compose.yml up -d
+# 清理: docker compose -f docker-compose.yml down -v
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 2s
+      timeout: 2s
+      retries: 10
