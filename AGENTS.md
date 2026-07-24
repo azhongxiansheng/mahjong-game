@@ -241,7 +241,10 @@ grok --cwd "$TASK_WORKTREE" \
 
 - 继续会话后必须明确要求按已确认计划实施，并先读 worktree 内的 `AGENTS.md`。
 - 明确允许修改的路径、禁止修改的路径、先写失败测试、相关验证命令，以及不可静默决定的事项。
-- 默认禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限；确有需要必须由当前 Codex 任务说明风险并取得用户授权。
+- 用户尚未确认进入开发阶段时，禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限。
+- 用户已确认 Grok Plan 并明确进入开发阶段后，当前 Codex 任务可直接使用 `--always-approve`，避免逐条批准开发命令；但仍须保留既定 worktree、允许修改路径、`--no-subagents`、禁止项、TDD/验证门禁与 Git 权限边界。`--always-approve` 不得用于跳过 Plan 确认、用户决策或扩大任务范围。
+- Grok 开发阶段不得由 Codex 在后台 PTY 中启动或轮询 TUI。优先使用只返回最终交付结果的非交互调用；确需交互时，由用户在当前任务可见终端直接操作，Codex 不以内部 PTY 冒充可见终端。
+- Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
 - Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
 
 ### 4. Grok 的固定交付格式
