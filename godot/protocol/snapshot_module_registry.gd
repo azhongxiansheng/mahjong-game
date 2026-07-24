@@ -24,6 +24,16 @@ static func make_standard() -> SnapshotModuleRegistry:
 	return reg
 
 
+## #252：TRASH_TALK 生产注册表：core_table + reward_window（升序 core_table < reward_window）。
+## 不注册库存/武装；不把 AuthorityReplaySnapshot 放入线上协议。
+static func make_trash_talk() -> SnapshotModuleRegistry:
+	var reg := make_standard()
+	var r: Dictionary = reg.register(RewardWindowSnapshotProvider.new())
+	if not bool(r.get("ok", false)):
+		push_error("SnapshotModuleRegistry.make_trash_talk failed: %s" % str(r))
+	return reg
+
+
 func register(provider: SnapshotModuleProvider) -> Dictionary:
 	if provider == null:
 		return _fail(ERR_INVALID, "null provider")
@@ -58,6 +68,14 @@ func registered_keys() -> Array:
 func is_standard_only() -> bool:
 	var keys: Array = registered_keys()
 	return keys.size() == 1 and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY
+
+
+## TRASH_TALK：恰为 core_table + reward_window。
+func is_trash_talk_registry() -> bool:
+	var keys: Array = registered_keys()
+	return keys.size() == 2 \
+			and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY \
+			and str(keys[1]) == RewardWindowSnapshotProvider.MODULE_KEY
 
 
 ## 权威侧：按 module_key 升序组合 modules 数组。失败返回 {ok:false,...}。

@@ -111,6 +111,37 @@ func get_core_table_view() -> Dictionary:
 	return {}
 
 
+## #252：客户端 RewardWindow 公共投影（phase/window_exit/双边界/grace）；无库存/UI。
+## TRASH_TALK 客户端须使用 SnapshotModuleRegistry.make_trash_talk() 注册表。
+func get_reward_window_view() -> Dictionary:
+	if _applied_modules.has("reward_window"):
+		var ap = _applied_modules["reward_window"]
+		if typeof(ap) == TYPE_DICTIONARY:
+			return (ap as Dictionary).duplicate(true)
+	if _public_view.is_empty():
+		return {}
+	var mods: Variant = _public_view.get("modules", [])
+	if typeof(mods) != TYPE_ARRAY:
+		return {}
+	for m in mods:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		var md: Dictionary = m
+		if str(md.get("module_key", "")) == "reward_window":
+			var pay = md.get("payload", {})
+			if typeof(pay) == TYPE_DICTIONARY:
+				return (pay as Dictionary).duplicate(true)
+	return {}
+
+
+## 按模式切换客户端 registry（STANDARD 仅 core_table；TRASH_TALK + reward_window）。
+func configure_snapshot_registry_for_mode(game_mode: String) -> void:
+	if game_mode == str(GameSessionConfig.MODE_TRASH_TALK):
+		snapshot_registry = SnapshotModuleRegistry.make_trash_talk()
+	else:
+		snapshot_registry = SnapshotModuleRegistry.make_standard()
+
+
 ## #241：provider restore 回调；仅 registry 预检通过后调用。
 func apply_restored_module(
 	module_key: String,
