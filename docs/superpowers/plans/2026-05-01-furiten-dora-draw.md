@@ -2,10 +2,7 @@
 
 > **Goal:** 完成日麻规则引擎的剩余纯算法层 —— 振听、听牌张、Dora 张数、立直/振听状态对象、流局（牌墙耗尽 + 5 种途中流局）。**不含**状态机、事件总线、鸣牌触发条件 —— 这些留给下一个 plan（turn_engine）与里程碑 1（技能框架）。
 
-**Spec 锚点**：`docs/superpowers/specs/2026-05-01-mahjong-king-design.md`
-- §3.2 日麻术语（振听 / 流局 / 5 种途中流局定义）
-- §5 数据类型（RiichiState / FuritenState / DoraIndicators）
-- §13 里程碑 0
+> **文档定位：** 日麻规则实现追溯。当前行为以代码、测试和现行多人玩法 PRD / ADR 为准；原始肉鸽总 spec 已归档，不再作为事实源。
 
 ## 范围
 
@@ -120,4 +117,3 @@ Out-of-scope:
 - 3 个新源到首次创建的 `godot/battle/`（riichi_state / furiten_state / dora_indicators）
 - 8 个新测试全部 `godot/tests/core/`
 - 累计 236 个测试，0 失败
-

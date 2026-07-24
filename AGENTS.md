@@ -369,6 +369,7 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 - 关键行为变更同步更新对应文档。
 - 发现 `CLAUDE.md` 与代码事实不符时，**先更新文档，再继续工作**。
 - **禁止新增根目录状态/进度/完成总结类 markdown**（仓库已有 200+ 历史噪音）。总结写进 commit message 或 `docs/`。
+- **`docs/archive/` 是冻结历史，不是事实源**：默认搜索、需求分析、实现与 Review 均不得读取或引用；只有用户明确要求历史追溯、旧决策审计或迁移核对时，才可按指定范围查看。不得用归档内容覆盖代码、`CLAUDE.md` 或活跃 `docs/superpowers/` 的当前事实。
 
 ---
 

@@ -11,7 +11,7 @@
 - GUT 9.4.0（plan 0a 已装）
 - 复用 plan 0a 的 `TileId / Tile / Hand / Meld / WinPattern / StandardDecomposer / ChiitoiDetector / KokushiDetector`
 
-**Spec 锚点：** `docs/superpowers/specs/2026-05-01-mahjong-king-design.md` §3.2 日麻术语 / §13 里程碑 0 / §15 最高优先级风险（规则正确性）
+> **文档定位：** 日麻役判定实现追溯。当前行为以代码、测试和现行多人玩法 PRD / ADR 为准；原始肉鸽总 spec 已归档，不再作为事实源。
 
 > **缩进约定**：所有 `.gd` 文件用 **TAB** 缩进。本文档代码块用空格显示，写入文件必须转 TAB。每个 `.gd` 必须配 `.gd.uid`（git add 时一起加）。
 
