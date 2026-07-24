@@ -330,7 +330,7 @@ git diff "$BASE_REF"...HEAD
 - 分支名可用 `feat/` `fix/` `docs/` `refactor/` `chore/`，也可用 `codex/` 前缀；Conventional Commits。
 - **纯文档 / 纯 agent 规范**微调：可在当前分支或 `docs/*` 小分支提交，可不强求 worktree。
 - **纯打包发布**（不改仓库跟踪内容）：可在主工作区执行。若发布任务要改版本/脚本/业务文件，仍先 worktree。
-- 合并完成且不再需要时清理：`git worktree remove .worktrees/<task-name>`。
+- Issue 合并后必须先 fetch 并确认对应提交已进入最新 `origin/main`，再检查任务 worktree 干净、没有未推送提交、没有需保留的 stash 或异常文件；确认安全后立即用**精确路径**删除该 Issue 的本地 worktree，并清理已合并的本地任务分支。不得把“后续可能还会用”作为长期保留理由，也不得使用 glob、模糊匹配或批量命令误删其他任务 worktree；存在未提交/未推送内容时必须暂停并报告，禁止强制删除。
 
 ```bash
 git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
