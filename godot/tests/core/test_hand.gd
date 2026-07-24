@@ -15,14 +15,19 @@ func test_add_increases_size():
 	h.add(Tile.new(TileId.W1))
 	assert_eq(h.size(), 1)
 
-func test_remove_by_id_returns_true_and_decreases():
-	var h := _make_hand_from_ids([TileId.W1, TileId.W2, TileId.W3])
-	assert_true(h.remove_by_id(TileId.W2))
+func test_take_by_instance_id_returns_exact_tile_and_decreases():
+	var h := Hand.new()
+	var target := Tile.new(TileId.W2, false, Tile.NO_OWNER, 7)
+	h.add(Tile.new(TileId.W1, false, Tile.NO_OWNER, 6))
+	h.add(target)
+	h.add(Tile.new(TileId.W3, false, Tile.NO_OWNER, 8))
+	assert_same(h.take_by_instance_id(7), target)
 	assert_eq(h.size(), 2)
 
-func test_remove_by_id_when_absent_returns_false():
-	var h := _make_hand_from_ids([TileId.W1])
-	assert_false(h.remove_by_id(TileId.S5))
+func test_take_by_instance_id_when_absent_returns_null():
+	var h := Hand.new()
+	h.add(Tile.new(TileId.W1, false, Tile.NO_OWNER, 9))
+	assert_null(h.take_by_instance_id(10))
 	assert_eq(h.size(), 1)
 
 func test_to_id_array_returns_sorted_ascending():

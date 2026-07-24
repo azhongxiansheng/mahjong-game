@@ -6,24 +6,40 @@ class_name Wall
 #   位置 4..8  : 5 张表 dora 指示牌（peek_dora_indicator(n) → [end-5-2n]）
 #   位置 5..9  : 5 张裏 dora 指示牌（peek_uradora_indicator(n) → [end-6-2n]）
 # 注：表/裏 dora 物理位置交错（标准日麻），开局翻 indicator(0)，每杠后翻 indicator(1) ...
+#
+# E2-02 / #232：new_full_set 在 shuffle 前按 canonical serial 0..135 分配
+# instance_id = hand_seq * 136 + serial。
+# MAX_HAND_SEQ 保证 hand_seq*136+135 ≤ Tile.MAX_SAFE_INSTANCE_ID。
+
+# hand_seq*TILES_PER_HAND+(TILES_PER_HAND-1) 须 ≤ MAX_SAFE；整除截断合法。
+@warning_ignore("integer_division")
+const MAX_HAND_SEQ: int = (
+	Tile.MAX_SAFE_INSTANCE_ID - (Tile.TILES_PER_HAND - 1)
+) / Tile.TILES_PER_HAND
 
 var _tiles: Array[Tile] = []
 var _draw_index: int = 0
 var _dead_wall_size: int = 0
 var _rinshan_taken: int = 0
 
-static func new_full_set() -> Wall:
+static func new_full_set(hand_seq: int = 0) -> Wall:
+	if hand_seq < 0 or hand_seq > MAX_HAND_SEQ:
+		return null
 	var w := Wall.new()
 	# 每种 TileId 4 张，5m/5p/5s 第一张标记为赤。
 	# owner_seat 按 copy_index 分配：4 家各占 1 张副本（"卡组合并"语义占位 v1）。
 	# M6 引入真正卡组系统时改为按玩家 deck 决定；UI 端 SeatPanel 手牌色块只关心
 	# 这一字段，不依赖具体来源，因此后续替换不影响 UI 代码。
+	var serial: int = 0
 	for tid in TileId.ALL:
 		for copy_index in range(4):
 			var is_red := false
 			if copy_index == 0 and (tid == TileId.W5 or tid == TileId.T5 or tid == TileId.S5):
 				is_red = true
-			w._tiles.append(Tile.new(tid, is_red, copy_index))
+			var iid: int = hand_seq * Tile.TILES_PER_HAND + serial
+			var t := Tile.new(tid, is_red, copy_index, iid)
+			serial += 1
+			w._tiles.append(t)
 	return w
 
 func size() -> int:

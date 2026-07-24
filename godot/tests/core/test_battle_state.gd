@@ -2,6 +2,7 @@ extends GutTest
 
 # BattleState (spec §5)：一局对战的快照 + 工厂。
 # 0e 加字段：turn_count / first_round_active（spec §6.1 一发/双立直/九种九牌依赖）
+# E2-02 权威快照契约由 test_authority_replay_snapshot 覆盖；本文件不重复 snapshot_*。
 
 func test_default_construct_empty():
 	var s := BattleState.new()

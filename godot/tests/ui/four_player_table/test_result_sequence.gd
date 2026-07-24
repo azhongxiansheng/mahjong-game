@@ -201,10 +201,12 @@ func test_result_hand_tiles_match_reference_modal_size() -> void:
 
 func test_win_result_reuses_flat_meld_with_34x45_tiles() -> void:
 	var bc := PlayableBattleController.new(20260720)
-	var called := Tile.new(TileId.W3)
+	var called := Tile.new(TileId.W3, false, Tile.NO_OWNER, 3001)
 	bc.state.seats[0].melds = [Meld.make_chi([
-		Tile.new(TileId.W2), called, Tile.new(TileId.W4),
-	], 3, called)]
+		Tile.new(TileId.W2, false, Tile.NO_OWNER, 3000),
+		called,
+		Tile.new(TileId.W4, false, Tile.NO_OWNER, 3002),
+	], 3, 0, called)]
 	bc.state.seats[0].hand = Hand.new()
 	for id in [
 		TileId.T2, TileId.T3, TileId.T4,

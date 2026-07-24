@@ -38,10 +38,12 @@ func _replace_hand(seat: Seat, ids: Array) -> void:
 
 func _prepare_reference_draw_state() -> PlayableBattleController:
 	var bc := PlayableBattleController.new(20260720, 2)
-	var called_chi := Tile.new(TileId.W3)
+	var called_chi := Tile.new(TileId.W3, false, Tile.NO_OWNER, 1001)
 	var open_chi := Meld.make_chi([
-		Tile.new(TileId.W2), called_chi, Tile.new(TileId.W4),
-	], 3, called_chi)
+		Tile.new(TileId.W2, false, Tile.NO_OWNER, 1000),
+		called_chi,
+		Tile.new(TileId.W4, false, Tile.NO_OWNER, 1002),
+	], 3, 0, called_chi)
 	bc.state.seats[0].melds = [open_chi]
 	_replace_hand(bc.state.seats[0], [
 		TileId.T2, TileId.T3, TileId.T4,
@@ -300,24 +302,32 @@ func test_flat_meld_slots_cover_pon_open_kan_ankan_and_added_kan() -> void:
 		"win/draw 必须共用 flat:true 副露 helper")
 	if not _pt.has_method("_build_flat_result_melds"):
 		return
-	var pon_called := Tile.new(TileId.T5)
+	var pon_called := Tile.new(TileId.T5, false, Tile.NO_OWNER, 2001)
 	var pon := Meld.make_pon([
-		Tile.new(TileId.T5), pon_called, Tile.new(TileId.T5),
-	], 2, pon_called)
-	var kan_called := Tile.new(TileId.S7)
+		Tile.new(TileId.T5, false, Tile.NO_OWNER, 2000),
+		pon_called,
+		Tile.new(TileId.T5, false, Tile.NO_OWNER, 2002),
+	], 2, 0, pon_called)
+	var kan_called := Tile.new(TileId.S7, false, Tile.NO_OWNER, 2010)
 	var minkan := Meld.make_minkan([
-		kan_called, Tile.new(TileId.S7),
-		Tile.new(TileId.S7), Tile.new(TileId.S7),
-	], 1, kan_called)
+		kan_called,
+		Tile.new(TileId.S7, false, Tile.NO_OWNER, 2011),
+		Tile.new(TileId.S7, false, Tile.NO_OWNER, 2012),
+		Tile.new(TileId.S7, false, Tile.NO_OWNER, 2013),
+	], 1, 0, kan_called)
 	var ankan := Meld.make_ankan([
-		Tile.new(TileId.HAKU), Tile.new(TileId.HAKU),
-		Tile.new(TileId.HAKU), Tile.new(TileId.HAKU),
+		Tile.new(TileId.HAKU, false, Tile.NO_OWNER, 2020),
+		Tile.new(TileId.HAKU, false, Tile.NO_OWNER, 2021),
+		Tile.new(TileId.HAKU, false, Tile.NO_OWNER, 2022),
+		Tile.new(TileId.HAKU, false, Tile.NO_OWNER, 2023),
 	])
-	var added_called := Tile.new(TileId.E)
+	var added_called := Tile.new(TileId.E, false, Tile.NO_OWNER, 2030)
 	var added := Meld.make_added_kan([
-		added_called, Tile.new(TileId.E),
-		Tile.new(TileId.E), Tile.new(TileId.E),
-	], 3, added_called)
+		added_called,
+		Tile.new(TileId.E, false, Tile.NO_OWNER, 2031),
+		Tile.new(TileId.E, false, Tile.NO_OWNER, 2032),
+		Tile.new(TileId.E, false, Tile.NO_OWNER, 2033),
+	], 3, 0, added_called)
 	var flat = _pt.call("_build_flat_result_melds",
 		[pon, minkan, ankan, added], Vector2(30, 40), "FlatMelds") as Control
 	_pt.add_child(flat)

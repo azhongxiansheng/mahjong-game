@@ -23,9 +23,13 @@ class_name ShantenCalculator
 # called_melds 个数表示已副露的面子数（每个折抵 1 个 mentsu）。
 static func calc(hand: Hand, called_melds: Array = []) -> int:
 	var counts: Array[int] = _hand_to_counts(hand)
-	var calls: int = called_melds.size()
-	var standard: int = _calc_standard(counts, calls)
-	if calls > 0:
+	return calc_from_counts(counts, called_melds.size())
+
+# 基于 34-count 的向听计算。cache 仅限当前调用内共享（勿跨状态复用）。
+# 传入已有 Dictionary 可在多次「按 type 扣 1」间复用 _max_blocks memo。
+static func calc_from_counts(counts: Array[int], called: int, cache: Dictionary = {}) -> int:
+	var standard: int = _calc_standard(counts, called, cache)
+	if called > 0:
 		# 鸣牌后只能走 standard（chiitoi/kokushi 都需门前清）
 		return standard
 	var chiitoi: int = _calc_chiitoi(counts)
@@ -35,7 +39,7 @@ static func calc(hand: Hand, called_melds: Array = []) -> int:
 # 仅算 standard（如调用方已知不可能 chiitoi/kokushi 时省一点）。
 static func calc_standard(hand: Hand, called_melds: Array = []) -> int:
 	var counts: Array[int] = _hand_to_counts(hand)
-	return _calc_standard(counts, called_melds.size())
+	return _calc_standard(counts, called_melds.size(), {})
 
 # ---- 内部 ----
 
@@ -84,15 +88,16 @@ static func _calc_kokushi(counts: Array[int]) -> int:
 #
 # 公式（已副露 c 面子时）：
 #   shanten = 8 - 2*(c + mentsu) - taatsu - (1 if pair else 0)
-#   约束：c + mentsu + taatsu ≤ (4 if pair else 5)
-#   （pair 时正好 4 块 + 1 雀头；no pair 时最多 5 块用一块作雀头候选）
+#   约束：c + mentsu + taatsu ≤ 4
+#   （最多 4 面子块；雀头由外层 pair 分支单独扣减，不把顺子搭子当雀头候选）
 #   超额时 cap：taatsu = max_blocks - (c + mentsu)
-static func _calc_standard(counts: Array[int], called: int) -> int:
+#   注意：旧版 no-pair max_blocks=5 会把两面搭子误算成雀头候选，导致
+#   「3 面子 + 2 搭子」假 0 向听；与 WaitCalculator 不一致。
+static func _calc_standard(counts: Array[int], called: int, cache: Dictionary) -> int:
 	var best: int = 8 - 2 * called
-	# M10 perf：memoization 缓存。同一 _calc_standard 调用内的 5 次（无对 + 4 种对子）
+	# M10 perf：memoization 缓存。同一调用内的多次（无对 + 各对子 / 多 discard-type）
 	# _max_blocks 共享 cache；同子结构（counts 后缀 + idx 起点）只算一次。
 	# 实测 14 牌 hand 单次 calc 从 ~5 ms 降到 < 1 ms（5-10× speedup）。
-	var cache: Dictionary = {}
 	# 不选雀头
 	var no_pair_blocks: Array = _max_blocks(counts.duplicate(), cache)
 	best = min(best, _shanten_from_blocks(no_pair_blocks[0], no_pair_blocks[1], false, called))
@@ -107,9 +112,10 @@ static func _calc_standard(counts: Array[int], called: int) -> int:
 
 static func _shanten_from_blocks(mentsu: int, taatsu: int, has_pair: bool, called: int) -> int:
 	var total_mentsu: int = mentsu + called
-	var max_blocks: int = 4 if has_pair else 5
+	# 标准 4 面子上限；雀头由 has_pair 单独计，不占用「第 5 块」
+	const MAX_BLOCKS: int = 4
 	# cap：mentsu + taatsu 总块数不超 max_blocks（多余 taatsu 不再贡献）
-	var blocks_used: int = min(total_mentsu + taatsu, max_blocks)
+	var blocks_used: int = min(total_mentsu + taatsu, MAX_BLOCKS)
 	# total_mentsu 已固定（called 是确定的，新 mentsu 也是已识别）
 	# 多余 taatsu cap 掉
 	var capped_taatsu: int = blocks_used - total_mentsu
@@ -130,14 +136,21 @@ static func _max_blocks(counts: Array[int], cache: Dictionary) -> Array:
 		return [0, 0]
 	return _decompose(counts, start, cache)
 
-# Cache key 编码：String 由 idx + counts[0..33] 数字串组合（每位 [0,4] 单 char 即可）。
-# Godot Dictionary 用 String key 命中正确。
-static func _cache_key(counts: Array[int], idx: int) -> String:
-	# 形如 "12:0010040030..." — 长度固定 37（idx 2 + ":" + 34 digits）
-	var s: String = str(idx) + ":"
-	for c in counts:
-		s += str(c)
-	return s
+# Cache key 编码：每个 count 仅 0..4，用 3 bit 无碰撞打包进 Vector4i。
+# 前三段各放 10 种牌（30 bit），末段低 6 bit 放 idx、其后放剩余 4 种牌。
+# 避免递归热点逐层拼接 37 字符 String；Vector4i 仍按值比较，不牺牲 memo 正确性。
+static func _cache_key(counts: Array[int], idx: int) -> Vector4i:
+	var a: int = 0
+	var b: int = 0
+	var c: int = 0
+	var d: int = idx
+	for i in range(10):
+		a |= counts[i] << (i * 3)
+		b |= counts[i + 10] << (i * 3)
+		c |= counts[i + 20] << (i * 3)
+	for i in range(4):
+		d |= counts[i + 30] << (6 + i * 3)
+	return Vector4i(a, b, c, d)
 
 static func _decompose(counts: Array[int], idx: int, cache: Dictionary) -> Array:
 	# 跳过零计 tile 直到下一个非零或越界
@@ -147,7 +160,7 @@ static func _decompose(counts: Array[int], idx: int, cache: Dictionary) -> Array
 		return [0, 0]
 
 	# memo 命中？
-	var key: String = _cache_key(counts, idx)
+	var key: Vector4i = _cache_key(counts, idx)
 	if cache.has(key):
 		return cache[key]
 

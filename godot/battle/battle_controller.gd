@@ -1,44 +1,49 @@
-class_name BattleController extends IBattleController
+class_name BattleController extends IAuthoritativeBattleController
 
 const RIICHI_STICK_COST: int = 1000
 
-# 里程碑 2 — 端到端编排器（v1 单机权威实现）。
-# 职责：
-#   1. 自建 BattleState / TurnEngine / SkillRegistry / SkillScheduler / SimpleAi
-#   2. 编排「摸→弃→（鸣牌窗口暂略）→下家」整局循环
-#   3. 在 TurnEngine apply_xxx 调用前后向 SkillScheduler emit BattleEvent
-#   4. 流局 / 自摸 / 荣胡时退出循环
-# spec §13 第 2 项 — 不接 UI、不接交互、4 家全 AI。
-#
-# M11 Path C：本类已 extends IBattleController，作为 v1 单机实现；M12 加 server
-# 权威 NetworkedBattleController 时也走 IBattleController 抽象。
-# 后续 M11 第 2 步会把外部 caller 的类型签名从 BattleController 改 IBattleController；
-# 本 PR 只建立 extends 关系，不强制 caller migrate（向后兼容）。
-
-# 里程碑 2 完成 YakuEvaluator → ScoreCalc 串接：YakuEvaluator 用 yaku/yaku_list.gd
-# （class_name YakuEntries，含 entries: Array[YakuEntry] / apply_exclusions / is_yakuman()），
-# ScoreCalc 用 rules_japanese/yaku_list.gd（class_name YakuList，含 yaku: Array[Dict]
-# / is_yakuman: bool / yakuman_multiplier）—— 两份语义不同；PR #12 已修 class_name 重名
-# （旧 WinContext → 拆为 ScoreContext + WinContext，旧 YakuList → 拆为 YakuList + YakuEntries）。
-# _adapt_yaku_list() 在 YakuEntries → YakuList 之间桥接。
+# 里程碑 2 + E2-02 — 端到端本地权威编排器。
+# 唯一行动入口：apply_action(Action, ActionSource) -> ActionResolution
+# journal = 已接受 Action；load_replay_journal = 期望队列（与 journal 分离）
 
 const MAX_LOOP_STEPS := 2000  # 一局上限，防死循环；正常一局 < 200 步
+const DEFAULT_ROOM_ID := "local"
+const _ACTION_CMD_UUID_PREFIX := "550e8400-e29b-41d4-a716-"
 
-# state / engine / registry / scheduler / ai / events 字段已在 IBattleController 声明；
-# 本类继承得到。构造函数初始化这些字段。
+# 领域执行 tri-state：成功应用 / 技能取消（保留事件）/ 规则失败
+const DOMAIN_APPLIED: int = 0
+const DOMAIN_CANCELLED: int = 1
+const DOMAIN_FAILED: int = 2
+
+# state / engine / registry / scheduler / ai / events 在 IAuthoritativeBattleController
 var _settled: bool = false
 var _last_event_type: StringName = &""
-# M11 replay (net foundation): 决策回放队列（来自 extract_player_actions）。
-# 非空时 BC 用回放决策替代 ai.decide_*；为空（默认）走 v1 AI 决策路径。
-# 配合同事 PR #124 IBattleController + #127 NetworkedEvent 协议，server
-# 推 NetworkedEvent[Action] → client BC 用本字段重放。
-var _replay_decisions: Array = []
-var _replay_idx: int = 0
+var _battle_seed: int = 0
+var _action_cmd_seq: int = 0
+var _window_seq: int = 0
+var _last_discarded_tile: Tile = null
+var _last_discarder_seat: int = -1
+# 已接受 Action journal（元素级深拷贝对外）
+var _action_journal: Array = []
+# 期望回放队列（与 journal 分离）
+var _expected_replay: Array = []
+var _expected_replay_idx: int = 0
+var _replay_status: StringName = &"IDLE"
+var _active_window: DecisionWindow = null
+var _active_window_phase: int = -1
+var _pending_added_kan: Dictionary = {}
 
-func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E) -> void:
+func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E, hand_seq: int = 0) -> void:
 	# round_wind: M8 半庄战支持。默认东兼容 M7；GameDriver 在南场调用时
 	# 传 TileId.S_WIND 以激活场风南牌役（南、南家自风南）。
-	state = BattleState.for_east_round(seed, dealer_seat, 1, 0, 0, round_wind)
+	# hand_seq: E2-02 实体 id 命名空间（默认 0，兼容旧 4 参调用）。
+	# 非法 / for_east_round 失败 → fail-closed：state/engine/registry/scheduler/ai 保持 null。
+	_battle_seed = seed
+	if hand_seq < 0 or hand_seq > Wall.MAX_HAND_SEQ:
+		return
+	state = BattleState.for_east_round(seed, dealer_seat, 1, 0, 0, round_wind, hand_seq)
+	if state == null:
+		return
 	engine = TurnEngine.new(state)
 	registry = SkillRegistry.new()
 	scheduler = SkillScheduler.new(registry, state)
@@ -51,27 +56,28 @@ func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, 
 # ---- 主入口 ----
 
 # 跑到流局或胡牌；返 {last_event: StringName, events: Array[BattleEvent]}
-func run_to_end() -> Dictionary:
+# 状态机：DRAW 只摸牌/事件；TURN(DISCARD) 选 Action→apply_action；
+# CLAIM / ROB_KAN 收齐 intent 后由 BattleActionResolver 裁决。
+func _impl_run_to_end() -> Dictionary:
 	_emit(&"GAME_BEGIN", state.dealer_seat, null, {})
 
 	var steps := 0
 	while not _settled and steps < MAX_LOOP_STEPS:
 		steps += 1
-		if state.phase == BattlePhase.Kind.DRAW:
+		if not _pending_added_kan.is_empty():
+			_step_rob_kan_collect()
+		elif state.phase == BattlePhase.Kind.DRAW:
 			_step_draw()
 		elif state.phase == BattlePhase.Kind.DISCARD:
-			_step_discard()
+			_step_turn()
 		elif state.phase == BattlePhase.Kind.CLAIM:
-			var last_discard: Tile = _get_last_discarded()
-			var last_discarder: int = _get_last_discarder()
-			if last_discard != null and last_discarder >= 0:
-				_resolve_claims(last_discard, last_discarder)
-			else:
-				engine.advance_to_next_seat()
+			_step_claim_collect()
 		elif state.phase == BattlePhase.Kind.SETTLE:
-			# 已被 _step_xxx 内部处理；保险起见强制退出
 			break
+		if not _settled:
+			_check_and_emit_abortive_draws()
 
+	_finalize_replay_lifecycle_status()
 	return {
 		"last_event": _last_event_type,
 		"events": events,
@@ -80,11 +86,10 @@ func run_to_end() -> Dictionary:
 # ---- 步骤 ----
 
 func _step_draw() -> void:
+	# DRAW 只允许 server draw/事件；TSUMO/KAN 等由 TURN Action 选择。
 	var t: Tile = engine.draw_for_current()
 	if t == null:
-		# 牌墙耗尽 — 流局
 		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
-		# 流し満貫(nagashi mangan)检測:命中则额外 emit NAGASHI_MANGAN 让 UI 反馈
 		var nm_winner: int = NagashiMangan.detect_winner_seat(state)
 		if nm_winner >= 0:
 			_emit(&"NAGASHI_MANGAN", nm_winner, null,
@@ -92,89 +97,114 @@ func _step_draw() -> void:
 		_settled = true
 		return
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
-	# M7：摸到此牌后牌墙是否空 → 海底捞月（自摸路径）
-	var is_haitei: bool = (state.wall.live_wall_size() == 0)
-	# 天和/地和(tenhou/chiihou):第一巡每家首摸,前提 first_round_active +
-	# 该 seat 还没弃过牌。Yaku evaluator 通过 GameContext.is_dealer_first_hand /
-	# is_non_dealer_first_draw 检测;修复前这两 dead code,役満永不命中。
-	var first_draw: bool = state.first_round_active \
-		and state.discards_per_seat[state.current_seat].is_empty()
-	var is_tenhou: bool = first_draw \
-		and state.current_seat == state.dealer_seat
-	var is_chiihou: bool = first_draw \
-		and state.current_seat != state.dealer_seat
-	# 自摸检测（无役不胡;本里程碑 SimpleAi 不会主动宣告，这里 BC 自动判定）
-	var win := _check_tsumo(t, is_haitei, false, is_tenhou, is_chiihou)
-	if win.is_winning and _should_accept_tsumo(state.current_seat, t, win):
-		_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
-	# Task 3: AI self-kan (ankan / added_kan) after draw, only if not settled
-	if not _settled:
-		_try_ai_self_kan()
 
-func _step_discard() -> void:
+
+func _step_turn() -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var actor: int = state.current_seat
-	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
-	# (此时距离 declared_turn 已过 ≥1 巡且未鸣牌 — 一発自然过期)
 	_close_ippatsu_if_lap_passed(seat)
-	# 岭上开花(rinshan kaihou):杠后岭上摸到的牌若胡 → +1 han 役。
-	# 仅在 _step_discard 入口检 — 因为杠后 phase=DISCARD 直接进这里,
-	# 而 _step_draw 是正常摸牌的入口(那条路 last_draw_is_rinshan=false)。
-	if seat.last_draw_is_rinshan and seat.last_drawn_tile_id >= 0:
-		if _try_rinshan_tsumo(seat):
-			return
-		# 不胡 → 清掉岭上标记让本回合走正常切牌
+	# 岭上标记仅供 TURN 的 TSUMO 役判定；不在此旁路 settle
+	if seat.last_draw_is_rinshan and seat.last_drawn_instance_id == Tile.INVALID_INSTANCE_ID:
 		seat.last_draw_is_rinshan = false
-	# M11 net foundation: 优先回放决策；否则走 AI 决策路径
-	var to_discard: Tile = null
-	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
-	if not replayed.is_empty():
-		var tid: int = int(replayed.get("tile_id", -1))
-		for t in seat.hand._tiles:
-			if t.id == tid:
-				to_discard = t
-				break
+
+	var source: StringName = ActionSource.AI
+	var act: Action = null
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
+		act = _peek_expected_replay()
+		if act == null:
+			_replay_status = &"MISMATCH"
+			_settled = true
+			return
 	else:
-		to_discard = _get_discard_decision(seat, actor)
-	if to_discard == null:
+		act = _select_ai_turn_action(seat, actor)
+		if act == null:
+			_settled = true
+			return
+	var resp: ActionResolution = apply_action(act, source)
+	if resp == null or not resp.accepted:
 		_settled = true
 		return
-	# M11 net foundation: emit PLAYER_ACTION 让事件日志自包含决策。
-	# 这是 spec §4.3 联机权威化的前置：未来 server 会把 player click 包成
-	# 同样的 PlayerAction event 推给 client。本 emit 在 engine.discard 之前
-	# 让 cause-effect 顺序明确：决策 → 引擎应用 → TILE_DISCARDED 事件
-	_emit(&"PLAYER_ACTION", actor, null, {
-		"kind": "discard",
-		"tile_id": to_discard.id,
-	})
-	var ok: bool = engine.discard(to_discard.id)
-	if not ok:
-		_settled = true
+
+
+func _step_claim_collect() -> void:
+	var discarded: Tile = _get_last_discarded()
+	var discarder: int = _get_last_discarder()
+	if discarded == null or discarder < 0:
+		engine.advance_to_next_seat()
+		_invalidate_window()
 		return
-	state.kuikae_restricted[actor] = []
-	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
-	# M7：discard 后 hand=13 张，AI 可决定立直（HeuristicAi.decide_riichi 走
-	# RiichiValidator）。declare_riichi 成功 → state.scores[seat] -= 1000 让
-	# GameDriver._apply_in_hand_skill_deltas 同步到 cumulative，避免守恒被破。
-	# M11 replay: 立直决策也支持回放
-	var should_riichi: bool = false
-	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
-	if not riichi_replayed.is_empty():
-		should_riichi = true
-	elif _replay_decisions.is_empty():
-		should_riichi = _get_riichi_decision(actor)
-	if should_riichi:
-		# M11: 立直决策同样包成 PlayerAction
-		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
-		if engine.declare_riichi(actor):
-			state.scores[actor] -= RIICHI_STICK_COST
-			_emit(&"RIICHI_DECLARED", actor, null, {})
-	# M7：自动 RON 检测。在每次 TILE_DISCARDED 后按 atama-hane 顺序遍历对家。
-	# v1：任一对家若可胡（非振听 + 听牌 + 有役）→ 自动 apply_ron。
-	# 真实玩家 UI 路径下（M8+）会替换为玩家选择窗口；当前 SimpleAi-only 阶段
-	# 自动接受所有可胡机会以让 sim 看见 RON 路径。
-	if not _settled:
-		_try_auto_ron(to_discard, actor)
+	_ensure_active_window()
+	if _active_window == null or _active_window.kind != DecisionWindow.KIND_CLAIM:
+		engine.advance_to_next_seat()
+		_invalidate_window()
+		return
+	var source: StringName = ActionSource.AI
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
+	for offset in range(1, 4):
+		var candidate: int = (discarder + offset) % 4
+		if _active_window.has_responded(candidate):
+			continue
+		var act: Action = null
+		if source == ActionSource.REPLAY:
+			act = _peek_expected_replay()
+			if act == null or act.seat != candidate:
+				act = _build_pass_action(candidate)
+		else:
+			act = _build_ai_claim_action(candidate, discarded, discarder)
+		if act == null:
+			act = _build_pass_action(candidate)
+		if act == null:
+			continue
+		var resp: ActionResolution = apply_action(act, source)
+		if resp == null:
+			continue
+		if not resp.accepted and source == ActionSource.REPLAY:
+			_settled = true
+			return
+		if _settled:
+			return
+	if state.phase == BattlePhase.Kind.CLAIM and _active_window != null \
+			and not _active_window.is_complete():
+		# 异常兜底
+		engine.advance_to_next_seat()
+		_invalidate_window()
+
+
+func _step_rob_kan_collect() -> void:
+	_ensure_active_window()
+	if _active_window == null or _active_window.kind != DecisionWindow.KIND_ROB_KAN:
+		# 无窗则按全 PASS 升级
+		_finalize_pending_added_kan_all_pass()
+		return
+	var kan_seat: int = int(_pending_added_kan.get("seat", -1))
+	var source: StringName = ActionSource.AI
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
+	for offset in range(1, 4):
+		var candidate: int = (kan_seat + offset) % 4
+		if _active_window.has_responded(candidate):
+			continue
+		var act: Action = null
+		if source == ActionSource.REPLAY:
+			act = _peek_expected_replay()
+			if act == null or act.seat != candidate:
+				act = _build_pass_action(candidate)
+		else:
+			act = _build_ai_rob_kan_action(candidate)
+		if act == null:
+			act = _build_pass_action(candidate)
+		if act == null:
+			continue
+		var resp: ActionResolution = apply_action(act, source)
+		if resp == null:
+			continue
+		if not resp.accepted and source == ActionSource.REPLAY:
+			_settled = true
+			return
+		if _settled or _pending_added_kan.is_empty():
+			return
 
 # ---- 事件 emit ----
 
@@ -213,9 +243,23 @@ func _wrap_tile(t: Tile) -> TileInstance:
 # is_rinshan: 是否岭上开花 tsumo(杠后岭上摸到的牌胡)。修复前 dead code,所有岭上摸胡
 # 都丢了 +1 han 役。BC._step_discard 在 seat.last_draw_is_rinshan=true 时传 true。
 # 返 {is_winning: bool, wp?: Dict, yaku_list?: YakuList, hand_13?: Hand, melds?: Array}
+# 从 hand 拷一份并移除指定 instance_id 的牌；返新 Hand；找不到返 null。
+func _hand_minus_instance(hand: Hand, instance_id: int) -> Hand:
+	var copy := Hand.new()
+	var skipped := false
+	for t in hand._tiles:
+		if not skipped and t.instance_id == instance_id:
+			skipped = true
+			continue
+		copy.add(t)
+	if not skipped:
+		return null
+	return copy
+
+
 func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false, is_tenhou: bool = false, is_chiihou: bool = false) -> Dictionary:
 	var seat: Seat = state.seats[state.current_seat]
-	var hand_13 := _hand_minus_first(seat.hand, drawn.id)
+	var hand_13: Hand = _hand_minus_instance(seat.hand, drawn.instance_id)
 	if hand_13 == null:
 		return {"is_winning": false}
 	# Seat.melds 是 untyped Array，转成 Array[Meld] 喂规则引擎
@@ -264,58 +308,8 @@ func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false, is_ch
 		"melds": typed_melds,
 	}
 
-# M7：在 TILE_DISCARDED 后自动尝试 ron。按 atama-hane 顺序（discarder + 1
-# 优先），首个可胡的对家直接 apply_ron。被 cancel_ron 跳过该候选试下一个
-# （v1 简化：spec 严格 atama-hane 是"被取消即不再考虑"；本 v1 让其它候选
-# 也有机会 fire 以让 sim 看到更多 RON 数据点）。
-# is_houtei = (wall.live_wall_size() == 0) — 当前 discard 来自最后一张 live 牌。
-#
-# 日麻 §3.2 三家和了(sancha houra):若 3 家同时可荣胡此弃牌 → 途中流局
-# (而非首个 atama-hane 收胡)。本函数先扫一遍 candidates 计数,≥3 → abort。
-func _try_auto_ron(discarded: Tile, discarder: int) -> void:
-	var is_houtei: bool = (state.wall.live_wall_size() == 0)
-	# 三家和了 pre-check:计可胡候选数,≥3 → abortive draw
-	if _count_ron_candidates(discarded, discarder, is_houtei) >= 3:
-		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
-		_settled = true
-		return
-	for offset in range(1, 4):
-		var candidate: int = (discarder + offset) % 4
-		var candidate_seat: Seat = state.seats[candidate]
-		# 1) 振听 + 听牌检查（ClaimValidator 已封装）
-		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
-			continue
-		# 2) 有役检查（_check_ron 内部跑 YakuEvaluator + 无役拒绝）
-		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
-		if not ron_check.is_winning:
-			continue
-		# 3) 是否接受 ron 由钩子决定（默认子类不重写则总是接受；玩家子类可弹按钮等待选择）
-		if not _should_accept_ron(candidate, discarded, discarder, ron_check, is_houtei):
-			# 见逃 — 日麻 §5:同巡振听 temporary;立直见逃 → 永久振听
-			# (立直锁牌后只能 tsumogiri,不能再调整待牌,所以一次见逃就锁死)
-			candidate_seat.furiten.temporary = true
-			if candidate_seat.riichi.declared:
-				candidate_seat.furiten.permanent = true
-			continue
-		# 4) 试结算（apply_ron emit RON_DECLARED 给技能 cancel 机会）
-		if apply_ron(candidate, discarded, discarder, is_houtei):
-			return  # 已 settle
-
-
-# 计算给定 discarded 牌的可荣胡候选数(只看规则可行性 + 有役,不调
-# _should_accept_ron 避免 async 路径污染)。
-func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> int:
-	var count: int = 0
-	for offset in range(1, 4):
-		var candidate: int = (discarder + offset) % 4
-		var candidate_seat: Seat = state.seats[candidate]
-		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
-			continue
-		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
-		if not ron_check.is_winning:
-			continue
-		count += 1
-	return count
+# 旧 _try_auto_ron / _count_ron_candidates 旁路已删除。
+# RON / sancha 仅由 CLAIM DecisionWindow 实际 intent + BattleActionResolver 裁决。
 
 # ---- 决策钩子（subclass 覆写以接入玩家输入或网络权威） ----
 #
@@ -328,8 +322,8 @@ func _count_ron_candidates(discarded: Tile, discarder: int, is_houtei: bool) -> 
 # 日麻 §5 立直锁牌:已立直 + 有刚摸的牌 → 强制 tsumogiri,不再让 AI 决策
 # (AI 决策不知 riichi 状态,会非法换牌)。
 func _get_discard_decision(seat: Seat, actor: int) -> Tile:
-	if seat.riichi.declared and seat.last_drawn_tile_id >= 0:
-		var forced: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
+	if seat.riichi.declared and seat.last_drawn_instance_id != Tile.INVALID_INSTANCE_ID:
+		var forced: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
 		if forced != null:
 			return forced
 	if ai.has_method("set_defense_context"):
@@ -396,77 +390,27 @@ func _close_ippatsu_if_lap_passed(seat: Seat) -> void:
 		return
 	seat.riichi.consume_ippatsu()
 
-# 岭上开花 sync 路径:检 tsumo;胡且默认 accept → settle 并返 true。
-# is_rinshan=true 被透传到 _build_game_ctx → Yaku 评 +1 han 役。
-func _try_rinshan_tsumo(seat: Seat) -> bool:
-	var rinshan_tile: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
-	if rinshan_tile == null:
-		return false
-	var win: Dictionary = _check_tsumo(rinshan_tile, false, true)  # is_rinshan=true
-	if not win.is_winning:
-		return false
-	if not _should_accept_tsumo(state.current_seat, rinshan_tile, win):
-		return false
-	_settle_tsumo(rinshan_tile, win.wp, win.yaku_list, false, true)
-	return true
-
-
-# 岭上开花 async 路径:_should_accept_tsumo 在 PlayableBC 是 coroutine,要 await
-func _try_rinshan_tsumo_async(seat: Seat) -> bool:
-	var rinshan_tile: Tile = _find_tile_in_hand(seat.hand, seat.last_drawn_tile_id)
-	if rinshan_tile == null:
-		return false
-	var win: Dictionary = _check_tsumo(rinshan_tile, false, true)
-	if not win.is_winning:
-		return false
-	var accept = await _should_accept_tsumo(state.current_seat, rinshan_tile, win)
-	if not accept:
-		return false
-	_settle_tsumo(rinshan_tile, win.wp, win.yaku_list, false, true)
-	return true
-
-
-# 按 id 找手牌中的实际 Tile 引用(保留 owner_seat / is_red_dora 等)
-func _find_tile_in_hand(hand: Hand, tile_id: int) -> Tile:
-	for t in hand._tiles:
-		if t.id == tile_id:
-			return t
-	return null
-
-# ---- run_to_end 的 async 镜像（plan: 战斗节点真实可玩 / Step 5） ----
-#
-# 跟 run_to_end() 行为完全一样，只是把 _step_draw / _step_discard / _try_auto_ron
-# 路径上的决策钩子调用都包成 await，让 PlayableBattleController 可以在那 3 个钩子
-# 里 await 玩家 signal。默认 sync 钩子被 await 时是 no-op（GDScript 4 规则：
-# await 一个非 Signal/coroutine 值 → 立刻返回该值），所以 sync 默认行为下 async
-# 路径与 sync 路径输出一致。
-#
-# 现存 GUT 测试继续走 run_to_end()（sync）；新写 PlayableTable + RunFlow 走
-# run_to_end_async()。两路径共享 _settle_tsumo / _settle_ron / 状态机。
+# ---- run_to_end 的 async 镜像：与 sync 同一状态机，仅 TURN/CLAIM/ROB 决策可 await ----
 func run_to_end_async() -> Dictionary:
 	_emit(&"GAME_BEGIN", state.dealer_seat, null, {})
 
 	var steps := 0
 	while not _settled and steps < MAX_LOOP_STEPS:
 		steps += 1
-		if state.phase == BattlePhase.Kind.DRAW:
+		if not _pending_added_kan.is_empty():
+			await _step_rob_kan_collect_async()
+		elif state.phase == BattlePhase.Kind.DRAW:
 			await _step_draw_async()
 		elif state.phase == BattlePhase.Kind.DISCARD:
-			await _step_discard_async()
+			await _step_turn_async()
 		elif state.phase == BattlePhase.Kind.CLAIM:
-			var last_discard: Tile = _get_last_discarded()
-			var last_discarder: int = _get_last_discarder()
-			if last_discard != null and last_discarder >= 0:
-				_resolve_claims(last_discard, last_discarder)
-			else:
-				engine.advance_to_next_seat()
+			await _step_claim_collect_async()
 		elif state.phase == BattlePhase.Kind.SETTLE:
 			break
-		# 日麻 §3.2 途中流局自动判定(四风连打 / 四家立直 / 四杠散了 / 三家和了)。
-		# 任一命中 → 立刻 settle 为 abortive_draw,GameDriver 路径同 kyuusyu。
 		if not _settled:
 			_check_and_emit_abortive_draws()
 
+	_finalize_replay_lifecycle_status()
 	return {
 		"last_event": _last_event_type,
 		"events": events,
@@ -490,155 +434,159 @@ func _check_and_emit_abortive_draws() -> void:
 		return
 
 func _step_draw_async() -> void:
-	var t: Tile = engine.draw_for_current()
-	if t == null:
-		_emit(&"EXHAUSTIVE_DRAW", -1, null, {})
-		# 流し満貫 检测(同 sync 路径)
-		var nm_winner: int = NagashiMangan.detect_winner_seat(state)
-		if nm_winner >= 0:
-			_emit(&"NAGASHI_MANGAN", nm_winner, null,
-				{"winner_seat": nm_winner})
-		_settled = true
-		return
-	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
-	# 日麻 §3.2 九種九牌:第一巡(state.first_round_active + turn_count == 0)
-	# 摸完牌后,若本家 14 张含 ≥ 9 种 distinct 幺九 → 玩家可选途中流局。
-	# 默认 hook 返 false(AI 永不主动 abort);PlayableBattleController 覆写
-	# 让 seat 0 弹按钮等玩家决定。
-	if state.first_round_active and state.turn_count == 0:
-		var seat: Seat = state.seats[state.current_seat]
-		if AbortiveDraw.is_kyuusyu_kyuuhai(seat.hand.to_id_array()):
-			var declare_kyuusyu: bool = await _should_declare_kyuusyu_kyuuhai(state.current_seat)
-			if declare_kyuusyu:
-				_emit(&"ABORTIVE_DRAW", state.current_seat, null,
-					{"reason": "kyuusyu_kyuuhai"})
-				_settled = true
-				return
-	var is_haitei: bool = (state.wall.live_wall_size() == 0)
-	# 天和/地和(同 sync 路径)
-	var first_draw: bool = state.first_round_active \
-		and state.discards_per_seat[state.current_seat].is_empty()
-	var is_tenhou: bool = first_draw \
-		and state.current_seat == state.dealer_seat
-	var is_chiihou: bool = first_draw \
-		and state.current_seat != state.dealer_seat
-	var win := _check_tsumo(t, is_haitei, false, is_tenhou, is_chiihou)
-	if win.is_winning:
-		var accept: bool = await _should_accept_tsumo(state.current_seat, t, win)
-		if accept:
-			_settle_tsumo(t, win.wp, win.yaku_list, is_haitei)
-	# Task 3: AI self-kan (ankan / added_kan) after draw, only if not settled
-	if not _settled:
-		_try_ai_self_kan()
+	# 与 sync 相同：仅 server draw/事件
+	_step_draw()
 
-func _step_discard_async() -> void:
+
+func _step_turn_async() -> void:
 	var seat: Seat = state.seats[state.current_seat]
 	var actor: int = state.current_seat
-	# 日麻 §6.4 一発窗:玩家立直后下一巡再轮到自家弃牌时关窗
 	_close_ippatsu_if_lap_passed(seat)
-	# 岭上开花(rinshan kaihou)tsumo 检测 — 杠后岭上摸 + 胡 → +1 han 役
-	if seat.last_draw_is_rinshan and seat.last_drawn_tile_id >= 0:
-		var rinshan_settled: bool = await _try_rinshan_tsumo_async(seat)
-		if rinshan_settled:
+	var source: StringName = ActionSource.AI
+	var act: Action = null
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
+		act = _peek_expected_replay()
+		if act == null:
+			_replay_status = &"MISMATCH"
+			_settled = true
 			return
-		seat.last_draw_is_rinshan = false
-	var to_discard: Tile = null
-	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
-	if not replayed.is_empty():
-		var tid: int = int(replayed.get("tile_id", -1))
-		for t in seat.hand._tiles:
-			if t.id == tid:
-				to_discard = t
-				break
 	else:
-		to_discard = await _get_discard_decision(seat, actor)
-	if to_discard == null:
+		act = await _select_turn_action_async(seat, actor)
+		if act == null:
+			_settled = true
+			return
+		if actor == 0 and _is_human_turn_source():
+			source = ActionSource.HUMAN
+	var resp: ActionResolution = apply_action(act, source)
+	if resp == null or not resp.accepted:
 		_settled = true
 		return
-	_emit(&"PLAYER_ACTION", actor, null, {
-		"kind": "discard",
-		"tile_id": to_discard.id,
-	})
-	var ok: bool = engine.discard(to_discard.id)
-	if not ok:
-		_settled = true
-		return
-	state.kuikae_restricted[actor] = []
-	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
-	# 立直决策（discard 后 hand=13）
-	var should_riichi: bool = false
-	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
-	if not riichi_replayed.is_empty():
-		should_riichi = true
-	elif _replay_decisions.is_empty():
-		should_riichi = await _get_riichi_decision(actor)
-	if should_riichi:
-		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
-		if engine.declare_riichi(actor):
-			state.scores[actor] -= RIICHI_STICK_COST
-			_emit(&"RIICHI_DECLARED", actor, null, {})
-	# 鸣牌响应（v1 仅 ron）
-	if not _settled:
-		await _try_ron_async(to_discard, actor)
-	# 玩家鸣牌窗口（吃/碰/杠）— 默认 no-op；PlayableBattleController 覆写
-	# 注意：直接 await self._try_player_claim_async() 在 GDScript 4 中 dispatch
-	# 不可靠（首次后 cache 父类版本）。子类应覆写 _step_discard_async 自己调，
-	# 不要在父类调用 self.method() 期望子类版本生效。
-	if not _settled:
-		await _try_player_claim_async(to_discard, actor)
 
-func _try_ron_async(discarded: Tile, discarder: int) -> void:
-	var is_houtei: bool = (state.wall.live_wall_size() == 0)
-	# 三家和了 pre-check
-	if _count_ron_candidates(discarded, discarder, is_houtei) >= 3:
-		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
-		_settled = true
+
+func _step_claim_collect_async() -> void:
+	var discarded: Tile = _get_last_discarded()
+	var discarder: int = _get_last_discarder()
+	if discarded == null or discarder < 0:
+		engine.advance_to_next_seat()
+		_invalidate_window()
 		return
+	_ensure_active_window()
+	if _active_window == null or _active_window.kind != DecisionWindow.KIND_CLAIM:
+		engine.advance_to_next_seat()
+		_invalidate_window()
+		return
+	var source: StringName = ActionSource.AI
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
 	for offset in range(1, 4):
 		var candidate: int = (discarder + offset) % 4
-		var candidate_seat: Seat = state.seats[candidate]
-		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, discarded, candidate_seat.furiten):
+		if _active_window.has_responded(candidate):
 			continue
-		var ron_check: Dictionary = _check_ron(discarded, candidate, is_houtei)
-		if not ron_check.is_winning:
+		var act: Action = null
+		if source == ActionSource.REPLAY:
+			act = _peek_expected_replay()
+			if act == null or act.seat != candidate:
+				act = _build_pass_action(candidate)
+		else:
+			act = await _select_claim_action_async(candidate, discarded, discarder)
+		if act == null:
+			act = _build_pass_action(candidate)
+		var use_src: StringName = source
+		if candidate == 0 and _is_human_turn_source() and source != ActionSource.REPLAY:
+			use_src = ActionSource.HUMAN
+		var resp: ActionResolution = apply_action(act, use_src)
+		if resp == null:
 			continue
-		var accept: bool = await _should_accept_ron(candidate, discarded, discarder, ron_check, is_houtei)
-		if not accept:
-			continue
-		if apply_ron(candidate, discarded, discarder, is_houtei):
+		if not resp.accepted and use_src == ActionSource.REPLAY:
+			_settled = true
+			return
+		if _settled:
 			return
 
-# 公共入口：荣胡（外部 driver 调用，不走 run_to_end 主循环）。
-# discarder_seat: 弃牌人座（决定 ron_tile 的 owner_seat 与 score_ctx.loser_seat）。
-# 返 false 表示和牌不成立（无役 / 听牌不命中 / 技能取消）。
-func apply_ron(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> bool:
+
+func _step_rob_kan_collect_async() -> void:
+	_ensure_active_window()
+	if _active_window == null or _active_window.kind != DecisionWindow.KIND_ROB_KAN:
+		_finalize_pending_added_kan_all_pass()
+		return
+	var kan_seat: int = int(_pending_added_kan.get("seat", -1))
+	var source: StringName = ActionSource.AI
+	if _replay_status == &"LOADED" or _replay_status == &"RUNNING":
+		source = ActionSource.REPLAY
+	for offset in range(1, 4):
+		var candidate: int = (kan_seat + offset) % 4
+		if _active_window.has_responded(candidate):
+			continue
+		var act: Action = null
+		if source == ActionSource.REPLAY:
+			act = _peek_expected_replay()
+			if act == null or act.seat != candidate:
+				act = _build_pass_action(candidate)
+		else:
+			act = await _select_rob_kan_action_async(candidate)
+		if act == null:
+			act = _build_pass_action(candidate)
+		var use_src: StringName = source
+		if candidate == 0 and _is_human_turn_source() and source != ActionSource.REPLAY:
+			use_src = ActionSource.HUMAN
+		var resp: ActionResolution = apply_action(act, use_src)
+		if resp == null:
+			continue
+		if not resp.accepted and use_src == ActionSource.REPLAY:
+			_settled = true
+			return
+		if _settled or _pending_added_kan.is_empty():
+			return
+
+
+func _is_human_turn_source() -> bool:
+	# Playable 子类覆写为 true；默认 AI-only
+	return false
+
+
+func _select_turn_action_async(seat: Seat, actor: int) -> Action:
+	return _select_ai_turn_action(seat, actor)
+
+
+func _select_claim_action_async(candidate: int, discarded: Tile, discarder: int) -> Action:
+	return _build_ai_claim_action(candidate, discarded, discarder)
+
+
+func _select_rob_kan_action_async(candidate: int) -> Action:
+	return _build_ai_rob_kan_action(candidate)
+
+
+# 私有：荣和结算 helper（外部一律 Action.ron → apply_action）。
+# 返 DOMAIN_APPLIED / DOMAIN_CANCELLED / DOMAIN_FAILED。
+func _apply_ron_private(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> int:
 	var ron_ti := TileInstance.make(ron_tile, discarder_seat, null)
-	# M7：reset 上一次 emit 留下的 cancel 标记，避免同 hand 多次 ron 尝试时
-	# 旧值粘连（例：先 seat 1 的 ron 被 cancel；再 seat 2 试 ron 时 ron_cancelled[2]
-	# 默认 false，但若上次 emit 不小心也触发了 seat 2 的 cancel 就会粘连）
+	# 每次尝试前 reset，避免同 hand 多次 ron 时旧 cancel 粘连
 	state.ron_cancelled[winner_seat] = false
-	# M11 net foundation: ron 接受决策（v1 自动接受 — Phase 2 玩家可"放弃和牌"
-	# 等情景需要日志化）。本 emit 在 RON_DECLARED 之前以记录"决定 → 引擎应用"顺序
-	_emit(&"PLAYER_ACTION", winner_seat, null, {
-		"kind": "ron_accept",
-		"tile_id": ron_tile.id,
-		"discarder_seat": discarder_seat,
-	})
-	# 先 emit RON_DECLARED 让技能（如「中·封印」）有机会取消
+	# 规则先判：不成立则 FAILED，且不 emit（技能无机会 consume）
+	var win := _check_ron(ron_tile, winner_seat, is_houtei, is_chankan)
+	if not win.is_winning:
+		return DOMAIN_FAILED
+	# 规则成立后再 emit，技能可 cancel；CANCELLED 保留事件与 cancel/consume 状态
 	_emit(&"RON_DECLARED", winner_seat, ron_ti, {
 		"discarder_seat": discarder_seat,
 		"is_tsumo": false,
 		"is_chankan": is_chankan,
 	})
 	if state.ron_cancelled[winner_seat]:
-		return false
-	var win := _check_ron(ron_tile, winner_seat, is_houtei, is_chankan)
-	if not win.is_winning:
-		return false
+		return DOMAIN_CANCELLED
+	# 权威状态提交在 settle 之前：普通 ron 走 engine.apply_ron；chankan 不经河末校验
+	if is_chankan:
+		state.current_seat = winner_seat
+		state.phase = BattlePhase.Kind.SETTLE
+	else:
+		if not engine.apply_ron(winner_seat, ron_tile.instance_id):
+			return DOMAIN_FAILED
 	_settle_ron(ron_tile, ron_ti, winner_seat, discarder_seat,
 		win.wp, win.yaku_list, is_houtei, is_chankan)
-	return true
+	return DOMAIN_APPLIED
 
+# 不可失败：调用方已完成 engine/state 权威提交，此处仅计分与事件结算。
 func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int,
 		discarder_seat: int, wp: Dictionary, yaku_list,
 		is_houtei: bool = false, is_chankan: bool = false) -> void:
@@ -705,20 +653,13 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int,
 	# 的役満/普通飜判定;skill_han/extra_dora 等修正不在此列表内）。
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
-	engine.apply_ron(winner_seat, ron_tile)
 	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
 	_settled = true
 
 func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = false, _is_rinshan: bool = false) -> void:
+	# 纯结算：TSUMO_DECLARED + engine.apply_tsumo 由 _apply_tsumo_action 在成功路径先完成
 	var seat: Seat = state.seats[state.current_seat]
 	var ti := _wrap_tile(drawn)
-	# M11 net foundation: tsumo 接受是隐含决策（v1 自动接受）。本 emit 让事件
-	# 流自包含 — 未来玩家"放弃自摸"或网络重放都能用
-	_emit(&"PLAYER_ACTION", state.current_seat, null, {
-		"kind": "tsumo_accept",
-		"tile_id": drawn.id,
-	})
-	_emit(&"TSUMO_DECLARED", state.current_seat, ti, {})
 
 	var score_ctx := ScoreContext.new()
 	score_ctx.is_tsumo = true
@@ -766,7 +707,6 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	result["points_won"] = int(result.get("winner_total", 0))
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
-	engine.apply_tsumo(state.current_seat, drawn)
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)
 	_settled = true
 
@@ -905,155 +845,108 @@ static func _yaku_id_to_string_name(yaku_id: int) -> StringName:
 		YakuId.CHIITOITSU: return &"chiitoitsu"
 	return StringName(str(yaku_id))
 
-# ---- Task 3: Self-kan after draw ----
-#
-# After AI draws and tsumo is not accepted, check if ankan/added_kan is possible.
-# Calls ai.decide_self_kan(seat) if available. For added_kan, first checks chankan
-# (Task 5) before applying.
-
-func _try_ai_self_kan() -> void:
-	if not ai.has_method("decide_self_kan"):
-		return
-	var actor: int = state.current_seat
-	var seat: Seat = state.seats[actor]
-	var decision: Dictionary = ai.decide_self_kan(seat)
-	if decision.is_empty():
-		return
-	var kind: String = String(decision.get("kind", ""))
-	var tid: int = int(decision.get("tile_id", -1))
-	if kind == "ankan":
-		_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": tid})
-		engine.apply_ankan(actor, tid)
-	elif kind == "added_kan":
-		# Task 5: chankan check before applying added_kan
-		if _try_chankan_ron(tid, actor):
-			return  # someone ronned the kan tile
-		_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": tid})
-		engine.apply_added_kan(actor, tid)
-
-# ---- Task 4: Claim resolution ----
-#
-# After discard, check if any AI seat wants to pon/minkan the discarded tile.
-# Priority: pon/minkan (priority 2) > chi (priority 1).
-# Ron is handled separately by _try_auto_ron before this.
-
 func _get_last_discarded() -> Tile:
-	for i in range(events.size() - 1, -1, -1):
-		if events[i].type == &"TILE_DISCARDED" and events[i].tile_instance != null:
-			return Tile.new(events[i].tile_instance.tile.id, events[i].tile_instance.tile.is_red_dora)
-	return null
+	return _last_discarded_tile
+
 
 func _get_last_discarder() -> int:
-	for i in range(events.size() - 1, -1, -1):
-		if events[i].type == &"TILE_DISCARDED":
-			return events[i].actor_seat
-	return -1
+	return _last_discarder_seat
 
-func _resolve_claims(discarded: Tile, discarder: int) -> void:
-	if not ai.has_method("decide_claim_for_seat"):
-		engine.advance_to_next_seat()
-		return
-	var best_seat: int = -1
-	var best_priority: int = 0
-	var best_kind: String = ""
-	for offset in range(1, 4):
-		var candidate: int = (discarder + offset) % 4
-		if candidate == 0:
-			continue  # skip player seat — player claims via PlayableBattleController
-		var seat: Seat = state.seats[candidate]
-		var decision: Dictionary = ai.decide_claim_for_seat(seat, discarded.id, discarder)
-		if decision.is_empty():
-			continue
-		var kind: String = String(decision.get("kind", ""))
-		var priority: int = 0
-		if kind == "pon" or kind == "minkan":
-			priority = 2
-		elif kind == "chi":
-			priority = 1
-		if priority > best_priority:
-			best_priority = priority
-			best_seat = candidate
-			best_kind = kind
-	if best_seat < 0:
-		engine.advance_to_next_seat()
-		return
-	# Apply the best claim
-	_emit(&"PLAYER_ACTION", best_seat, null, {
-		"kind": best_kind,
-		"tile_id": discarded.id,
-		"discarder_seat": discarder,
-	})
-	if best_kind == "pon":
-		engine.apply_pon(best_seat, discarded)
-		state.kuikae_restricted[best_seat] = ClaimValidator.kuikae_restricted_ids(
-			discarded.id, [], false)
-	elif best_kind == "minkan":
-		engine.apply_minkan(best_seat, discarded)
-	# Emit TILE_CLAIMED event for UI / replay
-	_emit(&"TILE_CLAIMED", best_seat, _wrap_tile(discarded), {
-		"kind": best_kind,
-		"discarder_seat": discarder,
-	})
 
-# ---- Task 5: Chankan (robbing a kan) ----
-#
-# Before applying added_kan, check if any other seat can ron the tile.
-# Sets game_ctx.is_chankan = true for the yaku evaluation.
-
-func _try_chankan_ron(kan_tile_id: int, kan_declarer: int) -> bool:
-	var kan_tile := Tile.new(kan_tile_id)
-	for offset in range(1, 4):
-		var candidate: int = (kan_declarer + offset) % 4
-		var candidate_seat: Seat = state.seats[candidate]
-		if not ClaimValidator.can_ron(candidate_seat.hand, candidate_seat.melds, kan_tile, candidate_seat.furiten):
-			continue
-		var ron_check: Dictionary = _check_ron_chankan(kan_tile, candidate)
-		if not ron_check.is_winning:
-			continue
-		if apply_ron(candidate, kan_tile, kan_declarer, false, true):
-			return true
-	return false
-
-func _check_ron_chankan(ron_tile: Tile, winner_seat: int) -> Dictionary:
-	var winner: Seat = state.seats[winner_seat]
-	var typed_melds: Array[Meld] = []
-	for m in winner.melds:
-		typed_melds.append(m)
-	var wp: Dictionary = WinPattern.detect(winner.hand, typed_melds, ron_tile)
-	if not wp.is_winning:
-		return {"is_winning": false}
-	var game_ctx := _build_game_ctx(winner, false, false, false)
-	game_ctx.is_chankan = true
-	var yaku_wc := WinContext.new(winner.hand, typed_melds, ron_tile, wp, game_ctx)
-	var yaku_list = YakuEvaluator.evaluate(yaku_wc)
-	var has_yaku: bool = yaku_list.is_yakuman() or yaku_list.size() > 0
-	if not has_yaku:
-		return {"is_winning": false}
-	return {
-		"is_winning": true,
-		"wp": wp,
-		"yaku_list": yaku_list,
-		"melds": typed_melds,
-	}
-
-# ---- 私有 helper ----
-
-# 从 hand 拷一份并移除第一个 id == tile_id 的牌；返新 Hand；找不到返 null。
-func _hand_minus_first(hand: Hand, tile_id: int) -> Hand:
-	var copy := Hand.new()
-	var skipped := false
-	for t in hand._tiles:
-		if not skipped and t.id == tile_id:
-			skipped = true
-			continue
-		copy.add(t)
-	if not skipped:
+func _build_pass_action(seat_id: int) -> Action:
+	var ctx: DecisionContext = _decision_context_ref_for_seat(seat_id)
+	if ctx == null:
 		return null
-	return copy
+	return Action.make_pass(
+		seat_id, DEFAULT_ROOM_ID, _next_action_command_id(),
+		ctx.decision_id, state.hand_seq, _action_cmd_seq
+	)
 
-# 用当前 BattleState + seat 构造 yaku/GameContext。
-# is_haitei / is_houtei 由 _check_tsumo / _check_ron 根据牌墙状态传入；
-# 之前一直是 false，导致海底捞月 / 河底捞鱼役在真战斗永不被检测。
+
+func _build_ai_claim_action(candidate: int, discarded: Tile, discarder: int) -> Action:
+	var ctx: DecisionContext = _decision_context_ref_for_seat(candidate)
+	if ctx == null:
+		return null
+	var cmd: String = _next_action_command_id()
+	var did: String = ctx.decision_id
+	var hs: int = state.hand_seq
+	# AI 有 RON offer 时必须提交 Action.ron（不再走自动荣和旁路）
+	if ctx.has_kind("RON"):
+		return Action.ron(candidate, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	if not ai.has_method("decide_claim_for_seat"):
+		return _build_pass_action(candidate)
+	var seat: Seat = state.seats[candidate]
+	var decision: Dictionary = ai.decide_claim_for_seat(seat, discarded.id, discarder)
+	if decision.is_empty():
+		return _build_pass_action(candidate)
+	var kind: String = String(decision.get("kind", ""))
+	if kind == "pon" and ctx.has_kind("PON"):
+		var comps: Array = _match_type_iids(seat.hand, [discarded.id, discarded.id])
+		if comps.size() == 2 and ctx.allows("PON", {"companion_tile_instance_ids": comps}):
+			return Action.pon(candidate, comps, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	if kind == "minkan" and ctx.has_kind("KAN"):
+		var comps3: Array = _match_type_iids(seat.hand, [discarded.id, discarded.id, discarded.id])
+		if comps3.size() == 3:
+			var pay := {"kan_kind": "MINKAN", "companion_tile_instance_ids": comps3}
+			if ctx.allows("KAN", pay):
+				return Action.kan(candidate, pay, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	if kind == "chi" and ctx.has_kind("CHI"):
+		var type_ids: Array = decision.get("companion_tile_ids", []) as Array
+		var comps_c: Array = _match_type_iids(seat.hand, type_ids)
+		if comps_c.size() == 2 and ctx.allows("CHI", {"companion_tile_instance_ids": comps_c}):
+			return Action.chi(candidate, comps_c, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	return _build_pass_action(candidate)
+
+
+func _build_ai_rob_kan_action(candidate: int) -> Action:
+	var ctx: DecisionContext = _decision_context_ref_for_seat(candidate)
+	if ctx == null:
+		return null
+	if ctx.has_kind("RON"):
+		return Action.ron(
+			candidate, DEFAULT_ROOM_ID, _next_action_command_id(),
+			ctx.decision_id, state.hand_seq, _action_cmd_seq
+		)
+	return _build_pass_action(candidate)
+
+
+func _select_ai_turn_action(seat: Seat, actor: int) -> Action:
+	var ctx: DecisionContext = _decision_context_ref_for_seat(actor)
+	if ctx == null:
+		return null
+	var cmd: String = _next_action_command_id()
+	var did: String = ctx.decision_id
+	var hs: int = state.hand_seq
+	# TSUMO 优先（对齐旧 auto-accept）
+	if ctx.has_kind("TSUMO"):
+		return Action.tsumo(actor, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	# 自摸杠：AI decide_self_kan
+	if ctx.has_kind("KAN") and ai != null and ai.has_method("decide_self_kan"):
+		var decision: Dictionary = ai.decide_self_kan(seat)
+		if not decision.is_empty():
+			var k: String = String(decision.get("kind", ""))
+			var tid: int = int(decision.get("tile_id", -1))
+			if k == "ankan":
+				var iids: Array = _hand_iids_of_type(seat.hand, tid)
+				if iids.size() >= 4:
+					var pay_a := {"kan_kind": "ANKAN", "tile_instance_ids": iids.slice(0, 4)}
+					if ctx.allows("KAN", pay_a):
+						return Action.kan(actor, pay_a, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+			elif k == "added_kan":
+				for offer in ctx.allowed_actions:
+					if str(offer.get("kind", "")) != "KAN":
+						continue
+					for opt in offer.get("payload_options", []):
+						if str(opt.get("kan_kind", "")) != "ADDED_KAN":
+							continue
+						var added_iid: int = int(opt.get("added_tile_instance_id", -1))
+						var at: Tile = seat.hand.find_by_instance_id(added_iid)
+						if at != null and at.id == tid and ctx.allows("KAN", opt):
+							return Action.kan(actor, opt, DEFAULT_ROOM_ID, cmd, did, hs, _action_cmd_seq)
+	# DISCARD / RIICHI
+	return _build_action_for_tile(seat, actor, _get_discard_decision(seat, actor))
+
+
 func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_houtei: bool = false, is_rinshan: bool = false, is_tenhou: bool = false, is_chiihou: bool = false) -> GameContext:
 	var ctx := GameContext.new()
 	ctx.bakaze = state.round_wind
@@ -1064,59 +957,963 @@ func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_hou
 	ctx.is_ippatsu = seat.riichi.ippatsu_window
 	ctx.is_haitei = is_haitei
 	ctx.is_houtei = is_houtei
-	# 岭上开花(rinshan kaihou)只在 tsumo 路径有意义,荣胡时永 false
 	ctx.is_rinshan = is_rinshan and is_tsumo
-	# 天和/地和:tenhou 仅庄家配牌即和;chiihou 仅闲家首摸即和。两者都要求 tsumo。
 	ctx.is_dealer_first_hand = is_tenhou and is_tsumo
 	ctx.is_non_dealer_first_draw = is_chiihou and is_tsumo
 	ctx.dora_count = state.dora_indicators.visible.size()
 	return ctx
 
-# ---- M11 net foundation: replay API ----
 
-# 注入决策回放队列。来自 extract_player_actions(prev_events)。
-# 调用顺序：BC.new() → set_replay_decisions(actions) → run_to_end()。
-# decisions 期间 BC 用 actions 替代 ai.decide_*，事件流应与原录制一致。
-func set_replay_decisions(p_decisions: Array) -> void:
-	_replay_decisions = p_decisions
-	_replay_idx = 0
+# ---- E2-02：统一 Action 入口 / DecisionWindow / journal / replay ----
 
-# 内部：若下一条决策匹配 (seat, kind)，pop 并返回；否则返 {}。
-# 不匹配时不 advance _replay_idx — 下次调用还能 peek 同一条。
-func _consume_replay_decision_if_match(p_seat: int, p_kind: String) -> Dictionary:
-	if _replay_idx >= _replay_decisions.size():
-		return {}
-	var dec: Dictionary = _replay_decisions[_replay_idx]
-	if int(dec.get("seat", -1)) == p_seat and String(dec.get("kind", "")) == p_kind:
-		_replay_idx += 1
-		return dec
-	return {}
+func _impl_apply_action(action: Action, source: StringName = ActionSource.HUMAN) -> ActionResolution:
+	if action == null:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if not ActionSource.is_valid(source):
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if action.kind == "ITEM_USE":
+		return ActionResolution.rejected(ActionResolution.NOT_ENABLED)
 
-# 从 events 中抽 PlayerAction 序列。
-# 用途：录回放 → 重放时把这些 action 注入 BC 替代 AI 决策路径。
-# 返：[{seat, kind: "discard"|"riichi"|"tsumo_accept"|"ron_accept",
-#       tile_id?: int, discarder_seat?: int}, ...]
-static func extract_player_actions(p_events: Array) -> Array:
-	# Only extract action kinds that the replay system consumes (discard, riichi,
-	# tsumo_accept, ron_accept). AI-deterministic actions (pon, minkan, ankan,
-	# added_kan) are re-derived from the AI during replay and must NOT enter the
-	# replay queue — otherwise _consume_replay_decision_if_match will stall on
-	# unmatched kinds and block subsequent legitimate matches.
-	const REPLAY_KINDS: Array = ["discard", "riichi", "tsumo_accept", "ron_accept"]
-	var result: Array = []
-	for ev in p_events:
-		if ev.type != &"PLAYER_ACTION":
-			continue
-		var kind_str: String = String(ev.extra.get("kind", ""))
-		if kind_str not in REPLAY_KINDS:
-			continue
-		var entry: Dictionary = {
-			"seat": ev.actor_seat,
-			"kind": kind_str,
-		}
-		if entry.kind == "discard" or entry.kind == "tsumo_accept" or entry.kind == "ron_accept":
-			entry["tile_id"] = int(ev.extra.get("tile_id", -1))
-		if entry.kind == "ron_accept":
-			entry["discarder_seat"] = int(ev.extra.get("discarder_seat", -1))
-		result.append(entry)
+	# REPLAY：先对齐期望队列（不得被 WRONG_* 抢走）
+	if source == ActionSource.REPLAY:
+		var expected: Action = _peek_expected_replay()
+		if expected == null or expected.to_dict() != action.to_dict():
+			_replay_status = &"MISMATCH"
+			return ActionResolution.rejected(ActionResolution.REPLAY_MISMATCH)
+
+	var reject: ActionResolution = _prevalidate_action(action)
+	if reject != null:
+		return reject
+
+	var result: ActionResolution = null
+	match action.kind:
+		"DISCARD":
+			result = _apply_discard_action(action)
+		"RIICHI":
+			result = _apply_riichi_action(action)
+		"TSUMO":
+			result = _apply_tsumo_action(action)
+		"RON":
+			result = _apply_window_intent_action(action)
+		"PASS":
+			result = _apply_window_intent_action(action)
+		"CHI", "PON":
+			result = _apply_window_intent_action(action)
+		"KAN":
+			result = _apply_kan_action(action)
+		"DECLARE_ABORTIVE_DRAW":
+			result = _apply_abortive_draw_action(action)
+		_:
+			result = ActionResolution.rejected(ActionResolution.NOT_OFFERED)
+
+	if result != null and result.accepted:
+		_append_journal(action)
+		if source == ActionSource.REPLAY:
+			_consume_expected_replay()
 	return result
+
+
+func _impl_decision_context_for_seat(seat: int) -> DecisionContext:
+	if state == null:
+		return null
+	if seat < 0 or seat > 3:
+		return null
+	_ensure_active_window()
+	if _active_window == null:
+		return null
+	return _active_window.context_for_seat(seat)
+
+
+## 权威 controller 内部只读借用；公开 facade 仍走 _impl_decision_context_for_seat 深拷贝。
+func _decision_context_ref_for_seat(seat: int) -> DecisionContext:
+	if state == null or seat < 0 or seat > 3:
+		return null
+	_ensure_active_window()
+	if _active_window == null:
+		return null
+	return _active_window._context_ref_for_seat(seat)
+
+
+func _impl_action_journal() -> Array:
+	var out: Array = []
+	for item in _action_journal:
+		if item is Action:
+			out.append(Action.from_dict((item as Action).to_dict()))
+	return out
+
+
+func _impl_load_replay_journal(raw: Variant) -> bool:
+	if typeof(raw) != TYPE_ARRAY:
+		return false
+	var loaded: Array = []
+	for item in raw:
+		if not (item is Action):
+			return false
+		var cloned: Action = Action.from_dict((item as Action).to_dict())
+		if cloned == null:
+			return false
+		loaded.append(cloned)
+	_expected_replay = loaded
+	_expected_replay_idx = 0
+	_replay_status = &"LOADED"
+	return true
+
+
+func _impl_replay_status() -> StringName:
+	return _replay_status
+
+
+## 合法 DRAW 且未 settle 时调用唯一 _step_draw；正常摸牌与荒牌 settle 均 true。
+func _impl_progress_server_draw() -> bool:
+	if _settled:
+		return false
+	if state == null or engine == null:
+		return false
+	if state.phase != BattlePhase.Kind.DRAW:
+		return false
+	_step_draw()
+	return true
+
+
+func _prevalidate_action(action: Action) -> ActionResolution:
+	if action.hand_seq != state.hand_seq:
+		return ActionResolution.rejected(ActionResolution.WRONG_HAND)
+	# DRAW/SETTLE 下任何业务行动均为 WRONG_PHASE（在 WRONG_DECISION 之前）
+	if state.phase == BattlePhase.Kind.DRAW or state.phase == BattlePhase.Kind.SETTLE:
+		return ActionResolution.rejected(ActionResolution.WRONG_PHASE)
+
+	var ctx: DecisionContext = _decision_context_ref_for_seat(action.seat)
+	if ctx == null:
+		if action.kind in ["DISCARD", "RIICHI", "TSUMO", "DECLARE_ABORTIVE_DRAW"]:
+			if action.seat != state.current_seat:
+				return ActionResolution.rejected(ActionResolution.WRONG_SEAT)
+		return ActionResolution.rejected(ActionResolution.WRONG_DECISION)
+	if action.decision_id != ctx.decision_id:
+		return ActionResolution.rejected(ActionResolution.WRONG_DECISION)
+	if action.seat != ctx.seat:
+		return ActionResolution.rejected(ActionResolution.WRONG_SEAT)
+	if _active_window != null and _active_window.has_responded(action.seat):
+		return ActionResolution.rejected(ActionResolution.ALREADY_RESPONDED)
+	# entity / offered（NOT_OFFERED 优先于“kind 与 phase 不完全匹配”）
+	if action.kind == "DISCARD" or action.kind == "RIICHI":
+		var iid: int = int(action.payload.get("tile_instance_id", -1))
+		var tile: Tile = state.seats[action.seat].hand.find_by_instance_id(iid)
+		if tile == null:
+			return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
+	if not ctx.allows(action.kind, action.payload):
+		return ActionResolution.rejected(ActionResolution.NOT_OFFERED)
+	return null
+
+
+func _apply_discard_action(action: Action) -> ActionResolution:
+	var iid: int = int(action.payload.get("tile_instance_id", -1))
+	var seat: Seat = state.seats[action.seat]
+	var tile: Tile = seat.hand.find_by_instance_id(iid)
+	if tile == null:
+		return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
+	var events_before: int = events.size()
+	if not engine.discard(iid):
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	state.kuikae_restricted[action.seat] = []
+	_last_discarded_tile = tile
+	_last_discarder_seat = action.seat
+	_invalidate_window()
+	_emit(&"PLAYER_ACTION", action.seat, null, {
+		"kind": "discard",
+		"tile_id": tile.id,
+		"tile_instance_id": tile.instance_id,
+	})
+	var applied_ev: BattleEvent = _append_action_applied(action)
+	_emit(&"TILE_DISCARDED", action.seat, _wrap_tile(tile), {})
+	return _finish_resolution(events_before, applied_ev)
+
+
+func _apply_riichi_action(action: Action) -> ActionResolution:
+	var iid: int = int(action.payload.get("tile_instance_id", -1))
+	var seat: Seat = state.seats[action.seat]
+	var tile: Tile = seat.hand.find_by_instance_id(iid)
+	if tile == null:
+		return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
+	var events_before: int = events.size()
+	if not engine.declare_riichi_and_discard(action.seat, iid):
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	state.scores[action.seat] -= RIICHI_STICK_COST
+	state.kuikae_restricted[action.seat] = []
+	_last_discarded_tile = tile
+	_last_discarder_seat = action.seat
+	_invalidate_window()
+	_emit(&"PLAYER_ACTION", action.seat, null, {
+		"kind": "discard",
+		"tile_id": tile.id,
+		"tile_instance_id": tile.instance_id,
+	})
+	_emit(&"TILE_DISCARDED", action.seat, _wrap_tile(tile), {})
+	_emit(&"PLAYER_ACTION", action.seat, null, {"kind": "riichi"})
+	_emit(&"RIICHI_DECLARED", action.seat, null, {})
+	var applied_ev: BattleEvent = _append_action_applied(action)
+	return _finish_resolution(events_before, applied_ev)
+
+
+func _apply_tsumo_action(action: Action) -> ActionResolution:
+	var seat: Seat = state.seats[action.seat]
+	var drawn: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
+	if drawn == null:
+		return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
+	var is_haitei: bool = (state.wall.live_wall_size() == 0)
+	var win: Dictionary = _check_tsumo(drawn, is_haitei, seat.last_draw_is_rinshan)
+	if not win.is_winning:
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+
+	# 快照：领域失败时整段回滚（含 hook 副作用），成功时 ACTION_APPLIED 插到段首
+	var events_before: int = events.size()
+	var phase_before: int = int(state.phase)
+	var seat_before: int = state.current_seat
+	var settled_before: bool = _settled
+	var last_event_before: StringName = _last_event_type
+	var chain_id_before: int = int(scheduler._next_chain_id)
+
+	_emit(&"TSUMO_DECLARED", action.seat, _wrap_tile(drawn), {})
+	if not engine.apply_tsumo(action.seat, drawn.instance_id):
+		while events.size() > events_before:
+			events.pop_back()
+		state.phase = phase_before
+		state.current_seat = seat_before
+		_settled = settled_before
+		_last_event_type = last_event_before
+		scheduler._next_chain_id = chain_id_before
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+
+	_settle_tsumo(drawn, win.wp, win.yaku_list, is_haitei, seat.last_draw_is_rinshan)
+	_invalidate_window()
+	var applied_ev: BattleEvent = _make_action_applied_event(action)
+	events.insert(events_before, applied_ev)
+	return _finish_resolution(events_before, applied_ev)
+
+
+func _apply_abortive_draw_action(action: Action) -> ActionResolution:
+	var events_before: int = events.size()
+	_emit(&"ABORTIVE_DRAW", action.seat, null, {
+		"reason": str(action.payload.get("reason", "")),
+	})
+	_settled = true
+	_invalidate_window()
+	var applied_ev: BattleEvent = _append_action_applied(action)
+	return _finish_resolution(events_before, applied_ev)
+
+
+func _apply_kan_action(action: Action) -> ActionResolution:
+	var p: Dictionary = action.payload
+	var kan_kind: String = str(p.get("kan_kind", ""))
+	if kan_kind == "MINKAN":
+		return _apply_window_intent_action(action)
+	# ANKAN / ADDED_KAN：TURN 窗
+	var events_before: int = events.size()
+	var actor: int = action.seat
+	if kan_kind == "ANKAN":
+		var ids: Array = p.get("tile_instance_ids", []) as Array
+		if not engine.apply_ankan(actor, ids):
+			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+		_invalidate_window()
+		_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_instance_ids": ids.duplicate()})
+		var applied_a: BattleEvent = _append_action_applied(action)
+		return _finish_resolution(events_before, applied_a)
+	if kan_kind == "ADDED_KAN":
+		# 两阶段：accepted 只登记 pending + ACTION_APPLIED + 开 ROB_KAN；domain 零升级
+		var meld_id: int = int(p.get("meld_id", -1))
+		var added_iid: int = int(p.get("added_tile_instance_id", -1))
+		var seat_ak: Seat = state.seats[actor]
+		var added_tile: Tile = seat_ak.hand.find_by_instance_id(added_iid)
+		if added_tile == null:
+			return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
+		var target: Meld = null
+		for m in seat_ak.melds:
+			if m.meld_id == meld_id:
+				target = m
+				break
+		if target == null or target.kind != Meld.Kind.PON:
+			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+		if not ClaimValidator.can_added_kan(seat_ak.melds, seat_ak.hand, added_tile.id):
+			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+		_pending_added_kan = {
+			"seat": actor,
+			"meld_id": meld_id,
+			"added_iid": added_iid,
+		}
+		_invalidate_window()
+		_emit(&"PLAYER_ACTION", actor, null, {
+			"kind": "added_kan_declare",
+			"meld_id": meld_id,
+			"added_tile_instance_id": added_iid,
+		})
+		var applied_b: BattleEvent = _append_action_applied(action)
+		_open_rob_kan_window()
+		return _finish_resolution(events_before, applied_b)
+	return ActionResolution.rejected(ActionResolution.NOT_OFFERED)
+
+
+func _apply_window_intent_action(action: Action) -> ActionResolution:
+	_ensure_active_window()
+	if _active_window == null:
+		return ActionResolution.rejected(ActionResolution.WRONG_PHASE)
+	# intent 先登记在当前权威窗；最后一个 intent 若领域事务失败，只回滚该 seat，
+	# 其余已确认响应保持不变。避免每次响应复制整窗和全部历史 intent。
+	var candidate: DecisionWindow = _active_window
+	if candidate == null:
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	if not candidate.register_intent(action):
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+
+	var events_before: int = events.size()
+	if not candidate.is_complete():
+		_active_window = candidate
+		_commit_pass_furiten_if_needed(action, candidate)
+		var applied_partial: BattleEvent = _append_action_applied(action)
+		return _finish_resolution(events_before, applied_partial)
+
+	# 收窗：用候选纯裁决 + 领域；失败则截断 events 并保留原窗（不登记最后 intent）
+	var pending_before: Dictionary = _pending_added_kan.duplicate(true)
+	var seat_before: int = state.current_seat
+	var phase_before: int = int(state.phase)
+	var settled_before: bool = _settled
+	var last_event_before: StringName = _last_event_type
+	var chain_id_before: int = int(scheduler._next_chain_id)
+	var ok: bool = _resolve_completed_window(candidate)
+	if not ok:
+		while events.size() > events_before:
+			events.pop_back()
+		_pending_added_kan = pending_before
+		state.current_seat = seat_before
+		state.phase = phase_before
+		_settled = settled_before
+		_last_event_type = last_event_before
+		scheduler._next_chain_id = chain_id_before
+		candidate._rollback_intent(action.seat)
+		_active_window = candidate
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+
+	# 关窗后仍用候选查 offer；仅成功路径提交 PASS 振听
+	_commit_pass_furiten_if_needed(action, candidate)
+	# 领域成功后才建 ACTION_APPLIED，并插到本次事件段首（对外顺序：先 APPLIED 后领域）
+	var applied_ev: BattleEvent = _make_action_applied_event(action)
+	events.insert(events_before, applied_ev)
+	return _finish_resolution(events_before, applied_ev)
+
+
+func _commit_pass_furiten_if_needed(action: Action, win: DecisionWindow) -> void:
+	# 仅在 intent 已确认接受后提交 PASS 振听，拒绝路径不得污染
+	if action == null or action.kind != "PASS" or win == null:
+		return
+	var ctx_pass: DecisionContext = win._context_ref_for_seat(action.seat)
+	if ctx_pass == null or not ctx_pass.has_kind("RON"):
+		return
+	var seat_p: Seat = state.seats[action.seat]
+	seat_p.furiten.temporary = true
+	if seat_p.riichi.declared:
+		seat_p.furiten.permanent = true
+
+
+func _resolve_completed_window(win: DecisionWindow) -> bool:
+	if win == null:
+		return false
+	var intents: Array = win.intents()
+	if win.kind == DecisionWindow.KIND_CLAIM:
+		# 本地 remaining 循环：CANCELLED 去掉该 winner 再裁决，不得当 RULE_REJECTED
+		var remaining: Array = intents.duplicate()
+		while true:
+			var outcome: Dictionary = BattleActionResolver.resolve(remaining, win.discarder_seat)
+			match str(outcome.get("outcome", "")):
+				BattleActionResolver.OUTCOME_SANCHA_HOURA:
+					_invalidate_window()
+					_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
+					_settled = true
+					return true
+				BattleActionResolver.OUTCOME_WINNER:
+					var winner: Action = outcome.get("winner", null) as Action
+					if winner == null:
+						_invalidate_window()
+						engine.advance_to_next_seat()
+						return true
+					var domain_r: int = _execute_winning_claim(winner)
+					if domain_r == DOMAIN_APPLIED:
+						_invalidate_window()
+						return true
+					if domain_r == DOMAIN_FAILED:
+						# 规则失败：保留事务窗，由上层 RULE_REJECTED + 回滚事件
+						return false
+					# DOMAIN_CANCELLED：移除该 intent，继续下一候选人；不重跑同 intent
+					remaining = _remove_cancelled_winner_intent(remaining, winner)
+					continue
+				_:
+					_invalidate_window()
+					engine.advance_to_next_seat()
+					return true
+	if win.kind == DecisionWindow.KIND_ROB_KAN:
+		# 与 CLAIM 同构：CANCELLED 去掉该 winner 再裁决，不得当 RULE_REJECTED
+		var remaining_rk: Array = intents.duplicate()
+		var kan_seat: int = int(_pending_added_kan.get("seat", win.discarder_seat))
+		while true:
+			var outcome_r: Dictionary = BattleActionResolver.resolve(remaining_rk, kan_seat)
+			match str(outcome_r.get("outcome", "")):
+				BattleActionResolver.OUTCOME_SANCHA_HOURA:
+					_pending_added_kan = {}
+					_invalidate_window()
+					_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
+					_settled = true
+					return true
+				BattleActionResolver.OUTCOME_WINNER:
+					var w_ron: Action = outcome_r.get("winner", null) as Action
+					if w_ron != null and w_ron.kind == "RON":
+						var added_iid: int = int(_pending_added_kan.get("added_iid", -1))
+						var added_tile: Tile = state.seats[kan_seat].hand.find_by_instance_id(added_iid)
+						if added_tile == null:
+							return false
+						var domain_rk: int = _apply_ron_private(
+							w_ron.seat, added_tile, kan_seat, false, true)
+						if domain_rk == DOMAIN_APPLIED:
+							_pending_added_kan = {}
+							_invalidate_window()
+							return true
+						if domain_rk == DOMAIN_FAILED:
+							return false
+						# DOMAIN_CANCELLED：移除该 intent，继续下一 RON / ALL_PASS
+						remaining_rk = _remove_cancelled_winner_intent(remaining_rk, w_ron)
+						continue
+					# 非 RON 赢家：按全 PASS 完成加杠
+					if not _finalize_pending_added_kan_all_pass():
+						return false
+					_invalidate_window()
+					return true
+				_:
+					# ALL_PASS（含 cancel 后无剩余 RON）
+					if not _finalize_pending_added_kan_all_pass():
+						return false
+					_invalidate_window()
+					return true
+	_invalidate_window()
+	return true
+
+
+func _remove_cancelled_winner_intent(remaining: Array, winner: Action) -> Array:
+	# 从本地 remaining 去掉已 CANCELLED 的 winner（按 seat+kind，只去一条）
+	if winner == null:
+		return remaining
+	var out: Array = []
+	var removed: bool = false
+	for raw in remaining:
+		var a: Action = raw as Action
+		if a == null:
+			continue
+		if not removed and a.seat == winner.seat and a.kind == winner.kind:
+			removed = true
+			continue
+		out.append(a)
+	return out
+
+
+func _finalize_pending_added_kan_all_pass() -> bool:
+	if _pending_added_kan.is_empty():
+		return true
+	var actor: int = int(_pending_added_kan.get("seat", -1))
+	var meld_id: int = int(_pending_added_kan.get("meld_id", -1))
+	var added_iid: int = int(_pending_added_kan.get("added_iid", -1))
+	if actor < 0:
+		return false
+	var seat_before: int = state.current_seat
+	# 确保 current_seat 是杠家
+	state.current_seat = actor
+	if not engine.apply_added_kan(actor, meld_id, added_iid):
+		state.current_seat = seat_before
+		return false
+	_pending_added_kan = {}
+	_emit(&"PLAYER_ACTION", actor, null, {
+		"kind": "added_kan",
+		"meld_id": meld_id,
+		"added_tile_instance_id": added_iid,
+	})
+	return true
+
+
+func _execute_winning_claim(action: Action) -> int:
+	var discarded: Tile = _get_last_discarded()
+	var discarder: int = _get_last_discarder()
+	if discarded == null:
+		return DOMAIN_FAILED
+	var actor: int = action.seat
+	match action.kind:
+		"RON":
+			var is_houtei: bool = (state.wall.live_wall_size() == 0)
+			return _apply_ron_private(actor, discarded, discarder, is_houtei, false)
+		"PON":
+			var comps: Array = action.payload.get("companion_tile_instance_ids", []) as Array
+			if not engine.apply_pon(actor, discarded.instance_id, comps):
+				return DOMAIN_FAILED
+			state.kuikae_restricted[actor] = ClaimValidator.kuikae_restricted_ids(
+				discarded.id, [], false)
+			_emit(&"PLAYER_ACTION", actor, null, {
+				"kind": "pon",
+				"tile_instance_id": discarded.instance_id,
+				"discarder_seat": discarder,
+			})
+			_emit(&"TILE_CLAIMED", actor, _wrap_tile(discarded), {
+				"kind": "pon",
+				"discarder_seat": discarder,
+			})
+			return DOMAIN_APPLIED
+		"CHI":
+			var comps_c: Array = action.payload.get("companion_tile_instance_ids", []) as Array
+			if not engine.apply_chi(actor, discarded.instance_id, comps_c):
+				return DOMAIN_FAILED
+			_emit(&"PLAYER_ACTION", actor, null, {
+				"kind": "chi",
+				"tile_instance_id": discarded.instance_id,
+				"discarder_seat": discarder,
+			})
+			_emit(&"TILE_CLAIMED", actor, _wrap_tile(discarded), {
+				"kind": "chi",
+				"discarder_seat": discarder,
+			})
+			return DOMAIN_APPLIED
+		"KAN":
+			var comps_k: Array = action.payload.get("companion_tile_instance_ids", []) as Array
+			if not engine.apply_minkan(actor, discarded.instance_id, comps_k):
+				return DOMAIN_FAILED
+			_emit(&"PLAYER_ACTION", actor, null, {
+				"kind": "minkan",
+				"tile_instance_id": discarded.instance_id,
+				"discarder_seat": discarder,
+			})
+			_emit(&"TILE_CLAIMED", actor, _wrap_tile(discarded), {
+				"kind": "minkan",
+				"discarder_seat": discarder,
+			})
+			return DOMAIN_APPLIED
+	return DOMAIN_FAILED
+
+
+func _make_action_applied_event(action: Action) -> BattleEvent:
+	var rp: Dictionary = action.payload.duplicate(true)
+	rp["seat"] = action.seat
+	rp["hand_seq"] = action.hand_seq
+	rp["decision_id"] = action.decision_id
+	var extra := {
+		"resolved_payload": rp,
+	}
+	return BattleEvent.make(&"ACTION_APPLIED", action.seat, null, extra)
+
+
+func _append_action_applied(action: Action) -> BattleEvent:
+	var ev: BattleEvent = _make_action_applied_event(action)
+	events.append(ev)
+	return ev
+
+
+
+## 统一 accepted 事件段：无论领域动作内部何时确认成功，公开结果与 journal 中
+## ACTION_APPLIED 都必须位于本次事件段首，供回放/网络层稳定消费。
+func _finish_resolution(events_before: int, applied_ev: BattleEvent) -> ActionResolution:
+	var applied_index: int = events.find(applied_ev, events_before)
+	if applied_index < 0:
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	if applied_index != events_before:
+		events.remove_at(applied_index)
+		events.insert(events_before, applied_ev)
+	var new_events: Array = []
+	for i in range(events_before, events.size()):
+		new_events.append(events[i])
+	return ActionResolution.success(new_events)
+
+
+func _append_journal(action: Action) -> void:
+	var cloned: Action = Action.from_dict(action.to_dict())
+	if cloned != null:
+		_action_journal.append(cloned)
+
+
+func _peek_expected_replay() -> Action:
+	if _expected_replay_idx >= _expected_replay.size():
+		return null
+	return _expected_replay[_expected_replay_idx] as Action
+
+
+func _consume_expected_replay() -> void:
+	_expected_replay_idx += 1
+	if _expected_replay_idx >= _expected_replay.size():
+		_replay_status = &"COMPLETED"
+	else:
+		_replay_status = &"RUNNING"
+
+
+func _finalize_replay_lifecycle_status() -> void:
+	if _replay_status == &"IDLE" or _replay_status == &"MISMATCH":
+		return
+	if _replay_status == &"COMPLETED":
+		return
+	if _expected_replay_idx < _expected_replay.size():
+		_replay_status = &"UNCONSUMED"
+
+
+func _invalidate_window() -> void:
+	_active_window = null
+	_active_window_phase = -1
+
+
+func _ensure_active_window() -> void:
+	if state == null:
+		_active_window = null
+		return
+	if not _pending_added_kan.is_empty():
+		if _active_window != null and _active_window.kind == DecisionWindow.KIND_ROB_KAN \
+				and _active_window.hand_seq == state.hand_seq \
+				and int(_pending_added_kan.get("seat", -2)) == _active_window.discarder_seat:
+			return
+		_open_rob_kan_window()
+		return
+	if state.phase == BattlePhase.Kind.DISCARD:
+		if _active_window != null and _active_window.kind == DecisionWindow.KIND_TURN \
+				and _active_window.subject_seat == state.current_seat \
+				and _active_window.hand_seq == state.hand_seq \
+				and _active_window_phase == state.phase:
+			return
+		_open_turn_window()
+	elif state.phase == BattlePhase.Kind.CLAIM:
+		if _active_window != null and _active_window.kind == DecisionWindow.KIND_CLAIM \
+				and _active_window.hand_seq == state.hand_seq \
+				and _active_window_phase == state.phase \
+				and _active_window.discarder_seat == _last_discarder_seat:
+			return
+		_open_claim_window()
+	else:
+		_active_window = null
+		_active_window_phase = -1
+
+
+func _open_turn_window() -> void:
+	var seat_id: int = state.current_seat
+	var seat: Seat = state.seats[seat_id]
+	var did: String = _make_decision_id("TURN", seat_id)
+	var subject_tile: int = seat.last_drawn_instance_id
+	var win: DecisionWindow = DecisionWindow.make(
+		DecisionWindow.KIND_TURN, state.hand_seq, did, seat_id, subject_tile, -1
+	)
+	if win == null:
+		_active_window = null
+		return
+	var actions: Array = _build_turn_offers(seat)
+	var ctx: DecisionContext = DecisionContext.make(
+		DecisionContext.KIND_TURN, state.hand_seq, did, seat_id, actions, -1, -1
+	)
+	if ctx == null:
+		_active_window = null
+		return
+	win.add_context(ctx)
+	_active_window = win
+	_active_window_phase = state.phase
+
+
+func _open_claim_window() -> void:
+	var discarded: Tile = _get_last_discarded()
+	var discarder: int = _get_last_discarder()
+	if discarded == null or discarder < 0:
+		_active_window = null
+		return
+	var did: String = _make_decision_id("CLAIM", discarder)
+	var win: DecisionWindow = DecisionWindow.make(
+		DecisionWindow.KIND_CLAIM, state.hand_seq, did, discarder,
+		discarded.instance_id, discarder
+	)
+	if win == null:
+		_active_window = null
+		return
+	for s in range(4):
+		if s == discarder:
+			continue
+		var offers: Array = _build_claim_offers(s, discarded, discarder)
+		var ctx: DecisionContext = DecisionContext.make(
+			DecisionContext.KIND_CLAIM, state.hand_seq, did, s, offers,
+			discarded.instance_id, discarder
+		)
+		if ctx != null:
+			win.add_context(ctx)
+	_active_window = win
+	_active_window_phase = state.phase
+
+
+func _open_rob_kan_window() -> void:
+	if _pending_added_kan.is_empty():
+		_active_window = null
+		return
+	var kan_seat: int = int(_pending_added_kan.get("seat", -1))
+	var added_iid: int = int(_pending_added_kan.get("added_iid", -1))
+	var added_tile: Tile = state.seats[kan_seat].hand.find_by_instance_id(added_iid)
+	if added_tile == null or kan_seat < 0:
+		_active_window = null
+		return
+	var did: String = _make_decision_id("ROB_KAN", kan_seat)
+	var win: DecisionWindow = DecisionWindow.make(
+		DecisionWindow.KIND_ROB_KAN, state.hand_seq, did, kan_seat, added_iid, kan_seat
+	)
+	if win == null:
+		_active_window = null
+		return
+	for s in range(4):
+		if s == kan_seat:
+			continue
+		var offers: Array = _build_rob_kan_offers(s, added_tile)
+		var ctx: DecisionContext = DecisionContext.make(
+			DecisionContext.KIND_ROB_KAN, state.hand_seq, did, s, offers,
+			added_iid, kan_seat
+		)
+		if ctx != null:
+			win.add_context(ctx)
+	_active_window = win
+	_active_window_phase = state.phase
+
+
+func _build_rob_kan_offers(seat_id: int, kan_tile: Tile) -> Array:
+	var offers: Array = []
+	var seat: Seat = state.seats[seat_id]
+	if ClaimValidator.can_ron(seat.hand, seat.melds, kan_tile, seat.furiten):
+		var ron_check: Dictionary = _check_ron(kan_tile, seat_id, false, true)
+		if bool(ron_check.get("is_winning", false)):
+			offers.append({"kind": "RON", "payload_options": [{}]})
+	offers.append({"kind": "PASS", "payload_options": [{}]})
+	return offers
+
+
+func _build_turn_offers(seat: Seat) -> Array:
+	var offers: Array = []
+	var disc_opts: Array = []
+	# 立直锁牌必须由权威 offer 保证，不能只依赖本地 UI/AI 自动摸切。
+	if seat.riichi.declared:
+		var drawn: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
+		if drawn != null:
+			disc_opts.append({"tile_instance_id": drawn.instance_id})
+	else:
+		for t in seat.hand._tiles:
+			if t == null:
+				continue
+			if not state.kuikae_restricted[seat.seat_id].is_empty():
+				if state.kuikae_restricted[seat.seat_id].has(t.id):
+					continue
+			disc_opts.append({"tile_instance_id": t.instance_id})
+		if disc_opts.is_empty():
+			for t in seat.hand._tiles:
+				if t != null:
+					disc_opts.append({"tile_instance_id": t.instance_id})
+	if not disc_opts.is_empty():
+		offers.append({"kind": "DISCARD", "payload_options": disc_opts})
+	# RIICHI：批量 options（门清/点数/墙/听牌门槛在 validator 内）
+	var riichi_opts: Array = RiichiValidator.riichi_discard_options(
+		seat, state.wall.live_wall_size())
+	if not riichi_opts.is_empty():
+		offers.append({"kind": "RIICHI", "payload_options": riichi_opts})
+	# TSUMO：实际可和
+	if seat.last_drawn_instance_id != Tile.INVALID_INSTANCE_ID:
+		var drawn: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
+		if drawn != null:
+			var is_haitei: bool = (state.wall.live_wall_size() == 0)
+			var first_draw: bool = state.first_round_active \
+				and state.discards_per_seat[seat.seat_id].is_empty()
+			var is_tenhou: bool = first_draw and seat.seat_id == state.dealer_seat
+			var is_chiihou: bool = first_draw and seat.seat_id != state.dealer_seat
+			var win: Dictionary = _check_tsumo(
+				drawn, is_haitei, seat.last_draw_is_rinshan, is_tenhou, is_chiihou)
+			if bool(win.get("is_winning", false)):
+				offers.append({"kind": "TSUMO", "payload_options": [{}]})
+	# ANKAN / ADDED_KAN
+	var kan_opts: Array = []
+	if not seat.riichi.declared:
+		for tid in ClaimValidator.ankan_candidates(seat.hand):
+			var iids: Array = _hand_iids_of_type(seat.hand, tid)
+			if iids.size() >= 4:
+				kan_opts.append({
+					"kan_kind": "ANKAN",
+					"tile_instance_ids": iids.slice(0, 4),
+				})
+		for m in seat.melds:
+			if m.kind != Meld.Kind.PON or m.tiles.is_empty():
+				continue
+			var tid_p: int = m.tiles[0].id
+			if not ClaimValidator.can_added_kan(seat.melds, seat.hand, tid_p):
+				continue
+			for t in seat.hand._tiles:
+				if t.id != tid_p:
+					continue
+				kan_opts.append({
+					"kan_kind": "ADDED_KAN",
+					"meld_id": m.meld_id,
+					"added_tile_instance_id": t.instance_id,
+				})
+				break
+	if not kan_opts.is_empty():
+		offers.append({"kind": "KAN", "payload_options": kan_opts})
+	# 九种九牌
+	if state.first_round_active and state.turn_count == 0:
+		if AbortiveDraw.is_kyuusyu_kyuuhai(seat.hand.to_id_array()):
+			offers.append({
+				"kind": "DECLARE_ABORTIVE_DRAW",
+				"payload_options": [{"reason": "KYUUSYU_KYUUHAI"}],
+			})
+	if offers.is_empty() and not seat.riichi.declared and not seat.hand._tiles.is_empty():
+		offers.append({
+			"kind": "DISCARD",
+			"payload_options": [{"tile_instance_id": seat.hand._tiles[0].instance_id}],
+		})
+	return offers
+
+
+func _build_claim_offers(seat_id: int, discarded: Tile, discarder: int) -> Array:
+	var seat: Seat = state.seats[seat_id]
+	var offers: Array = []
+	# CHI（仅下家）
+	if ClaimValidator.can_chi(seat_id, discarder, seat.hand, discarded.id):
+		var chi_opts: Array = []
+		for combo in ClaimValidator.chi_companion_options(seat.hand, discarded.id):
+			if not (combo is Array) or (combo as Array).size() != 2:
+				continue
+			for iids in _match_type_iid_combinations(seat.hand, combo as Array):
+				chi_opts.append({"companion_tile_instance_ids": iids})
+		if not chi_opts.is_empty():
+			offers.append({"kind": "CHI", "payload_options": chi_opts})
+	if ClaimValidator.can_pon(seat_id, discarder, seat.hand, discarded.id):
+		var pon_opts: Array = []
+		for pon_iids in _match_type_iid_combinations(
+			seat.hand, [discarded.id, discarded.id]
+		):
+			pon_opts.append({"companion_tile_instance_ids": pon_iids})
+		if not pon_opts.is_empty():
+			offers.append({"kind": "PON", "payload_options": pon_opts})
+	if ClaimValidator.can_minkan(seat_id, discarder, seat.hand, discarded.id):
+		var kan_iids: Array = _match_type_iids(seat.hand, [discarded.id, discarded.id, discarded.id])
+		if kan_iids.size() == 3:
+			offers.append({"kind": "KAN", "payload_options": [
+				{"kan_kind": "MINKAN", "companion_tile_instance_ids": kan_iids},
+			]})
+	if ClaimValidator.can_ron(seat.hand, seat.melds, discarded, seat.furiten):
+		var ron_check: Dictionary = _check_ron(discarded, seat_id, state.wall.live_wall_size() == 0)
+		if ron_check.is_winning:
+			offers.append({"kind": "RON", "payload_options": [{}]})
+	offers.append({"kind": "PASS", "payload_options": [{}]})
+	return offers
+
+func _make_decision_id(tag: String, seat_hint: int) -> String:
+	_window_seq += 1
+	return _deterministic_uuid(_battle_seed, state.hand_seq, _window_seq, "%s:%d" % [tag, seat_hint])
+
+
+func _deterministic_uuid(seed: int, hand_seq: int, seq: int, tag: String) -> String:
+	var h1: int = abs(int(hash("%s|%d|%d|%d" % [tag, seed, hand_seq, seq])))
+	var h2: int = abs(int(hash("%d|%s|%d|%d" % [seq, tag, hand_seq, seed])))
+	var h3: int = abs(int(hash("%d|%d|%s|x" % [hand_seq, seed, tag])))
+	var h4: int = abs(int(hash("%d|%d|%d|%s|y" % [seed, seq, hand_seq, tag])))
+	var time_low: int = h1 & 0xffffffff
+	var time_mid: int = h2 & 0xffff
+	var time_hi: int = 0x4000 | ((h2 >> 16) & 0x0fff)
+	var clock: int = 0x8000 | (h3 & 0x3fff)
+	var node: int = ((h3 << 16) ^ h4) & 0xffffffffffff
+	return "%08x-%04x-%04x-%04x-%012x" % [time_low, time_mid, time_hi, clock, node]
+
+
+func _next_action_command_id() -> String:
+	_action_cmd_seq += 1
+	return "%s%012d" % [_ACTION_CMD_UUID_PREFIX, _action_cmd_seq]
+
+
+func _build_ai_discard_or_riichi_action(seat: Seat, actor: int) -> Action:
+	var to_discard: Tile = _get_discard_decision(seat, actor)
+	if to_discard == null:
+		return null
+	return _build_action_for_tile(seat, actor, to_discard)
+
+
+func _build_action_for_tile(seat: Seat, actor: int, to_discard: Tile) -> Action:
+	if to_discard == null:
+		return null
+	var ctx: DecisionContext = _decision_context_ref_for_seat(actor)
+	if ctx == null:
+		return null
+	# TURN offer 已完成门清、点数、牌墙与弃后听牌判定；AI 只在该物理牌
+	# 确实被权威窗口允许立直时构造弃后 13 张视图，避免重复跑两次听牌枚举。
+	var should_riichi: bool = ctx.allows(
+		"RIICHI", {"tile_instance_id": to_discard.instance_id})
+	if should_riichi:
+		should_riichi = ai != null and ai.has_method("decide_riichi")
+	if should_riichi:
+		var sim := seat.hand.clone()
+		if sim.take_by_instance_id(to_discard.instance_id) != null:
+			# HeuristicAi.decide_riichi 契约是弃后 13 张听牌手。
+			# 独立 Seat 规则视图：不改 live seat.hand。
+			var seat_after := Seat.new(seat.seat_id, seat.seat_wind, seat.points)
+			seat_after.hand = sim
+			seat_after.melds = seat.melds
+			seat_after.riichi = seat.riichi
+			should_riichi = bool(ai.decide_riichi(
+				seat_after, state.wall.live_wall_size()))
+		else:
+			should_riichi = false
+	var cmd: String = _next_action_command_id()
+	if should_riichi:
+		return Action.riichi(
+			actor, to_discard.instance_id, DEFAULT_ROOM_ID, cmd,
+			ctx.decision_id, state.hand_seq, _action_cmd_seq
+		)
+	return Action.discard(
+		actor, to_discard.instance_id, DEFAULT_ROOM_ID, cmd,
+		ctx.decision_id, state.hand_seq, _action_cmd_seq
+	)
+
+
+func _hand_iids_of_type(hand: Hand, tile_type_id: int) -> Array:
+	var out: Array = []
+	for t in hand._tiles:
+		if t.id == tile_type_id:
+			out.append(t.instance_id)
+	return out
+
+
+func _match_type_iids(hand: Hand, type_ids: Array) -> Array:
+	var remaining: Array = type_ids.duplicate()
+	var iids: Array = []
+	for t in hand._tiles:
+		for j in range(remaining.size()):
+			if int(remaining[j]) == t.id:
+				iids.append(t.instance_id)
+				remaining.remove_at(j)
+				break
+	if not remaining.is_empty():
+		return []
+	return iids
+
+
+func _match_type_iid_combinations(hand: Hand, type_ids: Array) -> Array:
+	if type_ids.is_empty():
+		return []
+	var partials: Array = [[]]
+	for raw_type_id in type_ids:
+		var expanded_partials: Array = []
+		for partial in partials:
+			for tile in hand._tiles:
+				if tile == null or tile.id != int(raw_type_id):
+					continue
+				if (partial as Array).has(tile.instance_id):
+					continue
+				var expanded: Array = (partial as Array).duplicate()
+				expanded.append(tile.instance_id)
+				expanded_partials.append(expanded)
+		partials = expanded_partials
+		if partials.is_empty():
+			return []
+
+	# 同牌型会产生 [a,b] / [b,a] 排列；协议把实体数组视为无序集合，
+	# 此处按排序后的 key 去重，同时保留手牌顺序生成的首个稳定组合。
+	var unique: Array = []
+	var seen: Dictionary = {}
+	for partial in partials:
+		var canonical: Array = (partial as Array).duplicate()
+		canonical.sort()
+		var key: String = JSON.stringify(canonical)
+		if seen.has(key):
+			continue
+		seen[key] = true
+		unique.append((partial as Array).duplicate())
+	return unique

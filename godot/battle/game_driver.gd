@@ -23,11 +23,13 @@ var seed: int = 0
 # round_wind 由 _compute_current_round_wind() 函数式计算（不同于
 # 重置 hand_index 的方案 — 让连庄计数不被风圈切换干扰）
 var hand_index: int = 0
+# E2-02：独立于 hand_index 的局序号分配器（连庄也推进；洗牌 seed = seed+allocated）
+var next_hand_seq: int = 0
 var honba: int = 0
 var riichi_sticks: int = 0
 var dealer_seat: int = 0
 var cumulative_scores: Array[int] = []
-var battle: IBattleController = null  # M11/p2: 改用接口类型；构造时 instantiate LocalBattleController（v1）/ NetworkedBattleController（M12+）
+var battle: IAuthoritativeBattleController = null  # E2-02：本地权威路径
 var finished: bool = false
 # M7 平衡：是否用 HeuristicAi（默认 false 保持向后兼容）
 var use_heuristic_ai: bool = false
@@ -59,30 +61,43 @@ func _compute_current_round_wind() -> int:
 
 # 自定义 BC 工厂；玩家可玩路径用它注入 PlayableBattleController。
 # 默认 = BattleController（v1 AI vs AI 行为）。
-# 签名：(seed: int, dealer_seat: int, use_heuristic_ai: bool, round_wind: int) -> IBattleController
+# 签名：(seed, dealer_seat, use_heuristic_ai, round_wind, hand_seq) -> IAuthoritativeBattleController
 var bc_factory: Callable = Callable()
 
 # 创建当前 hand 的 BattleController；把累计分 + honba + riichi_sticks 注入
 # 到 battle.state，便于 ScoreFormula 在结算时引用本场起点。
-func start_hand() -> IBattleController:
+# E2-02：hand_seq 独立于 hand_index；仅 candidate 有效后才写入 battle / 推进 counter。
+func start_hand() -> IAuthoritativeBattleController:
+	if battle != null or finished:
+		return null
+	if next_hand_seq < 0 or next_hand_seq > Wall.MAX_HAND_SEQ:
+		return null
+	var allocated: int = next_hand_seq
+	var round_wind: int = _compute_current_round_wind()
+	var shuffle_seed: int = seed + allocated
+	var candidate: IAuthoritativeBattleController = null
 	if bc_factory.is_valid():
-		battle = bc_factory.call(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
+		candidate = bc_factory.call(shuffle_seed, dealer_seat, use_heuristic_ai, round_wind, allocated)
 	else:
-		battle = BattleController.new(seed + hand_index, dealer_seat, use_heuristic_ai, _compute_current_round_wind())
+		candidate = BattleController.new(shuffle_seed, dealer_seat, use_heuristic_ai, round_wind, allocated)
+	if candidate == null or candidate.state == null:
+		return null
 	for i in range(4):
-		battle.state.scores[i] = cumulative_scores[i]
-	battle.state.honba = honba
-	battle.state.riichi_sticks = riichi_sticks
+		candidate.state.scores[i] = cumulative_scores[i]
+	candidate.state.honba = honba
+	candidate.state.riichi_sticks = riichi_sticks
 	# 拍照供 apply_result 算 skill 转分增量
 	for i in range(4):
-		_pre_hand_state_scores[i] = battle.state.scores[i]
+		_pre_hand_state_scores[i] = candidate.state.scores[i]
 	# M8.5：注入 strategic context 给 HeuristicAi（终局策略：领先时不立直）
-	if use_heuristic_ai and battle.ai is HeuristicAi:
-		var hai := battle.ai as HeuristicAi
+	if use_heuristic_ai and candidate.ai is HeuristicAi:
+		var hai := candidate.ai as HeuristicAi
 		hai.set_strategic_context(cumulative_scores, hand_index, total_hands)
 		# M10 Path A：可选启用 shanten-aware 弃牌
 		if use_shanten_ai:
 			hai.use_shanten_aware_discard = true
+	battle = candidate
+	next_hand_seq = allocated + 1
 	return battle
 
 # 解析 events，把最末 WIN_DECLARED 的 payout 应用到 cumulative_scores。

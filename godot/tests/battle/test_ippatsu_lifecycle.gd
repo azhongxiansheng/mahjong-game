@@ -8,6 +8,10 @@ extends GutTest
 #   4. 同巡 declare 后的弃牌不应关窗(刚 declare,还在 declare_turn)
 
 
+func _tile(tid: int, iid: int) -> Tile:
+	return Tile.new(tid, false, Tile.NO_OWNER, iid)
+
+
 # Helper:发牌一张构造立直前状态
 func _bc_with_seat_riichi(seat_id: int, declared_turn: int = 0) -> BattleController:
 	var bc := BattleController.new(99, 0, false, TileId.E)
@@ -16,34 +20,34 @@ func _bc_with_seat_riichi(seat_id: int, declared_turn: int = 0) -> BattleControl
 	return bc
 
 
-# ---- TurnEngine 鸣牌关窗 ----
+# ---- TurnEngine 鸣牌关窗（真实成功实体路径）----
 
 func test_apply_chi_clears_all_ippatsu_windows() -> void:
 	var bc := _bc_with_seat_riichi(0)
 	assert_true(bc.state.seats[0].riichi.ippatsu_window, "前置:seat0 一発开")
-	# 在 seat1 即将 chi seat0 弃牌的情况下,模拟 chi
-	# 这里直接调 _clear_all_ippatsu_windows (TurnEngine private helper)
-	# 通过 apply_chi 间接验证:塞合法 chi 牌 + 调
-	bc.engine.apply_chi(1, Tile.new(TileId.W2), [TileId.W1, TileId.W3])
-	# chi 可能失败(hand 不全),但 _clear 在成功路径末尾。
-	# 改用直接调 _clear 检测确保 helper 工作
-	bc.state.seats[0].riichi.ippatsu_window = true
-	bc.engine._clear_all_ippatsu_windows()
-	assert_false(bc.state.seats[0].riichi.ippatsu_window, "_clear 后 seat0 一発关")
+	# seat1 吃 seat0 河末 W1；companions W2/W3 唯一实体
+	bc.state.seats[1].hand = Hand.new()
+	bc.state.seats[1].hand.add(_tile(TileId.W2, 501))
+	bc.state.seats[1].hand.add(_tile(TileId.W3, 502))
+	bc.state.current_seat = 0
+	bc.state.phase = BattlePhase.Kind.CLAIM
+	bc.state.discards_per_seat[0] = [_tile(TileId.W1, 500)]
+	var ok: bool = bc.engine.apply_chi(1, 500, [501, 502])
+	assert_true(ok, "chi 应成立")
+	assert_false(bc.state.seats[0].riichi.ippatsu_window, "chi 后 seat0 一発关")
 
 
 # 直接构造 chi:把 W2/W3 注入 seat1 手,弃 W1 给 seat0 弃牌堆,然后调 apply_chi
 func test_apply_chi_via_state_clears_window() -> void:
 	var bc := _bc_with_seat_riichi(2)
-	# seat1 手注入 W2/W3 才能 chi W1
-	bc.state.seats[1].hand._tiles.append(Tile.new(TileId.W2))
-	bc.state.seats[1].hand._tiles.append(Tile.new(TileId.W3))
-	# discarder = seat0 (current_seat=0 default)
+	bc.state.seats[1].hand = Hand.new()
+	bc.state.seats[1].hand.add(_tile(TileId.W2, 511))
+	bc.state.seats[1].hand.add(_tile(TileId.W3, 512))
 	bc.state.current_seat = 0
-	bc.state.discards_per_seat[0].append(Tile.new(TileId.W1))
+	bc.state.phase = BattlePhase.Kind.CLAIM
+	bc.state.discards_per_seat[0] = [_tile(TileId.W1, 510)]
 	# claimant 是下家 seat 1,日麻规定只能从上家吃 — seat1 上家=seat0 ✓
-	var ok: bool = bc.engine.apply_chi(1, Tile.new(TileId.W1), [TileId.W2, TileId.W3])
-	# chi 必须成功
+	var ok: bool = bc.engine.apply_chi(1, 510, [511, 512])
 	assert_true(ok, "chi 应成立")
 	assert_false(bc.state.seats[2].riichi.ippatsu_window, "chi 后 seat2 一発应关")
 
@@ -51,11 +55,12 @@ func test_apply_chi_via_state_clears_window() -> void:
 # 暗杠也关一発(国际标准日麻 §6.4)
 func test_apply_ankan_clears_own_ippatsu() -> void:
 	var bc := _bc_with_seat_riichi(0)
-	# 注入 4 张 W1 到 seat0
-	for _i in range(4):
-		bc.state.seats[0].hand._tiles.append(Tile.new(TileId.W1))
+	bc.state.seats[0].hand = Hand.new()
+	for i in range(4):
+		bc.state.seats[0].hand.add(_tile(TileId.W1, 800 + i))
 	bc.state.current_seat = 0
-	var ok: bool = bc.engine.apply_ankan(0, TileId.W1)
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	var ok: bool = bc.engine.apply_ankan(0, [800, 801, 802, 803])
 	assert_true(ok, "ankan 应成立")
 	assert_false(bc.state.seats[0].riichi.ippatsu_window,
 		"暗杠也关自家一発(国际日麻规则)")
@@ -64,12 +69,13 @@ func test_apply_ankan_clears_own_ippatsu() -> void:
 # pon 关所有人的窗口
 func test_apply_pon_clears_all_windows() -> void:
 	var bc := _bc_with_seat_riichi(3)
-	# seat1 手注入 2 张 T5,seat0 弃 T5
-	bc.state.seats[1].hand._tiles.append(Tile.new(TileId.T5))
-	bc.state.seats[1].hand._tiles.append(Tile.new(TileId.T5))
+	bc.state.seats[1].hand = Hand.new()
+	bc.state.seats[1].hand.add(_tile(TileId.T5, 601))
+	bc.state.seats[1].hand.add(_tile(TileId.T5, 602))
 	bc.state.current_seat = 0
-	bc.state.discards_per_seat[0].append(Tile.new(TileId.T5))
-	var ok: bool = bc.engine.apply_pon(1, Tile.new(TileId.T5))
+	bc.state.phase = BattlePhase.Kind.CLAIM
+	bc.state.discards_per_seat[0] = [_tile(TileId.T5, 600)]
+	var ok: bool = bc.engine.apply_pon(1, 600, [601, 602])
 	assert_true(ok, "pon 应成立")
 	assert_false(bc.state.seats[3].riichi.ippatsu_window, "pon 关 seat3 窗口")
 

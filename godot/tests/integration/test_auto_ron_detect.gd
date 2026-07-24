@@ -1,10 +1,8 @@
 extends GutTest
 
-# 麻将王 — M7：主循环 RON 自动检测端到端集成测试。
-#
-# 验证 BattleController 在 TILE_DISCARDED 之后自动遍历对家，按 atama-hane
-# 顺序检测 ron。（以前只在外部 apply_ron 入口可达，run_to_end 主循环内部
-# 没有 ron 路径。）
+# 麻将王 — M7 / E2-02：AI RON 统一 Action 端到端集成测试。
+# 牌实体全部来自同一真实 Wall；AI 经 DecisionWindow → Action.ron → apply_action，
+# 不使用旧自动荣和旁路、无 iid Tile.new 或物理上不可能的重复手牌。
 
 # 确定性 AI：遇到目标 TileId 即弃，否则弃手牌第 0 张
 class _ForcePickAi extends SimpleAi:
@@ -22,45 +20,158 @@ class _ForcePickAi extends SimpleAi:
 					return t
 		return hand_tiles[0]
 
-var _bc: IBattleController
+var _bc: BattleController
 
 func before_each() -> void:
 	_bc = BattleController.new(42, 0)
-	# 替换为确定性 AI：4 家都倾向弃 W9（discarder=0 案例下让 seat 0 必弃 W9）
+	_prepare_live_fixture()
+	# 4 家都倾向弃 W9；seat 0 下一摸固定为 W9。
 	_bc.ai = _ForcePickAi.new(TileId.W9)
 
-# ---- helper: 给 seat 装 7 对子听 W9 单骑 ----
-func _set_chiitoi_tenpai_for(seat_idx: int) -> void:
-	var tenpai_ids: Array = [
+func _prepare_live_fixture() -> void:
+	for seat_id in range(4):
+		var seat: Seat = _bc.state.seats[seat_id]
+		seat.hand = Hand.new()
+		seat.melds = []
+		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
+		seat.furiten = FuritenState.new()
+		_bc.state.discards_per_seat[seat_id] = []
+	_bc.state.wall._draw_index = 0
+	_bc.state.current_seat = 0
+	_bc.state.phase = BattlePhase.Kind.DRAW
+	_bc.state.first_round_active = false
+
+
+func _live_end() -> int:
+	return _bc.state.wall._tiles.size() - _bc.state.wall._dead_wall_size
+
+
+func _take_live(tid: int) -> Tile:
+	var wall: Wall = _bc.state.wall
+	var found := -1
+	for i in range(wall._draw_index, _live_end()):
+		if int((wall._tiles[i] as Tile).id) == tid:
+			found = i
+			break
+	assert_gte(found, wall._draw_index, "live 区须存在 tile_id=%d" % tid)
+	if found < wall._draw_index:
+		return null
+	var tmp: Tile = wall._tiles[wall._draw_index]
+	wall._tiles[wall._draw_index] = wall._tiles[found]
+	wall._tiles[found] = tmp
+	var tile: Tile = wall.draw()
+	assert_not_null(tile)
+	assert_true(Tile.is_instance_id_in_hand_seq(tile.instance_id, _bc.state.hand_seq))
+	return tile
+
+
+func _take_any_except(excluded_ids: Array) -> Tile:
+	var wall: Wall = _bc.state.wall
+	for i in range(wall._draw_index, _live_end()):
+		var tile: Tile = wall._tiles[i]
+		if not excluded_ids.has(int(tile.id)):
+			var tmp: Tile = wall._tiles[wall._draw_index]
+			wall._tiles[wall._draw_index] = tile
+			wall._tiles[i] = tmp
+			return wall.draw()
+	return null
+
+
+func _hand_from_live(ids: Array) -> Hand:
+	var hand := Hand.new()
+	for tid in ids:
+		var tile: Tile = _take_live(int(tid))
+		assert_not_null(tile)
+		if tile != null:
+			assert_true(hand.add(tile))
+	return hand
+
+
+func _fill_hand_without_w9() -> Hand:
+	var hand := Hand.new()
+	while hand.size() < 13:
+		var tile: Tile = _take_any_except([TileId.W9])
+		assert_not_null(tile)
+		if tile == null:
+			break
+		assert_true(hand.add(tile))
+	return hand
+
+
+func _seat0_noise_ids() -> Array:
+	return [
+		TileId.S1, TileId.S2, TileId.S4, TileId.S5, TileId.S7, TileId.S8,
+		TileId.T7, TileId.T8, TileId.E, TileId.S_WIND, TileId.W_WIND,
+		TileId.N, TileId.CHUN,
+	]
+
+
+func _chiitoi_w_tenpai() -> Array:
+	return [
 		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
-		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
+		TileId.W4, TileId.W4, TileId.W5, TileId.W5, TileId.W6, TileId.W6,
 		TileId.W9,
 	]
-	var s: Seat = _bc.state.seats[seat_idx]
-	s.hand._tiles.clear()
-	for tid in tenpai_ids:
-		s.hand.add(Tile.new(tid))
 
-# helper: seat 0 hand = 13 random non-winning + 让它摸到 W9 后弃 W9
-func _setup_seat0_to_discard_w9() -> void:
-	# seat 0 hand = 13 张不能胡的杂牌（多 ID，避免成对／成顺）
-	var noise: Array = [
-		TileId.W2, TileId.W3, TileId.W4, TileId.W6, TileId.W8,
-		TileId.T1, TileId.T2, TileId.T3, TileId.T4, TileId.T5,
-		TileId.E, TileId.S_WIND, TileId.W_WIND,
+
+func _chiitoi_t_tenpai() -> Array:
+	return [
+		TileId.T1, TileId.T1, TileId.T2, TileId.T2, TileId.T3, TileId.T3,
+		TileId.T4, TileId.T4, TileId.T5, TileId.T5, TileId.T6, TileId.T6,
+		TileId.W9,
 	]
-	var s0: Seat = _bc.state.seats[0]
-	s0.hand._tiles.clear()
-	for tid in noise:
-		s0.hand.add(Tile.new(tid))
-	# wall 顶牌 = W9，seat 0 摸到后 _ForcePickAi 会找 W9 弃出
-	_bc.state.wall._tiles[_bc.state.wall._draw_index] = Tile.new(TileId.W9)
+
+
+func _set_next_draw_w9() -> Tile:
+	var wall: Wall = _bc.state.wall
+	var found := -1
+	for i in range(wall._draw_index, _live_end()):
+		if int((wall._tiles[i] as Tile).id) == TileId.W9:
+			found = i
+			break
+	assert_gte(found, wall._draw_index, "须保留一张真实 W9 供 seat0 下一摸")
+	if found < wall._draw_index:
+		return null
+	var tmp: Tile = wall._tiles[wall._draw_index]
+	wall._tiles[wall._draw_index] = wall._tiles[found]
+	wall._tiles[found] = tmp
+	return wall._tiles[wall._draw_index]
+
+
+## winners: seat → 13 张听牌 ids；其余对手设永久振听，避免 fixture 偶然抢胡。
+func _setup_first_discard(winners: Dictionary) -> void:
+	_bc.state.seats[0].hand = _hand_from_live(_seat0_noise_ids())
+	for seat_id in range(1, 4):
+		if winners.has(seat_id):
+			_bc.state.seats[seat_id].hand = _hand_from_live(winners[seat_id])
+		else:
+			_bc.state.seats[seat_id].hand = _fill_hand_without_w9()
+			_bc.state.seats[seat_id].furiten.permanent = true
+	var next: Tile = _set_next_draw_w9()
+	assert_not_null(next)
+	if next != null:
+		assert_eq(int(next.id), TileId.W9)
+
+
+func _drain_live_until_only_next_w9() -> void:
+	var wall: Wall = _bc.state.wall
+	var next: Tile = _set_next_draw_w9()
+	assert_not_null(next)
+	if next == null:
+		return
+	var last_live := _live_end() - 1
+	var tmp: Tile = wall._tiles[last_live]
+	wall._tiles[last_live] = next
+	wall._tiles[wall._draw_index] = tmp
+	while wall.live_wall_size() > 1:
+		assert_not_null(wall.draw())
+	assert_eq(wall.live_wall_size(), 1)
+	assert_eq(int((wall.peek_next_draw() as Tile).id), TileId.W9)
 
 # ---- 路径 1: discarder=0 弃 W9，seat 1 自动 RON ----
 
 func test_auto_ron_fires_on_tenpai_opponent():
-	_set_chiitoi_tenpai_for(1)
-	_setup_seat0_to_discard_w9()
+	_setup_first_discard({1: _chiitoi_w_tenpai()})
 
 	var result: Dictionary = _bc.run_to_end()
 	assert_eq(result.last_event, &"WIN_DECLARED",
@@ -80,9 +191,7 @@ func test_auto_ron_fires_on_tenpai_opponent():
 # ---- 路径 2: atama-hane 顺序（seat 1 在 seat 2 之前优先）----
 
 func test_auto_ron_atama_hane_order_seat_1_priority_over_2():
-	_set_chiitoi_tenpai_for(1)
-	_set_chiitoi_tenpai_for(2)
-	_setup_seat0_to_discard_w9()
+	_setup_first_discard({1: _chiitoi_w_tenpai(), 2: _chiitoi_t_tenpai()})
 
 	var result: Dictionary = _bc.run_to_end()
 	var win_ev: BattleEvent = result.events[result.events.size() - 1]
@@ -91,10 +200,8 @@ func test_auto_ron_atama_hane_order_seat_1_priority_over_2():
 # ---- 路径 3: 振听对家不能 ron ----
 
 func test_auto_ron_skips_furiten_seat():
-	_set_chiitoi_tenpai_for(1)
-	_set_chiitoi_tenpai_for(2)
+	_setup_first_discard({1: _chiitoi_w_tenpai(), 2: _chiitoi_t_tenpai()})
 	_bc.state.seats[1].furiten.permanent = true
-	_setup_seat0_to_discard_w9()
 
 	var result: Dictionary = _bc.run_to_end()
 	assert_eq(result.last_event, &"WIN_DECLARED")
@@ -104,7 +211,8 @@ func test_auto_ron_skips_furiten_seat():
 # ---- 路径 4: 没人听 → 正常流转 ----
 
 func test_no_auto_ron_when_no_tenpai_opponent():
-	# 不设 tenpai；用默认 SimpleAi（保留 _ForcePickAi 也行，反正没人 ron）
+	_setup_first_discard({})
+	# 不设 tenpai；三家永久振听，第一弃无人可荣后继续到自然终局。
 	var result: Dictionary = _bc.run_to_end()
 	var allowed: Array = [&"EXHAUSTIVE_DRAW", &"WIN_DECLARED"]
 	assert_true(allowed.has(result.last_event))
@@ -119,8 +227,7 @@ class _SelfCancelRonHook extends SkillHook:
 		ctx.cancel_ron(event.actor_seat)
 
 func test_auto_ron_cancelled_falls_back_to_next_seat():
-	_set_chiitoi_tenpai_for(1)
-	_set_chiitoi_tenpai_for(2)
+	_setup_first_discard({1: _chiitoi_w_tenpai(), 2: _chiitoi_t_tenpai()})
 
 	var sk := SkillResource.new()
 	sk.id = &"_test_cancel_seat1_v1"
@@ -130,8 +237,6 @@ func test_auto_ron_cancelled_falls_back_to_next_seat():
 	sk.hook_script = _SelfCancelRonHook
 	_bc.registry.register(sk, 1)
 
-	_setup_seat0_to_discard_w9()
-
 	var result: Dictionary = _bc.run_to_end()
 	assert_eq(result.last_event, &"WIN_DECLARED")
 	var win_ev: BattleEvent = result.events[result.events.size() - 1]
@@ -140,15 +245,8 @@ func test_auto_ron_cancelled_falls_back_to_next_seat():
 # ---- 路径 6: HOUTEI 自动判定（wall 空时的 ron）----
 
 func test_auto_ron_houtei_emit_when_wall_empty():
-	_set_chiitoi_tenpai_for(1)
-	# 把 wall draw_index 推到 size==1，下次 draw 是最后一张 live tile = W9
-	_setup_seat0_to_discard_w9()
-	var w: Wall = _bc.state.wall
-	# 重写 draw_index 让 live_wall_size() = 1（仅剩 1 张可摸 = 即将 W9）
-	var current_live: int = w.live_wall_size()
-	w._draw_index += (current_live - 1)
-	# 重新设置最后一张 = W9（之前 setup 已设但 index 移动后位置变了）
-	w._tiles[w._draw_index] = Tile.new(TileId.W9)
+	_setup_first_discard({1: _chiitoi_w_tenpai()})
+	_drain_live_until_only_next_w9()
 
 	var result: Dictionary = _bc.run_to_end()
 	# seat 1 ron W9 → houtei；最末是 WIN_DECLARED

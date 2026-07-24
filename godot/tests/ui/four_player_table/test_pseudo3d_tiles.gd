@@ -15,7 +15,7 @@ func _face_texture() -> Texture2D:
 func _seat_with_tiles(seat_id: int, count: int) -> Seat:
 	var seat := Seat.new(seat_id, TileId.E)
 	for i in range(count):
-		seat.hand.add(Tile.new(i % 34))
+		seat.hand.add(Tile.new(i % 34, false, Tile.NO_OWNER, seat_id * 100 + i))
 	return seat
 
 
@@ -468,7 +468,7 @@ func test_player_drawn_hand_and_pon_reflow_match_reference() -> void:
 	add_child_autofree(panel)
 	await get_tree().process_frame
 	var seat := _seat_with_tiles(0, 14)
-	seat.last_drawn_tile_id = seat.hand._tiles[-1].id
+	seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
 	panel.bind_seat(seat)
 	panel.apply_reference_hand_layout()
 	await wait_seconds(0.22)
@@ -500,7 +500,7 @@ func test_opponent_drawn_visual_slots_fill_reserved_hand_hosts() -> void:
 		add_child_autofree(panel)
 		await get_tree().process_frame
 		var seat := _seat_with_tiles(seat_id, 14)
-		seat.last_drawn_tile_id = seat.hand._tiles[-1].id
+		seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
 		panel.bind_seat(seat)
 		panel.apply_reference_hand_layout()
 		await get_tree().process_frame
@@ -645,7 +645,7 @@ func test_side_hand_drawn_tile_uses_reference_reserved_end_slot() -> void:
 		add_child_autofree(panel)
 		await get_tree().process_frame
 		var seat := _seat_with_tiles(seat_id, 14)
-		seat.last_drawn_tile_id = seat.hand._tiles[-1].id
+		seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
 		panel.bind_seat(seat)
 		assert_eq(panel._hand_tile_row.get_child_count(), 14,
 			"有摸牌时 q0 仍是固定 14 槽且全部可见")

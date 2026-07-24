@@ -23,7 +23,7 @@
 | 匹配与路由 | 独立 Go Control Plane + Redis 临时状态；不跑日麻规则 |
 | 语音 | 独立 WebSocket 中继；有界内存；不落盘 |
 | STT | 双层：本地 whisper.cpp（字幕/练习评分输入）+ 服务端 faster-whisper（公共权威 final）+ new-api 回退 |
-| 协议 | 版本化命令 / 事件 / 快照；`command_id` 同指纹幂等、异指纹 `COMMAND_ID_CONFLICT`；`server_seq` 单调；可解析 JSON |
+| 协议 | 版本化命令 / 事件 / 快照；`NetworkedEvent` 六键 envelope + 必填 `view_hash`；`command_id` 同指纹幂等、异指纹 `COMMAND_ID_CONFLICT`；`server_seq` 单调；可解析 JSON |
 | RewardWindow | 开窗 4 个互不重复 `item_id` 奖池；24 弃 + CLOSING + 双边界 + 1500ms + CLAIM 屏障；三出口优先级固定 |
 | Momentum | 仅五类 affinity/标签枚举；旧技能倍率不进生产协议或结算 |
 | 非目标 | **无 E6**；无举报、静音、语音设置、自动禁言契约 |
@@ -172,12 +172,13 @@ flowchart LR
 | `command_id` | 客户端生成 UUID；**首次处理时**绑定业务指纹（见下）；同 ID 同指纹才幂等重放 |
 | `client_seq` | 每座位单调，用于调试/缺口检测；**不参与**业务指纹，也**不能**代替 `command_id` 幂等 |
 | `server_seq` | Worker（或练习本地权威）全局单调递增；事件与快照边界的唯一续传锚点；幂等命中与 `COMMAND_ID_CONFLICT` **均不**分配新业务 `server_seq` |
-| 状态哈希 | 事件可带稳定 `state_hash`；客户端分叉 → 停止预测并 `RESYNC_REQUEST` |
+| `view_hash` | 业务事件 envelope **必填**；该 recipient 的 public view 经 canonical JSON 后的 SHA-256（64 小写 hex）；分叉 → 停止预测并 `RESYNC_REQUEST`（语义见 §8.2） |
 
 **业务指纹（首次处理绑定，全文唯一解释）**：
 
 - 首次处理某 `command_id` 时，权威绑定指纹：
-  `session_id + room_id + seat + kind + 规范化 payload 指纹`
+  `session_id + room_id + seat + hand_seq + decision_id + kind + 规范化 payload 指纹`
+- `hand_seq` 与 `decision_id` 参与业务指纹；同一 `command_id` 不得跨局或跨决策窗回放旧结果。
 - **`client_seq` 不参与**业务指纹。
 - 规范化 payload 指纹：对 `payload` 做稳定字段序 / 类型规范化后的摘要（实现钉死算法即可；本 ADR 只要求可复现与可比较）。
 
@@ -200,7 +201,7 @@ flowchart LR
 
 ### 6.3 传输形态
 
-- 牌局控制面：WebSocket **文本 JSON**（客户端命令、权威业务 `ServerEvent`、服务端控制响应）。
+- 牌局控制面：WebSocket **文本 JSON**（客户端命令、权威业务 `NetworkedEvent`、服务端控制响应）。
 - 语音：独立 WebSocket；控制帧文本 JSON + 二进制 PCM 帧。
 - 所有示例 JSON **必须**可被标准 JSON 解析器解析（本 ADR 内示例已自检）。
 
@@ -210,13 +211,13 @@ flowchart LR
 
 | 类别 | 规则 |
 |---|---|
-| 权威业务 `ServerEvent` | 业务事件流与回放日志中的每一条**全部带** `server_seq`（及可选 `state_hash`）；属于 `EventKind` |
+| 权威业务 `NetworkedEvent`（`ServerEvent`） | 业务事件流与回放日志中的每一条**全部**使用 §8.2 六键 envelope（含 `server_seq` 与必填 `view_hash`）；属于 `EventKind` |
 | `ERROR` | **服务端控制响应**（WebSocket response / control frame；HTTP 使用**同逻辑**错误体），`ServerControlKind = ERROR` |
-| 非 `EventKind` | `ERROR` **不属于**权威业务 `EventKind`，**不进入**回放日志，**不带** `server_seq` / `state_hash`，**不改**权威状态 |
+| 非 `EventKind` | `ERROR` **不属于**权威业务 `EventKind`，**不进入**回放日志，**不带** `server_seq` / `view_hash`，**不改**权威状态 |
 | `COMMAND_ID_CONFLICT` | 经该控制响应返回，因此**不分配** `server_seq` |
 | 正常幂等命中 | **不是** `ERROR`，走成功路径的原结果/引用 |
 
-WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state_hash`）：
+WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `view_hash`）：
 
 ```json
 {
@@ -272,21 +273,53 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
 
 ### 8.1 客户端命令包络
 
+对局业务命令使用 `Action v1`；与 `godot/protocol/action.gd` 的唯一 DTO 契约对齐，顶层键必须恰好为以下九个键：
+
+| 字段 | 类型 / 约束 |
+|---|---|
+| `protocol_version` | `int`，固定 `1` |
+| `command_id` | UUID 字符串（`8-4-4-4-12` hex） |
+| `room_id` | 非空 `String` |
+| `seat` | `int`，仅 `0..3`；越界在 DTO 边界拒绝（`from_dict`/`helper` 返回 null） |
+| `hand_seq` | `int`，必须落在可安全生成本局牌实体 ID 的范围 |
+| `decision_id` | 当前权威 `DecisionWindow` 的 UUID；旧窗或错窗命令拒绝 |
+| `kind` | 稳定字符串对局 ActionKind（拒绝 int enum / 旧 `PASS_CLAIM` / `DRAW`） |
+| `payload` | 按 kind **精确 schema**（多字段 / 缺字段 / 错类型一律拒绝） |
+| `client_seq` | 非负 `int` |
+
 ```json
 {
   "protocol_version": 1,
   "command_id": "550e8400-e29b-41d4-a716-446655440000",
   "room_id": "room_x",
   "seat": 0,
+  "hand_seq": 0,
+  "decision_id": "550e8400-e29b-41d4-a716-446655440010",
   "kind": "DISCARD",
-  "payload": {},
+  "payload": {
+    "tile_instance_id": 4
+  },
   "client_seq": 12
 }
 ```
 
-**最小命令集合（kind）**：
+**对局 `Action v1` 集合（kind）**：
 
-`JOIN`、`READY`、`DISCARD`、`CHI`、`PON`、`KAN`、`RIICHI`、`RON`、`TSUMO`、`PASS`、`ITEM_USE`、`RESYNC_REQUEST`
+`DISCARD`、`CHI`、`PON`、`KAN`、`RIICHI`、`RON`、`TSUMO`、`PASS`、`ITEM_USE`、`DECLARE_ABORTIVE_DRAW`。
+
+`JOIN`、`READY`、`RESYNC_REQUEST` 属于会话 / 传输控制命令，由 E3 的控制协议定义；它们**不是** `Action v1`，不得伪造 `decision_id` 后进入牌局行动入口。
+
+#### 按 kind 的精确 payload schema（Action v1 冻结）
+
+| kind | payload 精确键 | 说明 |
+|---|---|---|
+| `DISCARD` / `RIICHI` | `{ "tile_instance_id": int }` | 实体必须属于 envelope 的 `hand_seq` |
+| `CHI` / `PON` | `{ "companion_tile_instance_ids": [int, int] }` | 两个实体互异且属于本局；被鸣牌与弃牌座来自权威窗口，不由客户端重复声明 |
+| `KAN` | MINKAN：`{ "kan_kind": "MINKAN", "companion_tile_instance_ids": [int, int, int] }`；ANKAN：`{ "kan_kind": "ANKAN", "tile_instance_ids": [int, int, int, int] }`；ADDED_KAN：`{ "kan_kind": "ADDED_KAN", "meld_id": int, "added_tile_instance_id": int }` | 所有牌实体必须属于本局；`kan_kind ∈ {MINKAN, ANKAN, ADDED_KAN}` |
+| `RON` | `{}` | 和牌张与放铳 / 加杠座来自权威窗口 |
+| `TSUMO` / `PASS` | `{}` | 空对象；非空拒绝。`PASS` 替代已删除的 `PASS_CLAIM` |
+| `ITEM_USE` | `{ "item_instance_id": string }` | 非空字符串；**仅命令** |
+| `DECLARE_ABORTIVE_DRAW` | `{ "reason": "KYUUSYU_KYUUHAI" }` | Alpha **冻结**九种九牌唯一 reason；其它 reason 拒绝 |
 
 #### `ITEM_USE`（仅命令）
 
@@ -296,6 +329,8 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
   "command_id": "550e8400-e29b-41d4-a716-446655440001",
   "room_id": "room_x",
   "seat": 0,
+  "hand_seq": 0,
+  "decision_id": "550e8400-e29b-41d4-a716-446655440011",
   "kind": "ITEM_USE",
   "payload": {
     "item_instance_id": "inst_abc"
@@ -308,9 +343,53 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
 - 权威**首次处理**并采纳命令后，**只**通过 `ITEM_CONSUMED`（实例移除时）和/或 `ITEM_APPLIED`（效果已应用）表达结果。
 - Alpha **不定义**「使用已接受」回声业务事件；拒绝则返回 `ERROR` **控制响应**（§6.4），不进入回放日志。
 
-### 8.2 权威业务事件包络（`ServerEvent`）
+#### `DECLARE_ABORTIVE_DRAW`（九种九牌）
 
-权威业务事件流与回放日志中的 **ServerEvent 全部带 `server_seq`**（可选 `state_hash`）。`ERROR` **不是**本集合成员。
+```json
+{
+  "protocol_version": 1,
+  "command_id": "550e8400-e29b-41d4-a716-446655440002",
+  "room_id": "room_x",
+  "seat": 0,
+  "hand_seq": 0,
+  "decision_id": "550e8400-e29b-41d4-a716-446655440012",
+  "kind": "DECLARE_ABORTIVE_DRAW",
+  "payload": {
+    "reason": "KYUUSYU_KYUUHAI"
+  },
+  "client_seq": 14
+}
+```
+
+- Alpha 仅承认 `reason = "KYUUSYU_KYUUHAI"`；扩展其它中途流局 reason 须另开协议修订。
+
+### 8.2 权威业务事件包络（`NetworkedEvent` / `ServerEvent`）
+
+线上业务事件 DTO 为 **`NetworkedEvent`**（文档亦称 `ServerEvent`）。权威业务事件流与回放日志中的每一条 envelope **顶层键必须恰好**为以下六个键（多键/缺键/错名一律拒绝）：
+
+`protocol_version` · `server_seq` · `room_id` · `kind` · `payload` · `view_hash`
+
+| 字段 | 约束 |
+|---|---|
+| `protocol_version` | `int`，固定 `1` |
+| `server_seq` | 正整数；与房间内业务序号空间单调 |
+| `room_id` | 非空字符串 |
+| `kind` | 稳定 `EventKind` 字符串 |
+| `payload` | 按 kind 的精确 schema（Dictionary） |
+| `view_hash` | **必填**；64 位小写 hex（SHA-256） |
+
+**`view_hash` 语义（全文唯一解释）**：
+
+1. **`ROOM_SNAPSHOT`**：`view_hash` = **该 recipient 的 public projection**（本快照 payload 所承载的座位可见投影）经 **canonical JSON** 后的 SHA-256。
+2. **其它业务事件**：`view_hash` = **该事件应用后**，**同一 recipient** 的 public view 经 **canonical JSON** 后的 SHA-256（**不是**对本事件 `payload` 本身取哈希）。
+3. **不同 recipient** 的 `view_hash` **可以不同**；客户端用它做分叉检测：不匹配 → 停止预测并 `RESYNC_REQUEST` / `RESYNC_REQUIRED`。
+
+**DTO 字段纪律**：
+
+- 协议 DTO（含 envelope、`payload`、`modules` 及任意嵌套对象）**递归禁止**历史私有/全量状态摘要字段名；线上分叉检测**仅**允许 envelope 顶层 `view_hash`。
+- **`AuthorityReplaySnapshot`** 是服务端内部恢复与确定性回放结构，**不进入**线上协议 envelope、`payload` 或 `modules`；不得与 recipient public projection / `view_hash` 混用或混发。
+
+`ERROR` **不是**本集合成员（见 §6.4）。
 
 ```json
 {
@@ -319,7 +398,7 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
   "room_id": "room_x",
   "kind": "ACTION_APPLIED",
   "payload": {},
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -372,15 +451,16 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
       }
     ]
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
 | 规则 | 说明 |
 |---|---|
 | v1 序号不变量 | `server_seq == snapshot_server_seq` 且 `next_server_seq == snapshot_server_seq + 1`（强制） |
+| `view_hash` | 该 recipient 的 public projection 经 canonical JSON 后的 SHA-256（§8.2）；生产实现须与校验器对完整 payload 的 canonical 哈希一致 |
 | 续传边界 | 以 `snapshot_server_seq` 为已应用上限；客户端从 `next_server_seq`（恒为 +1）起消费后续增量事件 |
-| modules 字段 | 每个 module 冻结为 `module_key` + `schema_version` + 按座位裁剪的 `payload`；**禁止**协议字段名 `module_version` 或模块级 `data` |
+| modules 字段 | 每个 module 冻结为 `module_key` + `schema_version` + 按座位裁剪的 `payload`；**禁止**协议字段名 `module_version` 或模块级 `data`；modules 内亦适用 §8.2 递归字段纪律 |
 | #241 | 只冻结基础包络 + 稳定 module provider 注册/组合/恢复（每 `module_key` 恰好一个 provider）；测试 provider round-trip；不读取/改写模块业务字段 |
 | #252 | 后续提供 RewardWindow DTO/provider（phase、`window_exit`、奖池、双边界、`grace_deadline_at` 等） |
 | #253 | 后续提供该席 `ItemInstance[]`、`active_window_id`/`pending_window_id` DTO/provider |
@@ -394,7 +474,7 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `state
 | 超时 | Worker AI **接管**该席；房间继续 |
 | 本局内重连 | 下发 `ROOM_SNAPSHOT` + 增量；在**安全行动边界**归还控制 |
 | 跨局 | Alpha 仅承诺本局内恢复；不承诺跨 match 占座 |
-| 哈希分叉 | `RESYNC_REQUIRED` → 快照覆盖本地预测 |
+| `view_hash` 分叉 | `RESYNC_REQUIRED` → 快照覆盖本地预测（不同 recipient 的 `view_hash` 可不同） |
 
 ---
 
@@ -567,7 +647,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
     "hand_seq": 3,
     "transcript_summary": {}
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -594,7 +674,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
     "grant_count": 0,
     "hand_seq": 3
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -646,7 +726,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
     "affinity_match": true,
     "armed_for_window_id": "hand_3_window_2"
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -707,7 +787,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
     "item_instance_id": "inst_abc",
     "command_id": "550e8400-e29b-41d4-a716-446655440001"
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -724,7 +804,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
     "effect_id": "stable_effect_id",
     "command_id": "550e8400-e29b-41d4-a716-446655440001"
   },
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
@@ -757,7 +837,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
 | deadline 不足四人 | 原子创建房间并补 AI |
 | 同 `command_id` 同指纹 | 见 §6.2：返回/重放原结果或原结果引用；不重发业务事件、不分配新 `server_seq`、不二次改状态；**不是** `ERROR` 控制响应；禁止 `COMMAND_DUPLICATE` |
 | 同 `command_id` 不同指纹 | `COMMAND_ID_CONFLICT` **控制响应**；不改状态、不分配 `server_seq`、不覆盖缓存原结果、不进回放日志 |
-| 状态哈希分叉 | 停预测 → 快照 |
+| `view_hash` 分叉 | 停预测 → 快照 / `RESYNC_REQUEST` |
 | 非法 `ROOM_SNAPSHOT` 序号 | 违反 `server_seq == snapshot_server_seq` 或 `next == snapshot + 1` → 不部分应用；`RESYNC_REQUIRED` 控制响应 / 重拉 |
 | 客户端 `PTT_END` 携带 `server_seq` / 权威字段 | `FORGERY_REJECTED` 控制响应；整条不进入权威归一化与边界；**禁止静默忽略** |
 | 掉线 30s / AI 接管 / 重连 | 见 §9.2 |
@@ -832,6 +912,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
 | `ITEM_GRANTED` 字段清单 | §12.1 |
 | 快照 modules：`module_key` + `schema_version` + `payload` | §6.1、§9.1 |
 | `ROOM_SNAPSHOT` v1：`server_seq == snapshot` 且 `next == snapshot + 1` | §9.1 |
+| `NetworkedEvent` 六键 envelope；必填 `view_hash`；DTO 递归禁止历史状态摘要字段名；`AuthorityReplaySnapshot` 不进线上协议 | §6.2、§8.2、§9.1 |
 | 客户端 `PTT_END` 无权威字段；误带 → `FORGERY_REJECTED`；权威归一化后才写 `server_seq` | §10.1、§11.2 |
 | 开窗 4 个互不重复 `item_id` 奖池 | §11.1 |
 | 24 弃、1500ms、CLAIM 并行、双边界 | §11.2 |
@@ -841,7 +922,7 @@ CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
 | 公共 Worker / 练习同逻辑本地权威 | §4、§5 |
 | 故障/超时/重连/STT 回退/三出口回放 | §9、§10、§14 |
 | 同 ID 同指纹幂等；同 ID 异指纹 `COMMAND_ID_CONFLICT` 控制响应 | §6.2、§6.4、§14 |
-| `ERROR` 为 `ServerControlKind`，非 `EventKind`，无 `server_seq` | §6.4、§8.2、§17 |
+| `ERROR` 为 `ServerControlKind`，非 `EventKind`，无 `server_seq` / `view_hash` | §6.4、§8.2、§17 |
 | Momentum 仅五 affinity | §13 |
 | #252/#253/#241/#247 单一所有权 | §8.3、§15 |
 | 无 E6/举报/静音/语音控制/自动禁言 | §2.2 |
@@ -866,17 +947,21 @@ RoomKind:           PRACTICE | PUBLIC_CASUAL
 RoundKind:          EAST | HANCHAN
 ParticipantKind:    HUMAN | AI
 
-CommandKind:        JOIN | READY | DISCARD | CHI | PON | KAN | RIICHI | RON | TSUMO | PASS | ITEM_USE | RESYNC_REQUEST
+ActionKind:         DISCARD | CHI | PON | KAN | RIICHI | RON | TSUMO | PASS
+                    | ITEM_USE | DECLARE_ABORTIVE_DRAW
+                    （PASS 替代旧 PASS_CLAIM；DECLARE_ABORTIVE_DRAW.payload.reason 冻结 KYUUSYU_KYUUHAI）
+ControlCommandKind: JOIN | READY | RESYNC_REQUEST（E3 会话 / 传输控制；不进入 Action v1）
 
 EventKind:          ROOM_SNAPSHOT | PLAYER_JOINED | TURN_PROMPT | ACTION_APPLIED | CLAIM_WINDOW
                     | REWARD_WINDOW_OPENED | REWARD_WINDOW_CLOSING | REWARD_WINDOW_SETTLED | REWARD_WINDOW_CANCELLED
                     | ITEM_GRANTED | ITEM_CONSUMED | ITEM_APPLIED
                     | CHARACTER_ABILITY_ARMED | CHARACTER_ABILITY_DISARMED
                     | HAND_SETTLED | MATCH_SETTLED
-                    （全部 ServerEvent 带 server_seq；进入回放日志；不含 ERROR）
+                    （NetworkedEvent 六键 envelope：protocol_version/server_seq/room_id/kind/payload/view_hash；
+                      进入回放日志；不含 ERROR；DTO 递归禁止历史状态摘要字段名）
 
 ServerControlKind:  ERROR
-                    （控制响应；不进回放；不带 server_seq/state_hash；不改状态）
+                    （控制响应；不进回放；不带 server_seq/view_hash；不改状态）
 
 VoiceControlKind:   PTT_START | PTT_END | TRANSCRIPT_PARTIAL | TRANSCRIPT_FINAL
 
@@ -888,13 +973,18 @@ MomentumAffinity:   DOMINATION | CALM | CUNNING | PASSION | MYSTIC
 
 ExitPriority:       CANCELLED_BY_WIN > DISPLAY_ONLY > FULL_GRANT
 
-CommandFingerprint: session_id + room_id + seat + kind + normalized_payload_hash
+CommandFingerprint: session_id + room_id + seat + hand_seq + decision_id + kind + normalized_payload_hash
                     （client_seq 不参与；首次处理时绑定，含首次拒绝缓存）
 Idempotency:        同 command_id 同指纹 → 原结果或原结果引用（成功路径，非 ERROR）；禁止 COMMAND_DUPLICATE
 CommandIdConflict:  同 command_id 异指纹 → ERROR 控制响应 code=COMMAND_ID_CONFLICT
                     不改状态、不分配 server_seq、不覆盖缓存、不进回放
 ROOM_SNAPSHOT_v1:   server_seq == snapshot_server_seq
                     AND next_server_seq == snapshot_server_seq + 1
+view_hash:          ROOM_SNAPSHOT = SHA-256(canonical JSON(recipient public projection))
+                    其它 EventKind = SHA-256(canonical JSON(post-apply recipient public view))
+                    不同 recipient 可不同；客户端分叉检测
+AuthorityReplaySnapshot:
+                    服务端内部恢复/确定性回放；不进入线上 envelope/payload/modules
 PTT_END:            client_request 无权威字段；若携带 server_seq/server_seq_ref/其他权威字段
                     → FORGERY_REJECTED 且整条不归一化；合法请求首次处理后 authoritative 才有 server_seq
 ErrorCode:          PROTOCOL_VERSION_UNSUPPORTED | UNAUTHORIZED | COMMAND_REJECTED

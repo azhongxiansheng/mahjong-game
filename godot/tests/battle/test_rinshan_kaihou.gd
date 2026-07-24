@@ -6,6 +6,10 @@ extends GutTest
 # 修复方案:Seat.last_draw_is_rinshan + TurnEngine 维护 + BC._step_discard 检 tsumo
 
 
+func _tile(tid: int, iid: int) -> Tile:
+	return Tile.new(tid, false, Tile.NO_OWNER, iid)
+
+
 # ---- Seat.last_draw_is_rinshan 默认 + 普通摸牌不触发 ----
 
 func test_seat_last_draw_is_rinshan_defaults_false() -> void:
@@ -27,12 +31,14 @@ func test_draw_for_current_clears_rinshan_flag() -> void:
 # 明杠后 _take_rinshan_to 应设 seat.last_draw_is_rinshan=true
 func test_apply_minkan_sets_rinshan_flag() -> void:
 	var bc := BattleController.new(99, 0, false, TileId.E)
-	# seat 1 注入 3 张 W5,seat 0 弃 W5
-	for _i in range(3):
-		bc.state.seats[1].hand._tiles.append(Tile.new(TileId.W5))
+	bc.state.seats[1].hand = Hand.new()
+	bc.state.seats[1].hand.add(_tile(TileId.W5, 701))
+	bc.state.seats[1].hand.add(_tile(TileId.W5, 702))
+	bc.state.seats[1].hand.add(_tile(TileId.W5, 703))
 	bc.state.current_seat = 0
-	bc.state.discards_per_seat[0].append(Tile.new(TileId.W5))
-	var ok: bool = bc.engine.apply_minkan(1, Tile.new(TileId.W5))
+	bc.state.phase = BattlePhase.Kind.CLAIM
+	bc.state.discards_per_seat[0] = [_tile(TileId.W5, 700)]
+	var ok: bool = bc.engine.apply_minkan(1, 700, [701, 702, 703])
 	assert_true(ok, "minkan 应成立")
 	assert_true(bc.state.seats[1].last_draw_is_rinshan,
 		"明杠后岭上摸 → last_draw_is_rinshan=true")
@@ -41,10 +47,12 @@ func test_apply_minkan_sets_rinshan_flag() -> void:
 # 暗杠后 _take_rinshan_to 同样设标记
 func test_apply_ankan_sets_rinshan_flag() -> void:
 	var bc := BattleController.new(99, 0, false, TileId.E)
-	for _i in range(4):
-		bc.state.seats[0].hand._tiles.append(Tile.new(TileId.W1))
+	bc.state.seats[0].hand = Hand.new()
+	for i in range(4):
+		bc.state.seats[0].hand.add(_tile(TileId.W1, 800 + i))
 	bc.state.current_seat = 0
-	var ok: bool = bc.engine.apply_ankan(0, TileId.W1)
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	var ok: bool = bc.engine.apply_ankan(0, [800, 801, 802, 803])
 	assert_true(ok)
 	assert_true(bc.state.seats[0].last_draw_is_rinshan,
 		"暗杠后岭上摸 → last_draw_is_rinshan=true")
@@ -76,9 +84,9 @@ func test_check_tsumo_default_no_rinshan() -> void:
 	# 通过看返回结构是否含 wp 来确认未崩。具体 yaku 验在 yaku/test_rinshan.gd 里。
 	var bc := BattleController.new(42, 0, false, TileId.E)
 	# 构造一个 noop drawn,既不胡也不崩
-	var drawn := Tile.new(TileId.W1)
+	var drawn := _tile(TileId.W1, 900)
 	# seat 手空,无法胡 — 应返 is_winning=false
-	bc.state.seats[0].hand._tiles.clear()
-	bc.state.seats[0].hand._tiles.append(drawn)
+	bc.state.seats[0].hand = Hand.new()
+	bc.state.seats[0].hand.add(drawn)
 	var result = bc._check_tsumo(drawn, false, false)
 	assert_false(result.get("is_winning", true), "非胡牌手应返 is_winning=false")

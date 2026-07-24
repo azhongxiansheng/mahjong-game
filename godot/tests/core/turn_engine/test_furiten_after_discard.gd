@@ -12,21 +12,28 @@ func _make_bc() -> BattleController:
 	return BattleController.new(42, 0, false, TileId.E)
 
 
+func _tile(tid: int, iid: int) -> Tile:
+	return Tile.new(tid, false, Tile.NO_OWNER, iid)
+
+
 # 七対子听 W8 单騎,弃 W8 后自家弃牌堆里就有 W8 → 永久振听
 func test_standard_furiten_after_discard_into_own_pile() -> void:
 	var bc := _make_bc()
 	var seat: Seat = bc.state.seats[0]
 	seat.hand._tiles.clear()
 	# 14 张:6 对 + W8 + W8 → 弃 1 张 W8 后 13 张听 W8 単騎(七対子)
-	for tid in [
+	var iids := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+	var ids := [
 		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
 		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
 		TileId.W8, TileId.W8,
-	]:
-		seat.hand.add(Tile.new(tid))
+	]
+	for i in range(14):
+		seat.hand.add(_tile(ids[i], iids[i]))
 	bc.state.current_seat = 0
-	# 弃 W8 → 自家弃牌堆 [W8],hand 13 张听 W8
-	assert_true(bc.engine.discard(TileId.W8))
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	# 弃一张 W8（iid=13）→ 自家弃牌堆 [W8],hand 13 张听 W8
+	assert_true(bc.engine.discard(13))
 	# 振听规则:waits 含 W8,自家弃牌堆也含 W8 → permanent
 	assert_true(seat.furiten.permanent, "自家弃牌含听张应永久振听")
 	assert_true(seat.furiten.is_furiten())
@@ -38,14 +45,17 @@ func test_no_furiten_when_wait_not_in_own_discards() -> void:
 	var seat: Seat = bc.state.seats[0]
 	seat.hand._tiles.clear()
 	# 14 张:听 W9,弃 W1(W9 待牌不在自家弃牌)
-	for tid in [
+	var iids := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+	var ids := [
 		TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3, TileId.W4,
 		TileId.W4, TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7,
 		TileId.W7, TileId.W9,  # m1 m2m2 m3m3 m4m4 m5m5 m6m6 m7m7 m9
-	]:
-		seat.hand.add(Tile.new(tid))
+	]
+	for i in range(14):
+		seat.hand.add(_tile(ids[i], iids[i]))
 	bc.state.current_seat = 0
-	assert_true(bc.engine.discard(TileId.W1))
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	assert_true(bc.engine.discard(1))  # W1 iid=1
 	assert_false(seat.furiten.permanent, "弃 W1 但听 W9,不在自家弃 → 不振听")
 
 

@@ -13,19 +13,16 @@ var melds: Array = []
 var points: int
 var riichi: RiichiState
 var furiten: FuritenState
-# 刚摸到的牌 id（含正常摸牌 + 杠后岭上摸）。-1 = 当前不在 post-draw 状态（弃牌后 / 鸣牌后）。
-# 日麻 UI 用于：(a) 立直后自动 tsumogiri 弃刚摸的牌；(b) 手牌渲染时把刚摸的牌单独显示
-# 在最右（让玩家看清楚摸到了什么）。状态由 TurnEngine 维护：
-#   - draw_for_current()         → 设为摸到的 id
-#   - apply_minkan/ankan/added_kan + _take_rinshan_to → 设为岭上的 id
-#   - discard()                  → 设回 -1
-#   - apply_chi/pon              → 设回 -1（claimant 没真摸牌，是吃/碰别人的）
-var last_drawn_tile_id: int = -1
+# E2-02 / #232：刚摸实体 identity；INVALID_INSTANCE_ID = 当前不在 post-draw。
+var last_drawn_instance_id: int = Tile.INVALID_INSTANCE_ID
 # 刚摸的那张牌是否来自岭上(杠后岭上摸)。true 时 BattleController 在 _step_discard
 # 开头检 tsumo,允许岭上开花(rinshan kaihou,+1 han 役)。draw_for_current 摸正常
 # 牌时回 false;_take_rinshan_to 摸岭上时设 true。修复前:is_rinshan dead code,
 # 玩家明杠后即使胡也不算岭上开花。
 var last_draw_is_rinshan: bool = false
+# E2-02 / #232：本座位本局副露序号；公开 meld_id 以四席交错编码，
+# `local_index * 4 + seat_id`，从而无需共享可变分配器也能保证同局全局唯一。
+var next_meld_id: int = 0
 
 func _init(p_seat_id: int, p_seat_wind: int, p_points: int = DEFAULT_STARTING_POINTS) -> void:
 	seat_id = p_seat_id
@@ -34,12 +31,15 @@ func _init(p_seat_id: int, p_seat_wind: int, p_points: int = DEFAULT_STARTING_PO
 	hand = Hand.new()
 	riichi = RiichiState.new()
 	furiten = FuritenState.new()
+	last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
+	next_meld_id = 0
 
 func add_to_hand(t: Tile) -> void:
 	hand.add(t)
 
-func discard_from_hand(tile_id: int) -> bool:
-	return hand.remove_by_id(tile_id)
+# E2-02 / #232：按实体 instance_id 精确弃牌；无 tile_id fallback；fail-closed。
+func discard_from_hand(instance_id: Variant) -> bool:
+	return hand.take_by_instance_id(instance_id) != null
 
 func is_concealed_hand() -> bool:
 	# 门清：melds 中只允许 ANKAN
@@ -50,3 +50,9 @@ func is_concealed_hand() -> bool:
 
 func adjust_points(delta: int) -> void:
 	points += delta
+
+# 分配下一个 meld_id（仅成功提交路径调用）。
+func allocate_meld_id() -> int:
+	var mid: int = next_meld_id * 4 + seat_id
+	next_meld_id += 1
+	return mid

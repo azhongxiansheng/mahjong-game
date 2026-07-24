@@ -35,16 +35,21 @@ func _legal_post_draw_state_with_melds(seat_id: int,
 	var state := BattleState.for_east_round(20260720 + seat_id, 0, 1, 0, 0)
 	var seat: Seat = state.seats[seat_id]
 	var base_count := 13 - meld_count * 3
+	var drawn_instance_id: int = seat.hand._tiles[base_count].instance_id
 	seat.hand._tiles.resize(base_count)
-	var drawn := Tile.new(TileId.T1 + meld_count)
+	var drawn := Tile.new(
+		TileId.T1 + meld_count, false, Tile.NO_OWNER, drawn_instance_id)
 	seat.hand.add(drawn)
-	seat.last_drawn_tile_id = drawn.id
+	seat.last_drawn_instance_id = drawn.instance_id
 	for meld_index in range(meld_count):
 		var tile_id := TileId.W1 + meld_index
-		var called := Tile.new(tile_id)
+		var base_iid: int = 4000 + seat_id * 100 + meld_index * 10
+		var called := Tile.new(tile_id, false, Tile.NO_OWNER, base_iid)
 		seat.melds.append(Meld.make_pon([
-			called, Tile.new(tile_id), Tile.new(tile_id),
-		], (seat_id + 1) % 4, called))
+			called,
+			Tile.new(tile_id, false, Tile.NO_OWNER, base_iid + 1),
+			Tile.new(tile_id, false, Tile.NO_OWNER, base_iid + 2),
+		], (seat_id + 1) % 4, base_iid, called))
 	return state
 
 
@@ -155,14 +160,18 @@ func test_owner1_uses_reference_nested_z_order() -> void:
 	var area := MeldArea.new()
 	add_child_autofree(area)
 	area.set_seat_id(1)
-	var called_a := Tile.new(TileId.W5)
-	var called_b := Tile.new(TileId.T5)
+	var called_a := Tile.new(TileId.W5, false, Tile.NO_OWNER, 4100)
+	var called_b := Tile.new(TileId.T5, false, Tile.NO_OWNER, 4110)
 	var meld_a := Meld.make_pon([
-		called_a, Tile.new(TileId.W5), Tile.new(TileId.W5)
-	], 0, called_a)
+		called_a,
+		Tile.new(TileId.W5, false, Tile.NO_OWNER, 4101),
+		Tile.new(TileId.W5, false, Tile.NO_OWNER, 4102),
+	], 0, 0, called_a)
 	var meld_b := Meld.make_pon([
-		called_b, Tile.new(TileId.T5), Tile.new(TileId.T5)
-	], 0, called_b)
+		called_b,
+		Tile.new(TileId.T5, false, Tile.NO_OWNER, 4111),
+		Tile.new(TileId.T5, false, Tile.NO_OWNER, 4112),
+	], 0, 0, called_b)
 	area.set_melds([meld_a, meld_b], 1)
 	assert_eq(area._tile_nodes.size(), 6)
 	if area._tile_nodes.size() != 6:
@@ -190,10 +199,12 @@ func test_single_pon_layout_bounds_follow_hand_flex_reflow() -> void:
 		area.set_seat_id(seat_id)
 		area.rotation_degrees = SeatPanel.SEAT_ROTATION_DEGREES[seat_id]
 		add_child_autofree(area)
-		var called := Tile.new(TileId.W5)
+		var called := Tile.new(TileId.W5, false, Tile.NO_OWNER, 4200 + seat_id * 3)
 		var meld := Meld.make_pon([
-			called, Tile.new(TileId.W5), Tile.new(TileId.W5),
-		], (seat_id + 1) % 4, called)
+			called,
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4201 + seat_id * 3),
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4202 + seat_id * 3),
+		], (seat_id + 1) % 4, 0, called)
 		area.set_melds([meld], seat_id)
 		area.apply_reference_layout()
 		await get_tree().process_frame
@@ -256,7 +267,7 @@ func test_real_bind_uses_legal_concealed_count_for_one_and_two_pon() -> void:
 func test_live_left_one_pon_post_discard_matches_browser_bbox() -> void:
 	var state := _legal_post_draw_state_with_melds(3, 1)
 	state.seats[3].hand._tiles.pop_back()
-	state.seats[3].last_drawn_tile_id = -1
+	state.seats[3].last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 	var table: FourPlayerTable = load(
 		"res://ui/four_player_table/four_player_table.tscn").instantiate()
 	add_child_autofree(table)

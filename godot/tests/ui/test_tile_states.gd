@@ -68,13 +68,15 @@ func test_states_are_stackable():
 
 # ---- SeatPanel 接线 ----
 
-func _make_player_panel_with_hand(ids: Array) -> SeatPanel:
+# fixture：手牌 Tile 带稳定合法 instance_id（E2-02 dim 契约只认 iid，无 tile_id fallback）
+func _make_player_panel_with_hand(ids: Array, instance_ids: Array = []) -> SeatPanel:
 	var sp: SeatPanel = SEAT_PANEL_SCENE.instantiate()
 	sp.set_seat_id(0)
 	add_child_autofree(sp)
 	var hand := Hand.new()
-	for tid in ids:
-		hand.add(Tile.new(tid))
+	for i in range(ids.size()):
+		var iid: int = int(instance_ids[i]) if i < instance_ids.size() else (1000 + i)
+		hand.add(Tile.new(ids[i], false, Tile.NO_OWNER, iid))
 	var seat := Seat.new(0, TileId.E)
 	for t in hand._tiles:
 		seat.hand.add(t)
@@ -109,8 +111,10 @@ func test_seat_panel_marks_dora_from_ids():
 	assert_eq(dora_count, 1, "手牌中 1 张 W5 实宝牌应标扫光")
 
 func test_seat_panel_dim_except_and_clear():
-	var sp := _make_player_panel_with_hand([TileId.W1, TileId.W2, TileId.T5])
-	sp.dim_hand_except([TileId.W1, TileId.W2])
+	# instance_id 与 tile_id 解耦：W1/W2/T5 → 101/102/105
+	var sp := _make_player_panel_with_hand(
+		[TileId.W1, TileId.W2, TileId.T5], [101, 102, 105])
+	sp.dim_hand_except([101, 102])
 	var dimmed: Array = []
 	for tile in _iter_hand_tiles(sp):
 		if tile.is_dim():

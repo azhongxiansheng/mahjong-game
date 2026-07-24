@@ -44,7 +44,8 @@ func test_event_roundtrip_simple():
 	assert_null(ev2.tile_instance, "无 tile 时 from_dict 不重建 TileInstance")
 
 func test_event_roundtrip_with_tile():
-	var ti := TileInstance.make(Tile.new(TileId.S7, true, 1), 1)
+	# 赤宝仅 5m/5p/5s 合法；S7 用非赤 + 合法 instance_id
+	var ti := TileInstance.make(Tile.new(TileId.S7, false, 1, 7), 1)
 	var ev := BattleEvent.make(&"TILE_DISCARDED", 1, ti, {})
 	var d: Dictionary = ev.to_dict()
 	var ev2: BattleEvent = BattleEvent.from_dict(d)

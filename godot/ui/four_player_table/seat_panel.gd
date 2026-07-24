@@ -2,8 +2,9 @@ class_name SeatPanel extends Node2D
 
 # seat 0 (玩家) 自家手牌被点击时转发给上层（PlayerActionPanel / PlayableTable）。
 # 其它 seat 永不 emit（手牌色块本身不 clickable）。
-signal player_card_clicked(tile_id: int)
-# 雀魂式：悬停手牌时通知桌面做全桌同名高亮
+# E2-02 / #232：参数 = tile_instance_id（entity identity）
+signal player_card_clicked(tile_instance_id: int)
+# 雀魂式：悬停手牌时通知桌面做全桌同名高亮（仍用 tile_id）
 signal hand_tile_hover(tile_id: int, entered: bool)
 
 # 麻将王 — 里程碑 3 第 2 步：单 seat 面板（plan-3 D4）
@@ -712,7 +713,9 @@ func bind_seat(seat: Seat) -> void:
 	_seat_wind = seat.seat_wind
 	_score = seat.points
 	_hand_size = seat.hand.size()
-	_hand_has_drawn = seat.last_drawn_tile_id >= 0 and seat.hand.size() > 0
+	# E2-02：drawn 拆分只认 last_drawn_instance_id
+	_hand_has_drawn = Tile.is_valid_instance_id(seat.last_drawn_instance_id) \
+		and seat.hand.size() > 0
 	_hand_base_count = seat.hand.size() - 1 if _hand_has_drawn else seat.hand.size()
 	_meld_count = seat.melds.size()
 	_riichi = seat.riichi.declared
@@ -722,11 +725,11 @@ func bind_seat(seat: Seat) -> void:
 		if _force_reveal_hand and _revealed_hand != null:
 			_rebuild_revealed_hand_row(_revealed_hand)
 		elif _seat_id == 0:
-			# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右
-			_rebuild_player_hand_row_with_drawn(seat.hand, seat.last_drawn_tile_id)
+			# 刚摸实体按 instance_id 拆到最右
+			_rebuild_player_hand_row_with_drawn(seat.hand, seat.last_drawn_instance_id)
 		else:
 			_rebuild_hand_tile_row(seat.hand.to_owner_array(),
-				seat.last_drawn_tile_id >= 0)
+				Tile.is_valid_instance_id(seat.last_drawn_instance_id))
 		_refresh_labels()
 
 
@@ -1278,88 +1281,105 @@ func _resolve_back_texture() -> Texture2D:
 # 复用 CardTileBack 是为了一致样式（边框、modulate=WHITE、tile_id_to_atlas_key
 # 映射），不用为玩家手牌再造一个 TextureRect 包装。
 func _rebuild_player_hand_row(tile_ids: Array) -> void:
-	# 兼容旧 caller（无 drawn 信息）：全部按一行渲染，无分隔
-	_rebuild_player_hand_row_internal(tile_ids, [], [], [])
+	# 兼容旧 caller（纯展示）：全部按一行渲染，slot identity = INVALID → 不可动作点击
+	var invalid_iids: Array = []
+	for _i in range(tile_ids.size()):
+		invalid_iids.append(Tile.INVALID_INSTANCE_ID)
+	_rebuild_player_hand_row_internal(tile_ids, [], [], [], invalid_iids, [])
 
-# spec 2026-05-08 bug 2 fix：把刚摸的牌单独显示在最右（与其他 13 张间留 PLAYER_HAND_DRAWN_GAP 间距）
-# hand：当前手牌 Hand；drawn_tile_id：刚摸的牌 id（-1 = 不在 post-draw 状态，全 sorted 渲染）
-# 算法：
-#   - drawn_tile_id < 0：全部 sorted 渲染（同 _rebuild_player_hand_row 旧行为）
-#   - drawn_tile_id >= 0：从 hand 中 pop 1 张匹配 id 的牌作"刚摸"；剩下 sorted；
-#     渲染顺序 = sorted 13 张 + 间距 + 1 张刚摸的牌（最右）
-func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_tile_id: int) -> void:
-	var split: Dictionary = split_hand_for_display(hand, drawn_tile_id)
+# E2-02：刚摸牌按 last_drawn_instance_id 拆到最右（PLAYER_HAND_DRAWN_GAP）。
+# drawn_instance_id：INVALID 或不在 hand → 不拆；精确 instance 匹配，无 tile_id fallback。
+func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_instance_id: int) -> void:
+	var split: Dictionary = split_hand_for_display(hand, drawn_instance_id)
 	_rebuild_player_hand_row_internal(
 		split.sorted_ids, split.drawn_ids,
-		split.get("sorted_reds", []), split.get("drawn_reds", []))
+		split.get("sorted_reds", []), split.get("drawn_reds", []),
+		split.get("sorted_instance_ids", []), split.get("drawn_instance_ids", []))
 
-# spec 2026-05-08 bug 2 fix：把"hand + 刚摸的牌 id"拆成 sorted + drawn 两部分。
-# 提为 static func 便于 GUT 单测（不依赖 SceneTree / TextureExtractor）。
-# 算法：
-#   drawn_tile_id < 0 / 不在手牌内 → 全 sorted（13 张），drawn_ids = []
-#   drawn_tile_id 在手牌内 → 从手牌弹 1 张匹配 drawn 的；剩下升序 sort；
-#     返 {sorted_ids: [13 张升序], drawn_ids: [drawn_id]}
-# 注意：手牌中可能含多张同 drawn id（如刚摸的牌恰好凑成 pair/triplet）；本函数
-# 仅 pop 第 1 张，保留其余按 sorted 渲染。这与日麻 UI 实现一致：刚摸的牌物理
-# 上是末尾插入的那张，UI 显示在右侧。
-static func split_hand_for_display(hand: Hand, drawn_tile_id: int) -> Dictionary:
-	# 返回 ids 与平行 is_red_dora 数组，保证赤宝真图接线不丢标记。
-	# 摸牌分离：从末尾往前找 drawn id（刚摸的通常是最后插入的那张）。
-	var entries: Array = []  # Array[{id, red}]
-	for t in hand._tiles:
-		entries.append({"id": t.id, "red": t.is_red_dora})
-	if drawn_tile_id < 0:
-		entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+# E2-02：hand + drawn_instance_id → sorted / drawn 六组平行数组。
+# 提为 static 便于 GUT 单测。只按 instance_id 精确拆；INVALID / 找不到 → 不拆。
+# 排序键 = (tile_id, original_index)：Godot sort_custom 同键不保证稳定，须显式记录
+# Hand._tiles 原始下标，确保同值普通牌/赤黑牌的剩余相对顺序确定（禁止 instance_id tie-break）。
+static func split_hand_for_display(hand: Hand, drawn_instance_id: int) -> Dictionary:
+	var entries: Array = []  # Array[{id, red, iid, original_index}]
+	for i in range(hand._tiles.size()):
+		var t: Tile = hand._tiles[i]
+		entries.append({
+			"id": t.id,
+			"red": t.is_red_dora,
+			"iid": t.instance_id,
+			"original_index": i,
+		})
+	if not Tile.is_valid_instance_id(drawn_instance_id):
+		_sort_split_entries(entries)
 		return _split_entries_to_dict(entries, [])
 	var drawn_idx: int = -1
-	for i in range(entries.size() - 1, -1, -1):
-		if int(entries[i]["id"]) == drawn_tile_id:
+	for i in range(entries.size()):
+		if int(entries[i]["iid"]) == drawn_instance_id:
 			drawn_idx = i
 			break
 	if drawn_idx < 0:
-		entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+		_sort_split_entries(entries)
 		return _split_entries_to_dict(entries, [])
 	var drawn_entry: Dictionary = entries[drawn_idx]
 	entries.remove_at(drawn_idx)
-	entries.sort_custom(func(a, b): return int(a["id"]) < int(b["id"]))
+	_sort_split_entries(entries)
 	return _split_entries_to_dict(entries, [drawn_entry])
+
+
+static func _sort_split_entries(entries: Array) -> void:
+	entries.sort_custom(func(a, b) -> bool:
+		var aid: int = int(a["id"])
+		var bid: int = int(b["id"])
+		if aid != bid:
+			return aid < bid
+		return int(a["original_index"]) < int(b["original_index"]))
 
 
 static func _split_entries_to_dict(sorted_entries: Array, drawn_entries: Array) -> Dictionary:
 	var sorted_ids: Array = []
 	var sorted_reds: Array = []
+	var sorted_instance_ids: Array = []
 	for e in sorted_entries:
 		sorted_ids.append(int(e["id"]))
 		sorted_reds.append(bool(e["red"]))
+		sorted_instance_ids.append(int(e.get("iid", Tile.INVALID_INSTANCE_ID)))
 	var drawn_ids: Array = []
 	var drawn_reds: Array = []
+	var drawn_instance_ids: Array = []
 	for e in drawn_entries:
 		drawn_ids.append(int(e["id"]))
 		drawn_reds.append(bool(e["red"]))
+		drawn_instance_ids.append(int(e.get("iid", Tile.INVALID_INSTANCE_ID)))
 	return {
 		"sorted_ids": sorted_ids,
 		"drawn_ids": drawn_ids,
 		"sorted_reds": sorted_reds,
 		"drawn_reds": drawn_reds,
+		"sorted_instance_ids": sorted_instance_ids,
+		"drawn_instance_ids": drawn_instance_ids,
 	}
 
 
 # 手牌增量匹配（纯函数，可单测）。
-# prev/next: Array[{id:int, red:bool}]
+# prev/next: Array[{id:int, red:bool, iid:int}]
 # 返回 Array[int]，与 next 等长：reuse 的 prev 下标，或 -1 表示新建。
-# 匹配键严格为 (id, red)；每个 prev 槽最多用一次。
+# 匹配键必须含 instance_id，避免同值赤黑/重复牌交换 identity。
 static func assign_hand_reuse(prev: Array, next: Array) -> Array:
 	var used: Dictionary = {}
 	var assignments: Array = []
 	for n in next:
 		var nid: int = int(n.get("id", -1))
 		var nred: bool = bool(n.get("red", false))
+		var niid: int = int(n.get("iid", Tile.INVALID_INSTANCE_ID))
 		var found: int = -1
 		for pi in range(prev.size()):
 			if used.has(pi):
 				continue
 			var p: Dictionary = prev[pi]
-			if int(p.get("id", -2)) == nid and bool(p.get("red", false)) == nred:
+			if int(p.get("id", -2)) == nid \
+					and bool(p.get("red", false)) == nred \
+					and int(p.get("iid", Tile.INVALID_INSTANCE_ID)) == niid:
 				found = pi
 				break
 		if found >= 0:
@@ -1383,13 +1403,14 @@ static func _make_row_shadow(size_: Vector2) -> Panel:
 
 
 # 手牌槽：每张牌一个 Control 容器（棱 + CardTileBack），便于增量 reuse。
-# meta: hand_id, hand_red, is_drawn
+# meta: hand_instance_id, hand_id, hand_red, is_drawn
 var _hand_slots: Array = []  # Array[Control]
 
 
-# 内部统一渲染：sorted 在左，drawn 在右；增量 reuse 同 (id,red) 节点，避免整行闪。
+# 内部统一渲染：sorted 在左，drawn 在右；增量 reuse 同 (iid,id,red) 节点。
 func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array,
-		sorted_reds: Array = [], drawn_reds: Array = []) -> void:
+		sorted_reds: Array = [], drawn_reds: Array = [],
+		sorted_instance_ids: Array = [], drawn_instance_ids: Array = []) -> void:
 	if _hand_tile_row == null:
 		return
 	_apply_hand_row_offset()
@@ -1398,12 +1419,16 @@ func _rebuild_player_hand_row_internal(sorted_ids: Array, drawn_ids: Array,
 		targets.append({
 			"id": int(sorted_ids[i]),
 			"red": i < sorted_reds.size() and bool(sorted_reds[i]),
+			"iid": int(sorted_instance_ids[i]) if i < sorted_instance_ids.size() \
+				else Tile.INVALID_INSTANCE_ID,
 			"drawn": false,
 		})
 	for i in range(drawn_ids.size()):
 		targets.append({
 			"id": int(drawn_ids[i]),
 			"red": i < drawn_reds.size() and bool(drawn_reds[i]),
+			"iid": int(drawn_instance_ids[i]) if i < drawn_instance_ids.size() \
+				else Tile.INVALID_INSTANCE_ID,
 			"drawn": true,
 		})
 	_sync_player_hand_slots(targets)
@@ -1418,11 +1443,12 @@ func _sync_player_hand_slots(targets: Array) -> void:
 	var prev_meta: Array = []
 	for slot in _hand_slots:
 		if slot == null or not is_instance_valid(slot):
-			prev_meta.append({"id": -999, "red": false})
+			prev_meta.append({"id": -999, "red": false, "iid": Tile.INVALID_INSTANCE_ID})
 			continue
 		prev_meta.append({
 			"id": int(slot.get_meta("hand_id", -1)),
 			"red": bool(slot.get_meta("hand_red", false)),
+			"iid": int(slot.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID)),
 		})
 	var assignments: Array = assign_hand_reuse(prev_meta, targets)
 	var reused_prev: Dictionary = {}
@@ -1441,10 +1467,11 @@ func _sync_player_hand_slots(targets: Array) -> void:
 				slot = cand
 				reused_prev[prev_i] = true
 		if slot == null:
-			slot = _make_hand_slot(int(t["id"]), bool(t["red"]), scale_x, scale_y)
+			slot = _make_hand_slot(int(t["id"]), bool(t["red"]), int(t["iid"]),
+				scale_x, scale_y)
 			is_new = true
 		else:
-			_refresh_hand_slot(slot, int(t["id"]), bool(t["red"]))
+			_refresh_hand_slot(slot, int(t["id"]), bool(t["red"]), int(t["iid"]))
 		slot.set_meta("is_drawn", bool(t["drawn"]))
 		new_slots.append({"slot": slot, "drawn": bool(t["drawn"]), "is_new": is_new})
 
@@ -1514,7 +1541,8 @@ func _sync_player_hand_slots(targets: Array) -> void:
 		tile.set_hover_match(false)
 
 
-func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float) -> Control:
+func _make_hand_slot(tile_id: int, is_red: bool, instance_id: int,
+		scale_x: float, scale_y: float) -> Control:
 	var slot := Control.new()
 	slot.name = "HandSlot"
 	slot.custom_minimum_size = Vector2(PLAYER_HAND_TILE_W, PLAYER_HAND_TILE_H)
@@ -1522,6 +1550,7 @@ func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float)
 	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	slot.set_meta("hand_id", tile_id)
 	slot.set_meta("hand_red", is_red)
+	slot.set_meta("hand_instance_id", instance_id)
 	var edge_back := Panel.new()
 	edge_back.name = "EdgeBack"
 	edge_back.position = Vector2(0, -10)
@@ -1552,6 +1581,8 @@ func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float)
 	# hover / lifted 变换整张 DOM 等价物（含 before/after 棱），不只移动牌面。
 	tile.set_motion_target(slot)
 	tile.set_face_up(tile_id, is_red)
+	# set_face_up 清空 identity；手牌动作牌须再写入 instance_id
+	tile.tile_instance_id = instance_id
 	tile.set_clickable(_hand_clickable)
 	tile.card_clicked.connect(_on_player_tile_clicked)
 	tile.mouse_entered.connect(_on_hand_tile_hover_slot.bind(slot, true))
@@ -1559,15 +1590,18 @@ func _make_hand_slot(tile_id: int, is_red: bool, scale_x: float, scale_y: float)
 	return slot
 
 
-func _refresh_hand_slot(slot: Control, tile_id: int, is_red: bool) -> void:
+func _refresh_hand_slot(slot: Control, tile_id: int, is_red: bool, instance_id: int) -> void:
 	slot.set_meta("hand_id", tile_id)
 	slot.set_meta("hand_red", is_red)
+	slot.set_meta("hand_instance_id", instance_id)
 	var tile: CardTileBack = slot.get_node_or_null("Tile") as CardTileBack
 	if tile == null:
 		return
 	# 仅当 id/red 变化时刷新贴图（reuse 命中时通常不变）
 	if tile._tile_id != tile_id or tile._is_red_dora != is_red:
 		tile.set_face_up(tile_id, is_red)
+	# face_up 会清 identity；始终同步 entity id
+	tile.tile_instance_id = instance_id
 
 
 func _on_hand_tile_hover_slot(slot: Control, entered: bool) -> void:
@@ -1578,7 +1612,7 @@ func _on_hand_tile_hover_slot(slot: Control, entered: bool) -> void:
 	hand_tile_hover.emit(tid, entered)
 
 
-# tid < 0 清除手牌同名高亮
+# tid < 0 清除手牌同名高亮（仍按 tile_id）
 func highlight_hand_tile_id(tid: int) -> void:
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
@@ -1590,11 +1624,15 @@ func highlight_hand_tile_id(tid: int) -> void:
 		tile.set_hover_match(on)
 
 
-func get_hand_slot_global_center(tile_id: int) -> Vector2:
+# 飞牌定位：参数语义 = tile_instance_id（禁止 tile_id fallback）
+# 非法 instance（尤其 INVALID=-1）立即 ZERO，避免纯展示 slot 被误定位。
+func get_hand_slot_global_center(tile_instance_id: int) -> Vector2:
+	if not Tile.is_valid_instance_id(tile_instance_id):
+		return Vector2.ZERO
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
-		if int(s.get_meta("hand_id", -2)) == tile_id:
+		if int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID)) == tile_instance_id:
 			return s.get_global_rect().get_center()
 	return Vector2.ZERO
 
@@ -1620,14 +1658,15 @@ func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
 			if tile:
 				tile.set_hover_match(entered)
 
-# 吃牌选搭子模式:候选之外的手牌压暗。allowed 为可选搭子 tile_id 列表。
+# 吃牌选搭子模式:候选之外的手牌压暗。allowed = tile_instance_id 列表。
 func dim_hand_except(allowed: Array) -> void:
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
 		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
 		if tile:
-			tile.set_dim(not allowed.has(int(s.get_meta("hand_id", -1))))
+			var iid: int = int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID))
+			tile.set_dim(not allowed.has(iid))
 
 func clear_hand_dim() -> void:
 	for s in _hand_slots:
@@ -1637,7 +1676,7 @@ func clear_hand_dim() -> void:
 		if tile:
 			tile.set_dim(false)
 
-# 和牌张脉冲:标记手牌行中第一张匹配 id 的牌(自摸/荣和宣告后、结算前)。
+# 和牌张脉冲:标记手牌行中第一张匹配 tile_id 的牌(自摸/荣和宣告后、结算前)。
 func mark_win_tile(tile_id: int) -> void:
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
@@ -1797,7 +1836,7 @@ func set_hand_clickable(b: bool) -> void:
 		if tile:
 			tile.set_clickable(b)
 
-func _on_player_tile_clicked(tile_id: int) -> void:
+func _on_player_tile_clicked(tile_instance_id: int) -> void:
 	if _seat_id != 0:
 		return  # 防御：只有玩家自家手牌行 emit
-	player_card_clicked.emit(tile_id)
+	player_card_clicked.emit(tile_instance_id)

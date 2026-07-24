@@ -1,551 +1,389 @@
 class_name PlayableBattleController extends BattleController
 
-# 麻将王 — 战斗节点真实可玩（plan Step 5）。
-#
-# 继承 BattleController，覆写 4 个决策钩子让 seat 0 的决策走玩家点击：
-#   _get_discard_decision     — 玩家点手牌切的哪张
-#   _get_riichi_decision      — 玩家是否立直（discard 后弹按钮）
-#   _should_accept_ron        — 玩家是否接受这次荣和
-#   _should_accept_tsumo      — 玩家是否接受这次自摸
-#
-# 玩家"自摸 vs 切牌"流程：
-#   _step_draw_async 摸到牌 → _check_tsumo 命中 → _should_accept_tsumo 弹按钮
-#   ├─ 玩家点"自摸" → return true → BC 调 _settle_tsumo 结束本局
-#   └─ 玩家点切牌  → 把切牌选择缓存到 _pending_discard_choice，return false
-#                    → BC 进入 _step_discard_async → _get_discard_decision
-#                    → 直接读缓存返出，不再让玩家点 2 次
-#
-# AI seat 直接走父类同步路径（默认 ai.decide_discard 等）+ 思考延时。
+# 麻将王 — 战斗节点真实可玩。
+# async 决策：context → Action → apply_action。无 apply_ron / consumable / tile_id fallback。
 
 const PLAYER_SEAT: int = 0
 
 var _decision_port: PlayerDecisionPort = null
 var _ai_think_delay_sec: float = 0.4
-var _scene_tree: SceneTree = null  # 用于 await create_timer
+var _scene_tree: SceneTree = null
 
-# 自摸窗口里玩家选了切牌时缓存的选择，给下一步 _get_discard_decision 用。
-# 用 -1 表示"无缓存"，因为 tile_id 0 是合法的（W1）。
-var _pending_discard_tile_id: int = -1
 
-# GAP-5：主动消耗品系统。RunFlow 通过 set_consumables 注入可用消耗品 id 列表；
-# 每局（hand）每个消耗品最多使用 1 次，用后从 _available_consumables 移除。
-# _used_consumables_this_hand 防同一局内重复使用同一消耗品。
-var _available_consumables: Array = []  # Array[StringName] — 当前 Run 中持有的消耗品 id
-var _used_consumables_this_hand: Dictionary = {}  # {StringName: true} — 本局已用
+func _init(
+	seed: int = 0,
+	dealer_seat: int = 0,
+	use_heuristic_ai: bool = false,
+	round_wind: int = TileId.E,
+	hand_seq: int = 0
+) -> void:
+	super(seed, dealer_seat, use_heuristic_ai, round_wind, hand_seq)
 
-func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false, round_wind: int = TileId.E) -> void:
-	super(seed, dealer_seat, use_heuristic_ai, round_wind)
 
-# 上层注入玩家决策端口。必须在 run_to_end_async 之前调。
 func bind_decision_port(port: PlayerDecisionPort, tree: SceneTree = null) -> void:
 	_decision_port = port
 	_scene_tree = tree
 
+
 func set_ai_think_delay(seconds: float) -> void:
 	_ai_think_delay_sec = max(0.0, seconds)
 
-# GAP-5：RunFlow 注入当前 Run 持有的消耗品 id 列表。
-# 必须在 run_to_end_async 之前调用。
-func set_consumables(ids: Array) -> void:
-	_available_consumables = ids.duplicate()
-	_used_consumables_this_hand = {}
 
-# GAP-5：本局是否有可用（未在本局内用过的）消耗品。
-func has_usable_consumable() -> bool:
-	for cid in _available_consumables:
-		if not _used_consumables_this_hand.has(cid):
-			return true
-	return false
+func _is_human_turn_source() -> bool:
+	return _decision_port != null
 
-# GAP-5：获取本局可用消耗品列表（排除已用的）。
-func get_usable_consumables() -> Array:
-	var result: Array = []
-	for cid in _available_consumables:
-		if not _used_consumables_this_hand.has(cid):
-			result.append(cid)
-	return result
 
-# GAP-5：使用一个消耗品，应用效果并标记已用。返 true 表示使用成功。
-func use_consumable(consumable_id: StringName) -> bool:
-	if not _available_consumables.has(consumable_id):
-		return false
-	if _used_consumables_this_hand.has(consumable_id):
-		return false
-	# 标记本局已用
-	_used_consumables_this_hand[consumable_id] = true
-	# 从持有列表移除（消耗品用完即消失）
-	var idx: int = _available_consumables.find(consumable_id)
-	if idx >= 0:
-		_available_consumables.remove_at(idx)
-	# 应用效果
-	_apply_consumable_effect(consumable_id)
-	# emit 事件让 UI / 日志可追踪
-	_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {
-		"kind": "use_consumable",
-		"consumable_id": String(consumable_id),
-	})
-	return true
-
-# GAP-5：消耗品效果分发。v1 支持 hp_potion 和 peek_wall（千里眼）。
-func _apply_consumable_effect(consumable_id: StringName) -> void:
-	match consumable_id:
-		&"hp_potion_v1":
-			# HP 回复通过 PLAYER_ACTION 事件传递给 RunFlow 层处理
-			# （RunFlow 监听事件并调 RunState.hp += 1）。
-			# 此处不直接改 RunState — BC 不持有 RunState 引用。
-			pass
-		&"wall_peek_v1":
-			# 透视牌墙顶 3 张给玩家（用已有的 SkillCtx.reveal_wall_top_to 模式）
-			var dummy_event := BattleEvent.make(&"CONSUMABLE_USED", PLAYER_SEAT, null, {})
-			var ctx := SkillCtx.new(state, dummy_event)
-			ctx.reveal_wall_top_to(PLAYER_SEAT, 3)
-
-# ---- 覆写 _step_discard_async（GDScript 4 quirk workaround） ----
-#
-# BC 父类 _step_discard_async 末尾调 `await _try_player_claim_async(...)`，
-# 但直接 await self.method() 在 GDScript 4 + method override 链路上 dispatch
-# 不可靠（首次正确分派到子类，后续静默 cache 父类 — 见 commit f86b375 debug log）。
-# Workaround：子类覆写整个 _step_discard_async，复制父类逻辑，最末尾的 claim 钩子
-# 调用在子类内部完成 — 子类 self.method() dispatch 一直正确。
-func _step_discard_async() -> void:
-	var seat: Seat = state.seats[state.current_seat]
-	var actor: int = state.current_seat
-	var to_discard: Tile = null
-	var replayed: Dictionary = _consume_replay_decision_if_match(actor, "discard")
-	if not replayed.is_empty():
-		var tid: int = int(replayed.get("tile_id", -1))
-		for t in seat.hand._tiles:
-			if t.id == tid:
-				to_discard = t
-				break
-	else:
-		to_discard = await _get_discard_decision(seat, actor)
-	if to_discard == null:
-		_settled = true
-		return
-	_emit(&"PLAYER_ACTION", actor, null, {"kind": "discard", "tile_id": to_discard.id})
-	var ok: bool = engine.discard(to_discard.id)
-	if not ok:
-		_settled = true
-		return
-	state.kuikae_restricted[actor] = []
-	_emit(&"TILE_DISCARDED", actor, _wrap_tile(to_discard), {})
-	# 立直决策（discard 后 hand=13）
-	var should_riichi: bool = false
-	var riichi_replayed: Dictionary = _consume_replay_decision_if_match(actor, "riichi")
-	if not riichi_replayed.is_empty():
-		should_riichi = true
-	elif _replay_decisions.is_empty():
-		should_riichi = await _get_riichi_decision(actor)
-	if should_riichi:
-		_emit(&"PLAYER_ACTION", actor, null, {"kind": "riichi"})
-		if engine.declare_riichi(actor):
-			state.scores[actor] -= RIICHI_STICK_COST
-			_emit(&"RIICHI_DECLARED", actor, null, {})
-	# 鸣牌响应（v1 仅 ron）— 父类版本，子类不重写 ron 决策（_should_accept_ron 钩子里覆写）
-	if not _settled:
-		await _try_ron_async(to_discard, actor)
-	# 玩家鸣牌窗口（吃/碰/杠）— 子类调用子类版本（dispatch 正常）
-	if not _settled:
-		await _try_player_claim_async(to_discard, actor)
-
-# ---- 钩子覆写 ----
-
-func _get_discard_decision(seat: Seat, actor: int) -> Tile:
+func _select_turn_action_async(seat: Seat, actor: int) -> Action:
 	if actor != PLAYER_SEAT or _decision_port == null:
 		await _ai_think_pause()
-		# AI 立直后强制 tsumogiri(日麻 §5 立直锁牌规则);
-		# AI 本体 decide_discard 不知 riichi 状态,在此前置 force。
-		if should_auto_tsumogiri(seat):
-			var forced: Tile = _find_tile_by_id(seat, seat.last_drawn_tile_id)
-			if forced != null:
-				return forced
-		return ai.decide_discard(seat)
-	# 立直后强制 tsumogiri（弃刚摸的牌；spec 2026-05-08 bug 1 fix）。
-	# 注意：本判断在自摸窗口（_should_accept_tsumo）之后执行；若玩家已点了
-	# 自摸，不会进到这里。落到这里说明玩家选了"切牌"或者根本没自摸窗口。
-	# 立直锁定后只能 tsumogiri，跳过 UI 直接返出刚摸的牌。
+		return _select_ai_turn_action(seat, actor)
+	return await _player_select_turn_action(seat, actor)
+
+
+func _select_claim_action_async(candidate: int, discarded: Tile, discarder: int) -> Action:
+	if candidate != PLAYER_SEAT or _decision_port == null:
+		await _ai_think_pause()
+		return _build_ai_claim_action(candidate, discarded, discarder)
+	return await _player_select_claim_action(candidate, discarded, discarder)
+
+
+func _select_rob_kan_action_async(candidate: int) -> Action:
+	if candidate != PLAYER_SEAT or _decision_port == null:
+		await _ai_think_pause()
+		return _build_ai_rob_kan_action(candidate)
+	return await _player_select_rob_kan_action(candidate)
+
+
+func _player_select_turn_action(seat: Seat, actor: int) -> Action:
+	var ctx: DecisionContext = decision_context_for_seat(actor)
+	if ctx == null:
+		return null
+	# 立直锁牌：只能 tsumogiri / TSUMO / 合法 KAN
 	if should_auto_tsumogiri(seat):
-		var auto_discard: Tile = _find_tile_by_id(seat, seat.last_drawn_tile_id)
-		if auto_discard != null:
-			_pending_discard_tile_id = -1  # 清缓存防意外复用
-			_decision_port.present(&"idle", {"text": "立直中（自动切刚摸的牌）"})
-			await _ai_think_pause()  # 给玩家视觉延迟看清楚摸了什么
-			return auto_discard
-		# 异常 fallback：last_drawn 找不到则落到正常流程（不应到达）
-	# 缓存命中：玩家在 _should_accept_tsumo 阶段已经点了切牌，直接用
-	if _pending_discard_tile_id >= 0:
-		var picked_cached: Tile = _find_tile_by_id(seat, _pending_discard_tile_id)
-		_pending_discard_tile_id = -1
-		if picked_cached != null:
-			return picked_cached
-		# 缓存的 tile_id 不在手牌（异常）— 落到正常流程让玩家再选
-	# Check player self-kan availability
-	var can_ankan: bool = not _player_ankan_candidates(seat).is_empty()
-	var can_added: bool = _player_added_kan_tile_id(seat) >= 0
-	var _has_consumable: bool = has_usable_consumable()
+		if ctx.has_kind("TSUMO"):
+			# 仍允许玩家选 TSUMO
+			pass
+		elif ctx.has_kind("DISCARD"):
+			var forced_iid: int = seat.last_drawn_instance_id
+			if ctx.allows("DISCARD", {"tile_instance_id": forced_iid}):
+				_decision_port.present(&"idle", {"text": "立直中（自动切刚摸的牌）"})
+				await _ai_think_pause()
+				return Action.discard(
+					actor, forced_iid, DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+
 	var validation_message: String = ""
 	while true:
 		var choice: Dictionary = await _decision_port.request(&"discard", {
-			"can_tsumo": false,
-			"can_ankan": can_ankan,
-			"can_added_kan": can_added,
-			"has_consumable": _has_consumable,
+			"can_tsumo": ctx.has_kind("TSUMO"),
+			"can_ankan": _ctx_has_kan_kind(ctx, "ANKAN"),
+			"can_added_kan": _ctx_has_kan_kind(ctx, "ADDED_KAN"),
+			"can_kyuusyu": ctx.has_kind("DECLARE_ABORTIVE_DRAW"),
+			"has_consumable": false,
 			"message": validation_message,
 		})
 		validation_message = ""
 		var action: String = String(choice.get("action", ""))
+		if action == "tsumo" and ctx.has_kind("TSUMO"):
+			_decision_port.present(&"idle", {"text": "自摸！"})
+			return Action.tsumo(
+				actor, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+		if action == "kyuusyu_yes" and ctx.has_kind("DECLARE_ABORTIVE_DRAW"):
+			_decision_port.present(&"idle", {"text": "九種九牌！本局流局"})
+			return Action.declare_abortive_draw(
+				actor, "KYUUSYU_KYUUHAI", DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+		if action == "ankan" and _ctx_has_kan_kind(ctx, "ANKAN"):
+			var pay_a: Dictionary = _first_kan_payload(ctx, "ANKAN")
+			if not pay_a.is_empty():
+				return Action.kan(
+					actor, pay_a, DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+			continue
+		if action == "added_kan" and _ctx_has_kan_kind(ctx, "ADDED_KAN"):
+			var pay_b: Dictionary = _first_kan_payload(ctx, "ADDED_KAN")
+			if not pay_b.is_empty():
+				return Action.kan(
+					actor, pay_b, DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+			continue
 		if action == "discard":
-			var tid: int = int(choice.get("tile_id", -1))
-			var picked: Tile = _find_tile_by_id(seat, tid)
-			if picked == null:
+			var iid: int = int(choice.get("tile_instance_id", Tile.INVALID_INSTANCE_ID))
+			if iid == Tile.INVALID_INSTANCE_ID:
+				validation_message = "请点选手牌实体"
 				continue
-			# 喰い替え禁止（日麻 §4）：吃/碰后不能打出与所鸣组合等价替换的牌。
-			# AI 路径在父类 _get_discard_decision 已规避；玩家路径在此拒绝。
-			if state.kuikae_restricted[actor].has(tid):
+			if should_auto_tsumogiri(seat) and iid != seat.last_drawn_instance_id:
+				validation_message = "立直中只能切刚摸的牌"
+				continue
+			if state.kuikae_restricted[actor].has(
+				_tile_id_of_iid(seat, iid)
+			):
 				validation_message = "喰い替え禁止 — 这张不能打，换一张"
 				continue
+			# 可选 RIICHI
+			if ctx.allows("RIICHI", {"tile_instance_id": iid}):
+				var want: bool = await _get_riichi_decision(actor)
+				if want:
+					_decision_port.present(&"idle", {"text": "立直！"})
+					return Action.riichi(
+						actor, iid, DEFAULT_ROOM_ID, _next_action_command_id(),
+						ctx.decision_id, state.hand_seq, _action_cmd_seq
+					)
+			if not ctx.allows("DISCARD", {"tile_instance_id": iid}):
+				validation_message = "该牌不可切"
+				continue
 			_decision_port.present(&"idle", {"text": "AI 出牌中…"})
-			return picked
-		elif action == "use_consumable":
-			# GAP-5：玩家点了"道具"按钮。v1 自动使用第一个可用消耗品。
-			var usable: Array = get_usable_consumables()
-			if not usable.is_empty():
-				use_consumable(usable[0])
-			# 使用后刷新按钮状态（可能没有更多消耗品了），继续等切牌
-			_has_consumable = has_usable_consumable()
-			continue
-		elif action == "ankan":
-			var ankan_ids: Array = _player_ankan_candidates(seat)
-			if not ankan_ids.is_empty() and engine.apply_ankan(actor, ankan_ids[0]):
-				_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
-				if await _resume_after_player_kan(seat):
-					return null  # 岭上开花已结算（_settled=true，caller 的 settle 一致）
-				var after_kan: Tile = _consume_pending_discard(seat)
-				if after_kan != null:
-					return after_kan  # 玩家在岭上自摸窗口里已选了切牌
-				can_ankan = not _player_ankan_candidates(seat).is_empty()
-				can_added = _player_added_kan_tile_id(seat) >= 0
-				_has_consumable = has_usable_consumable()
-			continue
-		elif action == "added_kan":
-			var added_tid: int = _player_added_kan_tile_id(seat)
-			if added_tid >= 0:
-				if _try_chankan_ron(added_tid, actor):
-					_decision_port.present(&"idle", {"text": "被抢杠！"})
-					return null  # 抢杠荣和已结算
-				if engine.apply_added_kan(actor, added_tid):
-					_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": added_tid})
-					if await _resume_after_player_kan(seat):
-						return null
-					var after_kan2: Tile = _consume_pending_discard(seat)
-					if after_kan2 != null:
-						return after_kan2
-					can_ankan = not _player_ankan_candidates(seat).is_empty()
-					can_added = _player_added_kan_tile_id(seat) >= 0
-					_has_consumable = has_usable_consumable()
-			continue
-	return null  # unreachable
+			return Action.discard(
+				actor, iid, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+	return null
 
-# 取出 _pending_discard_tile_id 缓存的切牌（玩家在岭上自摸窗口里点了切牌时
-# 由内层 _should_accept_tsumo 写入）。没有缓存 / 缓存牌不在手牌返 null。
-func _consume_pending_discard(seat: Seat) -> Tile:
-	if _pending_discard_tile_id < 0:
+
+func _player_select_claim_action(candidate: int, discarded: Tile, discarder: int) -> Action:
+	var ctx: DecisionContext = decision_context_for_seat(candidate)
+	if ctx == null:
 		return null
-	var cached: Tile = _find_tile_by_id(seat, _pending_discard_tile_id)
-	_pending_discard_tile_id = -1
-	return cached
-
-# 九種九牌覆写:玩家(seat 0)摸完牌触发条件时,弹按钮等选择;其它 seat AI 不主动 abort。
-func _should_declare_kyuusyu_kyuuhai(actor: int) -> bool:
-	if actor != PLAYER_SEAT or _decision_port == null:
-		return false
 	while true:
-		var choice: Dictionary = await _decision_port.request(&"kyuusyu")
+		var choice: Dictionary = await _decision_port.request(&"claim", {
+			"can_ron": ctx.has_kind("RON"),
+			"can_chi": ctx.has_kind("CHI"),
+			"can_pon": ctx.has_kind("PON"),
+			"can_minkan": ctx.has_kind("KAN"),
+			"discarder_seat": discarder,
+		})
 		var action: String = String(choice.get("action", ""))
-		match action:
-			"kyuusyu_yes":
-				_decision_port.present(&"idle", {"text": "九種九牌！本局流局"})
-				return true
-			"kyuusyu_no":
-				_decision_port.present(&"idle", {"text": "AI 出牌中…"})
-				return false
-	return false
+		if action == "ron" and ctx.has_kind("RON"):
+			_decision_port.present(&"idle", {"text": "荣和！"})
+			return Action.ron(
+				candidate, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+		if action == "pon" and ctx.has_kind("PON"):
+			var comps_p: Array = await _pick_claim_companion_iids(ctx, "PON", discarded)
+			if not comps_p.is_empty() \
+					and ctx.allows("PON", {"companion_tile_instance_ids": comps_p}):
+				return Action.pon(
+					candidate, comps_p,
+					DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+			continue
+		if action == "minkan" and ctx.has_kind("KAN"):
+			var pay_k: Dictionary = _first_payload(ctx, "KAN")
+			if not pay_k.is_empty():
+				return Action.kan(
+					candidate, pay_k, DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+			continue
+		if action == "chi" and ctx.has_kind("CHI"):
+			var comps: Array = await _pick_claim_companion_iids(ctx, "CHI", discarded)
+			if comps.is_empty():
+				continue
+			if ctx.allows("CHI", {"companion_tile_instance_ids": comps}):
+				return Action.chi(
+					candidate, comps, DEFAULT_ROOM_ID, _next_action_command_id(),
+					ctx.decision_id, state.hand_seq, _action_cmd_seq
+				)
+			continue
+		if action == "skip" or action == "pass" or action == "":
+			_decision_port.present(&"idle", {"text": "AI 出牌中…"})
+			return Action.make_pass(
+				candidate, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+	return null
+
+
+func _player_select_rob_kan_action(candidate: int) -> Action:
+	var ctx: DecisionContext = decision_context_for_seat(candidate)
+	if ctx == null:
+		return null
+	while true:
+		var choice: Dictionary = await _decision_port.request(&"claim", {
+			"can_ron": ctx.has_kind("RON"),
+			"can_chi": false,
+			"can_pon": false,
+			"can_minkan": false,
+			"discarder_seat": int(_pending_added_kan.get("seat", -1)),
+		})
+		var action: String = String(choice.get("action", ""))
+		if action == "ron" and ctx.has_kind("RON"):
+			_decision_port.present(&"idle", {"text": "抢杠荣和！"})
+			return Action.ron(
+				candidate, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+		if action == "skip" or action == "pass" or action == "":
+			return Action.make_pass(
+				candidate, DEFAULT_ROOM_ID, _next_action_command_id(),
+				ctx.decision_id, state.hand_seq, _action_cmd_seq
+			)
+	return null
+
+
+func _pick_claim_companion_iids(
+	ctx: DecisionContext, claim_kind: String, discarded: Tile
+) -> Array:
+	if ctx == null or (claim_kind != "CHI" and claim_kind != "PON"):
+		return []
+	# 从冻结 offer 取全部物理组合；唯一组合直接提交，多组合逐张选择实体牌。
+	var options: Array = []
+	for offer in ctx.allowed_actions:
+		if str(offer.get("kind", "")) != claim_kind:
+			continue
+		for opt in offer.get("payload_options", []):
+			if opt is Dictionary and (opt as Dictionary).has("companion_tile_instance_ids"):
+				var ids_raw: Variant = (opt as Dictionary)["companion_tile_instance_ids"]
+				if typeof(ids_raw) == TYPE_ARRAY and (ids_raw as Array).size() == 2:
+					options.append((ids_raw as Array).duplicate())
+	if options.is_empty():
+		return []
+	if options.size() == 1:
+		return (options[0] as Array).duplicate()
+
+	var selected: Array = []
+	while true:
+		var compatible: Array = _compatible_claim_options(options, selected)
+		var allowed_iids: Array = _remaining_claim_iids(compatible, selected)
+		if compatible.is_empty() or allowed_iids.is_empty():
+			_decision_port.present(&"clear_hand_selection")
+			return []
+		var choice: Dictionary = await _decision_port.request(&"claim_companions", {
+			"claim_kind": claim_kind,
+			"options": compatible,
+			"discarded_tile_id": discarded.id if discarded != null else -1,
+			"selected_tile_instance_ids": selected.duplicate(),
+			"allowed_tile_instance_ids": allowed_iids,
+		})
+		var action: String = String(choice.get("action", ""))
+		if action == "claim_tile_pick":
+			var iid: int = int(choice.get("tile_instance_id", -1))
+			if not allowed_iids.has(iid) or selected.has(iid):
+				continue
+			selected.append(iid)
+			if selected.size() < 2:
+				continue
+			for option in options:
+				if _same_iid_set(option as Array, selected):
+					_decision_port.present(&"clear_hand_selection")
+					return (option as Array).duplicate()
+			_decision_port.present(&"clear_hand_selection")
+			return []
+		if action == "skip":
+			_decision_port.present(&"clear_hand_selection")
+			return []
+	_decision_port.present(&"clear_hand_selection")
+	return []
+
+
+static func _compatible_claim_options(options: Array, selected: Array) -> Array:
+	var compatible: Array = []
+	for option_raw in options:
+		if typeof(option_raw) != TYPE_ARRAY:
+			continue
+		var option: Array = option_raw as Array
+		var contains_all := true
+		for iid in selected:
+			if not option.has(iid):
+				contains_all = false
+				break
+		if contains_all:
+			compatible.append(option.duplicate())
+	return compatible
+
+
+static func _remaining_claim_iids(options: Array, selected: Array) -> Array:
+	var remaining: Array = []
+	for option_raw in options:
+		if typeof(option_raw) != TYPE_ARRAY:
+			continue
+		for iid_raw in option_raw as Array:
+			var iid: int = int(iid_raw)
+			if not selected.has(iid) and not remaining.has(iid):
+				remaining.append(iid)
+	return remaining
+
+
+static func _same_iid_set(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for iid in a:
+		if not b.has(iid):
+			return false
+	return true
 
 
 func _get_riichi_decision(actor: int) -> bool:
 	if actor != PLAYER_SEAT or _decision_port == null:
 		await _ai_think_pause()
 		return super(actor)
-	# 玩家路径：先看是否真的可立直，否则直接返 false
-	var seat: Seat = state.seats[actor]
-	if not RiichiValidator.can_declare_riichi(seat, state.wall.live_wall_size()):
-		return false
+	# 合法性已由当前 14 张阶段的冻结 DecisionContext / RIICHI offer 判定；
+	# 这里仅收集玩家确认，不能再调用要求 13 张听牌形的旧接口二次拒绝。
 	while true:
 		var choice: Dictionary = await _decision_port.request(&"riichi")
 		var action: String = String(choice.get("action", ""))
 		match action:
 			"riichi_yes":
-				_decision_port.present(&"idle", {"text": "立直！"})
 				return true
 			"riichi_no":
-				_decision_port.present(&"idle", {"text": "AI 出牌中…"})
 				return false
 	return false
 
-func _should_accept_ron(candidate: int, _discarded: Tile, discarder: int, _ron_check: Dictionary, _is_houtei: bool) -> bool:
-	if candidate != PLAYER_SEAT or _decision_port == null:
-		return true
-	# v1：仅 ron 单选；吃/碰/杠 在 _try_player_claim_async 二段窗口处理
-	while true:
-		var choice: Dictionary = await _decision_port.request(&"claim", {
-			"can_ron": true,
-			"discarder_seat": discarder,
-		})
-		var action: String = String(choice.get("action", ""))
-		if action == "ron":
-			_decision_port.present(&"idle", {"text": "荣和！"})
-			return true
-		elif action == "skip":
-			_decision_port.present(&"idle", {"text": "AI 出牌中…"})
-			return false
-	return true  # unreachable
 
-# v1 玩家鸣牌（吃/碰/杠）窗口 — 在 _try_ron_async 之后调用，玩家可吃/碰/杠
-# 时弹按钮，玩家选 → 直接调 engine.apply_*；玩家 skip → BC 主循环 advance。
-# 注意：玩家选 chi 时 v1 自动选第一组合法 companion（不让玩家手选）。
-func _try_player_claim_async(discarded: Tile, discarder: int) -> void:
-	if _decision_port == null:
-		return
-	if discarder == PLAYER_SEAT:
-		return  # 自己刚切的，不可鸣自己
-	var hand: Hand = state.seats[PLAYER_SEAT].hand
-	var can_chi := ClaimValidator.can_chi(PLAYER_SEAT, discarder, hand, discarded.id)
-	var can_pon := ClaimValidator.can_pon(PLAYER_SEAT, discarder, hand, discarded.id)
-	var can_minkan := ClaimValidator.can_minkan(PLAYER_SEAT, discarder, hand, discarded.id)
-	if not (can_chi or can_pon or can_minkan):
-		return
-	while true:
-		var choice: Dictionary = await _decision_port.request(&"claim", {
-			"can_chi": can_chi,
-			"can_pon": can_pon,
-			"can_minkan": can_minkan,
-			"discarder_seat": discarder,
-		})
-		var action: String = String(choice.get("action", ""))
-		match action:
-			"pon":
-				if engine.apply_pon(PLAYER_SEAT, discarded):
-					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
-						discarded.id, [], false)
-					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "pon", "tile_id": discarded.id})
-					_decision_port.present(&"idle", {"text": "碰！"})
-				return
-			"minkan":
-				if engine.apply_minkan(PLAYER_SEAT, discarded):
-					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "minkan", "tile_id": discarded.id})
-					_decision_port.present(&"idle", {"text": "杠！"})
-				return
-			"chi":
-				var options: Array = ClaimValidator.chi_companion_options(hand, discarded.id)
-				if options.is_empty():
-					continue
-				var companions: Array = []
-				if options.size() == 1:
-					companions = options[0]
-				else:
-					# 多组合 → 玩家点手牌选搭子；skip 取消回鸣牌窗口
-					companions = await _pick_chi_companions_interactive(options, discarded.id)
-					if companions.is_empty():
-						continue
-				if companions.size() == 2 and engine.apply_chi(PLAYER_SEAT, discarded, companions):
-					state.kuikae_restricted[PLAYER_SEAT] = ClaimValidator.kuikae_restricted_ids(
-						discarded.id, companions, true)
-					_emit(&"PLAYER_ACTION", PLAYER_SEAT, null, {"kind": "chi", "tile_id": discarded.id})
-					_decision_port.present(&"idle", {"text": "吃！"})
-				return
-			"skip", "":
-				_decision_port.present(&"idle", {"text": "AI 出牌中…"})
-				return
-			_:
-				continue
-
-# 多组吃搭子时的交互选择：状态栏列出候选组合，玩家点手牌中任一搭子牌
-# 选定第一个含它的组合（想精确选另一组就点该组独有的那张）；skip 取消返 []。
-# 修复前 v1 永远取 options[0]，玩家持 [1,2]/[2,4]/[4,5] 多组时无从选择。
-func _pick_chi_companions_interactive(options: Array, discarded_id: int) -> Array:
-	var allowed: Array = []
-	for o in options:
-		for cid in o:
-			if not allowed.has(int(cid)):
-				allowed.append(int(cid))
-	var validation_message: String = ""
-	while true:
-		var choice: Dictionary = await _decision_port.request(&"chi_companions", {
-			"options": options,
-			"discarded_tile_id": discarded_id,
-			"allowed_tile_ids": allowed,
-			"message": validation_message,
-		})
-		validation_message = ""
-		var action: String = String(choice.get("action", ""))
-		if action == "claim_tile_pick":
-			var tid: int = int(choice.get("tile_id", -1))
-			for o in options:
-				if o.has(tid):
-					_clear_chi_dim()
-					return o
-			validation_message = "该牌不是候选搭子 — 再选或跳过"
-			continue
-		elif action == "skip":
-			_clear_chi_dim()
-			return []
-		# 其它 action 忽略（chi/pon 按钮此时已无意义）
-	return []
-
-func _clear_chi_dim() -> void:
-	if _decision_port:
-		_decision_port.present(&"clear_hand_selection")
-
-# 立直后是否强制 tsumogiri（弃刚摸的牌）。spec 2026-05-08 bug 1 fix。
-# 日麻规则：立直锁定手牌；玩家不能选切别的牌。条件：
-#   (a) seat.riichi.declared = true
-#   (b) seat.last_drawn_tile_id >= 0（处于 post-draw / post-rinshan 状态）
-# 提取为静态 predicate 方便 GUT 单测（不依赖 UI / async）。
 static func should_auto_tsumogiri(seat: Seat) -> bool:
 	if not seat.riichi.declared:
 		return false
-	return seat.last_drawn_tile_id >= 0
+	return seat.last_drawn_instance_id != Tile.INVALID_INSTANCE_ID
 
-# 选第一组合法 chi companion（[d-2,d-1] / [d-1,d+1] / [d+1,d+2]）。
-# v1 自动取首组；当玩家 companion 选择 UI 落地后改成传 picked 参数。
-# 算法委托给 ClaimValidator.chi_companion_options，避免重复实现。
-static func _pick_chi_companions(hand: Hand, discarded_id: int) -> Array:
-	var options: Array = ClaimValidator.chi_companion_options(hand, discarded_id)
-	if options.is_empty():
-		return []
-	return options[0]
 
-func _should_accept_tsumo(actor: int, _drawn: Tile, _win_check: Dictionary) -> bool:
-	if actor != PLAYER_SEAT or _decision_port == null:
-		return true
-	# 玩家路径：可自摸 + 可切牌 + 暗杠/加杠都开放,等玩家选。
-	# 暗杠/加杠跟 _get_discard_decision 一致 — 之前漏算让"碰过 PON 又摸到第 4 张
-	# 同 id" 时玩家看不到加杠按钮,只能 tsumo / 切牌。
-	var seat: Seat = state.seats[actor]
-	var can_ankan: bool = not _player_ankan_candidates(seat).is_empty()
-	var can_added: bool = _player_added_kan_tile_id(seat) >= 0
-	# 杠后原 tsumo 检测失效（手牌变了），用 can_tsumo 跟踪当前窗口是否还可自摸
-	var can_tsumo: bool = true
-	var _has_con: bool = has_usable_consumable()
-	while true:
-		var choice: Dictionary = await _decision_port.request(&"discard", {
-			"can_tsumo": can_tsumo,
-			"can_ankan": can_ankan,
-			"can_added_kan": can_added,
-			"has_consumable": _has_con,
-		})
-		var action: String = String(choice.get("action", ""))
-		if action == "tsumo":
-			if not can_tsumo:
-				continue
-			_decision_port.present(&"idle", {"text": "自摸！"})
-			return true
-		elif action == "use_consumable":
-			# GAP-5：在自摸窗口使用消耗品，然后继续等待
-			var usable: Array = get_usable_consumables()
-			if not usable.is_empty():
-				use_consumable(usable[0])
-			_has_con = has_usable_consumable()
+func _ctx_has_kan_kind(ctx: DecisionContext, kan_kind: String) -> bool:
+	if ctx == null or not ctx.has_kind("KAN"):
+		return false
+	for offer in ctx.allowed_actions:
+		if str(offer.get("kind", "")) != "KAN":
 			continue
-		elif action == "ankan":
-			var ankan_ids: Array = _player_ankan_candidates(seat)
-			if not ankan_ids.is_empty() and engine.apply_ankan(actor, ankan_ids[0]):
-				_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_id": ankan_ids[0]})
-				if await _resume_after_player_kan(seat):
-					return false  # 岭上开花已结算；拒绝原 tsumo 防 caller 双重结算
-				if _pending_discard_tile_id >= 0:
-					return false  # 玩家在岭上窗口已选切牌 → 流到 _get_discard_decision 消费
-				can_tsumo = false
-				can_ankan = not _player_ankan_candidates(seat).is_empty()
-				can_added = _player_added_kan_tile_id(seat) >= 0
-				_has_con = has_usable_consumable()
-			continue
-		elif action == "added_kan":
-			var added_tid: int = _player_added_kan_tile_id(seat)
-			if added_tid >= 0:
-				if _try_chankan_ron(added_tid, actor):
-					_decision_port.present(&"idle", {"text": "被抢杠！"})
-					return false  # 抢杠荣和已结算
-				if engine.apply_added_kan(actor, added_tid):
-					_emit(&"PLAYER_ACTION", actor, null, {"kind": "added_kan", "tile_id": added_tid})
-					if await _resume_after_player_kan(seat):
-						return false
-					if _pending_discard_tile_id >= 0:
-						return false  # 同 ankan：缓存交给 _get_discard_decision 消费
-					can_tsumo = false
-					can_ankan = not _player_ankan_candidates(seat).is_empty()
-					can_added = _player_added_kan_tile_id(seat) >= 0
-					_has_con = has_usable_consumable()
-			continue
-		elif action == "discard":
-			var tid: int = int(choice.get("tile_id", -1))
-			# 缓存切牌选择，让 _step_discard_async / _get_discard_decision 直接用
-			_pending_discard_tile_id = tid
-			_decision_port.present(&"idle", {"text": "出牌中…"})
-			return false
-		# 其它 action 忽略
-	return true  # unreachable
-
-# ---- 玩家自杠（暗杠/加杠）helpers ----
-
-# 玩家可暗杠候选。立直中保守禁用（v1 不做"不变听暗杠"合法性判定，与 AI
-# decide_self_kan 的 riichi 跳过行为一致；待牌可能改变的暗杠在立直中非法）。
-func _player_ankan_candidates(seat: Seat) -> Array:
-	if seat.riichi.declared:
-		return []
-	return ClaimValidator.ankan_candidates(seat.hand)
-
-# 玩家可加杠的第一个 tile_id；不可加杠返 -1。立直锁手牌，立直中恒 -1。
-func _player_added_kan_tile_id(seat: Seat) -> int:
-	if seat.riichi.declared:
-		return -1
-	for m in seat.melds:
-		if m.kind == Meld.Kind.PON \
-				and ClaimValidator.can_added_kan(seat.melds, seat.hand, m.tiles[0].id):
-			return m.tiles[0].id
-	return -1
-
-# 玩家杠成立后的共同收尾：engine.apply_* 已摸岭上 + 翻新 dora。
-# 检岭上开花（玩家可在弹窗里选自摸/放弃）；胡 → 返 true（_settled 已置）。
-# 不胡 → 清岭上标记返 false，调用方回到切牌等待循环。
-# 修复前：杠后直接 return null 被 _step_discard_async 当"本局结束"，
-# 玩家一开杠整局直接终止（P0）。
-func _resume_after_player_kan(seat: Seat) -> bool:
-	_decision_port.present(&"idle", {"text": "杠！岭上摸牌…"})
-	if await _try_rinshan_tsumo_async(seat):
-		_decision_port.present(&"clear_hand_selection")
-		return true
-	seat.last_draw_is_rinshan = false
+		for opt in offer.get("payload_options", []):
+			if str(opt.get("kan_kind", "")) == kan_kind:
+				return true
 	return false
 
-# 玩家 seat 摸牌后不让 AI 替玩家自动开杠（HeuristicAi.decide_self_kan 是
-# "能杠就杠"）— 玩家的暗杠/加杠由 PlayerDecisionPort 决策。
-# 未绑定玩家决策端口（纯 AI 仿真 / GUT 测试）时保留父类行为。
-func _try_ai_self_kan() -> void:
-	if state.current_seat == PLAYER_SEAT and _decision_port != null:
-		return
-	super()
 
-# ---- helpers ----
+func _first_kan_payload(ctx: DecisionContext, kan_kind: String) -> Dictionary:
+	for offer in ctx.allowed_actions:
+		if str(offer.get("kind", "")) != "KAN":
+			continue
+		for opt in offer.get("payload_options", []):
+			if str(opt.get("kan_kind", "")) == kan_kind:
+				return (opt as Dictionary).duplicate(true)
+	return {}
+
+
+func _first_payload(ctx: DecisionContext, kind: String) -> Dictionary:
+	for offer in ctx.allowed_actions:
+		if str(offer.get("kind", "")) != kind:
+			continue
+		var opts: Array = offer.get("payload_options", [])
+		if not opts.is_empty() and opts[0] is Dictionary:
+			return (opts[0] as Dictionary).duplicate(true)
+	return {}
+
+
+func _tile_id_of_iid(seat: Seat, iid: int) -> int:
+	var t: Tile = seat.hand.find_by_instance_id(iid)
+	if t == null:
+		return -1
+	return t.id
+
 
 func _ai_think_pause() -> void:
-	if _scene_tree == null or _ai_think_delay_sec <= 0.0:
+	if _ai_think_delay_sec <= 0.0 or _scene_tree == null:
 		return
 	await _scene_tree.create_timer(_ai_think_delay_sec).timeout
-
-func _find_tile_by_id(seat: Seat, tile_id: int) -> Tile:
-	for t in seat.hand._tiles:
-		if t.id == tile_id:
-			return t
-	return null

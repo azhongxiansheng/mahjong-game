@@ -17,12 +17,15 @@ const SCRIPTED_DECISION_PORT := preload("res://tests/_fixtures/scripted_decision
 func _respond(kind: StringName, _context: Dictionary, bc: PlayableBattleController) -> Dictionary:
 	match kind:
 		&"discard":
-			var hand_ids: Array = bc.state.seats[0].hand.to_id_array()
-			if not hand_ids.is_empty():
-				return {"action": "discard", "tile_id": int(hand_ids[0])}
+			var hand_tiles: Array[Tile] = bc.state.seats[0].hand._tiles
+			if not hand_tiles.is_empty():
+				return {
+					"action": "discard",
+					"tile_instance_id": int(hand_tiles[0].instance_id),
+				}
 		&"riichi":
 			return {"action": "riichi_no"}
-		&"claim", &"chi_companions":
+		&"claim", &"claim_companions":
 			return {"action": "skip"}
 		&"kyuusyu":
 			# 默认不申请九種九牌(让测试跑到自然终局,而非途中流局)

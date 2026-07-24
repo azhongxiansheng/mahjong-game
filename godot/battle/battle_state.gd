@@ -27,6 +27,8 @@ var round_wind: int = TileId.E         # 东风战恒为东
 var hand_number: int = 1               # 1..4 (东 1..东 4)
 var honba: int = 0
 var riichi_sticks: int = 0
+# E2-02 / #232：局序号命名空间；Wall 用 hand_seq*136+serial 分配 instance_id
+var hand_seq: int = 0
 
 # 0e 巡数 / 第一巡
 var turn_count: int = 0
@@ -49,10 +51,13 @@ var extra_red_dora_count: Array[int] = [0, 0, 0, 0]
 var kuikae_restricted: Array = [[], [], [], []]
 var momentum: Momentum = Momentum.new()
 
-static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int, round_wind_arg: int = TileId.E) -> BattleState:
+static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, honba_arg: int, riichi_sticks_arg: int, round_wind_arg: int = TileId.E, hand_seq_arg: int = 0) -> BattleState:
 	# round_wind_arg: M8 半庄战支持。默认东（兼容 M7）；半庄战南场由 GameDriver
 	# 在 hand_index >= hands_per_round 时传 TileId.S_WIND。函数名仍叫 for_east_round
 	# 是历史命名（实际是"为某局风圈实例化 state"），保持名字避免大改 API surface。
+	# hand_seq_arg: E2-02 实体 id 命名空间（默认 0）。负数 / 溢出 → null。
+	if hand_seq_arg < 0 or hand_seq_arg > Wall.MAX_HAND_SEQ:
+		return null
 	var s := BattleState.new()
 	s.hand_number = hand_number_arg
 	s.honba = honba_arg
@@ -60,6 +65,7 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 	s.dealer_seat = p_dealer
 	s.current_seat = p_dealer
 	s.round_wind = round_wind_arg
+	s.hand_seq = hand_seq_arg
 
 	# 4 seat：自风按 dealer 旋转（dealer 是 E）
 	for i in range(4):
@@ -68,8 +74,10 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 		s.seats.append(Seat.new(i, seat_wind))
 		s.discards_per_seat.append([])
 
-	# 牌墙：洗 + 切 dead wall
-	s.wall = Wall.new_full_set()
+	# 牌墙：按 hand_seq 分配 instance_id → 洗 + 切 dead wall
+	s.wall = Wall.new_full_set(hand_seq_arg)
+	if s.wall == null:
+		return null
 	s.wall.shuffle(rng_seed)
 	s.wall.reserve_dead_wall(14)
 
@@ -89,68 +97,5 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 
 	return s
 
-# ---- M11 net foundation: 状态快照 hash ----
-#
-# 用途：spec §4.3 联机 replay 收敛验证 + desync detect。配合同事 PR #124
-# IBattleController + #127 NetworkedEvent 协议，server 在关键点（GAME_BEGIN /
-# WIN_DECLARED）emit hash，client 比对 → 不一致立即 disconnect + dump。
-#
-# 覆盖：分数 / 手牌 ID（升序 = 顺序无关）/ 副露 / 弃牌 / 振听 / phase / turn / dora。
-# **不覆盖**：wall 内部 _draw_index（不可观测，与决策路径同源派生），
-# revealed_tiles 顺序（reveal 可能不同时序但同等价类）。
-func snapshot_hash() -> int:
-	var snap: Dictionary = snapshot_dict()
-	return JSON.stringify(snap).hash()
-
-# 暴露 dict 形式便于调试时人读 + 在 desync 时 dump 对比。
-func snapshot_dict() -> Dictionary:
-	var seats_data: Array = []
-	for seat in seats:
-		var hand_ids: Array = []
-		for t in seat.hand._tiles:
-			hand_ids.append(t.id)
-		hand_ids.sort()  # 顺序无关
-		var meld_data: Array = []
-		for m in seat.melds:
-			var meld_ids: Array = []
-			for t in m.tiles:
-				meld_ids.append(t.id)
-			meld_ids.sort()
-			meld_data.append({"kind": m.kind, "ids": meld_ids})
-		seats_data.append({
-			"seat_id": seat.seat_id,
-			"seat_wind": seat.seat_wind,
-			"hand_ids": hand_ids,
-			"melds": meld_data,
-			# RiichiState / FuritenState 是对象 → 序列化关键 bool 字段
-			"riichi_declared": seat.riichi.declared if seat.riichi != null else false,
-			"riichi_double": seat.riichi.double_riichi if seat.riichi != null else false,
-			"furiten_perm": seat.furiten.permanent if seat.furiten != null else false,
-			"furiten_temp": seat.furiten.temporary if seat.furiten != null else false,
-			"points": seat.points,
-		})
-	var discards_data: Array = []
-	for d in discards_per_seat:
-		var ids: Array = []
-		for t in d:
-			ids.append(t.id)
-		discards_data.append(ids)  # 顺序保留 — 弃牌历史本身有序
-	return {
-		"scores": scores.duplicate(),
-		"furiten_flags": furiten_flags.duplicate(),
-		"ron_cancelled": ron_cancelled.duplicate(),
-		"dealer_seat": dealer_seat,
-		"current_seat": current_seat,
-		"round_wind": round_wind,
-		"hand_number": hand_number,
-		"honba": honba,
-		"riichi_sticks": riichi_sticks,
-		"phase": phase,
-		"turn_count": turn_count,
-		"first_round_active": first_round_active,
-		"haitei_forced_seat": haitei_forced_seat,
-		"extra_dora_count": extra_dora_count.duplicate(),
-		"extra_red_dora_count": extra_red_dora_count.duplicate(),
-		"seats": seats_data,
-		"discards": discards_data,
-	}
+# E2-02 / #232：snapshot_dict / snapshot_hash 已移除。
+# 未来 snapshot 归属 AuthorityReplaySnapshot sibling 范围。

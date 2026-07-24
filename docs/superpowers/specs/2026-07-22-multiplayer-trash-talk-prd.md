@@ -13,7 +13,7 @@
 
 - `godot/project.godot` 的生产主场景仍指向 `res://ui/run/run_flow.tscn`。
 - `SaveSystem`、`RunState`、章节、HP、金币、商店、抽卡、营地和战令仍位于生产流程。
-- `NetworkedBattleController` 只会一次性重放完整事件流；`LocalLoopbackServer` 只接受 `PASS_CLAIM` 占位，不是真实对战服务。
+- `NetworkedBattleController` 只会一次性重放完整事件流；`LocalLoopbackServer` 是本地参考/回放桩（`PASS` no-op 占位），不是真实对战服务。
 - `TextAnalyzer` 只做中文关键词计数；`Momentum` 含五类属性和旧技能倍率骨架，Alpha 只保留五类 affinity 标签，旧倍率不得进入生产结算。
 - `CharacterPool` 有 12 名角色及对应能力，但名称、文案和部分立绘带有明确第三方 IP 指向，角色字段也混入 HP、金币、卡包和声望等肉鸽数据。
 - 最新 `origin/main` 已使用 1600×900 viewport，可作为大厅与牌桌统一视觉基准。
@@ -191,7 +191,7 @@ UI 实现必须以该 ASCII、1600×900 几何测试和 `capture_screens.gd` 截
 - **FR-MATCH-05**：所有客户端命令带 `command_id`；重复命令最多应用一次。
 - **FR-MATCH-06**：掉线后保留座位 30 秒；超时由 AI 接管；玩家本局内重连后在安全行动边界恢复控制。
 - **FR-MATCH-07**：客户端伪造状态、行动结果、隐藏牌、上下文或 `item_granted` 必须被拒绝并返回稳定错误码。
-- **FR-MATCH-08**：`ROOM_SNAPSHOT` 必须带协议版本、快照对应的最后 `server_seq` 及当前座位可见的完整权威状态。#241 在 E3 只冻结基础快照包络、从下一 `server_seq` 续传，以及按稳定模块 key/version 组合权威模块 snapshot provider 的扩展机制；它用测试 provider 验证透明 round-trip，不提前实现 E5 字段。#252 后续拥有 RewardWindow 的 ID、奖池、弃牌进度、`OPEN/CLOSING/SETTLED/CANCELLED` phase、可空的三值 `window_exit`、语音/上下文边界与 Worker 权威 `grace_deadline_at` 的模块 DTO/provider；#253 拥有该席全部 `ItemInstance`、角色 `active_window_id/pending_window_id` 的模块 DTO/provider，并接入 #241 已冻结的包络。STANDARD 不注册这些 provider，快照不得出现相应模块 key。E5 完成后的快照与增量事件不能复活已取消窗口、在展示出口发奖、重复发奖或丢失道具。
+- **FR-MATCH-08**：`ROOM_SNAPSHOT` 使用 `NetworkedEvent` 六键 envelope，必须带协议版本、快照对应的最后 `server_seq`、当前座位可见的完整 public projection，以及该 projection 经 canonical JSON 后的 `view_hash`（SHA-256）。其它业务事件的 `view_hash` 为事件应用后同一 recipient 的 public view 哈希。#241 在 E3 只冻结基础快照包络、从下一 `server_seq` 续传，以及按稳定模块 key/version 组合权威模块 snapshot provider 的扩展机制；它用测试 provider 验证透明 round-trip，不提前实现 E5 字段。#252 后续拥有 RewardWindow 的 ID、奖池、弃牌进度、`OPEN/CLOSING/SETTLED/CANCELLED` phase、可空的三值 `window_exit`、语音/上下文边界与 Worker 权威 `grace_deadline_at` 的模块 DTO/provider；#253 拥有该席全部 `ItemInstance`、角色 `active_window_id/pending_window_id` 的模块 DTO/provider，并接入 #241 已冻结的包络。STANDARD 不注册这些 provider，快照不得出现相应模块 key。E5 完成后的快照与增量事件不能复活已取消窗口、在展示出口发奖、重复发奖或丢失道具。`AuthorityReplaySnapshot` 不进入线上协议。
 
 ### FR-VOICE PTT 与双层 STT
 
@@ -320,25 +320,41 @@ flowchart LR
 
 ### 5.3 牌局 WebSocket
 
-客户端命令的公共包络：
+对局业务命令使用 `Action v1`；与 `godot/protocol/action.gd` 的唯一契约对齐，顶层恰好九键：
 
 ```json
 {
   "protocol_version": 1,
-  "command_id": "uuid",
+  "command_id": "550e8400-e29b-41d4-a716-446655440000",
   "room_id": "room_x",
   "seat": 0,
+  "hand_seq": 0,
+  "decision_id": "550e8400-e29b-41d4-a716-446655440010",
   "kind": "DISCARD",
-  "payload": {},
+  "payload": {
+    "tile_instance_id": 4
+  },
   "client_seq": 12
 }
 ```
 
-最小命令集合：`JOIN`、`READY`、`DISCARD`、`CHI`、`PON`、`KAN`、`RIICHI`、`RON`、`TSUMO`、`PASS`、`ITEM_USE`、`RESYNC_REQUEST`。
+`Action v1` 集合：`DISCARD`、`CHI`、`PON`、`KAN`、`RIICHI`、`RON`、`TSUMO`、`PASS`、`ITEM_USE`、`DECLARE_ABORTIVE_DRAW`。`JOIN`、`READY`、`RESYNC_REQUEST` 属于 E3 会话 / 传输控制命令，不进入牌局 `Action` 入口。
 
-`ITEM_USE` 仅是带 `command_id` 与目标 `item_instance_id` 的客户端命令，不是服务端事件 kind。权威接受后只通过 `ITEM_CONSUMED`（实例被移除时）和/或 `ITEM_APPLIED`（效果已应用）表达结果；Alpha 不增加“使用请求已接受”的独立回声事件，拒绝则返回稳定 `ERROR`。
+按 kind 的精确 payload schema（冻结）：
 
-服务端事件公共包络：
+| kind | payload |
+|---|---|
+| `DISCARD` / `RIICHI` | `{ "tile_instance_id": int }`（实体属于 envelope 的 `hand_seq`） |
+| `CHI` / `PON` | `{ "companion_tile_instance_ids": [int, int] }`（被鸣牌与弃牌座来自权威窗口） |
+| `KAN` | MINKAN：`{ "kan_kind": "MINKAN", "companion_tile_instance_ids": [int, int, int] }`；ANKAN：`{ "kan_kind": "ANKAN", "tile_instance_ids": [int, int, int, int] }`；ADDED_KAN：`{ "kan_kind": "ADDED_KAN", "meld_id": int, "added_tile_instance_id": int }` |
+| `RON` | `{}`（和牌张与放铳 / 加杠座来自权威窗口） |
+| `TSUMO` / `PASS` | `{}`（`PASS` 替代已删除的 `PASS_CLAIM`） |
+| `ITEM_USE` | `{ "item_instance_id": string }`（非空；**仅命令**） |
+| `DECLARE_ABORTIVE_DRAW` | `{ "reason": "KYUUSYU_KYUUHAI" }`（Alpha 九种九牌唯一 reason） |
+
+`ITEM_USE` 仅是带 `command_id`、`decision_id` 与目标 `item_instance_id` 的客户端命令，不是服务端事件 kind。权威接受后只通过 `ITEM_CONSUMED`（实例被移除时）和/或 `ITEM_APPLIED`（效果已应用）表达结果；Alpha 不增加“使用请求已接受”的独立回声事件，拒绝则返回稳定 `ERROR`。
+
+服务端业务事件公共包络（`NetworkedEvent`；顶层键**恰好**六键）：
 
 ```json
 {
@@ -347,11 +363,17 @@ flowchart LR
   "room_id": "room_x",
   "kind": "ACTION_APPLIED",
   "payload": {},
-  "state_hash": "stable-hash"
+  "view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 }
 ```
 
-最小事件集合：`ROOM_SNAPSHOT`、`PLAYER_JOINED`、`TURN_PROMPT`、`ACTION_APPLIED`、`CLAIM_WINDOW`、`REWARD_WINDOW_OPENED`、`REWARD_WINDOW_CLOSING`、`REWARD_WINDOW_SETTLED`、`REWARD_WINDOW_CANCELLED`、`ITEM_GRANTED`、`ITEM_CONSUMED`、`ITEM_APPLIED`、`CHARACTER_ABILITY_ARMED`、`CHARACTER_ABILITY_DISARMED`、`HAND_SETTLED`、`MATCH_SETTLED`、`ERROR`。
+- 六键：`protocol_version`、`server_seq`、`room_id`、`kind`、`payload`、`view_hash`。
+- `view_hash` 必填：64 位小写 hex SHA-256。`ROOM_SNAPSHOT` 为该 recipient 的 public projection 经 canonical JSON 后的哈希；其它业务事件为**该事件应用后**同一 recipient 的 public view 经 canonical JSON 后的哈希。不同 recipient 的 `view_hash` 可以不同，客户端用于分叉检测。
+- 协议 DTO（含 envelope、`payload`、`modules` 及嵌套对象）递归禁止历史私有/全量状态摘要字段名；线上分叉检测仅用 envelope 顶层 `view_hash`。
+- `AuthorityReplaySnapshot` 仅服务端内部恢复与确定性回放，不进入线上协议 envelope / `payload` / `modules`。
+- `ERROR` 是服务端控制响应，不是业务事件包络成员。
+
+最小业务事件集合：`ROOM_SNAPSHOT`、`PLAYER_JOINED`、`TURN_PROMPT`、`ACTION_APPLIED`、`CLAIM_WINDOW`、`REWARD_WINDOW_OPENED`、`REWARD_WINDOW_CLOSING`、`REWARD_WINDOW_SETTLED`、`REWARD_WINDOW_CANCELLED`、`ITEM_GRANTED`、`ITEM_CONSUMED`、`ITEM_APPLIED`、`CHARACTER_ABILITY_ARMED`、`CHARACTER_ABILITY_DISARMED`、`HAND_SETTLED`、`MATCH_SETTLED`。
 
 ### 5.4 语音 WebSocket
 
@@ -368,7 +390,7 @@ flowchart LR
 | 30 秒内凑齐四真人 | 立即开房，不等待 deadline |
 | deadline 到达但不足四人 | 同一原子操作创建房间并补齐 AI |
 | 重复 `command_id` | 返回原处理结果，不重复改变状态 |
-| 客户端状态哈希分叉 | 停止本地预测并请求权威快照 |
+| 客户端 `view_hash` 分叉 | 停止本地预测并请求权威快照（`RESYNC_REQUEST`） |
 | 玩家掉线 | 30 秒保留座位；随后 AI 接管 |
 | 玩家在本局内重连 | 应用快照，在安全行动边界归还控制 |
 | 本地 whisper 不可用 | 欢乐练习场提示模型下载/重试；不能伪造文字发奖 |

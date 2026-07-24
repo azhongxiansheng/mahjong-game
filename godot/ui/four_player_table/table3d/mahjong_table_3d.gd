@@ -5,7 +5,8 @@ class_name MahjongTable3D extends Control
 # - HUD 操作条仍在 2D Control 层（PlayableTable）
 # - 自家手牌：近景放大立牌，保证可读可点
 
-signal player_card_clicked(tile_id: int)
+# E2-02 / #232：点击 = tile_instance_id；hover 仍 = tile_id
+signal player_card_clicked(tile_instance_id: int)
 signal hand_tile_hover(tile_id: int, entered: bool)
 
 const TABLE_W: float = 2.4
@@ -317,12 +318,13 @@ func set_hand_clickable(b: bool) -> void:
 
 
 func dim_hand_except(allowed: Array) -> void:
+	# allowed = tile_instance_id 列表
 	for t in _hand_tiles:
 		if t is Tile3D:
-			var tid: int = (t as Tile3D).tile_id
+			var iid: int = (t as Tile3D).tile_instance_id
 			var ok := false
 			for a in allowed:
-				if int(a) == tid:
+				if int(a) == iid:
 					ok = true
 					break
 			(t as Tile3D).set_dim(not ok)
@@ -358,8 +360,29 @@ func get_portrait_texture() -> Texture2D:
 	return null
 
 
-func get_hand_slot_global_center(_tile_id: int) -> Vector2:
-	return size * 0.5
+# 飞牌定位：参数语义 = tile_instance_id；找不到返回 ZERO（禁止 tile_id fallback）
+# 非法 instance（尤其 INVALID=-1）立即 ZERO，避免纯展示 Tile3D 被误定位。
+func get_hand_slot_global_center(tile_instance_id: int) -> Vector2:
+	if not Tile.is_valid_instance_id(tile_instance_id):
+		return Vector2.ZERO
+	for n in _hand_tiles:
+		if not (n is Tile3D):
+			continue
+		var t3d := n as Tile3D
+		if t3d.tile_instance_id != tile_instance_id:
+			continue
+		if _camera != null and _vp != null and _vp.size.x > 0 and _vp.size.y > 0:
+			var vp_pt: Vector2 = _camera.unproject_position(t3d.global_position)
+			var sx: float = size.x / float(_vp.size.x)
+			var sy: float = size.y / float(_vp.size.y)
+			var projected := global_position + Vector2(vp_pt.x * sx, vp_pt.y * sy)
+			if projected != Vector2.ZERO:
+				return projected
+		# 找到槽位但投影不可用：返回非零中心，与 miss=ZERO 区分
+		if size != Vector2.ZERO:
+			return global_position + size * 0.5
+		return global_position + Vector2(1, 1)
+	return Vector2.ZERO
 
 
 func set_active(_b: bool) -> void:
@@ -616,42 +639,60 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	_free_arr(_hand_tiles)
 	if seat == null or seat.hand == null:
 		return
-	var ids: Array = seat.hand.to_id_array()
-	var drawn_id: int = seat.last_drawn_tile_id
-	var sorted_ids: Array = ids.duplicate()
-	var drawn_ids: Array = []
-	if drawn_id >= 0:
-		var idx: int = sorted_ids.find(drawn_id)
-		if idx >= 0:
-			sorted_ids.remove_at(idx)
-			drawn_ids.append(drawn_id)
-	sorted_ids.sort()
-	var show_ids: Array = sorted_ids + drawn_ids
-	var n: int = show_ids.size()
+	# E2-02：保留 Tile 实体 identity，按 last_drawn_instance_id 精确拆分
+	# 排序键 = (tile_id, original_index)：显式记录 Hand._tiles 原始下标，
+	# 确保同值普通牌/赤黑牌剩余相对顺序确定（禁止 instance_id tie-break）。
+	var sorted_entries: Array = []  # Array[{tile, original_index}]
+	var drawn_tiles: Array = []
+	var drawn_iid: int = seat.last_drawn_instance_id
+	var found_drawn := false
+	if Tile.is_valid_instance_id(drawn_iid):
+		for i in range(seat.hand._tiles.size()):
+			var t: Tile = seat.hand._tiles[i]
+			if t.instance_id == drawn_iid and not found_drawn:
+				drawn_tiles.append(t)
+				found_drawn = true
+			else:
+				sorted_entries.append({"tile": t, "original_index": i})
+		if not found_drawn:
+			# instance 不在 hand → 不拆
+			sorted_entries.clear()
+			drawn_tiles.clear()
+			for i in range(seat.hand._tiles.size()):
+				sorted_entries.append({"tile": seat.hand._tiles[i], "original_index": i})
+	else:
+		for i in range(seat.hand._tiles.size()):
+			sorted_entries.append({"tile": seat.hand._tiles[i], "original_index": i})
+	sorted_entries.sort_custom(func(a, b) -> bool:
+		var ta: Tile = a["tile"]
+		var tb: Tile = b["tile"]
+		if ta.id != tb.id:
+			return ta.id < tb.id
+		return int(a["original_index"]) < int(b["original_index"]))
+	var sorted_tiles: Array = []
+	for e in sorted_entries:
+		sorted_tiles.append(e["tile"])
+	var show_tiles: Array = sorted_tiles + drawn_tiles
+	var n: int = show_tiles.size()
 	if n == 0:
 		return
 	var sc: float = HAND_SCALE
 	var gap: float = (Tile3D.TILE_W + 0.006) * sc
 	var drawn_gap: float = 0.04 * sc
-	var total: float = n * gap + (drawn_gap if drawn_ids.size() > 0 and sorted_ids.size() > 0 else 0.0)
+	var total: float = n * gap + (drawn_gap if drawn_tiles.size() > 0 and sorted_tiles.size() > 0 else 0.0)
 	var x0: float = -total * 0.5 + gap * 0.5
 	# 近景倾牌：+Y 面朝向相机（HAND_TILT 为正）
 	var y: float = Tile3D.TILE_D * 0.5 * sc + 0.01
 	var z: float = HAND_Z
 	var x_cursor: float = x0
 	for i in range(n):
-		var tid: int = int(show_ids[i])
-		var is_red := false
-		for t in seat.hand._tiles:
-			if t.id == tid and t.is_red_dora:
-				is_red = true
-				break
-		var is_drawn_slot: bool = drawn_ids.size() > 0 and i == sorted_ids.size() and sorted_ids.size() > 0
+		var src: Tile = show_tiles[i]
+		var is_drawn_slot: bool = drawn_tiles.size() > 0 and i == sorted_tiles.size() and sorted_tiles.size() > 0
 		if is_drawn_slot:
 			x_cursor += drawn_gap
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
-		tile.setup(tid, true, is_red)
+		tile.setup_entity(src.id, true, src.is_red_dora, src.instance_id)
 		tile.scale = Vector3(sc, sc, sc)
 		tile.set_base_position(Vector3(x_cursor, y, z))
 		tile.rotation_degrees = Vector3(HAND_TILT_DEG, 0, 0)
@@ -831,9 +872,9 @@ func _rebuild_dora(state: BattleState) -> void:
 		i += 1
 
 
-func _on_tile_clicked(tile_id: int) -> void:
+func _on_tile_clicked(tile_instance_id: int) -> void:
 	if _hand_clickable:
-		player_card_clicked.emit(tile_id)
+		player_card_clicked.emit(tile_instance_id)
 
 
 func _on_tile_hover(tile_id: int, entered: bool) -> void:

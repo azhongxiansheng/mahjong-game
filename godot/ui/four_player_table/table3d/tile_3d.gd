@@ -7,13 +7,16 @@ const TILE_W: float = 0.072
 const TILE_H: float = 0.098
 const TILE_D: float = 0.034
 
-signal tile_clicked(tile_id: int)
+# E2-02 / #232：点击发 tile_instance_id；hover 仍发 tile_id（同名联动）
+signal tile_clicked(tile_instance_id: int)
 signal tile_hover(tile_id: int, entered: bool)
 
 var tile_id: int = -1
 var is_red_dora: bool = false
 var face_up: bool = true
 var clickable: bool = false
+# entity identity；setup() 纯展示清空；setup_entity 注入
+var tile_instance_id: int = Tile.INVALID_INSTANCE_ID
 var _mesh: MeshInstance3D = null
 var _collision: CollisionShape3D = null
 var _base_y: float = 0.0
@@ -84,10 +87,22 @@ static func _build_box_mesh() -> ArrayMesh:
 	return am
 
 
+# 纯展示入口：清空 entity identity
 func setup(p_tile_id: int, p_face_up: bool = true, p_red: bool = false) -> void:
 	tile_id = p_tile_id
 	face_up = p_face_up
 	is_red_dora = p_red
+	tile_instance_id = Tile.INVALID_INSTANCE_ID
+	_ensure_mesh()
+	_apply_materials()
+
+
+# 手牌等可动作牌：注入 instance_id
+func setup_entity(p_tile_id: int, p_face_up: bool, p_red: bool, p_instance_id: int) -> void:
+	tile_id = p_tile_id
+	face_up = p_face_up
+	is_red_dora = p_red
+	tile_instance_id = p_instance_id
 	_ensure_mesh()
 	_apply_materials()
 
@@ -224,7 +239,9 @@ func _input_event(_camera: Camera3D, event: InputEvent, _pos: Vector3, _normal: 
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
-			tile_clicked.emit(tile_id)
+			if not Tile.is_valid_instance_id(tile_instance_id):
+				return
+			tile_clicked.emit(tile_instance_id)
 
 
 func _on_mouse_entered() -> void:

@@ -583,20 +583,81 @@ func _build_exhaustive_draw_snapshots() -> Array:
 static func _clone_result_tile(tile: Tile) -> Tile:
 	if tile == null:
 		return null
-	return Tile.new(tile.id, tile.is_red_dora, tile.owner_seat)
+	return Tile.new(tile.id, tile.is_red_dora, tile.owner_seat, tile.instance_id)
 
 
 static func _clone_result_meld(meld: Meld) -> Meld:
 	if meld == null:
 		return null
-	var tiles: Array[Tile] = []
-	var called_tile: Tile = null
+	if not Meld.is_valid_meld_id(meld.meld_id):
+		return null
+
+	# 克隆全部 tiles 并保留 identity。
+	var cloned_tiles: Array[Tile] = []
 	for original in meld.tiles:
-		var copied := _clone_result_tile(original)
-		tiles.append(copied)
-		if original == meld.called_tile:
-			called_tile = copied
-	return Meld.new(meld.kind, tiles, meld.from_seat, called_tile)
+		cloned_tiles.append(_clone_result_tile(original))
+
+	# ANKAN：闭式副露，from/called 必须哨兵，called 实体必须空。
+	if meld.kind == Meld.Kind.ANKAN:
+		if meld.from_seat != Meld.NO_SOURCE_SEAT:
+			return null
+		if meld.called_tile_instance_id != Tile.INVALID_INSTANCE_ID:
+			return null
+		if meld.called_tile != null:
+			return null
+		return Meld.new(Meld.Kind.ANKAN, cloned_tiles, Meld.NO_SOURCE_SEAT,
+			meld.meld_id, null)
+
+	# CHI/PON/MINKAN/ADDED_KAN 均为开放副露。
+	if meld.kind != Meld.Kind.CHI and meld.kind != Meld.Kind.PON \
+			and meld.kind != Meld.Kind.MINKAN and meld.kind != Meld.Kind.ADDED_KAN:
+		return null
+	if meld.from_seat < 0 or meld.from_seat > 3:
+		return null
+	if not Tile.is_valid_instance_id(meld.called_tile_instance_id):
+		return null
+	var called_in_src := false
+	for original in meld.tiles:
+		if original != null and original.instance_id == meld.called_tile_instance_id:
+			called_in_src = true
+			break
+	if not called_in_src:
+		return null
+
+	# ADDED_KAN：先 base PON + meld_id/called，再 promote 写 added identity。
+	# 缺 added / 缺 called / added==called / promote 失败 → fail-closed null。
+	if meld.kind == Meld.Kind.ADDED_KAN:
+		if not Tile.is_valid_instance_id(meld.added_tile_instance_id):
+			return null
+		if meld.added_tile_instance_id == meld.called_tile_instance_id:
+			return null
+		var base_tiles: Array[Tile] = []
+		var added_copy: Tile = null
+		var called_base: Tile = null
+		for t in cloned_tiles:
+			if t.instance_id == meld.added_tile_instance_id:
+				added_copy = t
+			else:
+				base_tiles.append(t)
+				if t.instance_id == meld.called_tile_instance_id:
+					called_base = t
+		if added_copy == null or called_base == null:
+			return null
+		var clone_pon := Meld.new(Meld.Kind.PON, base_tiles, meld.from_seat,
+			meld.meld_id, called_base)
+		if not clone_pon.promote_to_added_kan(added_copy):
+			return null
+		return clone_pon
+
+	# 其它开放副露：called 必须指向 cloned_tiles 内对象。
+	var called_tile: Tile = null
+	for t in cloned_tiles:
+		if t.instance_id == meld.called_tile_instance_id:
+			called_tile = t
+			break
+	if called_tile == null:
+		return null
+	return Meld.new(meld.kind, cloned_tiles, meld.from_seat, meld.meld_id, called_tile)
 
 
 # 公开 `.modal__draw-list` / vP() 的 2D 等价结构：真实暗手后复用
@@ -1768,19 +1829,24 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 func _exit_tree() -> void:
 	_polling_active = false
 
-func _on_player_tile_clicked(tile_id: int) -> void:
-	# 记录起点：弃牌执行前手牌槽仍在
+func _on_player_tile_clicked(tile_instance_id: int) -> void:
+	# 记录起点：按 instance 查 slot；飞牌渲染仍用 slot 上的 tile_id/red
 	if _seat_panel_player:
-		var from: Vector2 = _seat_panel_player.get_hand_slot_global_center(tile_id)
+		var from: Vector2 = _seat_panel_player.get_hand_slot_global_center(tile_instance_id)
+		var fly_tile_id: int = -1
 		var is_red := false
 		for s in _seat_panel_player._hand_slots:
-			if s != null and is_instance_valid(s) and int(s.get_meta("hand_id", -2)) == tile_id:
+			if s != null and is_instance_valid(s) \
+					and int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID)) \
+					== tile_instance_id:
+				fly_tile_id = int(s.get_meta("hand_id", -1))
 				is_red = bool(s.get_meta("hand_red", false))
 				break
 		if from != Vector2.ZERO:
-			_pending_discard_fly = {"from": from, "tile_id": tile_id, "is_red": is_red}
+			_pending_discard_fly = {
+				"from": from, "tile_id": fly_tile_id, "is_red": is_red}
 	if _decision_adapter != null:
-		_decision_adapter.on_hand_tile_clicked(tile_id)
+		_decision_adapter.on_hand_tile_clicked(tile_instance_id)
 
 
 func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
@@ -1865,9 +1931,10 @@ func _input(event: InputEvent) -> void:
 	match k.keycode:
 		KEY_D:
 			if _bc != null and _decision_adapter != null:
-				var hand_ids: Array = _bc.state.seats[0].hand.to_id_array()
-				if hand_ids.size() > 0:
-					_decision_adapter.on_hand_tile_clicked(int(hand_ids[0]))
+				var hand_tiles: Array = _bc.state.seats[0].hand._tiles
+				if hand_tiles.size() > 0:
+					_decision_adapter.on_hand_tile_clicked(
+						(hand_tiles[0] as Tile).instance_id)
 		KEY_S:
 			if _decision_adapter != null:
 				_decision_adapter.submit_action({"action": "skip"})

@@ -1,84 +1,960 @@
-class_name LocalLoopbackServer extends RefCounted
+class_name LocalLoopbackServer
+extends RefCounted
 
-# 麻将王 — M12 Path C 第 2 步：本地 loopback server 骨架（spec §4.3 PvP 雏形）
-#
-# v1 同 process 跑的"假 server"：
-# - 单一 BattleController 作权威 state（authoritative）
-# - 提供 broadcast 层：把 BC.events 包装成 NetworkedEvent 序列（server_seq 单调）
-# - submit_action() 入口：v1 仅接 PASS_CLAIM 作 no-op 占位；完整 action 路由在 p3+ 加
-# - events_since(seq) 入口：client 重连后从最后已知 seq 拉补
-#
-# 设计原则：
-# - 不接真网络（M13 才上 WebSocket）；本类是"网络无关的仲裁器"，把 spec §4.3
-#   "事件总线 = 单一事实源"在本地 loopback 跑通
-# - 不替换 BattleController：BC 仍跑现有 AI；server 在 BC.run_to_end() 后吸事件
-#   并广播；为 p3 NetworkedBattleController（client 半边）铺接口
-# - server_seq 从 0 起；run_to_end / submit_action 调用过程中递增
-#
-# 不在本 PR 范围（留 M12/p3+）：
-# - 真 client → server 路由（NetworkedBattleController 实例化）
-# - DISCARD / RIICHI / RON / TSUMO 等 action 的合法性校验 + 状态转移
-# - server 端独立 BC 镜像（v1 用同一个 BC）
-# - 牌墙 reveal gating（M14 反作弊）
+# E2-02 / #232：本地 loopback 权威桩。
+# 包裹 BattleController 唯一 apply_action(Action, ActionSource) 入口。
+# 对外核心 API：new(config, dealer_seat)、start、submit_action、publish_snapshot、
+# events_since、event_journal、current_server_seq。
+# 不保留 PASS 特判 / NYI / 旧构造 / 旧裸 Dictionary 路径。
 
-# 权威 BC（authoritative state）
-var bc: IBattleController = null
+const MAX_AI_STEPS := 2000
+const ERROR_NOT_STARTED := "NOT_STARTED"
+const ERROR_UNAUTHORIZED := "UNAUTHORIZED"
+const ERROR_COMMAND_ID_CONFLICT := "COMMAND_ID_CONFLICT"
+const ERROR_EVENT_PUBLISH_FAILED := "EVENT_PUBLISH_FAILED"
 
-# 事件序号（≥1 起递增；0 = 未赋）
-var _seq: int = 0
+var _config: GameSessionConfig = null
+var _dealer_seat: int = 0
+var _bc: BattleController = null
+var _room_id: String = ""
+var _server_seq: int = 0
+var _started: bool = false
+# restore 失败后不可再证明权威状态；实例永久 fail-closed，只能丢弃重建。
+var _rollback_failed: bool = false
+# 每席独立 NetworkedEvent 日志（同逻辑 seq 可有不同 view_hash）
+var _journals: Array = [[], [], [], []]
+# command_id → { "fingerprint": String, "result": CommandResult }
+var _command_cache: Dictionary = {}
+# seat → participant wire ("HUMAN"/"AI")
+var _participants: Array = []
+# 本局起始分：仅 start 成功后冻结；失败 start 不得污染（空 = 未冻结）
+var _hand_start_scores: Array = []
 
-# 已广播事件列表（按 server_seq 升序）
-var _events: Array = []  # Array[NetworkedEvent]
 
-func _init(seed: int = 0, dealer_seat: int = 0, use_heuristic_ai: bool = false) -> void:
-	# v1: 用 BattleController（concrete v1 实现）；M12+ 可换 NetworkedBattleController
-	bc = BattleController.new(seed, dealer_seat, use_heuristic_ai)
+func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
+	_config = config
+	_dealer_seat = dealer_seat
+	_server_seq = 0
+	_started = false
+	_rollback_failed = false
+	_journals = [[], [], [], []]
+	_command_cache = {}
+	_hand_start_scores = []
+	_participants = [&"HUMAN", &"AI", &"AI", &"AI"]
+	if config != null:
+		_room_id = config.session_id
+		var parts: Array = config.participants
+		if parts.size() == 4:
+			_participants = parts.duplicate()
+		_bc = BattleController.new(config.seed, dealer_seat, false, TileId.E, 0)
+	else:
+		_room_id = ""
+		_bc = null
 
-# 跑完整一局；server 吸 BC.events 并包装成 NetworkedEvent 序列广播。
-# 返广播 events 副本（按 server_seq 升序）。
-func run_to_end() -> Array:
-	bc.run_to_end()
-	# 把 BC 内部 emit 的每个 BattleEvent 提升为 NetworkedEvent
-	for be in bc.events:
-		_seq += 1
-		var ne: NetworkedEvent = NetworkedEvent.wrap(be, _seq, 0, _server_ts())
-		_events.append(ne)
-	return _events.duplicate()
 
-# 接收 client Action；v1 仅识别 PASS_CLAIM 作 no-op 占位；其余 kind 返
-# kind_not_yet_implemented（p3 加完整路由）。
-# 返 {accepted: bool, reason: String, events: Array[NetworkedEvent]}.
-func submit_action(action: Action) -> Dictionary:
+func start() -> bool:
+	if _rollback_failed:
+		return false
+	if _started:
+		return false
+	if _bc == null or _bc.state == null:
+		return false
+	# 任何 mutation 前捕获 ARS 并冻结服务端副作用字段
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null:
+		return false
+	var auth_h: String = snap.sha256()
+	if auth_h.is_empty() or auth_h.length() != 64 or not snap.can_restore():
+		return false
+	# 无副作用时点：mutation 前读取本局起始分候选；仅 start 成功后提交
+	var start_scores_candidate: Array = _capture_scores_array()
+	if start_scores_candidate.size() != 4:
+		return false
+	var frozen_seq: int = _server_seq
+	var frozen_journals: Array = []
+	for s in range(4):
+		frozen_journals.append(_clone_events(_journals[s] as Array))
+	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_started: bool = _started
+	var frozen_hand_start: Array = _hand_start_scores.duplicate()
+
+	# DRAW → 摸牌进入 TURN；ROOM_SNAPSHOT → private prompt
+	_ensure_drawn()
+	if not publish_snapshot() or not _emit_private_prompt():
+		if _rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache):
+			_started = frozen_started
+			_hand_start_scores = frozen_hand_start
+		return false
+	_hand_start_scores = start_scores_candidate
+	_started = true
+	return true
+
+
+func publish_snapshot() -> bool:
+	if _rollback_failed:
+		return false
+	if _bc == null or _bc.state == null:
+		return false
+	# 候选 seq：构造/校验全部成功前不得 _alloc_seq / 写 journal
+	var candidate: int = _server_seq + 1
+	var prepared: Array = []
+	for seat in range(4):
+		var payload: Dictionary = _build_room_snapshot_payload(seat, candidate)
+		if payload.is_empty():
+			return false
+		var vh: String = ProtocolViewCodec.compute_view_hash(payload)
+		if vh.is_empty() or vh.length() != 64:
+			return false
+		var ne: NetworkedEvent = NetworkedEvent.make(
+			"ROOM_SNAPSHOT", candidate, _room_id, payload, vh
+		)
+		if ne == null:
+			return false
+		var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
+		if cloned == null:
+			return false
+		prepared.append(cloned)
+	# 四席全部成功后单线程提交
+	_server_seq = candidate
+	for seat2 in range(4):
+		(_journals[seat2] as Array).append(prepared[seat2])
+	return true
+
+
+func current_server_seq() -> int:
+	return _server_seq
+
+
+func event_journal(recipient_seat: int) -> Array:
+	if recipient_seat < 0 or recipient_seat > 3:
+		return []
+	return _clone_events(_journals[recipient_seat] as Array)
+
+
+func events_since(recipient_seat: int, after_server_seq: int) -> Array:
+	if recipient_seat < 0 or recipient_seat > 3:
+		return []
+	var out: Array = []
+	for ne in _journals[recipient_seat] as Array:
+		if ne is NetworkedEvent and int((ne as NetworkedEvent).server_seq) > after_server_seq:
+			var cloned: NetworkedEvent = NetworkedEvent.from_dict(
+				(ne as NetworkedEvent).to_dict()
+			)
+			if cloned != null:
+				out.append(cloned)
+	return out
+
+
+func submit_action(action: Action) -> CommandResult:
 	if action == null:
-		return {"accepted": false, "reason": "null_action", "events": []}
-	if action.seat < 0 or action.seat > 3:
-		return {"accepted": false, "reason": "invalid_seat", "events": []}
-	# v1: 仅接 PASS_CLAIM 作 no-op；ack 后无 events 产生
-	if action.kind == Action.Kind.PASS_CLAIM:
-		return {"accepted": true, "reason": "ok", "events": []}
-	return {
-		"accepted": false,
-		"reason": "kind_not_yet_implemented",
-		"events": [],
+		return _reject_result("", "INVALID_ACTION")
+	if _rollback_failed:
+		return _reject_result(action.command_id, ERROR_EVENT_PUBLISH_FAILED)
+	# 无副作用早拒绝：不写 command cache / seq / journal / BC
+	if not _started:
+		return _reject_result(action.command_id, ERROR_NOT_STARTED)
+	if not _is_human(int(action.seat)):
+		return _reject_result(action.command_id, ERROR_UNAUTHORIZED)
+
+	# 业务指纹：在 room/BC/领域处理之前计算；失败 → INVALID_ACTION 且不缓存
+	var fp: String = _business_fingerprint(action)
+	if fp.is_empty():
+		return _reject_result(action.command_id, "INVALID_ACTION")
+
+	var cmd: String = action.command_id
+	if _command_cache.has(cmd):
+		var entry: Dictionary = _command_cache[cmd] as Dictionary
+		var cached_fp: String = str(entry.get("fingerprint", ""))
+		if cached_fp == fp:
+			return _clone_cr(entry.get("result") as CommandResult)
+		# 异指纹：不覆盖 cache、不分配 seq、不改 journal/BC
+		return _reject_result(cmd, ERROR_COMMAND_ID_CONFLICT)
+
+	# 房间校验
+	if action.room_id != _room_id:
+		var cr_room := _reject_result(cmd, "WRONG_ROOM")
+		_cache_command(cmd, fp, cr_room)
+		return _clone_cr(cr_room)
+
+	if _bc == null or _bc.state == null:
+		var cr_st := _reject_result(cmd, "INVALID_ACTION")
+		_cache_command(cmd, fp, cr_st)
+		return _clone_cr(cr_st)
+
+	# apply 前捕获 ARS；capture/hash 失败 → 非缓存 EVENT_PUBLISH_FAILED 且不 apply
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null:
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	var auth_h: String = snap.sha256()
+	if auth_h.is_empty() or auth_h.length() != 64 or not snap.can_restore():
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	var frozen_seq: int = _server_seq
+	var frozen_journals: Array = []
+	for s in range(4):
+		frozen_journals.append(_clone_events(_journals[s] as Array))
+	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+
+	# 捕获弃牌源（DISCARD/RIICHI）
+	var discard_source := "HAND"
+	var discarded_tile: Tile = null
+	if action.kind == "DISCARD" or action.kind == "RIICHI":
+		var iid: int = int(action.payload.get("tile_instance_id", -1))
+		var seat_obj: Seat = _bc.state.seats[action.seat] as Seat
+		if seat_obj != null:
+			discarded_tile = seat_obj.hand.find_by_instance_id(iid)
+			if discarded_tile != null \
+					and int(seat_obj.last_drawn_instance_id) == iid:
+				discard_source = "DRAWN"
+
+	var res: ActionResolution = _bc.apply_action(action, ActionSource.HUMAN)
+	if res == null or not res.accepted:
+		var code := "INVALID_ACTION"
+		if res != null:
+			code = str(res.error_code)
+		var cr_rej := _reject_result(cmd, code)
+		# 非法动作不分配 server_seq，仍缓存幂等
+		_cache_command(cmd, fp, cr_rej)
+		return _clone_cr(cr_rej)
+
+	# 接受：ACTION_APPLIED → ROOM_SNAPSHOT 原子批次；失败则 restore BC 与服务端副作用
+	var aa_seq: int = _emit_action_applied_then_snapshot(
+		action, discarded_tile, discard_source
+	)
+	if aa_seq < 1:
+		_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+
+	# HUMAN apply 起至 AI 链 / 最终 prompt|settlement 为同一事务
+	if not _auto_advance_ai():
+		_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+
+	if not bool(_bc.get("_settled")):
+		# 回到真人 DRAW：领域 server-draw 推进；若荒牌 settle 则直接 HAND_SETTLED
+		var human_draw_path := false
+		if int(_bc.state.phase) == BattlePhase.Kind.DRAW:
+			var cur_seat: int = int(_bc.state.current_seat)
+			if _is_human(cur_seat):
+				human_draw_path = true
+				_ensure_drawn()
+		# 领域 draw 后必须重检 settled（不得继续 snapshot/private prompt）
+		if bool(_bc.get("_settled")):
+			if not _emit_settled_if_needed():
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+		else:
+			if human_draw_path:
+				if not publish_snapshot():
+					_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+			if not _emit_private_prompt():
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	else:
+		if not _emit_settled_if_needed():
+			_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+
+	var cr_ok := CommandResult.from_dict({
+		"protocol_version": ProtocolConstants.PROTOCOL_VERSION,
+		"command_id": cmd,
+		"status": "ACCEPTED",
+		"server_seq": _server_seq,
+		"error_code": "",
+	})
+	_cache_command(cmd, fp, cr_ok)
+	return _clone_cr(cr_ok)
+
+
+# ---- 内部 ----
+
+## 只有权威 controller 完整恢复成功后，才回退服务端 seq/journal/cache。
+## mutation 前已用 can_restore 预检；若运行时仍失败则关闭提交入口，避免继续分叉。
+func _rollback_transaction(
+	snap: AuthorityReplaySnapshot,
+	frozen_seq: int,
+	frozen_journals: Array,
+	frozen_cache: Dictionary
+) -> bool:
+	if snap == null or not snap.restore_into(_bc):
+		_rollback_failed = true
+		_started = false
+		return false
+	_server_seq = frozen_seq
+	_journals = frozen_journals
+	_command_cache = frozen_cache
+	return true
+
+## 业务指纹：session/room/seat/hand/decision/kind + 规范 payload 的 SHA-256。
+## 仅 client_seq 属于可变化的传输重试序号；窗口或局变化必须视为 command_id 冲突。
+func _business_fingerprint(action: Action) -> String:
+	if action == null or _config == null:
+		return ""
+	var kind_str: String = str(action.kind)
+	var raw_payload: Dictionary = action.payload if typeof(action.payload) == TYPE_DICTIONARY else {}
+	var canon_pl: Variant = Action.normalize_payload(kind_str, raw_payload)
+	if canon_pl == null or typeof(canon_pl) != TYPE_DICTIONARY:
+		return ""
+	var payload_sha: String = ProtocolViewCodec.compute_view_hash(canon_pl)
+	if payload_sha.is_empty() or payload_sha.length() != 64:
+		return ""
+	var material := {
+		"session_id": str(_config.session_id),
+		"room_id": str(action.room_id),
+		"seat": int(action.seat),
+		"hand_seq": int(action.hand_seq),
+		"decision_id": str(action.decision_id),
+		"kind": kind_str,
+		"payload_sha256": payload_sha,
+	}
+	var fp: String = ProtocolViewCodec.compute_view_hash(material)
+	if fp.is_empty() or fp.length() != 64:
+		return ""
+	return fp
+
+
+func _cache_command(cmd: String, fingerprint: String, cr: CommandResult) -> void:
+	_command_cache[cmd] = {
+		"fingerprint": fingerprint,
+		"result": cr,
 	}
 
-# 当前 server_seq（≥0；0 = 还没 emit 过）
-func current_seq() -> int:
-	return _seq
 
-# Client 重连用：拉 server_seq > since_seq 的所有 events 副本。
-# since_seq=0 表示拉全部历史。
-func events_since(since_seq: int) -> Array:
-	var result: Array = []
-	for ne in _events:
-		if ne.server_seq > since_seq:
-			result.append(ne)
-	return result
+## 若合法 DRAW：走 IAuth typed server-draw progression（唯一 _step_draw）。
+## true = 正常摸牌或荒牌 settle 等领域推进成功；false = 未推进。
+func _ensure_drawn() -> bool:
+	if _bc == null:
+		return false
+	return _bc.progress_server_draw()
 
-# 全部已广播 events 的副本快照
-func get_all_events() -> Array:
-	return _events.duplicate()
 
-# v1：占位 timestamp（client 不依赖；M14 反作弊用真 unix ms）
-func _server_ts() -> int:
-	return Time.get_ticks_msec()
+func _alloc_seq() -> int:
+	_server_seq += 1
+	return _server_seq
+
+
+func _append_event(seat: int, ne: NetworkedEvent) -> void:
+	var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
+	if cloned != null:
+		(_journals[seat] as Array).append(cloned)
+
+
+func _clone_events(src: Array) -> Array:
+	var out: Array = []
+	for ne in src:
+		if ne is NetworkedEvent:
+			var c: NetworkedEvent = NetworkedEvent.from_dict((ne as NetworkedEvent).to_dict())
+			if c != null:
+				out.append(c)
+	return out
+
+
+func _clone_cr(cr: CommandResult) -> CommandResult:
+	if cr == null:
+		return null
+	return CommandResult.from_dict(cr.to_dict())
+
+
+func _reject_result(cmd: String, code: String) -> CommandResult:
+	var use_cmd: String = cmd
+	if use_cmd.is_empty() or not ProtocolUuid.is_canonical_v4(use_cmd):
+		use_cmd = "550e8400-e29b-41d4-a716-000000000099"
+	var err: String = code if not code.is_empty() else "INVALID_ACTION"
+	return CommandResult.from_dict({
+		"protocol_version": ProtocolConstants.PROTOCOL_VERSION,
+		"command_id": use_cmd,
+		"status": "REJECTED",
+		"server_seq": _server_seq,
+		"error_code": err,
+	})
+
+
+func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
+	# Variant 接收：null / 非 Dictionary / 空 Dictionary 直接 {}（禁 seats/dora fallback）
+	var core_v: Variant = RecipientViewProjector.project_core_table(_bc.state, seat)
+	if core_v == null or typeof(core_v) != TYPE_DICTIONARY:
+		return {}
+	var core: Dictionary = core_v
+	if core.is_empty():
+		return {}
+	var modules: Array = [{
+		"module_key": "core_table",
+		"schema_version": 1,
+		"payload": core.duplicate(true),
+	}]
+	return {
+		"snapshot_server_seq": seq,
+		"next_server_seq": seq + 1,
+		"seat_view": seat,
+		"modules": modules,
+	}
+
+
+func _public_view_hash_for_seq(seat: int, snap_seq: int) -> String:
+	var payload: Dictionary = _build_room_snapshot_payload(seat, snap_seq)
+	return ProtocolViewCodec.compute_view_hash(payload)
+
+
+## 从 recipient 席 journal 倒序取最后一条已提交 ROOM_SNAPSHOT 的 view_hash。
+## seat 非法 / 未找到 / hash 非法 → 空串。禁止按新 seq 重建 snapshot payload。
+func _last_committed_snapshot_view_hash(recipient_seat: int) -> String:
+	if recipient_seat < 0 or recipient_seat > 3:
+		return ""
+	var journal: Array = _journals[recipient_seat] as Array
+	for i in range(journal.size() - 1, -1, -1):
+		var item = journal[i]
+		if not (item is NetworkedEvent):
+			continue
+		var ne: NetworkedEvent = item as NetworkedEvent
+		if ne.kind != "ROOM_SNAPSHOT":
+			continue
+		var vh: String = str(ne.view_hash)
+		if vh.is_empty() or vh.length() != 64:
+			return ""
+		return vh
+	return ""
+
+
+## 可 override 的逐席事件构建 seam：make → null 即 null；再 from_dict 严格 roundtrip clone。
+## recipient 仅供测试/子类逐席失败注入；正常实现不使用。
+func _build_recipient_event(
+	kind: String, _recipient_seat: int, seq: int, payload: Dictionary, view_hash: String
+) -> NetworkedEvent:
+	var ne: NetworkedEvent = NetworkedEvent.make(kind, seq, _room_id, payload, view_hash)
+	if ne == null:
+		return null
+	return NetworkedEvent.from_dict(ne.to_dict())
+
+
+## ACTION_APPLIED 与紧随的 ROOM_SNAPSHOT 共用 post-apply public view_hash。
+## 两阶段：prepare 四席 AA+SNAP clone → 全部成功后 _server_seq=snap_seq 再 append；失败零 mutation。
+## 逻辑：aa_seq = N，snap_seq = N+1；hash = hash(ROOM_SNAPSHOT payload @ N+1)。
+func _emit_action_applied_then_snapshot(
+	action: Action, discarded_tile: Tile, discard_source: String
+) -> int:
+	var aa_seq: int = _server_seq + 1
+	var snap_seq: int = aa_seq + 1
+	var resolved: Dictionary = _build_resolved_payload(action, discarded_tile, discard_source)
+	var aa_payload := {
+		"causation_command_id": action.command_id,
+		"hand_seq": int(action.hand_seq),
+		"decision_id": action.decision_id,
+		"seat": int(action.seat),
+		"action_kind": action.kind,
+		"resolved_payload": resolved,
+	}
+	# 阶段 1：四席逐席构造非空 snapshot / 64 位 hash / AA clone / SNAP clone；任一步失败零 mutation
+	var prepared: Array = []
+	for seat in range(4):
+		var sp: Dictionary = _build_room_snapshot_payload(seat, snap_seq)
+		if sp.is_empty():
+			return -1
+		var vh: String = ProtocolViewCodec.compute_view_hash(sp)
+		if vh.is_empty() or vh.length() != 64:
+			return -1
+		var aa_ev: NetworkedEvent = _build_recipient_event(
+			"ACTION_APPLIED", seat, aa_seq, aa_payload, vh
+		)
+		if aa_ev == null:
+			return -1
+		var snap_ev: NetworkedEvent = _build_recipient_event(
+			"ROOM_SNAPSHOT", seat, snap_seq, sp, vh
+		)
+		if snap_ev == null:
+			return -1
+		prepared.append({"aa": aa_ev, "snap": snap_ev})
+	# 阶段 2：全部成功后单线程提交（直接 append 严格 clone，禁止半提交 _append_event）
+	_server_seq = snap_seq
+	for seat2 in range(4):
+		var pair: Dictionary = prepared[seat2] as Dictionary
+		(_journals[seat2] as Array).append(pair["aa"])
+		(_journals[seat2] as Array).append(pair["snap"])
+	return aa_seq
+
+
+func _emit_action_applied(action: Action, discarded_tile: Tile, discard_source: String) -> int:
+	# AI 自动推进路径：同样保证 AA 与随后 SNAP 同 hash
+	return _emit_action_applied_then_snapshot(action, discarded_tile, discard_source)
+
+
+func _build_resolved_payload(action: Action, discarded_tile: Tile, discard_source: String) -> Dictionary:
+	match action.kind:
+		"DISCARD", "RIICHI":
+			var tile_v: Variant = null
+			if discarded_tile != null:
+				tile_v = ProtocolViewCodec.tile_view_from_tile(discarded_tile)
+			if tile_v == null:
+				# 兜底：从河取最后一张
+				var river: Array = _bc.state.discards_per_seat[action.seat]
+				if not river.is_empty():
+					tile_v = ProtocolViewCodec.tile_view_from_tile(river[river.size() - 1])
+			if tile_v == null:
+				return {}
+			return {
+				"tile": (tile_v as Dictionary).duplicate(true),
+				"discard_source": discard_source if discard_source in ["DRAWN", "HAND"] else "HAND",
+			}
+		"PASS":
+			return {}
+		"TSUMO":
+			var seat: Seat = _bc.state.seats[action.seat] as Seat
+			var wt: Tile = null
+			if seat != null:
+				wt = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
+			if wt == null:
+				return {}
+			var tv: Variant = ProtocolViewCodec.tile_view_from_tile(wt)
+			if tv == null:
+				return {}
+			return {"winning_tile": (tv as Dictionary).duplicate(true)}
+		"RON":
+			var last: Tile = _bc.get("_last_discarded_tile") as Tile
+			var from_s: int = int(_bc.get("_last_discarder_seat"))
+			if last == null:
+				return {}
+			var rtv: Variant = ProtocolViewCodec.tile_view_from_tile(last)
+			if rtv == null:
+				return {}
+			return {
+				"winning_tile": (rtv as Dictionary).duplicate(true),
+				"from_seat": from_s,
+			}
+		"CHI", "PON", "KAN":
+			var actor_seat: Seat = _bc.state.seats[action.seat] as Seat
+			if actor_seat == null:
+				return {}
+			# ADDED_KAN 的首条 ACTION_APPLIED 是加杠声明；抢杠窗结束前领域仍为 PON。
+			# 从权威 PON + 手中第四张构造只读候选 MeldView，不能提前 promote。
+			if action.kind == "KAN" \
+					and str(action.payload.get("kan_kind", "")) == "ADDED_KAN":
+				var meld_id: int = int(action.payload.get("meld_id", -1))
+				var added_iid: int = int(action.payload.get("added_tile_instance_id", -1))
+				var target: Meld = null
+				for existing in actor_seat.melds:
+					if existing is Meld and int((existing as Meld).meld_id) == meld_id:
+						target = existing as Meld
+						break
+				var added_tile: Tile = actor_seat.hand.find_by_instance_id(added_iid)
+				if target == null or target.kind != Meld.Kind.PON or added_tile == null:
+					return {}
+				var candidate_tiles: Array = []
+				for existing_tile in target.tiles:
+					var existing_view: Variant = ProtocolViewCodec.tile_view_from_tile(existing_tile)
+					if existing_view == null:
+						return {}
+					candidate_tiles.append(existing_view)
+				var added_view: Variant = ProtocolViewCodec.tile_view_from_tile(added_tile)
+				if added_view == null:
+					return {}
+				candidate_tiles.append(added_view)
+				var candidate: Variant = ProtocolViewCodec.meld_view_from_dict({
+					"meld_id": target.meld_id,
+					"kind": "ADDED_KAN",
+					"from_seat": target.from_seat,
+					"called_tile_instance_id": target.called_tile_instance_id,
+					"added_tile_instance_id": added_iid,
+					"tiles": candidate_tiles,
+				})
+				if candidate == null:
+					return {}
+				return {"meld": (candidate as Dictionary).duplicate(true)}
+			# 其它鸣牌已在领域提交，取 actor 最新副露。
+			if actor_seat.melds.is_empty():
+				return {}
+			var meld: Meld = actor_seat.melds[actor_seat.melds.size() - 1] as Meld
+			var mv: Variant = ProtocolViewCodec.meld_view_from_meld(meld)
+			if mv == null:
+				return {}
+			return {"meld": (mv as Dictionary).duplicate(true)}
+		"DECLARE_ABORTIVE_DRAW":
+			return {"reason": "KYUUSYU_KYUUHAI"}
+		_:
+			return {}
+
+
+func _emit_private_prompt() -> bool:
+	if _bc == null or _bc.state == null:
+		return false
+	if bool(_bc.get("_settled")):
+		return false
+	# 不在此处摸牌：DRAW→摸牌→ROOM_SNAPSHOT 由 start/submit 最终路径负责，
+	# 保证 TURN_PROMPT.view_hash 对齐含 last_drawn 的 snapshot。
+	# typed API：直接打开决策窗（禁止 has_method 兼容 fallback）
+	for s in range(4):
+		_bc.decision_context_for_seat(s)
+
+	var win = _bc.get("_active_window")
+	if win == null or not (win is DecisionWindow):
+		return false
+	var dw: DecisionWindow = win as DecisionWindow
+
+	if dw.kind == DecisionWindow.KIND_TURN:
+		var seat: int = int(dw.subject_seat)
+		if not _is_human(seat):
+			return false
+		var ctx: DecisionContext = dw.context_for_seat(seat)
+		if ctx == null:
+			return false
+		var payload := _build_turn_prompt_payload(ctx, seat)
+		if payload.is_empty():
+			return false
+		# 复用该席最后 committed ROOM_SNAPSHOT.view_hash；禁止按新 seq 重建
+		var vh: String = _last_committed_snapshot_view_hash(seat)
+		if vh.is_empty():
+			return false
+		var candidate: int = _server_seq + 1
+		var ne: NetworkedEvent = NetworkedEvent.make(
+			"TURN_PROMPT", candidate, _room_id, payload, vh
+		)
+		if ne == null:
+			return false
+		var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
+		if cloned == null:
+			return false
+		_server_seq = candidate
+		(_journals[seat] as Array).append(cloned)
+		return true
+
+	if dw.kind == DecisionWindow.KIND_CLAIM or dw.kind == DecisionWindow.KIND_ROB_KAN:
+		# 同一逻辑 seq，多 recipient variant（仅 human 未响应席）
+		var targets: Array = []
+		for s in dw.seats():
+			var si: int = int(s)
+			if not _is_human(si):
+				continue
+			if dw.has_responded(si):
+				continue
+			targets.append(si)
+		if targets.is_empty():
+			return false
+		# 候选 seq：全部 target 构造/roundtrip 成功前不得 _alloc_seq / 写 journal
+		var candidate: int = _server_seq + 1
+		var prepared: Array = []
+		for si2 in targets:
+			var seat_i: int = int(si2)
+			var ctx2: DecisionContext = dw.context_for_seat(seat_i)
+			if ctx2 == null:
+				return false
+			var pay2 := _build_claim_window_payload(ctx2, dw)
+			if pay2.is_empty():
+				return false
+			# 复用该席最后 committed ROOM_SNAPSHOT.view_hash；禁止按新 seq 重建
+			var vh2: String = _last_committed_snapshot_view_hash(seat_i)
+			if vh2.is_empty() or vh2.length() != 64:
+				return false
+			var ne2: NetworkedEvent = NetworkedEvent.make(
+				"CLAIM_WINDOW", candidate, _room_id, pay2, vh2
+			)
+			if ne2 == null:
+				return false
+			var cloned2: NetworkedEvent = NetworkedEvent.from_dict(ne2.to_dict())
+			if cloned2 == null:
+				return false
+			prepared.append({"seat": seat_i, "clone": cloned2})
+		# 全部 target 成功后单线程提交：共享 candidate，每席一条
+		_server_seq = candidate
+		for item in prepared:
+			var seat_j: int = int(item["seat"])
+			(_journals[seat_j] as Array).append(item["clone"])
+		return true
+
+	return false
+
+
+func _build_turn_prompt_payload(ctx: DecisionContext, seat: int) -> Dictionary:
+	var seat_obj: Seat = _bc.state.seats[seat] as Seat
+	if seat_obj == null:
+		return {}
+	var hand_out: Array = []
+	for t in seat_obj.hand._tiles:
+		var tv: Variant = ProtocolViewCodec.tile_view_from_tile(t)
+		if tv == null:
+			return {}
+		hand_out.append(tv)
+	var last_drawn: int = -1
+	if Tile.is_valid_instance_id(seat_obj.last_drawn_instance_id):
+		last_drawn = int(seat_obj.last_drawn_instance_id)
+	return {
+		"hand_seq": int(ctx.hand_seq),
+		"decision_id": ctx.decision_id,
+		"seat": seat,
+		"hand": hand_out,
+		"last_drawn_tile_instance_id": last_drawn,
+		"allowed_actions": ctx.allowed_actions,
+	}
+
+
+func _build_claim_window_payload(ctx: DecisionContext, dw: DecisionWindow) -> Dictionary:
+	var discarded: Tile = _bc.get("_last_discarded_tile") as Tile
+	if discarded == null:
+		return {}
+	var tv: Variant = ProtocolViewCodec.tile_view_from_tile(discarded)
+	if tv == null:
+		return {}
+	return {
+		"hand_seq": int(ctx.hand_seq),
+		"decision_id": ctx.decision_id,
+		"discarded_by_seat": int(dw.discarder_seat),
+		"discarded_tile": (tv as Dictionary).duplicate(true),
+		"allowed_actions": ctx.allowed_actions,
+	}
+
+
+func _is_human(seat: int) -> bool:
+	if seat < 0 or seat > 3:
+		return false
+	return str(_participants[seat]) == str(GameSessionConfig.PARTICIPANT_HUMAN)
+
+
+## AI 自动推进。成功/正常停在真人决策入口 → true；任一步 AA/SNAP 发布失败 → false。
+## DRAW 且 current 为真人时绝不摸牌，交 submit 最终路径：draw → SNAP → TURN_PROMPT。
+func _auto_advance_ai() -> bool:
+	if _bc == null or _bc.state == null:
+		return true
+	var steps := 0
+	while steps < MAX_AI_STEPS:
+		steps += 1
+		if bool(_bc.get("_settled")):
+			return true
+		# 真人 DRAW：禁止提前摸牌
+		if int(_bc.state.phase) == BattlePhase.Kind.DRAW:
+			var cur: int = int(_bc.state.current_seat)
+			if _is_human(cur):
+				return true
+			if not _ensure_drawn():
+				# 非合法 DRAW 等：无法推进则正常停（非发布失败）
+				return true
+		# facade 后重检：荒牌 settle 等由 submit 统一 HAND_SETTLED
+		if bool(_bc.get("_settled")):
+			return true
+		# 打开窗
+		for s in range(4):
+			_bc.decision_context_for_seat(s)
+		var win = _bc.get("_active_window")
+		if win == null or not (win is DecisionWindow):
+			if int(_bc.state.phase) == BattlePhase.Kind.SETTLE:
+				_bc.set("_settled", true)
+				return true
+			# DRAW+human 已在上方返回；其余无窗视为正常停
+			return true
+
+		var dw: DecisionWindow = win as DecisionWindow
+		if dw.kind == DecisionWindow.KIND_TURN:
+			var actor: int = int(dw.subject_seat)
+			if _is_human(actor):
+				return true
+			var act: Action = _build_ai_turn_action(actor)
+			if act == null:
+				return true
+			var disc_tile: Tile = null
+			var dsrc := "HAND"
+			if act.kind == "DISCARD" or act.kind == "RIICHI":
+				var iid: int = int(act.payload.get("tile_instance_id", -1))
+				var so: Seat = _bc.state.seats[actor] as Seat
+				if so != null:
+					disc_tile = so.hand.find_by_instance_id(iid)
+					if disc_tile != null and int(so.last_drawn_instance_id) == iid:
+						dsrc = "DRAWN"
+			var res: ActionResolution = _bc.apply_action(act, ActionSource.AI)
+			if res == null or not res.accepted:
+				return true
+			if _emit_action_applied(act, disc_tile, dsrc) < 1:
+				return false
+			continue
+
+		if dw.kind == DecisionWindow.KIND_CLAIM or dw.kind == DecisionWindow.KIND_ROB_KAN:
+			# 若有 human 未响应 → 停，交给 private prompt
+			var need_human := false
+			for s2 in dw.seats():
+				var si: int = int(s2)
+				if _is_human(si) and not dw.has_responded(si):
+					need_human = true
+					break
+			if need_human:
+				return true
+			# 全部 AI：逐席自动 PASS（简化；不 mock 引擎）
+			var progressed := false
+			for s3 in dw.seats():
+				var si3: int = int(s3)
+				if dw.has_responded(si3):
+					continue
+				var pass_act: Action = _build_ai_claim_action(si3)
+				if pass_act == null:
+					continue
+				var r2: ActionResolution = _bc.apply_action(pass_act, ActionSource.AI)
+				if r2 == null or not r2.accepted:
+					continue
+				if _emit_action_applied(pass_act, null, "HAND") < 1:
+					return false
+				progressed = true
+				break  # 一次一步，循环重取窗
+			if not progressed:
+				return true
+			continue
+
+		return true
+	return true
+
+
+func _build_ai_turn_action(actor: int) -> Action:
+	var ctx: DecisionContext = _bc.decision_context_for_seat(actor)
+	if ctx == null:
+		return null
+	var cmd: String = _next_cmd()
+	var did: String = ctx.decision_id
+	var hs: int = int(_bc.state.hand_seq)
+	if ctx.has_kind("TSUMO"):
+		return Action.tsumo(actor, _room_id, cmd, did, hs, _server_seq + 1)
+	# 取首个 DISCARD offer
+	for offer in ctx.allowed_actions:
+		if typeof(offer) != TYPE_DICTIONARY:
+			continue
+		if str(offer.get("kind", "")) != "DISCARD":
+			continue
+		var opts: Array = offer.get("payload_options", [])
+		if opts.is_empty():
+			continue
+		var opt: Dictionary = opts[0]
+		var iid: int = int(opt.get("tile_instance_id", -1))
+		return Action.discard(actor, iid, _room_id, cmd, did, hs, _server_seq + 1)
+	return null
+
+
+func _build_ai_claim_action(seat: int) -> Action:
+	var ctx: DecisionContext = _bc.decision_context_for_seat(seat)
+	if ctx == null:
+		return null
+	# AI 有 RON 时仍 PASS（loopback 简化；不 mock 引擎）
+	if ctx.has_kind("PASS"):
+		return Action.make_pass(
+			seat, _room_id, _next_cmd(), ctx.decision_id,
+			int(_bc.state.hand_seq), _server_seq + 1
+		)
+	return null
+
+
+func _next_cmd() -> String:
+	# 与 BC 风格一致的确定性 uuid
+	var n: int = _server_seq * 10 + 1 + _command_cache.size()
+	return "550e8400-e29b-41d4-a716-%012d" % (n + 1000)
+
+
+## 从 BC.state.scores 捕获 4 席整数分；非法 → 空 Array。
+func _capture_scores_array() -> Array:
+	if _bc == null or _bc.state == null:
+		return []
+	var out: Array = []
+	for s in _bc.state.scores:
+		out.append(int(s))
+	if out.size() != 4:
+		return []
+	return out
+
+
+## 从真实 BC.events + state.scores + 冻结起始分推导 HAND_SETTLED payload。
+## WIN：scores = state.scores 应用 WIN_DECLARED.extra.payout / winner_total（GameDriver 语义）。
+## 流局：scores = state.scores（#232 不应用 noten / 整场规则）。
+## 失败 → {}。
+func _build_hand_settled_payload() -> Dictionary:
+	if _bc == null or _bc.state == null:
+		return {}
+	if _hand_start_scores.size() != 4:
+		return {}
+	var outcome: String = ""
+	var winner_seats: Array = []
+	var loser_seat: int = -1
+	var win_extra: Dictionary = {}
+	var winner_actor: int = -1
+	# 倒序找最末结算相关事件（真实 BattleEvent，非伪装）
+	for i in range(_bc.events.size() - 1, -1, -1):
+		var ev: BattleEvent = _bc.events[i]
+		if ev == null:
+			continue
+		if ev.type == &"WIN_DECLARED":
+			win_extra = ev.extra if typeof(ev.extra) == TYPE_DICTIONARY else {}
+			winner_actor = int(ev.actor_seat)
+			if bool(win_extra.get("is_tsumo", false)):
+				outcome = "TSUMO"
+				winner_seats = [winner_actor]
+				loser_seat = -1
+			else:
+				outcome = "RON"
+				winner_seats = [winner_actor]
+				loser_seat = int(win_extra.get("discarder_seat", -1))
+			break
+		if ev.type == &"ABORTIVE_DRAW":
+			outcome = "ABORTIVE_DRAW"
+			winner_seats = []
+			loser_seat = -1
+			break
+		if ev.type == &"EXHAUSTIVE_DRAW":
+			outcome = "EXHAUSTIVE_DRAW"
+			winner_seats = []
+			loser_seat = -1
+			break
+	if outcome.is_empty():
+		return {}
+
+	var final_scores: Array = _capture_scores_array()
+	if final_scores.size() != 4:
+		return {}
+	if outcome == "RON" or outcome == "TSUMO":
+		# GameDriver.apply_result：loser -= payout[seat]；winner += winner_total
+		var payout: Dictionary = win_extra.get("payout", {})
+		if typeof(payout) != TYPE_DICTIONARY:
+			return {}
+		for seat_id in payout:
+			var si: int = int(seat_id)
+			if si < 0 or si > 3:
+				return {}
+			final_scores[si] = int(final_scores[si]) - int(payout[seat_id])
+		if winner_actor < 0 or winner_actor > 3:
+			return {}
+		final_scores[winner_actor] = int(final_scores[winner_actor]) \
+			+ int(win_extra.get("winner_total", 0))
+		if outcome == "RON" and (loser_seat < 0 or loser_seat > 3 or loser_seat == winner_actor):
+			return {}
+
+	var deltas: Array = []
+	for i2 in range(4):
+		deltas.append(int(final_scores[i2]) - int(_hand_start_scores[i2]))
+
+	return {
+		"hand_seq": int(_bc.state.hand_seq),
+		"outcome": outcome,
+		"winner_seats": winner_seats,
+		"loser_seat": loser_seat,
+		"score_deltas": deltas,
+		"scores": final_scores,
+	}
+
+
+## 四席 HAND_SETTLED 原子发布：先全部 make+strict roundtrip，再同一 server_seq 提交。
+## 任一 recipient 失败 → false，零 mutation（不增 seq、无半条）。
+## 未 settled → true（无需发布）；payload/hash 失败 → false。
+func _emit_settled_if_needed() -> bool:
+	if _bc == null or _bc.state == null:
+		return false
+	if not bool(_bc.get("_settled")):
+		return true
+	var payload: Dictionary = _build_hand_settled_payload()
+	if payload.is_empty():
+		return false
+	var candidate: int = _server_seq + 1
+	var prepared: Array = []
+	for seat in range(4):
+		# 仅接受该席已提交 ROOM_SNAPSHOT.view_hash；禁止按新 seq 重建 fallback
+		var vh: String = _last_committed_snapshot_view_hash(seat)
+		if vh.is_empty() or vh.length() != 64:
+			return false
+		var ne: NetworkedEvent = _build_recipient_event(
+			"HAND_SETTLED", seat, candidate, payload, vh
+		)
+		if ne == null:
+			return false
+		prepared.append(ne)
+	# 四席全部成功后单线程提交
+	_server_seq = candidate
+	for seat2 in range(4):
+		(_journals[seat2] as Array).append(prepared[seat2])
+	return true

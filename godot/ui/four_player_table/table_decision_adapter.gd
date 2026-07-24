@@ -35,19 +35,27 @@ func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 				int(context.get("discarder_seat", -1)))
 		&"kyuusyu":
 			_action_panel.enter_waiting_kyuusyu()
-		&"chi_companions":
+		&"claim_companions":
+			# 从吃/碰按钮进入实体选择：切 WAITING_CLAIM + 仅 skip，清掉鸣牌按钮残留
+			_action_panel.enter_waiting_claim_pick()
 			_seat_panel.set_hand_clickable(true)
-			_seat_panel.dim_hand_except(context.get("allowed_tile_ids", []))
+			# 已选实体保持高亮；其余仅保留当前可作为下一张的实体候选。
+			var highlighted: Array = (
+				context.get("allowed_tile_instance_ids", []) as Array
+			).duplicate()
+			for iid in context.get("selected_tile_instance_ids", []) as Array:
+				if not highlighted.has(iid):
+					highlighted.append(iid)
+			_seat_panel.dim_hand_except(highlighted)
 	var message: String = String(context.get("message", ""))
-	if kind == &"chi_companions" and message == "":
-		var options_text: Array[String] = []
-		for option in context.get("options", []):
-			options_text.append("%s+%s" % [
-				CardTileBack.tile_short_name(int(option[0])),
-				CardTileBack.tile_short_name(int(option[1]))])
-		message = "吃 %s — 点手牌选搭子（%s）或跳过" % [
-			CardTileBack.tile_short_name(int(context.get("discarded_tile_id", -1))),
-			" / ".join(options_text)]
+	if kind == &"claim_companions" and message == "":
+		var claim_kind: String = String(context.get("claim_kind", ""))
+		var claim_label := "吃" if claim_kind == "CHI" else "碰"
+		var selected_count: int = (
+			context.get("selected_tile_instance_ids", []) as Array
+		).size()
+		message = "%s — 已选 %d/2，点选实体牌；跳过取消" % [
+			claim_label, selected_count]
 	if message != "":
 		_action_panel.set_status_text(message)
 	return await _action_panel.player_action_chosen
@@ -66,8 +74,8 @@ func present(state_name: StringName, context: Dictionary = {}) -> void:
 			_seat_panel.clear_hand_dim()
 
 
-func on_hand_tile_clicked(tile_id: int) -> void:
-	_action_panel.on_hand_tile_clicked(tile_id)
+func on_hand_tile_clicked(tile_instance_id: int) -> void:
+	_action_panel.on_hand_tile_clicked(tile_instance_id)
 
 
 func submit_action(choice: Dictionary) -> void:

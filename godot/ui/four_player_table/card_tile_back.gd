@@ -27,11 +27,14 @@ const UNKNOWN_OWNER_COLOR: Color = Color(0.40, 0.40, 0.40)
 const REVEALED_FACE_COLOR: Color = Color(0.95, 0.95, 0.92)
 const REVEALED_ALPHA: float = 0.5
 
-signal card_clicked(tile_id: int)
+# E2-02 / #232：动作 identity = tile_instance_id；tile_id 仅渲染。
+signal card_clicked(tile_instance_id: int)
 
 var _owner_seat: int = 0
 var _tile_id: int = -1
 var _is_red_dora: bool = false
+# 可读 identity；纯展示入口必须清空为 INVALID。
+var tile_instance_id: int = Tile.INVALID_INSTANCE_ID
 var _is_revealed: bool = false
 # face_up 与 revealed 的区分：
 #   face_up=true  → 玩家自己的手牌 / 弃牌河 / 宝牌指示牌，完全不透明 atlas 纹理正面
@@ -312,7 +315,10 @@ func _on_gui_input(event: InputEvent) -> void:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_LEFT and mb.pressed and not mb.canceled:
 			_play_click_pulse()
-			card_clicked.emit(_tile_id)
+			# 无有效 entity identity 时不作为玩家动作提交
+			if not Tile.is_valid_instance_id(tile_instance_id):
+				return
+			card_clicked.emit(tile_instance_id)
 
 
 # 点击瞬间反馈:缩到 0.94 倍再弹回,告知玩家"点已生效"。
@@ -335,10 +341,12 @@ func set_tile_instance(ti: TileInstance) -> void:
 		_owner_seat = -1
 		_tile_id = -1
 		_is_red_dora = false
+		tile_instance_id = Tile.INVALID_INSTANCE_ID
 	else:
 		_owner_seat = ti.owner_seat
 		_tile_id = ti.tile.id if ti.tile else -1
 		_is_red_dora = ti.tile.is_red_dora if ti.tile else false
+		tile_instance_id = ti.tile.instance_id if ti.tile else Tile.INVALID_INSTANCE_ID
 	if is_inside_tree():
 		_refresh()
 
@@ -349,6 +357,8 @@ func set_owner_seat(seat: int) -> void:
 
 func set_tile_id(tid: int) -> void:
 	_tile_id = tid
+	# 纯展示入口：清空 entity identity
+	tile_instance_id = Tile.INVALID_INSTANCE_ID
 	if is_inside_tree():
 		_refresh()
 
@@ -362,11 +372,13 @@ func set_revealed(b: bool) -> void:
 # face_up：玩家自己手牌 / 弃牌河 / 宝牌指示牌的不透明正面渲染。
 # 调用此方法等价于 set_tile_id(tid) + 启用 face_up 模式。
 # is_red_dora：赤宝五 走 0m/0p/0s 真图（勿用粉红 modulate 凑合）。
+# 纯展示入口：清空 entity identity（动作牌须在调用后另行写入 tile_instance_id）。
 func set_face_up(tile_id: int, is_red_dora: bool = false) -> void:
 	_tile_id = tile_id
 	_is_red_dora = is_red_dora
 	_is_face_up = true
 	_is_revealed = false
+	tile_instance_id = Tile.INVALID_INSTANCE_ID
 	if is_inside_tree():
 		_refresh()
 

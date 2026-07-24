@@ -12,16 +12,16 @@ class_name PlayerActionPanel extends Control
 
 signal player_action_chosen(choice: Dictionary)
 # choice schema:
-#   {"action": "discard", "tile_id": int}        — 切牌
-#   {"action": "tsumo"}                          — 自摸宣告
-#   {"action": "riichi_yes"}                     — 立直确认（BC 调 declare_riichi）
-#   {"action": "riichi_no"}                      — 立直跳过
-#   {"action": "ron", "discarder_seat": int}     — 荣和宣告
-#   {"action": "pon", "discarder_seat": int}     — 碰
-#   {"action": "minkan", "discarder_seat": int}  — 明杠
-#   {"action": "chi", "discarder_seat": int}     — 吃（仅下家）
-#   {"action": "skip"}                           — 见逃响应窗口
-#   {"action": "claim_tile_pick", "tile_id": int} — 吃搭子选择（WAITING_CLAIM 点手牌）
+#   {"action": "discard", "tile_instance_id": int}        — 切牌（entity identity）
+#   {"action": "tsumo"}                                   — 自摸宣告
+#   {"action": "riichi_yes"}                              — 立直确认（BC 调 declare_riichi）
+#   {"action": "riichi_no"}                               — 立直跳过
+#   {"action": "ron", "discarder_seat": int}              — 荣和宣告
+#   {"action": "pon", "discarder_seat": int}              — 碰
+#   {"action": "minkan", "discarder_seat": int}           — 明杠
+#   {"action": "chi", "discarder_seat": int}              — 吃（仅下家）
+#   {"action": "skip"}                                    — 见逃响应窗口
+#   {"action": "claim_tile_pick", "tile_instance_id": int} — 吃/碰实体选择
 
 enum State { IDLE, WAITING_DISCARD, WAITING_RIICHI_CONFIRM, WAITING_CLAIM, WAITING_KYUUSYU }
 
@@ -311,7 +311,7 @@ func _stop_countdown(_user_cancel: bool = true) -> void:
 
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
 # 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
-func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false, has_consumable: bool = false) -> void:
+func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false, _has_consumable: bool = false) -> void:
 	_stop_countdown()
 	_state = State.WAITING_DISCARD
 	_label_status.text = "轮到你出牌（点手牌切）"
@@ -336,10 +336,8 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 		_show_btn(_btn_added_kan)
 	else:
 		_hide_btn(_btn_added_kan)
-	if has_consumable:
-		_show_btn(_btn_consumable)
-	else:
-		_hide_btn(_btn_consumable)
+	# E2-02：ITEM_USE 未启用，生产按钮永久隐藏
+	_hide_btn(_btn_consumable)
 
 # 任意状态下更新提示文字（如喰い替え拒绝提示），不改按钮可见性。
 func set_status_text(text: String) -> void:
@@ -404,6 +402,22 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 		_show_btn(_btn_minkan)
 	else:
 		_hide_btn(_btn_minkan)
+	_hide_btn(_btn_kyuusyu)
+	_hide_btn(_btn_ankan)
+	_hide_btn(_btn_added_kan)
+	_hide_btn(_btn_consumable)
+	_show_btn(_btn_skip)
+	_start_countdown(CLAIM_TIMEOUT_SEC, &"claim")
+
+# 进入"吃/碰实体选择"：手牌可点 claim_tile_pick；仅保留跳过，重启 claim 倒计时。
+func enter_waiting_claim_pick() -> void:
+	_state = State.WAITING_CLAIM
+	_hide_btn(_btn_riichi)
+	_hide_btn(_btn_tsumo)
+	_hide_btn(_btn_ron)
+	_hide_btn(_btn_chi)
+	_hide_btn(_btn_pon)
+	_hide_btn(_btn_minkan)
 	_hide_btn(_btn_kyuusyu)
 	_hide_btn(_btn_ankan)
 	_hide_btn(_btn_added_kan)
@@ -491,15 +505,15 @@ func _click_sfx() -> void:
 		am.play("button_click", 0.04)
 
 
-# ---- 玩家点击 hand 时由 PlayableTable 转发进来 ----
-func on_hand_tile_clicked(tile_id: int) -> void:
+# ---- 玩家点击 hand 时由 PlayableTable 转发进来（参数 = tile_instance_id）----
+func on_hand_tile_clicked(tile_instance_id: int) -> void:
 	if _state == State.WAITING_DISCARD:
 		_click_sfx()
-		_emit_choice({"action": "discard", "tile_id": tile_id})
+		_emit_choice({"action": "discard", "tile_instance_id": tile_instance_id})
 	elif _state == State.WAITING_CLAIM:
-		# 吃搭子选择模式（多组合时 BC 把手牌设回 clickable 等玩家点搭子）
+		# 吃/碰实体选择模式（多组合时 BC 把手牌设回 clickable 逐张选择）
 		_click_sfx()
-		_emit_choice({"action": "claim_tile_pick", "tile_id": tile_id})
+		_emit_choice({"action": "claim_tile_pick", "tile_instance_id": tile_instance_id})
 
 # ---- 按钮回调 ----
 
@@ -559,9 +573,8 @@ func _on_btn_skip() -> void:
 
 
 func _on_btn_consumable() -> void:
-	if _state == State.WAITING_DISCARD:
-		_click_sfx()
-		_emit_choice({"action": "use_consumable"})
+	# E2-02：ITEM_USE NOT_ENABLED — 不产生 choice
+	pass
 
 func _on_btn_kyuusyu() -> void:
 	if _state == State.WAITING_KYUUSYU:
