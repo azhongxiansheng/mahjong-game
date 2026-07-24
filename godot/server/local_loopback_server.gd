@@ -31,6 +31,16 @@ var _participants: Array = []
 var _hand_start_scores: Array = []
 # E2-04：构造期模式模块包（STANDARD 四零 / TRASH_TALK 最小对象）
 var mode_modules: ModeModuleBundle = null
+# #241：快照 module provider 注册表（STANDARD 仅 core_table）
+var snapshot_registry: SnapshotModuleRegistry = null
+# #241：HUMAN 席临时 AI 接管（不改 participants 配置）
+var _ai_control_seats: Dictionary = {}  # seat(int) -> bool
+# 测试：下一次 publish_snapshot 强制失败（不改业务路径）
+var _fail_next_snapshot: bool = false
+# 测试：下一次 ACTION_APPLIED/SNAP 发布强制失败（AI step / submit 共用 emit）
+var _fail_next_action_publish: bool = false
+# #241：本局 HAND_SETTLED 是否已发布（幂等，禁止重复 seq/journal）
+var _hand_settled_emitted: bool = false
 
 
 func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
@@ -44,6 +54,11 @@ func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
 	_hand_start_scores = []
 	_participants = [&"HUMAN", &"AI", &"AI", &"AI"]
 	mode_modules = null
+	snapshot_registry = SnapshotModuleRegistry.make_standard()
+	_ai_control_seats = {}
+	_fail_next_snapshot = false
+	_fail_next_action_publish = false
+	_hand_settled_emitted = false
 	if config != null:
 		_room_id = config.session_id
 		var parts: Array = config.participants
@@ -92,14 +107,26 @@ func start() -> bool:
 			_hand_start_scores = frozen_hand_start
 		return false
 	_hand_start_scores = start_scores_candidate
+	_hand_settled_emitted = false
 	_started = true
 	return true
+
+
+func fail_next_snapshot_for_test() -> void:
+	_fail_next_snapshot = true
+
+
+func fail_next_action_publish_for_test() -> void:
+	_fail_next_action_publish = true
 
 
 func publish_snapshot() -> bool:
 	if _rollback_failed:
 		return false
 	if _bc == null or _bc.state == null:
+		return false
+	if _fail_next_snapshot:
+		_fail_next_snapshot = false
 		return false
 	# 候选 seq：构造/校验全部成功前不得 _alloc_seq / 写 journal
 	var candidate: int = _server_seq + 1
@@ -415,24 +442,295 @@ func _reject_result(cmd: String, code: String) -> CommandResult:
 
 
 func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
-	# Variant 接收：null / 非 Dictionary / 空 Dictionary 直接 {}（禁 seats/dora fallback）
-	var core_v: Variant = RecipientViewProjector.project_core_table(_bc.state, seat)
-	if core_v == null or typeof(core_v) != TYPE_DICTIONARY:
+	# #241：经 registry 组合 modules；组合器不改写模块业务 payload
+	if snapshot_registry == null or _bc == null:
 		return {}
-	var core: Dictionary = core_v
-	if core.is_empty():
+	var ser: Dictionary = snapshot_registry.serialize_modules(
+		{"state": _bc.state}, seat
+	)
+	if not bool(ser.get("ok", false)):
 		return {}
-	var modules: Array = [{
-		"module_key": "core_table",
-		"schema_version": 1,
-		"payload": core.duplicate(true),
-	}]
+	var modules: Array = ser.get("modules", [])
+	if typeof(modules) != TYPE_ARRAY or (modules as Array).is_empty():
+		return {}
 	return {
 		"snapshot_server_seq": seq,
 		"next_server_seq": seq + 1,
 		"seat_view": seat,
 		"modules": modules,
 	}
+
+
+## #241：临时 AI 接管/归还。仅影响有效控制，不改 participants 配置。
+func set_seat_ai_control(seat: int, enabled: bool) -> void:
+	if seat < 0 or seat > 3:
+		return
+	if enabled:
+		_ai_control_seats[seat] = true
+	else:
+		_ai_control_seats.erase(seat)
+
+
+func is_seat_ai_controlled(seat: int) -> bool:
+	return bool(_ai_control_seats.get(seat, false))
+
+
+## 配置为 HUMAN 且当前未被 AI 接管。
+func is_effectively_human(seat: int) -> bool:
+	return _is_human(seat)
+
+
+## #241：重连 resync——发布当前 ROOM_SNAPSHOT；仅当存在有效真人决策窗时再发 prompt。
+## 无真人窗时只发快照仍成功（避免 AI 席 TURN 使 _emit_private_prompt 假失败）。
+## 需要 prompt 时与快照原子：失败则 ARS/seq/journal 回滚。
+func publish_resync_snapshot_and_prompt() -> Dictionary:
+	if _rollback_failed or not _started or _bc == null or _bc.state == null:
+		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null or not snap.can_restore():
+		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+	var auth_h: String = snap.sha256()
+	if auth_h.is_empty() or auth_h.length() != 64:
+		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+	var frozen_seq: int = _server_seq
+	var frozen_journals: Array = []
+	for s in range(4):
+		frozen_journals.append(_clone_events(_journals[s] as Array))
+	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	if bool(_bc.get("_settled")):
+		# 重连：始终先发新鲜 ROOM_SNAPSHOT（首条业务事件）
+		if not publish_snapshot():
+			return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+		# 幂等：若本局尚未 HAND_SETTLED 则补发一次；已发则零副作用
+		if not _emit_settled_if_needed():
+			_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+			return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+		return {"ok": true, "advanced": true, "code": ""}
+	if not publish_snapshot():
+		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+	# 打开窗以判定是否需要真人 prompt
+	for s2 in range(4):
+		_bc.decision_context_for_seat(s2)
+	if not _needs_human_private_prompt():
+		return {"ok": true, "advanced": true, "code": ""}
+	if not _emit_private_prompt():
+		_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
+	return {"ok": true, "advanced": true, "code": ""}
+
+
+func _needs_human_private_prompt() -> bool:
+	if _bc == null or bool(_bc.get("_settled")):
+		return false
+	var win = _bc.get("_active_window")
+	if win == null or not (win is DecisionWindow):
+		return false
+	var dw: DecisionWindow = win as DecisionWindow
+	if dw.kind == DecisionWindow.KIND_TURN:
+		return _is_human(int(dw.subject_seat))
+	if dw.kind == DecisionWindow.KIND_CLAIM or dw.kind == DecisionWindow.KIND_ROB_KAN:
+		for s in dw.seats():
+			var si: int = int(s)
+			if _is_human(si) and not dw.has_responded(si):
+				return true
+	return false
+
+
+## #241：AI 接管单步——至多一个权威 Action（含其 AA+SNAP 原子发布），然后返回。
+## 与 submit_action 同级 ARS 事务；失败全量回滚。无动作时不重复发 snapshot/prompt。
+## 返回 {ok, advanced, waiting_human, settled, code}。
+func step_ai_once() -> Dictionary:
+	if _rollback_failed or not _started or _bc == null or _bc.state == null:
+		return {
+			"ok": false, "advanced": false, "waiting_human": false,
+			"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+		}
+	if bool(_bc.get("_settled")):
+		return {
+			"ok": true, "advanced": false, "waiting_human": false,
+			"settled": true, "code": "",
+		}
+
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null or not snap.can_restore():
+		return {
+			"ok": false, "advanced": false, "waiting_human": false,
+			"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+		}
+	var auth_h: String = snap.sha256()
+	if auth_h.is_empty() or auth_h.length() != 64:
+		return {
+			"ok": false, "advanced": false, "waiting_human": false,
+			"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+		}
+	var frozen_seq: int = _server_seq
+	var frozen_journals: Array = []
+	for s in range(4):
+		frozen_journals.append(_clone_events(_journals[s] as Array))
+	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+
+	# 仅 AI 席 DRAW 可在本步摸牌；真人 DRAW 等待
+	if int(_bc.state.phase) == BattlePhase.Kind.DRAW:
+		var cur: int = int(_bc.state.current_seat)
+		if _is_human(cur):
+			return {
+				"ok": true, "advanced": false, "waiting_human": true,
+				"settled": false, "code": "",
+			}
+		if not _ensure_drawn():
+			return {
+				"ok": true, "advanced": false, "waiting_human": false,
+				"settled": bool(_bc.get("_settled")), "code": "",
+			}
+		if bool(_bc.get("_settled")):
+			if not _emit_settled_if_needed():
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return {
+					"ok": false, "advanced": false, "waiting_human": false,
+					"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+				}
+			return {
+				"ok": true, "advanced": true, "waiting_human": false,
+				"settled": true, "code": "",
+			}
+		# AI 摸牌后只发 ROOM_SNAPSHOT；TURN_PROMPT 仅真人（_emit_private_prompt 对 AI 席返回 false）
+		# 下一 poll 再选 Action。与 _auto_advance_ai 循环语义一致。
+		if not publish_snapshot():
+			_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+			return {
+				"ok": false, "advanced": false, "waiting_human": false,
+				"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+			}
+		return {
+			"ok": true, "advanced": true, "waiting_human": false,
+			"settled": false, "code": "",
+		}
+
+	for s in range(4):
+		_bc.decision_context_for_seat(s)
+	var win = _bc.get("_active_window")
+	if win == null or not (win is DecisionWindow):
+		if int(_bc.state.phase) == BattlePhase.Kind.SETTLE:
+			_bc.set("_settled", true)
+			if not _emit_settled_if_needed():
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return {
+					"ok": false, "advanced": false, "waiting_human": false,
+					"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+				}
+			return {
+				"ok": true, "advanced": true, "waiting_human": false,
+				"settled": true, "code": "",
+			}
+		return {
+			"ok": true, "advanced": false, "waiting_human": false,
+			"settled": false, "code": "",
+		}
+
+	var dw: DecisionWindow = win as DecisionWindow
+	if dw.kind == DecisionWindow.KIND_TURN:
+		var actor: int = int(dw.subject_seat)
+		if _is_human(actor):
+			return {
+				"ok": true, "advanced": false, "waiting_human": true,
+				"settled": false, "code": "",
+			}
+		var act: Action = _build_ai_turn_action(actor)
+		if act == null:
+			return {
+				"ok": true, "advanced": false, "waiting_human": false,
+				"settled": false, "code": "",
+			}
+		var disc_tile: Tile = null
+		var dsrc := "HAND"
+		if act.kind == "DISCARD" or act.kind == "RIICHI":
+			var iid: int = int(act.payload.get("tile_instance_id", -1))
+			var so: Seat = _bc.state.seats[actor] as Seat
+			if so != null:
+				disc_tile = so.hand.find_by_instance_id(iid)
+				if disc_tile != null and int(so.last_drawn_instance_id) == iid:
+					dsrc = "DRAWN"
+		var res: ActionResolution = _bc.apply_action(act, ActionSource.AI)
+		if res == null or not res.accepted:
+			# 领域拒绝：不推进；回滚任何意外
+			_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+			return {
+				"ok": true, "advanced": false, "waiting_human": false,
+				"settled": false, "code": "",
+			}
+		if _emit_action_applied(act, disc_tile, dsrc) < 1:
+			_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+			return {
+				"ok": false, "advanced": false, "waiting_human": false,
+				"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+			}
+		# 终局 Action：同一 ARS 事务内必须完成 HAND_SETTLED
+		if bool(_bc.get("_settled")):
+			if not _emit_settled_if_needed():
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return {
+					"ok": false, "advanced": false, "waiting_human": false,
+					"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+				}
+		return {
+			"ok": true, "advanced": true, "waiting_human": false,
+			"settled": bool(_bc.get("_settled")), "code": "",
+		}
+
+	if dw.kind == DecisionWindow.KIND_CLAIM or dw.kind == DecisionWindow.KIND_ROB_KAN:
+		for s2 in dw.seats():
+			var si: int = int(s2)
+			if _is_human(si) and not dw.has_responded(si):
+				return {
+					"ok": true, "advanced": false, "waiting_human": true,
+					"settled": false, "code": "",
+				}
+		for s3 in dw.seats():
+			var si3: int = int(s3)
+			if dw.has_responded(si3):
+				continue
+			var pass_act: Action = _build_ai_claim_action(si3)
+			if pass_act == null:
+				continue
+			var r2: ActionResolution = _bc.apply_action(pass_act, ActionSource.AI)
+			if r2 == null or not r2.accepted:
+				continue
+			if _emit_action_applied(pass_act, null, "HAND") < 1:
+				_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+				return {
+					"ok": false, "advanced": false, "waiting_human": false,
+					"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+				}
+			if bool(_bc.get("_settled")):
+				if not _emit_settled_if_needed():
+					_rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache)
+					return {
+						"ok": false, "advanced": false, "waiting_human": false,
+						"settled": false, "code": ERROR_EVENT_PUBLISH_FAILED,
+					}
+			return {
+				"ok": true, "advanced": true, "waiting_human": false,
+				"settled": bool(_bc.get("_settled")), "code": "",
+			}
+		return {
+			"ok": true, "advanced": false, "waiting_human": false,
+			"settled": false, "code": "",
+		}
+
+	return {
+		"ok": true, "advanced": false, "waiting_human": false,
+		"settled": false, "code": "",
+	}
+
+
+## 权威状态 sha256（测试/失败注入对照）；不可用时空串。
+func authority_hash_for_test() -> String:
+	if _bc == null:
+		return ""
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null:
+		return ""
+	return snap.sha256()
 
 
 func _public_view_hash_for_seq(seat: int, snap_seq: int) -> String:
@@ -477,6 +775,9 @@ func _build_recipient_event(
 func _emit_action_applied_then_snapshot(
 	action: Action, discarded_tile: Tile, discard_source: String
 ) -> int:
+	if _fail_next_action_publish:
+		_fail_next_action_publish = false
+		return -1
 	var aa_seq: int = _server_seq + 1
 	var snap_seq: int = aa_seq + 1
 	var resolved: Dictionary = _build_resolved_payload(action, discarded_tile, discard_source)
@@ -786,6 +1087,15 @@ func _build_claim_window_payload(ctx: DecisionContext, dw: DecisionWindow) -> Di
 func _is_human(seat: int) -> bool:
 	if seat < 0 or seat > 3:
 		return false
+	# #241：AI 接管中视为非真人（走 ActionSource.AI 自动推进）
+	if bool(_ai_control_seats.get(seat, false)):
+		return false
+	return str(_participants[seat]) == str(GameSessionConfig.PARTICIPANT_HUMAN)
+
+
+func _is_configured_human(seat: int) -> bool:
+	if seat < 0 or seat > 3:
+		return false
 	return str(_participants[seat]) == str(GameSessionConfig.PARTICIPANT_HUMAN)
 
 
@@ -1015,10 +1325,13 @@ func _build_hand_settled_payload() -> Dictionary:
 ## 四席 HAND_SETTLED 原子发布：先全部 make+strict roundtrip，再同一 server_seq 提交。
 ## 任一 recipient 失败 → false，零 mutation（不增 seq、无半条）。
 ## 未 settled → true（无需发布）；payload/hash 失败 → false。
+## #241：本局幂等——已成功发布后再次调用不得分配 seq / 重复 journal。
 func _emit_settled_if_needed() -> bool:
 	if _bc == null or _bc.state == null:
 		return false
 	if not bool(_bc.get("_settled")):
+		return true
+	if _hand_settled_emitted:
 		return true
 	var payload: Dictionary = _build_hand_settled_payload()
 	if payload.is_empty():
@@ -1040,4 +1353,5 @@ func _emit_settled_if_needed() -> bool:
 	_server_seq = candidate
 	for seat2 in range(4):
 		(_journals[seat2] as Array).append(prepared[seat2])
+	_hand_settled_emitted = true
 	return true

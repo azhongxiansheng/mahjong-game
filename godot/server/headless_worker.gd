@@ -3,6 +3,7 @@ extends Node
 
 # #240：Godot Headless Worker — 公共牌局唯一权威 WebSocket 入口。
 # TCPServer + WebSocketPeer.accept_stream；验 room_token；JOIN/READY/Action。
+# #241：连接代际、掉线 30s lease、重连快照、AI 接管/归还。
 # 不依赖 Redis。网络端到端未验证。
 
 const JOIN_KEYS := ["protocol_version", "kind", "room_id", "seat", "room_token"]
@@ -14,6 +15,8 @@ signal client_message_handled(conn_id: int, kind: String)
 var bind_host: String = "127.0.0.1"
 var bind_port: int = 9000
 var token_now_unix: int = -1  # 测试时钟；生产 -1
+## #241：可注入单调时钟（毫秒）。>=0 时使用注入值；-1 用 Time.get_ticks_msec()。
+var clock_now_ms: int = -1
 
 var _tcp: TCPServer = TCPServer.new()
 var _verifier: RoomTokenVerifier = RoomTokenVerifier.new()
@@ -22,6 +25,7 @@ var _listening: bool = false
 # conn_id -> connection state
 var _conns: Dictionary = {}
 var _next_conn_id: int = 1
+var _next_generation: int = 1
 # room_id -> HeadlessRoomSession
 var _rooms: Dictionary = {}
 
@@ -72,6 +76,16 @@ func _process(_delta: float) -> void:
 	poll()
 
 
+func now_ms() -> int:
+	if clock_now_ms >= 0:
+		return clock_now_ms
+	return Time.get_ticks_msec()
+
+
+func set_clock_ms_for_test(ms: int) -> void:
+	clock_now_ms = ms
+
+
 func poll() -> void:
 	if not _listening:
 		return
@@ -93,6 +107,8 @@ func poll() -> void:
 			"seat": -1,
 			"session_id": "",
 			"last_seq": 0,
+			"generation": 0,
+			"superseded": false,
 		}
 	var to_drop: Array = []
 	for cid in _conns.keys():
@@ -101,6 +117,8 @@ func poll() -> void:
 			to_drop.append(id)
 	for id in to_drop:
 		_close_conn(int(id))
+	# #241：掉线 lease / AI 接管（真实生产路径）
+	_tick_all_leases()
 
 
 func _poll_conn(cid: int) -> bool:
@@ -213,17 +231,61 @@ func _handle_join(cid: int, d: Dictionary) -> void:
 			_send_error(cid, room_id, "", "COMMAND_REJECTED", "bootstrap failed")
 			return
 		_rooms[room_id] = session
-	var jr: Dictionary = session.join(seat, str(claims["session_id"]))
+	var session_id: String = str(claims["session_id"])
+	var pre: Dictionary = session.can_join(seat, session_id)
+	if not bool(pre.get("ok", false)):
+		_send_error(cid, room_id, "", str(pre.get("code", "UNAUTHORIZED")), str(pre.get("message", "")))
+		return
+	var is_reconnect: bool = bool(pre.get("reconnect", false))
+	var gen: int = _next_generation
+	_next_generation += 1
+	var seq_before: int = session.current_server_seq()
+	var frozen_ctrl: Dictionary = {}
+	# 重连且已开局：先交付当前快照（失败则不绑定连接、回滚控制态）
+	if is_reconnect and session.is_started():
+		frozen_ctrl = session.capture_seat_control_state(seat)
+		var prep: Dictionary = session.prepare_reconnect_delivery(seat)
+		if not bool(prep.get("ok", false)):
+			session.restore_seat_control_state(seat, frozen_ctrl)
+			_send_error(cid, room_id, "", "COMMAND_REJECTED", str(prep.get("message", "resync")))
+			return
+		# 交付成功后提交绑定；last_seq=交付前序号 → 只发新快照及之后增量
+		var jr_rc: Dictionary = session.join(seat, session_id, cid, gen)
+		if not bool(jr_rc.get("ok", false)):
+			session.restore_seat_control_state(seat, frozen_ctrl)
+			_send_error(cid, room_id, "", str(jr_rc.get("code", "UNAUTHORIZED")), str(jr_rc.get("message", "")))
+			return
+		var replaced_rc: int = int(jr_rc.get("replaced_conn_id", -1))
+		if replaced_rc >= 0 and replaced_rc != cid:
+			_supersede_conn(replaced_rc)
+		st["joined"] = true
+		st["room_id"] = room_id
+		st["seat"] = seat
+		st["session_id"] = session_id
+		st["generation"] = gen
+		st["superseded"] = false
+		st["last_seq"] = seq_before
+		_conns[cid] = st
+		# 重连席：只 flush 新事件；其它已连接席同样只收增量
+		_flush_events(cid)
+		_broadcast_room_events_except(room_id, cid)
+		return
+	# 首次 JOIN 或未开局
+	var jr: Dictionary = session.join(seat, session_id, cid, gen)
 	if not bool(jr.get("ok", false)):
 		_send_error(cid, room_id, "", str(jr.get("code", "UNAUTHORIZED")), str(jr.get("message", "")))
 		return
+	var replaced_cid: int = int(jr.get("replaced_conn_id", -1))
+	if replaced_cid >= 0 and replaced_cid != cid:
+		_supersede_conn(replaced_cid)
 	st["joined"] = true
 	st["room_id"] = room_id
 	st["seat"] = seat
-	st["session_id"] = str(claims["session_id"])
+	st["session_id"] = session_id
+	st["generation"] = gen
+	st["superseded"] = false
 	st["last_seq"] = 0
 	_conns[cid] = st
-	# 成功：无 ERROR；若房间已开局则补发 journal
 	if session.is_started():
 		_flush_events(cid)
 
@@ -265,7 +327,7 @@ func _handle_ready(cid: int, d: Dictionary) -> void:
 
 func _handle_action(cid: int, d: Dictionary) -> void:
 	var st: Dictionary = _conns[cid]
-	if not bool(st.get("joined", false)):
+	if not bool(st.get("joined", false)) or bool(st.get("superseded", false)):
 		_send_error(cid, str(d.get("room_id", "")), _cmd_id_or_empty(d),
 			"UNAUTHORIZED", "not joined")
 		return
@@ -298,6 +360,10 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 	if session == null or not session.is_started():
 		_send_error(cid, room_id, action.command_id, "COMMAND_REJECTED", "not started")
 		return
+	# #241：仅当前有效连接代际可提交
+	if not session.is_connection_active(seat, cid, int(st.get("generation", -1))):
+		_send_error(cid, room_id, action.command_id, "UNAUTHORIZED", "stale connection")
+		return
 	var seq_before: int = session.current_server_seq()
 	var cr: CommandResult = session.submit_action_for_seat(seat, action)
 	if cr == null:
@@ -323,10 +389,18 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 
 
 func _broadcast_room_events(room_id: String) -> void:
+	_broadcast_room_events_except(room_id, -1)
+
+
+func _broadcast_room_events_except(room_id: String, except_cid: int) -> void:
 	for cid in _conns.keys():
+		var id: int = int(cid)
+		if except_cid >= 0 and id == except_cid:
+			continue
 		var st: Dictionary = _conns[cid]
-		if str(st.get("room_id", "")) == room_id and bool(st.get("joined", false)):
-			_flush_events(int(cid))
+		if str(st.get("room_id", "")) == room_id and bool(st.get("joined", false)) \
+				and not bool(st.get("superseded", false)):
+			_flush_events(id)
 
 
 func _flush_events(cid: int) -> void:
@@ -384,10 +458,78 @@ func _close_conn(cid: int) -> void:
 	if not _conns.has(cid):
 		return
 	var st: Dictionary = _conns[cid]
+	# #241：仅当前有效连接关闭时启动 lease；被替换连接不触发
+	if bool(st.get("joined", false)) and not bool(st.get("superseded", false)):
+		var room_id: String = str(st.get("room_id", ""))
+		var session: HeadlessRoomSession = get_room(room_id)
+		if session != null:
+			session.on_connection_closed(
+				int(st.get("seat", -1)),
+				str(st.get("session_id", "")),
+				cid,
+				int(st.get("generation", -1)),
+				now_ms()
+			)
 	var peer: WebSocketPeer = st.get("peer") as WebSocketPeer
 	if peer != null:
 		peer.close()
 	_conns.erase(cid)
+
+
+## 同 session 新连接替换：立即失效旧连接，不启动 lease、不影响新连接。
+func _supersede_conn(cid: int) -> void:
+	if not _conns.has(cid):
+		return
+	var st: Dictionary = _conns[cid]
+	st["superseded"] = true
+	st["joined"] = false
+	_conns[cid] = st
+	var peer: WebSocketPeer = st.get("peer") as WebSocketPeer
+	if peer != null:
+		peer.close()
+		_conns.erase(cid)
+	# peer==null 测试桩：保留 superseded 条目，供旧连接动作拒绝断言
+
+
+func _tick_all_leases() -> void:
+	var now: int = now_ms()
+	var rooms_touched: Dictionary = {}
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null:
+			continue
+		var room_key: String = str(rid)
+		var taken: Array = session.tick_leases(now)
+		if not taken.is_empty():
+			rooms_touched[room_key] = true
+		# AI 接管席：每个 poll/tick 至多一步权威 Action
+		if session.has_ai_controlled_seat():
+			var step: Dictionary = session.step_ai_once()
+			if bool(step.get("advanced", false)):
+				rooms_touched[room_key] = true
+	for rid2 in rooms_touched.keys():
+		_broadcast_room_events(str(rid2))
+
+
+## 测试：显式推进 lease + AI 单步（不依赖 TCP listen）。
+func tick_leases_for_test() -> void:
+	_tick_all_leases()
+
+
+## 测试：仅推进 AI 单步（不改时钟/lease）。
+func step_ai_for_test(room_id: String) -> Dictionary:
+	var session: HeadlessRoomSession = get_room(room_id)
+	if session == null:
+		return {"ok": false, "advanced": false}
+	var step: Dictionary = session.step_ai_once()
+	if bool(step.get("advanced", false)):
+		_broadcast_room_events(room_id)
+	return step
+
+
+## 测试：模拟连接断开（走真实 on_connection_closed 路径）。
+func simulate_disconnect_for_test(cid: int) -> void:
+	_close_conn(cid)
 
 
 func _exact_keys(d: Dictionary, expected: Array) -> bool:
@@ -432,6 +574,8 @@ func _ensure_test_conn(cid: int) -> void:
 		"seat": -1,
 		"session_id": "",
 		"last_seq": 0,
+		"generation": 0,
+		"superseded": false,
 		"outbox": [],
 		"binary_rejected": false,
 	}
@@ -460,11 +604,16 @@ func inject_bound_session_for_test(
 	if session == null or session.room_id.is_empty():
 		return
 	_rooms[session.room_id] = session
+	var gen: int = _next_generation
+	_next_generation += 1
+	session.join(seat, session_id, cid, gen)
 	var st: Dictionary = _conns[cid]
 	st["joined"] = true
 	st["room_id"] = session.room_id
 	st["seat"] = seat
 	st["session_id"] = session_id
+	st["generation"] = gen
+	st["superseded"] = false
 	st["last_seq"] = 0
 	_conns[cid] = st
 
@@ -487,6 +636,8 @@ func test_conn_binding(cid: int) -> Dictionary:
 		"room_id": str(st.get("room_id", "")),
 		"seat": int(st.get("seat", -1)),
 		"session_id": str(st.get("session_id", "")),
+		"generation": int(st.get("generation", 0)),
+		"superseded": bool(st.get("superseded", false)),
 		"binary_rejected": bool(st.get("binary_rejected", false)),
 	}
 

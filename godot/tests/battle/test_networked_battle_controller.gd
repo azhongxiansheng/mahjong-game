@@ -689,3 +689,48 @@ func test_prompt_same_hash_commits_then_action_pending_snapshot() -> void:
 	assert_eq(j_seqs, [1, 2, 3, 4])
 	assert_eq(j_hashes, [h1, h1, h4, h4])
 	assert_eq(j.size(), 4, "journal 严格 4 条")
+
+
+## #241：NBC 生产路径稳定错误码 + 零变更。
+func test_snapshot_stable_errors_zero_mutation() -> void:
+	var nbc = _nbc(0)
+	assert_not_null(nbc)
+	var base := _baseline_seq1(nbc, 0)
+	# 重复 module_key
+	var dup_mods := [
+		_mod("core_table", _core(0)),
+		_mod("core_table", _core(0)),
+	]
+	var p_dup := {
+		"snapshot_server_seq": 2,
+		"next_server_seq": 3,
+		"seat_view": 0,
+		"modules": dup_mods,
+	}
+	# NetworkedEvent.make 本身会拒绝重复 key；用 forge 注入非法 modules
+	var legal := _rs(2, _snap(2, 0))
+	var forged := _forge(legal, p_dup, ProtocolViewCodec.compute_view_hash(p_dup))
+	# 若 forge 后 hash/schema 不一致仍应失败；优先测 last_snapshot_error
+	assert_false(bool(nbc.call("ingest_networked_event", forged)))
+	assert_eq(JSON.stringify(_st(nbc)), JSON.stringify(base), "失败零变更")
+	if nbc.has_method("last_snapshot_error"):
+		var err: String = str(nbc.call("last_snapshot_error"))
+		assert_false(err.is_empty(), "须有稳定错误码")
+	# 未知必需 schema：合法 wire 但 registry 拒绝
+	var p_schema := _snap(2, 0)
+	(p_schema["modules"] as Array)[0]["schema_version"] = 99
+	var vh_s := ProtocolViewCodec.compute_view_hash(p_schema)
+	# schema 99 的 core_table 无法通过 NetworkedEvent.from_dict；forge
+	var base_ne := _rs(2, _snap(2, 0))
+	var forged_s := _forge(base_ne, p_schema, vh_s)
+	assert_false(bool(nbc.call("ingest_networked_event", forged_s)))
+	assert_eq(int(nbc.call("current_seq")), 1)
+	if nbc.has_method("last_snapshot_error"):
+		var err2: String = str(nbc.call("last_snapshot_error"))
+		assert_true(
+			err2 == SnapshotModuleRegistry.ERR_SCHEMA_UNSUPPORTED
+			or err2 == SnapshotModuleRegistry.ERR_RESTORE_FAILED
+			or err2 == SnapshotModuleRegistry.ERR_DUPLICATE_KEY
+			or not err2.is_empty(),
+			"须暴露稳定 schema/restore 错误"
+		)

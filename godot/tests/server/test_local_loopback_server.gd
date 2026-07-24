@@ -2953,3 +2953,91 @@ func test_emit_settled_recipient_mid_fail_zero_seq_and_journal() -> void:
 	assert_eq(
 		JSON.stringify(_journal_dicts(server, "emit_mid1")), JSON.stringify(j0),
 		"失败：四席 journal 零变化（禁半 append）")
+
+
+## #241 round-3：AI TSUMO 终局必须在同一步内发布唯一 HAND_SETTLED；重复 settle 幂等。
+func test_ai_tsumo_step_emits_unique_hand_settled() -> void:
+	if not _contract_ok():
+		return
+	var cfg := _cfg()  # 1H3AI，session=SID
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	var server := LocalLoopbackServer.new(cfg, 0)
+	assert_true(bool(server.call("start")))
+	var bc: BattleController = server.get("_bc") as BattleController
+	assert_not_null(bc)
+	if bc == null:
+		return
+	# 七对听 + 摸 W9 可自摸
+	var used: Dictionary = {}
+	var wall_floor: int = _prep_live(bc)
+	bc.state.seats[0].hand = _hand_live(bc, _chiitoi_13(), used)
+	bc.state.first_round_active = false
+	var win_t: Tile = _draw_live_tid(bc, TileId.W9, used)
+	assert_not_null(win_t)
+	if win_t == null:
+		return
+	assert_true(bc.state.seats[0].hand.add(win_t))
+	bc.state.seats[0].last_drawn_instance_id = win_t.instance_id
+	bc.state.current_seat = 0
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	bc.set("_settled", false)
+	bc.set("_active_window", null)
+	_seal_live_wall_draw_index(bc, wall_floor)
+	var ctx: DecisionContext = bc.decision_context_for_seat(0)
+	assert_not_null(ctx)
+	assert_true(ctx.has_kind("TSUMO"), "fixture 须 offer TSUMO")
+	# 发布当前窗前快照，保证 settle 可用 last snap hash
+	assert_true(bool(server.call("publish_snapshot")))
+	var hs_before := _count_kind(server, 0, "HAND_SETTLED")
+	var aa_before := _count_kind(server, 0, "ACTION_APPLIED")
+	var seq_before: int = int(server.call("current_server_seq"))
+	server.set_seat_ai_control(0, true)
+	var step: Dictionary = server.step_ai_once()
+	assert_true(bool(step.get("ok", false)), "AI TSUMO 步须 ok: %s" % str(step))
+	assert_true(bool(step.get("advanced", false)))
+	assert_true(bool(step.get("settled", false)) or bool(bc.get("_settled")))
+	assert_true(bool(bc.get("_settled")), "TSUMO 后须 settled")
+	var aa_after := _count_kind(server, 0, "ACTION_APPLIED")
+	var hs_after := _count_kind(server, 0, "HAND_SETTLED")
+	assert_eq(aa_after, aa_before + 1, "单步恰好 1 个 ACTION_APPLIED")
+	assert_eq(hs_after, hs_before + 1, "单步恰好 1 个 HAND_SETTLED")
+	# 顺序：末三条须含 AA → SNAP → HAND_SETTLED（允许中间 filler 形态为 AA,SNAP,SETTLED）
+	var j: Array = server.event_journal(0)
+	var kinds: Array = []
+	for e in j:
+		if e is NetworkedEvent:
+			kinds.append((e as NetworkedEvent).kind)
+	var aa_idx := kinds.rfind("ACTION_APPLIED")
+	var hs_idx := kinds.rfind("HAND_SETTLED")
+	assert_gte(aa_idx, 0)
+	assert_gte(hs_idx, 0)
+	assert_gt(hs_idx, aa_idx, "HAND_SETTLED 须在 ACTION_APPLIED 之后")
+	var snap_between := false
+	for i in range(aa_idx + 1, hs_idx + 1):
+		if str(kinds[i]) == "ROOM_SNAPSHOT":
+			snap_between = true
+			break
+	assert_true(snap_between, "AA 与 HAND_SETTLED 之间须有 ROOM_SNAPSHOT")
+	var last_aa: NetworkedEvent = j[aa_idx] as NetworkedEvent
+	assert_eq(int(last_aa.payload.get("seat", -1)), 0)
+	assert_eq(str(last_aa.payload.get("action_kind", "")), "TSUMO")
+	# 幂等：再 settle / 再 step 不得重复 HAND_SETTLED
+	var seq_mid: int = int(server.call("current_server_seq"))
+	assert_true(bool(server.call("_emit_settled_if_needed")))
+	assert_eq(int(server.call("current_server_seq")), seq_mid, "幂等 settle 不得推进 seq")
+	assert_eq(_count_kind(server, 0, "HAND_SETTLED"), hs_after)
+	var step2: Dictionary = server.step_ai_once()
+	assert_true(bool(step2.get("ok", false)))
+	assert_false(bool(step2.get("advanced", true)), "已 settled 不得再 advanced")
+	assert_eq(_count_kind(server, 0, "HAND_SETTLED"), hs_after, "重复 step 不得第二份 HAND_SETTLED")
+	assert_gt(int(server.call("current_server_seq")), seq_before)
+
+
+func _count_kind(server: Object, seat: int, kind: String) -> int:
+	var n := 0
+	for e in server.event_journal(seat):
+		if e is NetworkedEvent and (e as NetworkedEvent).kind == kind:
+			n += 1
+	return n
