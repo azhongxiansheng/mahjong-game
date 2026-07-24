@@ -259,19 +259,16 @@ func _publish_business_event_core(kind: String, payload: Dictionary) -> bool:
 	return true
 
 
-func submit_action(action: Action) -> CommandResult:
+## bound_session_id：Worker 已验签 JOIN 后绑定的客户端 session_id。
+## 公共房不得用等于 room_id 的 GameSessionConfig.session_id 冒充；空串时练习/直连退回 config。
+func submit_action(action: Action, bound_session_id: String = "") -> CommandResult:
 	if action == null:
 		return _reject_result("", "INVALID_ACTION")
 	if _rollback_failed:
 		return _reject_result(action.command_id, ERROR_EVENT_PUBLISH_FAILED)
-	# 无副作用早拒绝：不写 command cache / seq / journal / BC
-	if not _started:
-		return _reject_result(action.command_id, ERROR_NOT_STARTED)
-	if not _is_human(int(action.seat)):
-		return _reject_result(action.command_id, ERROR_UNAUTHORIZED)
 
-	# 业务指纹：在 room/BC/领域处理之前计算；失败 → INVALID_ACTION 且不缓存
-	var fp: String = _business_fingerprint(action)
+	# 业务指纹：仅 Action v1 exact-schema + 可规范化 payload 后形成；失败 → 不缓存
+	var fp: String = _business_fingerprint(action, bound_session_id)
 	if fp.is_empty():
 		return _reject_result(action.command_id, "INVALID_ACTION")
 
@@ -283,6 +280,16 @@ func submit_action(action: Action) -> CommandResult:
 			return _clone_cr(entry.get("result") as CommandResult)
 		# 异指纹：不覆盖 cache、不分配 seq、不改 journal/BC
 		return _reject_result(cmd, ERROR_COMMAND_ID_CONFLICT)
+
+	# 指纹形成后：未开局/越权/错房/模式拒绝等首次结果均缓存
+	if not _started:
+		var cr_ns := _reject_result(cmd, ERROR_NOT_STARTED)
+		_cache_command(cmd, fp, cr_ns)
+		return _clone_cr(cr_ns)
+	if not _is_human(int(action.seat)):
+		var cr_un := _reject_result(cmd, ERROR_UNAUTHORIZED)
+		_cache_command(cmd, fp, cr_un)
+		return _clone_cr(cr_un)
 
 	# 房间校验
 	if action.room_id != _room_id:
@@ -472,10 +479,19 @@ func _rollback_transaction(
 		_hand_settled_emitted = bool(frozen_hand_settled)
 	return true
 
-## 业务指纹：session/room/seat/hand/decision/kind + 规范 payload 的 SHA-256。
-## 仅 client_seq 属于可变化的传输重试序号；窗口或局变化必须视为 command_id 冲突。
-func _business_fingerprint(action: Action) -> String:
-	if action == null or _config == null:
+## 业务指纹（ADR 全文唯一）：session_id + room_id + seat + hand_seq + decision_id
+## + kind + 规范化 payload 摘要（payload_sha256）。client_seq 不参与。
+## bound_session_id：JOIN 绑定的客户端 session；空串时退回 config.session_id（练习/直连）。
+## 公共 Worker 路径必须传入已验签 session，不得依赖 room_id 冒充。
+func _business_fingerprint(action: Action, bound_session_id: String = "") -> String:
+	if action == null:
+		return ""
+	var sid: String = bound_session_id.strip_edges()
+	if sid.is_empty():
+		if _config == null:
+			return ""
+		sid = str(_config.session_id)
+	if sid.is_empty():
 		return ""
 	var kind_str: String = str(action.kind)
 	var raw_payload: Dictionary = action.payload if typeof(action.payload) == TYPE_DICTIONARY else {}
@@ -486,7 +502,7 @@ func _business_fingerprint(action: Action) -> String:
 	if payload_sha.is_empty() or payload_sha.length() != 64:
 		return ""
 	var material := {
-		"session_id": str(_config.session_id),
+		"session_id": sid,
 		"room_id": str(action.room_id),
 		"seat": int(action.seat),
 		"hand_seq": int(action.hand_seq),
@@ -505,6 +521,61 @@ func _cache_command(cmd: String, fingerprint: String, cr: CommandResult) -> void
 		"fingerprint": fingerprint,
 		"result": cr,
 	}
+
+
+## #242：确定性核心事件摘要（固定 recipient seat；排除 view_hash 与 Reward/Item/Ability）。
+## 材料：每项仅 server_seq + kind + payload；数组 canonical JSON → SHA-256。
+const CORE_EVENT_DIGEST_KINDS := [
+	"ROOM_SNAPSHOT", "TURN_PROMPT", "CLAIM_WINDOW",
+	"ACTION_APPLIED", "HAND_SETTLED", "MATCH_SETTLED",
+]
+
+
+func core_event_digest(recipient_seat: int = 0) -> String:
+	if recipient_seat < 0 or recipient_seat > 3:
+		return ""
+	var items: Array = []
+	var journal: Array = event_journal(recipient_seat)
+	for item in journal:
+		if not (item is NetworkedEvent):
+			continue
+		var ne: NetworkedEvent = item as NetworkedEvent
+		if not CORE_EVENT_DIGEST_KINDS.has(ne.kind):
+			continue
+		items.append({
+			"server_seq": int(ne.server_seq),
+			"kind": str(ne.kind),
+			"payload": ne.payload.duplicate(true) if typeof(ne.payload) == TYPE_DICTIONARY else {},
+		})
+	var digest: String = ProtocolViewCodec.compute_view_hash(items)
+	if digest.is_empty() or digest.length() != 64:
+		return ""
+	return digest
+
+
+## #242：指纹可形成后的会话层拒绝缓存入口（越权/过期连接等由 RoomSession 调用）。
+## 无法形成指纹时原样拒绝且不写 cache。
+func reject_action_cached(
+	action: Action,
+	bound_session_id: String,
+	code: String
+) -> CommandResult:
+	if action == null:
+		return _reject_result("", code if not code.is_empty() else "INVALID_ACTION")
+	var fp: String = _business_fingerprint(action, bound_session_id)
+	if fp.is_empty():
+		return _reject_result(action.command_id, code if not code.is_empty() else "INVALID_ACTION")
+	var cmd: String = action.command_id
+	if _command_cache.has(cmd):
+		var entry: Dictionary = _command_cache[cmd] as Dictionary
+		var cached_fp: String = str(entry.get("fingerprint", ""))
+		if cached_fp == fp:
+			return _clone_cr(entry.get("result") as CommandResult)
+		return _reject_result(cmd, ERROR_COMMAND_ID_CONFLICT)
+	var err: String = code if not code.is_empty() else "INVALID_ACTION"
+	var cr := _reject_result(cmd, err)
+	_cache_command(cmd, fp, cr)
+	return _clone_cr(cr)
 
 
 ## 若合法 DRAW：走 IAuth typed server-draw progression（唯一 _step_draw）。

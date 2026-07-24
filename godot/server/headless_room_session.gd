@@ -373,24 +373,29 @@ func human_seat_count() -> int:
 
 ## 仅已绑定且当前有效连接的 seat 可提交；强制 action.seat 与绑定一致。
 ## AI 接管中拒绝真人 Action（须先重连归还）。
+## #242：指纹 session_id 使用 JOIN 绑定的客户端 session_id；会话拒绝在可规范化后缓存。
 func submit_action_for_seat(bound_seat: int, action: Action) -> CommandResult:
 	if action == null:
 		return _reject_cmd("", ERR_COMMAND_REJECTED)
-	if not _started or server == null:
-		return _reject_cmd(action.command_id, "NOT_STARTED")
-	if int(action.seat) != bound_seat:
-		return _reject_cmd(action.command_id, ERR_UNAUTHORIZED)
-	if action.room_id != room_id:
-		return _reject_cmd(action.command_id, "WRONG_ROOM")
-	if is_seat_ai_controlled(bound_seat):
-		return _reject_cmd(action.command_id, ERR_UNAUTHORIZED)
 	var st: Dictionary = _seats.get(bound_seat, {})
+	var bound_session: String = str(st.get("session_id", ""))
+	if server == null:
+		return _reject_cmd(action.command_id, "NOT_STARTED")
+	# 会话层拒绝：Action 已解析时可形成指纹 → 首次结果缓存
+	if not _started:
+		return server.reject_action_cached(action, bound_session, "NOT_STARTED")
+	if int(action.seat) != bound_seat:
+		return server.reject_action_cached(action, bound_session, ERR_UNAUTHORIZED)
+	if action.room_id != room_id:
+		return server.reject_action_cached(action, bound_session, "WRONG_ROOM")
+	if is_seat_ai_controlled(bound_seat):
+		return server.reject_action_cached(action, bound_session, ERR_UNAUTHORIZED)
 	if not bool(st.get("joined", false)):
-		return _reject_cmd(action.command_id, ERR_UNAUTHORIZED)
+		return server.reject_action_cached(action, bound_session, ERR_UNAUTHORIZED)
 	# Worker 绑定了活动连接时必须仍 connected；无绑定（会话单测直调）放行
 	if int(st.get("active_conn_id", -1)) >= 0 and not bool(st.get("connected", false)):
-		return _reject_cmd(action.command_id, ERR_UNAUTHORIZED)
-	return server.submit_action(action)
+		return server.reject_action_cached(action, bound_session, ERR_UNAUTHORIZED)
+	return server.submit_action(action, bound_session)
 
 
 func events_since(seat: int, after_seq: int) -> Array:
