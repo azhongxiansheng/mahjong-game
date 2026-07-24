@@ -39,13 +39,18 @@ func _ready() -> void:
 	DesignTokens.style_full_panel(self)
 	_build_ui()
 	set_process_input(true)
-	_request_lobby_bgm()
+	request_lobby_bgm()
 
 
 func _exit_tree() -> void:
 	var am := get_node_or_null("/root/AudioManager")
 	if am != null and am.has_method("stop_bgm"):
 		am.stop_bgm()
+
+
+## E2-05：返回大厅时恢复大厅 BGM（协调层可调用）。
+func request_lobby_bgm() -> void:
+	_request_lobby_bgm()
 
 
 func request_practice() -> void:
