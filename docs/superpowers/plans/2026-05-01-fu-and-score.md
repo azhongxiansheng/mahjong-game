@@ -12,7 +12,7 @@
 - GUT 9.4.0
 - 命令行：`scripts/test_run_core.sh`
 
-**Spec 锚点:** `docs/superpowers/specs/2026-05-01-mahjong-king-design.md` §5 ScoreCalc/YakuList、§14 役満倍数上限。
+> **文档定位：** 日麻符算与点数实现追溯。当前行为以代码、测试和现行多人玩法 PRD / ADR 为准；原始肉鸽总 spec 已归档，不再作为事实源。
 
 ---
 
