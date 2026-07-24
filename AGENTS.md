@@ -227,7 +227,7 @@ BLOCKED_USER_DECISION（前置闸门如需）
 grok --cwd "$TASK_WORKTREE" \
   --minimal \
   --no-alt-screen \
-  --permission-mode plan \
+  --permission-mode bypassPermissions \
   --no-subagents \
   --always-approve \
   --rules "全程使用简体中文与用户交互；命令、代码、标识符和原始错误可保留英文，但必须用中文解释。" \
@@ -235,7 +235,7 @@ grok --cwd "$TASK_WORKTREE" \
 ```
 
 - 当前 Issue 启动时记录唯一精确 tmux session 名；tmux 必须开启 `mouse`，`history-limit` 至少为 50000。用户可滚轮回看，或按 `Ctrl-b`、`[` 进入 copy-mode，按 `q` 返回。
-- 启动参数固定同时使用 `--permission-mode plan --always-approve`；完全授权只免除逐条工具审批，不扩大 worktree、允许路径、Git 权限和需求范围。
+- 启动参数固定同时使用 `--permission-mode bypassPermissions --always-approve`，确保 TUI 显示并实际处于完全批准状态；Plan 是 prompt 强制的逻辑阶段，不再使用 CLI 的只读 Plan 权限模式。完全授权只免除逐条工具审批，不扩大 worktree、允许路径、Git 权限和需求范围。
 - `PLAN_AND_IMPLEMENT_PROMPT` 必须要求 Grok：先读取本文件；先输出中文计划并逐条自检原需求、Red → Green → Refactor、改动边界、真实验证和风险；确认无遗漏后在同一 TUI 直接开发，不退出、不调用 `--continue`、不启动第二个 Grok。
 - 必须由用户决定的产品取舍、权限、安全或不可逆事项应已在前置闸门解决；开发中才发现的新阻塞不得猜测，写入仓库外状态文件并停在 TUI 等待。
 - 当前 Codex 任务不得通过读取 pane 审查 Grok 的过程计划；最终仍以完整累计 diff、真实业务调用链和独立复测验收。计划自检不能替代最终 Review。
@@ -316,7 +316,7 @@ git diff "$BASE_REF"...HEAD
 - 当前 Codex 任务必须核对本地 `HEAD`、远端分支 SHA、PR 完整 diff/状态、可合并状态和目标分支，不能把“命令成功”当作已交付。
 - 禁止把未审查改动先提交来规避 diff 审查。
 - 本仓库不把 GitHub CI 作为合并门禁；`.github/workflows/core-tests.yml` 仅允许手动触发。Grok 最后一轮全量 GUT 证据有效、当前 Codex 独立完成风险相关测试与日志审计、Review PASS 且 P0–P2 清零后，方可认定验证通过；当前 Codex 不机械重复同一全量 GUT。
-- 当前 Issue 只记录并复用一个精确 tmux session 名，覆盖 Plan、开发、Review、返工与复验，并始终保留同一个 Grok TUI；每轮完成标记出现后不得关闭。只有完整 diff Review 完成、P0–P2 清零且当前 Codex 任务独立验证全部通过后，才先用 `tmux list-sessions` 只读确认名称，再执行 `tmux kill-session -t "$EXACT_SESSION"` 手工关闭，并复查该精确 session 已不存在。禁止 `tmux kill-server`、glob、前缀/模糊匹配或关闭未经记录的其他 session；全程不管理 Grok session ID。
+- 当前 Issue 只记录并复用一个精确 tmux session 名，覆盖 Plan、开发、Review、返工与复验，并始终保留同一个 Grok TUI；每轮完成标记出现后不得关闭。只有完整 diff Review 完成、P0–P2 清零且当前 Codex 任务独立验证全部通过后，才先用 `tmux list-sessions` 只读确认名称，再执行 `tmux kill-session -t "$EXACT_SESSION"` 手工关闭，并复查该精确 session 已不存在。启动器必须显式记录本轮新建 Terminal 窗口的唯一 window id；tmux 退出后仅当该窗口仍存在且仍为单标签页时自动关闭它，窗口已不存在或包含其他标签页时必须保留。禁止 `tmux kill-server`、`front window`、窗口标题、glob、前缀/模糊匹配或关闭未经记录的 tmux session/Terminal 窗口；全程不管理 Grok session ID。
 - PR 处于可合并状态且验证通过后，由当前 Codex 任务直接合并，无需再次等待用户授权。高歧义需求、不可逆生产操作、权限或凭证不明确等情形仍按前述阻塞规则请求用户决策。
 - 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场；不得只给下一 Issue 建议，必须直接为所有已解锁且可安全并行的后续 Issue 创建并启动新的 Codex App 任务。
 - 只有依赖已满足且主要写文件不会冲突的 Issue 才能并行；每个后续 Issue 分别使用新的 Codex App 任务、分支、worktree 和 Grok TUI，并从交互 Grok Plan 重新开始。暂未解锁的 Issue 保留在 Epic 中，待前置合并后由完成该前置的任务继续自动启动。

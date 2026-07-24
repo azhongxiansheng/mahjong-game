@@ -1,6 +1,6 @@
 ---
 name: grok-cli-development
-description: 使用可见 macOS Terminal + tmux 弹窗以简体中文编排 Grok CLI 在同一个 TUI 中先给 Plan、等待用户确认，再原地继续开发；启动后轮询仓库外状态与最终交付标记，再由主 Agent 独立验收。用户要求“用 Grok CLI 开发”“让 Grok 干活”、要求 Grok plan 后编码、审查或打回 Grok diff、使用同一 Grok 会话返工，或让 Grok 生成最终交付文档时使用。禁止 Codex 右侧终端、后台 PTY、pane 过程采集和开发中途干预；覆盖中文需求对齐、状态轮询、业务实现 Review、风险复测、P0-P2 闭环及 Git 状态核验。
+description: 使用可见 macOS Terminal + tmux 弹窗以简体中文编排 Grok CLI 在同一个 TUI 中先给 Plan 并自检，再原地直接开发；启动后轮询仓库外状态与最终交付标记，再由主 Agent 独立验收。用户要求“用 Grok CLI 开发”“让 Grok 干活”、要求 Grok plan 后编码、审查或打回 Grok diff、使用同一 Grok 会话返工，或让 Grok 生成最终交付文档时使用。禁止 Codex 右侧终端、后台 PTY、pane 过程采集和开发中途干预；覆盖中文需求对齐、状态轮询、业务实现 Review、风险复测、P0-P2 闭环及 Git 状态核验。
 ---
 
 # Grok CLI 开发与独立验收
@@ -40,7 +40,7 @@ grok --help
 本流程依赖：
 
 - runner 的显式 `cd`、tmux `new-session -c` 与 Grok `--cwd`：三重锁定唯一 worktree；
-- `--permission-mode plan` + `--always-approve`：一次会话中先计划并等待用户确认，再在原 TUI 切入开发；
+- `--permission-mode bypassPermissions` + `--always-approve`：TUI 明确处于完全批准状态；计划阶段由 prompt 强制先输出并自检，通过后在原 TUI 直接开发；
 - `--no-subagents`：禁止 Grok 再派生写入者；
 - `--minimal --no-alt-screen`：在 Terminal + tmux 弹窗中使用可见、可滚动的 inline TUI；
 - `--always-approve`：启动时固定启用，避免逐条工具审批；它不改变 worktree、路径、Git 权限与用户决策约束。
@@ -100,7 +100,7 @@ test "$(pwd -P)" = "$(cd "$TASK_WORKTREE" && pwd -P)"
 grok --cwd "$TASK_WORKTREE" \
   --minimal \
   --no-alt-screen \
-  --permission-mode plan \
+  --permission-mode bypassPermissions \
   --no-subagents \
   --always-approve \
   --rules "全程使用简体中文与用户交互；计划、提问、进度摘要、测试说明和最终交付均用中文。命令、代码、标识符和原始错误可保留英文，但必须用中文解释。" \
@@ -111,15 +111,15 @@ grok --cwd "$TASK_WORKTREE" \
 
 - runner、tmux 与 `grok --cwd` 的三处路径必须是同一个经过物理路径解析的任务 worktree；任一不一致立即停止，不能靠 prompt 口头约束目录。
 - 不使用 `exec_command` 的 `tty:true`、后台统一 PTY或隐藏终端启动 Grok TUI。tmux 只允许按上一节通过可见 Terminal attached 会话使用。
-- 不使用 `-p/--single` 代替需要用户确认的 Plan。
-- 启动固定同时使用 `--permission-mode plan --always-approve`；完全授权只免除工具逐条审批，不授权扩大范围、Git 交付或替用户决定前置歧义。
-- prompt 必须要求 Grok 先输出中文计划并自检需求、TDD、边界、风险与验证，等待用户在当前 TUI 明确确认；确认后在同一 TUI 原地继续开发，不退出、不调用 `--continue`、不启动第二个 Grok。
+- 不使用 `-p/--single` 代替同一可见 TUI 内的 Plan 自检与直接开发。
+- 启动固定同时使用 `--permission-mode bypassPermissions --always-approve`，确保 TUI 显示并实际处于完全批准状态；完全授权只免除工具逐条审批，不授权扩大范围、Git 交付或替用户决定前置歧义。
+- prompt 必须要求 Grok 先输出中文计划并自检需求、TDD、边界、风险与验证；确认无遗漏后在同一 TUI 原地直接开发，不等待用户在窗口再次确认，不退出、不调用 `--continue`、不启动第二个 Grok。
 - 必须由用户决定的事项在启动前解决；开发中新发现的决策阻塞写入状态文件并停止等待用户。
 
 `PLAN_AND_IMPLEMENT_PROMPT` 必须要求：
 
 1. 先读 worktree 内 `AGENTS.md`；
-2. 先输出并自检计划，等待用户在当前 TUI 明确确认；确认后不退出 TUI，直接执行 Red → Green → Refactor；
+2. 先输出并自检计划；确认无遗漏后不等待用户在 TUI 再次确认，直接执行 Red → Green → Refactor；
 3. 只修改允许范围；
 4. 遇到冲突、未知业务改动、测试设施故障或用户决策时停止；
 5. 完成实现和自测后，才写指定交付文件；
@@ -138,7 +138,7 @@ test -f "$GROK_HANDOFF" \
   && test "$(tail -n 1 "$GROK_HANDOFF")" = "GROK_DELIVERY_COMPLETE"
 ```
 
-状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时保持等待，不检查仓库、不打断 Grok、不发送重复状态；`GROK_PLANNING` 包含等待用户在当前 TUI 确认 Plan 的阶段，确认后 Grok 原地覆盖为 `GROK_IMPLEMENTING`。`GROK_BLOCKED_USER_DECISION` 时向用户请求明确决策。只有用户明确报告 Grok 已退出但无完整交付，才允许一次性检查 tmux 会话与 Git 现场。
+状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时保持等待，不检查仓库、不打断 Grok、不发送重复状态；Grok 完成 Plan 自检后原地覆盖为 `GROK_IMPLEMENTING`，不等待用户在窗口再次确认。`GROK_BLOCKED_USER_DECISION` 时向用户请求明确决策。只有用户明确报告 Grok 已退出但无完整交付，才允许一次性检查 tmux 会话与 Git 现场。
 
 完成标记出现后停止等待/心跳，保留当前可见 tmux session 与仍打开的 Grok TUI，读取中文交付文件用于定位证据，并从完整累计 diff 开始独立验收。交付文档不能替代业务实现 Review 或独立复测。若发现 P0-P2，直接向同一个 Grok TUI 提交中文返工 prompt；不退出或重启 Grok、不使用 `--continue`、不新建 tmux session，也不管理 Grok session ID。
 
@@ -189,7 +189,7 @@ tmux 只投递一行短指令，内容必须包含该返工文件的绝对路径
 
 将这行短指令写入另一个唯一的仓库外文本文件，再用 `tmux load-buffer` + `tmux paste-buffer` 送入启动时记录的精确 session/pane，最后仅用一次 `tmux send-keys ... Enter` 提交。不得读取或捕获 pane 输出，不得退出/重启 Grok。随后只轮询该轮状态/交付文件；短时间内状态尚未出现属于正常接收延迟，不得重复粘贴。用户正在 TUI 内操作时先避免并发输入。
 
-## 验收通过后关闭 tmux
+## 验收通过后关闭 tmux 与专用 Terminal 窗口
 
 启动当前 Issue 的可见 tmux 弹窗时记录唯一精确 session 名，并在 Plan、开发、Review、返工和复验期间始终复用该 session 和仍打开的 Grok TUI。每轮交付文件末行完成标记有效后不得关闭；若需返工，直接在现有 TUI 输入框输入并提交 prompt。全程不管理 Grok session ID。
 
@@ -200,6 +200,8 @@ tmux kill-session -t "$EXACT_SESSION"
 ```
 
 只有完整 diff Review 完成、P0-P2 清零且主 Agent 独立验证全部通过后，才执行关闭。关闭后再次只读确认该精确 session 已不存在。禁止使用 `tmux kill-server`、glob、前缀匹配、模糊匹配或未经记录的 session 名，不得影响用户的其他 tmux 会话。若 session 已自然退出，记录事实即可，不为清理而新建会话。
+
+`launch-visible-grok.zsh` 必须为本次启动显式创建新的 Terminal 窗口并记录其唯一 window id。精确 tmux session 退出后，wrapper 只在该 window id 仍存在且仍为单标签页时关闭它；若窗口已不存在或用户后来加入了其他标签页，则保留窗口，不得用 `front window`、窗口标题、进程名或模糊匹配强关。关闭结果不影响 tmux 与验收结论。
 
 ## Git 与完成条件
 
