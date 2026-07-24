@@ -129,7 +129,7 @@ grok --cwd "$TASK_WORKTREE" \
 
 启动前指定唯一的仓库外状态文件和交付文件。状态文件只允许单行 `GROK_PLANNING`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION` 或 `GROK_DELIVERY_COMPLETE`；Grok 在阶段切换时原子覆盖，不写思考过程或长日志。
 
-tmux 启动成功后立即进入 `WAITING_GROK_STATUS` 并持续轮询状态文件与交付文件完成标记，不先结束当前执行回合等待用户提醒。主 Agent 不检查中间 Git 状态、文件列表、tmux 会话、pane 命令、进程、测试进度或 TUI 内容，也不发送 `Ctrl-C`、`tmux send-keys` 或补充 prompt。开发期间出现新增/修改文件属于预期现场，不触发意外文件闸门；意外文件判断统一留到最终完整 diff Review。
+tmux 启动成功后立即进入 `WAITING_GROK_STATUS` 并持续轮询状态文件与交付文件完成标记，不先结束当前执行回合等待用户提醒。主 Agent 不检查中间 Git 状态、文件列表、tmux 会话、pane 命令、进程、测试进度或 TUI 内容，也不发送 `Ctrl-C` 或任意补充 prompt。唯一允许的中途输入是下述 `GROK_PLANNING` / `GROK_BLOCKED_USER_DECISION` 5 分钟看门狗。开发期间出现新增/修改文件属于预期现场，不触发意外文件闸门；意外文件判断统一留到最终完整 diff Review。
 
 不要采集 Grok 思考过程、TUI 刷新、持续日志或 token 状态，也不要用截图猜测完成。用户可在 Terminal 弹窗直接观察和交互。若使用当前任务心跳，心跳只能执行以下最终完成检查：
 
@@ -138,7 +138,11 @@ test -f "$GROK_HANDOFF" \
   && test "$(tail -n 1 "$GROK_HANDOFF")" = "GROK_DELIVERY_COMPLETE"
 ```
 
-状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时保持等待，不检查仓库、不打断 Grok、不发送重复状态；Grok 完成 Plan 自检后原地覆盖为 `GROK_IMPLEMENTING`，不等待用户在窗口再次确认。`GROK_BLOCKED_USER_DECISION` 时向用户请求明确决策。只有用户明确报告 Grok 已退出但无完整交付，才允许一次性检查 tmux 会话与 Git 现场。
+第一次连续观察到 `GROK_PLANNING` 时，用主 Agent 的单调时钟记录起点和本次 planning episode 的 `nudge_sent=false`。若状态连续 300 秒未离开 `GROK_PLANNING`，且未出现 `GROK_BLOCKED_USER_DECISION` 或完成标记，则只向启动时记录的精确 tmux session/pane 投递一次单行 `按推荐执行`：先写入本轮唯一仓库外单行文件，再使用 `tmux load-buffer` + `tmux paste-buffer`，最后仅用一次 `tmux send-keys ... Enter`。不得读取/capture pane，不附加解释，不重复发送；投递后设 `nudge_sent=true` 并恢复只读状态/交付轮询。状态离开 `GROK_PLANNING` 后清除此轮计时；新的连续 planning episode 可重新计时。用户明确正在 TUI 输入时暂缓，待其完成后再判断。
+
+第一次连续观察到 `GROK_BLOCKED_USER_DECISION` 时，读取交付/状态中明确的问题和推荐项，立即向用户请求决策，并记录单调时钟起点与本次 blocking episode 的 `nudge_sent=false`。若连续 300 秒没有用户答复、状态仍未变化、Grok 有明确推荐，且该选择可逆、未扩大任务范围、不涉及凭证/安全边界/不可逆操作，则按同一安全投递方式只发送一次 `按推荐执行`；否则继续保持阻塞，不得自动决定。用户答复优先并立即取消自动推荐计时。状态离开阻塞后清除此轮计时；新的连续 blocking episode 可重新计时。
+
+状态缺失或 `GROK_IMPLEMENTING` 时保持等待，不检查仓库、不打断 Grok、不发送重复状态；`GROK_PLANNING` 与 `GROK_BLOCKED_USER_DECISION` 按上述 5 分钟看门狗处理。Grok 正常完成 Plan 自检后应原地覆盖为 `GROK_IMPLEMENTING`，不等待用户在窗口再次确认。只有用户明确报告 Grok 已退出但无完整交付，才允许一次性检查 tmux 会话与 Git 现场。
 
 完成标记出现后停止等待/心跳，保留当前可见 tmux session 与仍打开的 Grok TUI，读取中文交付文件用于定位证据，并从完整累计 diff 开始独立验收。交付文档不能替代业务实现 Review 或独立复测。若发现 P0-P2，直接向同一个 Grok TUI 提交中文返工 prompt；不退出或重启 Grok、不使用 `--continue`、不新建 tmux session，也不管理 Grok session ID。
 
