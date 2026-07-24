@@ -803,20 +803,27 @@ func test_submit_before_start_rejected_zero_mutation() -> void:
 	var fp_p := _core_fingerprint(pristine, 0, "pri")
 	assert_false(fp_s.is_empty(), "start 后须有 core_table")
 	assert_eq(fp_s, fp_p, "BC 可观测领域态与未污染实例一致")
-	# command cache 零写入：start 后以同 command_id 的合法 HUMAN Action 须 ACCEPTED
+	# #242：指纹形成后的 NOT_STARTED 首次拒绝须缓存；同指纹回放原拒绝
+	var cr_replay := _as_cr(server.call("submit_action", action), "pre_start_replay")
+	if cr_replay == null:
+		return
+	assert_eq(cr_replay.status, "REJECTED", "#242 同指纹回放首次 NOT_STARTED")
+	assert_eq(cr_replay.error_code, cr.error_code)
+	assert_eq(JSON.stringify(cr_replay.to_dict()), JSON.stringify(cr.to_dict()),
+		"同指纹须字节等价回放首次拒绝")
+	# 新 command_id 的合法 HUMAN Action 在 start 后须 ACCEPTED
 	var meta := _meta(_prompt(server))
 	assert_false(meta.is_empty(), "start 后须有 DISCARD offer")
 	if meta.is_empty():
 		return
-	var human := _act(meta, 10)
-	assert_eq(human.command_id, action.command_id, "command_id 须与 start 前同为 _cmd(10)")
-	assert_eq(human.command_id, _cmd(10))
+	var human := _act(meta, 11)
+	assert_ne(human.command_id, action.command_id, "新命令须用新 command_id")
 	var seq_after_start := int(server.call("current_server_seq"))
 	var j_after_start := _exact_ne(server.call("event_journal", 0), "pre_j_post_start").size()
-	var cr2 := _as_cr(server.call("submit_action", human), "post_start_same_cmd")
+	var cr2 := _as_cr(server.call("submit_action", human), "post_start_new_cmd")
 	if cr2 == null:
 		return
-	assert_eq(cr2.status, "ACCEPTED", "同 command_id 未被 pre-start reject 污染缓存")
+	assert_eq(cr2.status, "ACCEPTED", "新 command_id 合法行动须 ACCEPTED")
 	assert_eq(cr2.error_code, "")
 	assert_gt(int(server.call("current_server_seq")), seq_after_start)
 	assert_gt(_exact_ne(server.call("event_journal", 0), "pre_j_post").size(), j_after_start)
@@ -858,15 +865,26 @@ func test_submit_ai_seat_unauthorized_zero_mutation() -> void:
 	assert_eq(JSON.stringify(j1), JSON.stringify(j0), "journal 全席零修改")
 	var fp1 := _core_fingerprint(server, 0, "ai_fp1")
 	assert_eq(fp1, fp0, "BC 可观测领域态零修改")
-	# command cache 零写入：随后 HUMAN 用同一 command_id 提交须可 ACCEPTED（若误缓存 UNAUTHORIZED 则失败）
-	var human := _act(meta, 20)
-	assert_eq(human.command_id, ai_action.command_id)
+	# #242：AI 越权首次拒绝已缓存；同 command_id 换 HUMAN seat → 异指纹 COMMAND_ID_CONFLICT
+	var human_same_id := _act(meta, 20)
+	assert_eq(human_same_id.command_id, ai_action.command_id)
+	assert_eq(int(human_same_id.seat), 0)
+	var cr_conflict := _as_cr(server.call("submit_action", human_same_id), "human_conflict")
+	if cr_conflict == null:
+		return
+	assert_eq(cr_conflict.status, "REJECTED")
+	assert_eq(cr_conflict.error_code, "COMMAND_ID_CONFLICT",
+		"同 command_id 异 seat 指纹须 COMMAND_ID_CONFLICT")
+	assert_eq(int(server.call("current_server_seq")), seq0, "CONFLICT 不推进 seq")
+	# 新 command_id 的 HUMAN 合法行动须 ACCEPTED
+	var human := _act(meta, 21)
+	assert_ne(human.command_id, ai_action.command_id)
 	assert_eq(int(human.seat), 0)
 	assert_eq(PARTS[0], &"HUMAN")
-	var cr_h := _as_cr(server.call("submit_action", human), "human_same_cmd")
+	var cr_h := _as_cr(server.call("submit_action", human), "human_new_cmd")
 	if cr_h == null:
 		return
-	assert_eq(cr_h.status, "ACCEPTED", "同 command_id 未被 UNAUTHORIZED 污染缓存")
+	assert_eq(cr_h.status, "ACCEPTED", "新 command_id 合法 HUMAN 须 ACCEPTED")
 	assert_eq(cr_h.error_code, "")
 	assert_gt(int(server.call("current_server_seq")), seq0)
 	assert_gt(_exact_ne(server.call("event_journal", 0), "ai_j_post").size(), int(j0[0]))

@@ -327,11 +327,7 @@ func _handle_ready(cid: int, d: Dictionary) -> void:
 
 func _handle_action(cid: int, d: Dictionary) -> void:
 	var st: Dictionary = _conns[cid]
-	if not bool(st.get("joined", false)) or bool(st.get("superseded", false)):
-		_send_error(cid, str(d.get("room_id", "")), _cmd_id_or_empty(d),
-			"UNAUTHORIZED", "not joined")
-		return
-	# 禁止客户端塞结果字段 / server_seq
+	# 禁止客户端塞结果字段 / server_seq（无法形成业务指纹：不缓存）
 	if d.has("server_seq") or d.has("view_hash") or d.has("status") or d.has("error_code"):
 		_send_error(cid, str(d.get("room_id", "")), _cmd_id_or_empty(d),
 			"FORGERY_REJECTED", "forbidden authority fields")
@@ -348,21 +344,66 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 	if action == null:
 		action = Action.from_dict(d)
 	if action == null:
+		# 无法规范化 / 非法 Action schema：不缓存
 		_send_error(cid, str(d.get("room_id", "")), _cmd_id_or_empty(d),
 			"COMMAND_REJECTED", "invalid action")
 		return
-	var room_id: String = str(st["room_id"])
-	var seat: int = int(st["seat"])
-	if action.room_id != room_id or int(action.seat) != seat:
-		_send_error(cid, room_id, action.command_id, "UNAUTHORIZED", "action seat/room mismatch")
+
+	var joined: bool = bool(st.get("joined", false))
+	var superseded: bool = bool(st.get("superseded", false))
+	# JOIN 后绑定的可信字段；禁止用客户端自报 session 建缓存
+	var bound_session: String = str(st.get("session_id", ""))
+	var bound_room: String = str(st.get("room_id", ""))
+	var bound_seat: int = int(st.get("seat", -1))
+
+	# 未 JOIN 且无可信绑定：不得缓存
+	if not joined and bound_session.is_empty():
+		_send_error(cid, str(d.get("room_id", "")), action.command_id,
+			"UNAUTHORIZED", "not joined")
 		return
+
+	# superseded / 已失效连接：仅当仍保留可信 JOIN 绑定 + 可定位房间时缓存首次拒绝
+	if superseded or not joined:
+		var sess_dead: HeadlessRoomSession = get_room(bound_room)
+		if sess_dead != null and sess_dead.server != null and not bound_session.is_empty():
+			var cr_dead: CommandResult = sess_dead.server.reject_action_cached(
+				action, bound_session, "UNAUTHORIZED"
+			)
+			_send_reject_control(cid, bound_room, cr_dead)
+			return
+		_send_error(cid, bound_room if not bound_room.is_empty() else str(d.get("room_id", "")),
+			action.command_id, "UNAUTHORIZED", "not joined")
+		return
+
+	var room_id: String = bound_room
+	var seat: int = bound_seat
 	var session: HeadlessRoomSession = get_room(room_id)
-	if session == null or not session.is_started():
+
+	# #242：已 JOIN 且 Action 可形成指纹后，越权 seat/room / 未开局 / stale 走同一缓存语义
+	if action.room_id != room_id or int(action.seat) != seat:
+		if session != null and session.server != null:
+			var cr_mis: CommandResult = session.server.reject_action_cached(
+				action, bound_session, "UNAUTHORIZED"
+			)
+			_send_reject_control(cid, room_id, cr_mis)
+		else:
+			_send_error(cid, room_id, action.command_id, "UNAUTHORIZED", "action seat/room mismatch")
+		return
+	if session == null:
 		_send_error(cid, room_id, action.command_id, "COMMAND_REJECTED", "not started")
 		return
-	# #241：仅当前有效连接代际可提交
+	if not session.is_started():
+		var cr_ns: CommandResult = session.server.reject_action_cached(
+			action, bound_session, "NOT_STARTED"
+		)
+		_send_reject_control(cid, room_id, cr_ns)
+		return
+	# #241：仅当前有效连接代际可提交；stale 有可信绑定 → 缓存
 	if not session.is_connection_active(seat, cid, int(st.get("generation", -1))):
-		_send_error(cid, room_id, action.command_id, "UNAUTHORIZED", "stale connection")
+		var cr_stale: CommandResult = session.server.reject_action_cached(
+			action, bound_session, "UNAUTHORIZED"
+		)
+		_send_reject_control(cid, room_id, cr_stale)
 		return
 	var seq_before: int = session.current_server_seq()
 	var cr: CommandResult = session.submit_action_for_seat(seat, action)
@@ -371,13 +412,7 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 		return
 	if cr.status == "REJECTED":
 		# ADR §6.4：领域拒绝走 ERROR 控制通道，无 server_seq/view_hash，不广播业务事件
-		var code := "COMMAND_REJECTED"
-		var ec: String = cr.error_code
-		if ec == "UNAUTHORIZED":
-			code = "UNAUTHORIZED"
-		elif ec == "COMMAND_ID_CONFLICT":
-			code = "COMMAND_ID_CONFLICT"
-		_send_error(cid, room_id, action.command_id, code, "rejected")
+		_send_reject_control(cid, room_id, cr)
 		# 拒绝不得推进权威序号；不 flush 事件
 		if session.current_server_seq() != seq_before:
 			# 防御：若内部误推进仍不向客户端泄露细节
@@ -386,6 +421,20 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 	# 仅 ACCEPTED 发送 CommandResult 并广播权威事件
 	_send_json(cid, cr.to_dict())
 	_broadcast_room_events(room_id)
+
+
+## #242：CommandResult 拒绝 → ERROR 控制响应（无 server_seq / view_hash / state_hash）。
+func _send_reject_control(cid: int, room_id: String, cr: CommandResult) -> void:
+	if cr == null:
+		_send_error(cid, room_id, "", "COMMAND_REJECTED", "null result")
+		return
+	var code := "COMMAND_REJECTED"
+	var ec: String = cr.error_code
+	if ec == "UNAUTHORIZED":
+		code = "UNAUTHORIZED"
+	elif ec == "COMMAND_ID_CONFLICT":
+		code = "COMMAND_ID_CONFLICT"
+	_send_error(cid, room_id, cr.command_id, code, "rejected")
 
 
 func _broadcast_room_events(room_id: String) -> void:
