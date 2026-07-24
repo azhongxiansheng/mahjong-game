@@ -20,6 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **不扩张 `main.go`**；不新增根目录状态报告 markdown；不信根目录 200+ 陈旧笔记。
 - **提交即推送**：本地已 commit 默认尽快 push，除非用户明确要求只留本地。
 - **意外文件**：影响运行/构建的非己方变更 → 暂停询问；纯文档/元数据可忽略。
+- **Grok CLI Worker**：每项实现先 Plan 后开发；主 Agent 必须独立审查完整 diff、复跑必要验证并打回 P0–P2；需用户选择时不得跳过。
 
 ---
 
@@ -306,6 +307,123 @@ godot --path godot -s tools/capture_screens.gd
 2. 写业务实现前用**最小请求/最小场景测通**，确认参数、返回、错误与限制。
 3. 测通后**先按真实行为写/更新测试**，再进入业务实现。
 4. 无法在本地实际调用时，先说明原因、记录替代验证方式，**经用户确认后再继续**。
+
+---
+
+## Grok CLI Worker 开发与验收流程（强制）
+
+> 适用于用户明确要求使用 Grok CLI，或主 Agent 判断任务适合交给 Grok 且已先告知用户的场景。
+> Grok 是受约束的实现 worker；主 Agent 始终对需求对齐、范围控制、代码审查、验证与最终结论负责。
+
+### 适用边界与状态
+
+- 默认只使用 **1 个 Grok worker 串行开发**；除非任务可独立拆分且用户明确同意，不启动多个 Grok / 子 Agent 并行改同一需求。
+- 高歧义需求、需要产品取舍、不可逆生产操作、权限或凭证不明确时，不得先让 Grok 猜测实现。
+- 需要用户选择时进入 `BLOCKED_USER_DECISION`，明确列出选项、影响和推荐项并等待答复；不得跳过。若宿主提供 goal/status 工具，按该工具自身规则设置阻塞状态，不得伪造状态。
+- 推荐状态流：
+
+```text
+BLOCKED_USER_DECISION（如需）
+  → GROK_PLAN_REVIEW
+  → GROK_IMPLEMENTING
+  → MAIN_AGENT_REVIEW
+  → REWORK_REQUIRED（如有 P0/P1/P2）
+  → VALIDATING
+  → READY_FOR_PR
+  → WAITING_HUMAN_MERGE
+```
+
+### 1. 主 Agent 先完成前置闸门
+
+调用 Grok 前，主 Agent 必须独立完成：
+
+1. 阅读用户原始需求、本文件、相关代码和 Git 现场；不能把需求理解本身外包给 worker。
+2. 确认任务 worktree、基线分支、允许修改的文件范围、禁止项、验收命令和成功标准。
+3. 写出关键假设与真实歧义；需要用户选择的内容先向用户确认。
+4. 将任务整理成可核对的 prompt contract：原需求、已确认决策、非目标、TDD 要求、验证门禁、Git 权限和交付格式。
+
+### 2. 每项实现必须先跑 Grok Plan 模式
+
+使用本机 Grok CLI 已验证的计划权限模式；默认禁用 Grok 子 Agent：
+
+```bash
+grok --cwd "$TASK_WORKTREE" \
+  --permission-mode plan \
+  --no-subagents \
+  -p "$PLAN_PROMPT"
+```
+
+- `PLAN_PROMPT` 必须要求 Grok 只分析和给计划，不改文件、不执行 Git 写操作。
+- 主 Agent 审查计划是否逐条覆盖原需求、Red → Green → Refactor、改动边界、真实验证和风险。
+- 计划遗漏、越界或替用户做了未确认选择时，先打回重写；**未通过计划审查不得进入编码**。
+- Plan 模式若仍产生文件改动，视为异常变更，按“闸门 A”处理。
+
+### 3. 计划通过后才让 Grok 真正开发
+
+开发调用必须明确关闭 Plan 模式，并使用可编辑但非无条件放权的权限模式：
+
+```bash
+grok --cwd "$TASK_WORKTREE" \
+  --permission-mode acceptEdits \
+  --no-plan \
+  --no-subagents \
+  -p "$IMPLEMENT_PROMPT"
+```
+
+- `IMPLEMENT_PROMPT` 必须完整包含或引用**已批准计划**，并要求先读 worktree 内的 `AGENTS.md`。
+- 明确允许修改的路径、禁止修改的路径、先写失败测试、相关验证命令，以及不可静默决定的事项。
+- 默认禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限；确有需要必须由主 Agent 说明风险并取得用户授权。
+- Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
+
+### 4. Grok 的固定交付格式
+
+Grok 完成一轮后必须汇报：
+
+1. 修改文件列表与每个文件的目的；
+2. 关键实现及其与原需求的对应关系；
+3. Red / Green / Refactor 各阶段执行的命令和结果摘要；
+4. 未验证项、已知风险、网络端到端缺口；
+5. 当前 `git status`、commit / push / PR 状态（若获授权执行）。
+
+Worker 自述仅用于定位证据，**不能作为验收结论**。
+
+### 5. 主 Agent 必须独立从 diff 开始审查
+
+Grok 交付后，主 Agent 必须亲自运行并阅读结果：
+
+```bash
+git status --short --branch
+git diff --stat
+git diff --check
+git diff
+# worker 已提交时，改用实际基线：
+git diff "$BASE_REF"...HEAD
+```
+
+审查至少覆盖：
+
+- 对照用户原需求与批准计划逐条核对，不能只看“代码能跑”；
+- 逐个读取所有变更文件，确认没有隐藏的范围扩张、未确认决策、临时代码或意外文件；
+- 检查测试是否真正覆盖核心行为，mock 是否越过真实逻辑，Red 证据是否合理；
+- 按风险由主 Agent **独立复跑** focused 测试、模块测试、全量 GUT、import、UI 截图或其他必要门禁；
+- worker 声称的测试、提交、推送、PR、CI 与远端状态都要重新核实。
+
+问题严重度统一为：P0 阻断/数据安全，P1 主要功能或架构错误，P2 正确性、契约或关键覆盖缺口，P3 非阻断改进。**P0、P1、P2 必须全部关闭后才可进入提交/PR 交付；P3 可记录后续。**
+
+### 6. 打回与复验循环
+
+- 打回 Grok 时给出具体证据：文件与行、违反的需求/规则、失败命令与期望结果；禁止只说“质量不好”。
+- 修复调用继续使用 `acceptEdits + --no-plan + --no-subagents`，prompt 只包含已确认范围和本轮问题，不借机扩需求。
+- 每轮修复后，主 Agent 重新审查**完整累计 diff**并复跑受影响验证；不能只看最后一个补丁或只相信 Grok 的复测结果。
+- 循环直到 P0–P2 清零且所有成功标准有独立证据；否则状态保持 `REWORK_REQUIRED` 或真实阻塞状态。
+
+### 7. Git、PR 与合并
+
+- Grok 可以在主 Agent 明确授权后执行 commit、push、创建 PR 或合并，以节省操作时间；授权必须写清分支、目标分支和允许动作。
+- Grok 执行后，主 Agent 仍须核对本地 `HEAD`、远端分支 SHA、PR diff/状态、CI 和目标分支，不能把“命令成功”当作已交付。
+- 默认在代码验收通过后才授权 Git 交付；禁止把未审查改动先提交来规避 diff 审查。
+- **禁止自动合并**，除非用户在当前任务中明确授权；需要人工合并时停在 `WAITING_HUMAN_MERGE`。
+- 合并后的后续开发必须重新确认最新 `origin/main`，不能沿用合并前的陈旧基线。
 
 ---
 
