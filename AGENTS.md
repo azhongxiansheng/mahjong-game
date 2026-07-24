@@ -196,10 +196,9 @@ godot --path godot -s tools/capture_screens.gd
 - 推荐状态流：
 
 ```text
-BLOCKED_USER_DECISION（如需）
-  → GROK_PLAN_INTERACTIVE
-  → USER_PLAN_CONFIRMED
-  → GROK_IMPLEMENTING
+BLOCKED_USER_DECISION（前置闸门如需）
+  → GROK_PLAN_AND_IMPLEMENT
+  → WAITING_GROK_STATUS
   → CODEX_REVIEW
   → REWORK_REQUIRED（如有 P0/P1/P2）
   → VALIDATING
@@ -217,9 +216,9 @@ BLOCKED_USER_DECISION（如需）
 3. 写出关键假设与真实歧义；需要用户选择的内容先向用户确认。
 4. 将任务整理成可核对的 prompt contract：原需求、已确认决策、非目标、TDD 要求、验证门禁、Git 权限和交付格式。
 
-### 2. 在同一个可见 Terminal + tmux TUI 中确认 Plan 并继续开发
+### 2. 在可见 Terminal + tmux 一次启动 Plan 与开发
 
-使用可见 macOS Terminal + attached tmux 一次启动 Grok inline TUI，不使用 Codex 右侧终端或单轮 `-p/--single`。Grok 先给 Plan，用户在弹窗中追问、修改并明确确认后，Grok 在同一个 TUI 进程内原地继续开发：
+当前 Codex 任务完成前置闸门并处理完必须由用户决定的歧义后，使用可见 macOS Terminal + attached tmux 启动 Grok inline TUI。一次调用中要求 Grok 先给出可滚动中文计划、自检覆盖范围，再按该计划直接开发；不使用 Codex 右侧终端或单轮 `-p/--single`：
 
 ```bash
 grok --cwd "$TASK_WORKTREE" \
@@ -233,24 +232,27 @@ grok --cwd "$TASK_WORKTREE" \
 ```
 
 - 当前 Issue 启动时记录唯一精确 tmux session 名；tmux 必须开启 `mouse`，`history-limit` 至少为 50000。用户可滚轮回看，或按 `Ctrl-b`、`[` 进入 copy-mode，按 `q` 返回。
-- `PLAN_AND_IMPLEMENT_PROMPT` 必须要求 Grok 先只分析和给计划；用户确认前不改文件、不执行 Git 写操作。
-- 用户必须在 Grok TUI 中明确确认计划；确认后由 Grok 在原 TUI 中继续开发，不退出、不调用 `--continue`、不启动第二个 Grok。
-- 当前 Codex 任务同时审查计划是否逐条覆盖原需求、Red → Green → Refactor、改动边界、真实验证和风险。
-- 计划遗漏、越界或替用户做了未确认选择时，先在 TUI 中要求重写；**未通过计划审查不得进入编码**。
-- Plan 模式若仍产生文件改动，视为异常变更，按“闸门 A”处理。
-- `--always-approve` 只免除开发阶段逐条工具审批，不授权跳过 Plan 确认、扩大 worktree/路径/Git 权限或替用户决定歧义。
+- 启动参数固定同时使用 `--permission-mode plan --always-approve`；完全授权只免除逐条工具审批，不扩大 worktree、允许路径、Git 权限和需求范围。
+- `PLAN_AND_IMPLEMENT_PROMPT` 必须要求 Grok：先读取本文件；先输出中文计划并逐条自检原需求、Red → Green → Refactor、改动边界、真实验证和风险；确认无遗漏后在同一 TUI 直接开发，不退出、不调用 `--continue`、不启动第二个 Grok。
+- 必须由用户决定的产品取舍、权限、安全或不可逆事项应已在前置闸门解决；开发中才发现的新阻塞不得猜测，写入仓库外状态文件并停在 TUI 等待。
+- 当前 Codex 任务不得通过读取 pane 审查 Grok 的过程计划；最终仍以完整累计 diff、真实业务调用链和独立复测验收。计划自检不能替代最终 Review。
 
-### 3. 确认后在原 TUI 内开发
+### 3. 启动后立即轮询状态与最终交付
 
-用户确认计划后，Grok 在当前 Issue 唯一的可见 tmux session 和同一个 TUI 进程中按已确认计划实施，并先读 worktree 内的 `AGENTS.md`。
+启动前为本轮指定两个唯一仓库外路径：
 
-- 明确允许修改的路径、禁止修改的路径、先写失败测试、相关验证命令，以及不可静默决定的事项。
-- 即使启动时启用 `--always-approve`，确认前也只允许 Plan；确认后仍须保留既定 worktree、允许修改路径、`--no-subagents`、禁止项、TDD/验证门禁与 Git 权限边界。
+```text
+/tmp/<project>-issue-<number>-grok-status-round-<n>.txt
+/tmp/<project>-issue-<number>-grok-delivery-round-<n>.md
+```
+
+- 状态文件只允许为单行稳定值：`GROK_PLANNING`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION`、`GROK_DELIVERY_COMPLETE`。Grok 在开始计划、进入实现、发现新用户决策阻塞和完成交付时原子覆盖该文件；不得写思考过程、token 或长日志。
+- 交付文件格式见下一节，只有全部实现和自测结束后才写，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`。
 - Grok 开发阶段不得由 Codex 在后台 PTY 中启动；必须使用可见 Terminal + tmux inline TUI。用户可在弹窗直接观察和交互，Codex 不以内部 PTY 冒充可见终端。
 - Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
-- Codex 调用 Grok 开发时，应在 prompt contract 中指定仓库外的交付文件，例如 `/tmp/mahjong-game-issue-<number>-grok-delivery.md`。Grok 只在本轮实现和自测全部结束后写入该文件，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`；不得在仓库内新增进度、状态或完成报告文档。
-- 开发启动后，Codex 立即进入 `WAITING_GROK_DELIVERY`：不检查中间 Git 状态、文件列表、tmux 会话、pane 命令、进程或测试进度，不发送 `Ctrl-C`、`tmux send-keys` 或补充 prompt，也不因开发期间出现已批准范围内的新文件而打断 Grok。
-- 等待期间只允许检查交付文件是否存在且末行为 `GROK_DELIVERY_COMPLETE`。文件缺失或标记不完整时继续等待，不检查仓库、不重复汇报；完成标记出现后保留当前 tmux session 与仍打开的 Grok TUI，读取交付摘要并进入完整 diff Review。
+- Grok 启动成功后，Codex **立即**进入 `WAITING_GROK_STATUS` 并持续轮询上述状态文件与交付文件完成标记；不得先结束当前执行回合等待用户另行提醒。
+- 轮询期间只读取这两个仓库外文件；不得检查中间 Git 状态、文件列表、tmux pane、pane 命令、进程或测试进度，不发送 `Ctrl-C`、`tmux send-keys` 或补充 prompt，也不因已批准范围内的新文件而打断 Grok。
+- 状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时继续等待且不重复汇报；`GROK_BLOCKED_USER_DECISION` 时读取交付/状态中明确的问题并向用户请求决策；只有交付文件末行为 `GROK_DELIVERY_COMPLETE` 且状态为同名值时才停止轮询，保留当前 tmux session 与 TUI，进入完整 diff Review。
 - 只有用户明确报告 Grok 已退出但没有完整交付时，Codex 才可一次性检查 tmux 会话和 Git 现场。
 - Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
 
@@ -265,6 +267,8 @@ Grok 完成一轮后必须汇报：
 5. 当前 `git status`、commit / push / PR 状态（若获授权执行）。
 
 上述内容写入指定的仓库外交付文件；最后一行写入 `GROK_DELIVERY_COMPLETE`。Codex 读取该文件仅用于确认完成并定位证据，不能用它替代完整 diff Review、业务实现 Review 或独立复测。
+
+功能/缺陷代码每轮最终交付前，Grok 必须在该轮**最后一次代码修改后**执行一次全量 GUT，并在交付中记录完整命令、退出码、scripts/tests/asserts/fail totals 与仓库外日志路径。返工使旧全量证据早于最后修改时，新一轮必须重新执行全量；纯文档任务按文档门禁豁免。
 
 Grok 自述仅用于定位证据，**不能作为验收结论**。
 
@@ -288,7 +292,7 @@ git diff "$BASE_REF"...HEAD
 - 核对业务边界与非目标：既不能遗漏关键副作用、异常分支和跨模块契约，也不能借机提前实现后续 Issue；测试全绿不能替代业务语义审查。
 - 逐个读取所有变更文件，确认没有隐藏的范围扩张、未确认决策、临时代码或意外文件；
 - 检查测试是否真正覆盖核心行为，mock 是否越过真实逻辑，Red 证据是否合理；
-- 按风险由当前 Codex 任务**独立复跑** focused 测试、模块测试、全量 GUT、import、UI 截图或其他必要门禁；
+- 按风险由当前 Codex 任务**独立复跑** focused/模块测试、import、UI 截图或其他必要门禁。若 Grok 已在最后一次代码修改后完成全量 GUT，且交付含可核对的退出码、totals 和日志，当前 Codex 到 `VALIDATING` **不重复执行同一全量 GUT**，而是审计该日志的失败/错误/totals，并用风险 focused 测试独立交叉验证；全量证据缺失、过期或矛盾时必须打回 Grok 重跑，不能由 Codex 自己补跑后直接放行；
 - Grok 声称的测试、提交、推送、PR 与远端状态都要重新核实。
 
 问题严重度统一为：P0 阻断/数据安全，P1 主要功能或架构错误，P2 正确性、契约或关键覆盖缺口，P3 非阻断改进。**P0、P1、P2 必须全部关闭后才可进入提交/PR 交付；P3 可记录后续。**
@@ -305,7 +309,7 @@ git diff "$BASE_REF"...HEAD
 - 默认由当前 Codex 任务在验收通过后执行 commit、push、创建 PR 和合并；Grok 不负责最终 Git 交付。
 - 当前 Codex 任务必须核对本地 `HEAD`、远端分支 SHA、PR 完整 diff/状态、可合并状态和目标分支，不能把“命令成功”当作已交付。
 - 禁止把未审查改动先提交来规避 diff 审查。
-- 本仓库不把 GitHub CI 作为合并门禁；`.github/workflows/core-tests.yml` 仅允许手动触发。当前 Codex 任务独立完成风险相关测试、全量 GUT（适用时）、Review PASS 且 P0–P2 清零后，方可认定验证通过。
+- 本仓库不把 GitHub CI 作为合并门禁；`.github/workflows/core-tests.yml` 仅允许手动触发。Grok 最后一轮全量 GUT 证据有效、当前 Codex 独立完成风险相关测试与日志审计、Review PASS 且 P0–P2 清零后，方可认定验证通过；当前 Codex 不机械重复同一全量 GUT。
 - 当前 Issue 只记录并复用一个精确 tmux session 名，覆盖 Plan、开发、Review、返工与复验，并始终保留同一个 Grok TUI；每轮完成标记出现后不得关闭。只有完整 diff Review 完成、P0–P2 清零且当前 Codex 任务独立验证全部通过后，才先用 `tmux list-sessions` 只读确认名称，再执行 `tmux kill-session -t "$EXACT_SESSION"` 手工关闭，并复查该精确 session 已不存在。禁止 `tmux kill-server`、glob、前缀/模糊匹配或关闭未经记录的其他 session；全程不管理 Grok session ID。
 - PR 处于可合并状态且验证通过后，由当前 Codex 任务直接合并，无需再次等待用户授权。高歧义需求、不可逆生产操作、权限或凭证不明确等情形仍按前述阻塞规则请求用户决策。
 - 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场；不得只给下一 Issue 建议，必须直接为所有已解锁且可安全并行的后续 Issue 创建并启动新的 Codex App 任务。

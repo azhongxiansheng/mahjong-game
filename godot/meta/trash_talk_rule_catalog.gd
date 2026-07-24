@@ -76,7 +76,53 @@ static func all_rules() -> Array:
 	return out
 
 static func persona_rules() -> Array:
-	return _persona_rules_table().duplicate(true)
+	var out: Array = _persona_rules_table().duplicate(true)
+	# E5-02 / #250：从已冻结 human + AI 文案生成稳定 PERSONA_TEMPLATE rule_id
+	out.append_array(_persona_template_rules_table())
+	return out
+
+## 每角色 × 每语言 1 条 PERSONA_TEMPLATE；patterns = human_templates + ai_templates.text。
+## rule_id 稳定：r_persona_<character_id>_tpl_<lang>_01；points=100。
+static func _persona_template_rules_table() -> Array:
+	var out: Array = []
+	var table: Dictionary = _persona_table()
+	var cids: Array = table.keys()
+	cids.sort()
+	for cid_v in cids:
+		var cid := String(cid_v)
+		var row: Dictionary = table[cid]
+		var hum: Dictionary = row.get("human_templates", {})
+		var ai: Dictionary = row.get("ai_templates", {})
+		for lang in LANGUAGES:
+			var patterns: Array = []
+			if hum.has(lang) and hum[lang] is Array:
+				for p in hum[lang]:
+					var s := String(p).strip_edges()
+					if not s.is_empty():
+						patterns.append(s)
+			if ai.has(lang) and ai[lang] is Array:
+				for line in ai[lang]:
+					if typeof(line) != TYPE_DICTIONARY:
+						continue
+					var t := String(line.get("text", "")).strip_edges()
+					if not t.is_empty():
+						patterns.append(t)
+			if patterns.is_empty():
+				continue
+			out.append({
+				"rule_id": "r_persona_%s_tpl_%s_01" % [cid, lang],
+				"component": "persona",
+				"points": 100,
+				"cap": 1000,
+				"once_per_window_seat": true,
+				"match": {
+					"kind": "PERSONA_TEMPLATE",
+					"language": lang,
+					"character_id": cid,
+					"patterns": patterns,
+				},
+			})
+	return out
 
 static func expression_rules() -> Array:
 	return _expression_rules_table().duplicate(true)

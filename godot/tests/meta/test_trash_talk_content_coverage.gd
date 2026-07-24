@@ -135,12 +135,19 @@ func test_each_item_has_priority_specificity_patterns_tags_rules() -> void:
 
 func test_persona_rules_exist_and_unique() -> void:
 	var seen := {}
+	var tpl_count := 0
 	for rule in TrashTalkRuleCatalog.persona_rules():
 		var rid: String = String(rule.get("rule_id", ""))
 		assert_false(rid.is_empty())
 		assert_false(seen.has(rid))
 		seen[rid] = true
 		assert_true(["persona", "expression"].has(String(rule.get("component", ""))))
+		var kind := String(rule.get("match", {}).get("kind", ""))
+		if kind == "PERSONA_TEMPLATE":
+			tpl_count += 1
+			assert_true(TrashTalkRuleCatalog.has_rule_id(rid))
+	# 12 角色 × 3 语 = 36 条真实 PERSONA_TEMPLATE
+	assert_eq(tpl_count, 36, "必须存在可审阅的 PERSONA_TEMPLATE 生产规则")
 
 
 func test_ai_line_ids_unique_globally() -> void:
