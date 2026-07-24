@@ -51,6 +51,27 @@ func main() {
 		log.Fatalf("queue: %v", err)
 	}
 
+	matcher, err := queue.NewMatcher(queue.MatcherOptions{
+		Service:        queueSvc,
+		TokenIssuer:    tokenSvc,
+		WorkerEndpoint: cfg.WorkerEndpoint,
+		OnError: func(op string, safeDetail string) {
+			// 仅记录稳定操作类别与固定安全文案；不得输出原始 err/密钥/token。
+			log.Printf("matcher error op=%s detail=%s", op, safeDetail)
+		},
+	})
+	if err != nil {
+		log.Fatalf("matcher: %v", err)
+	}
+	matcher.Start()
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := matcher.Stop(stopCtx); err != nil {
+			log.Printf("matcher stop: %v", err)
+		}
+	}()
+
 	srv := httpserver.New(httpserver.Config{
 		Addr:         cfg.HTTPAddr,
 		Pinger:       redisClient,

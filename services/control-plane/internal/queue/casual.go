@@ -1,5 +1,4 @@
-// Package queue 提供公共休闲匹配队列（Redis ticket / 匹配池 / 取消）。
-// 本包只建立 ticket 与池契约；不实现 30s 消费、AI 补位或房间创建（#239+）。
+// Package queue 提供公共休闲匹配队列（Redis ticket / 匹配池 / 取消 / 30s AI 补位）。
 // 网络端到端未验证。
 package queue
 
@@ -8,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -23,8 +23,9 @@ const (
 
 	StatusWaiting   = "waiting"
 	StatusCancelled = "cancelled"
+	// StatusAssigned 定义于 match.go（分配成功终态）。
 
-	// QueueWaitDeadline 最早 ticket 自 queued_at 起的匹配等待契约（#239 消费边界）。
+	// QueueWaitDeadline 最早 ticket 自 queued_at 起的匹配等待契约。
 	QueueWaitDeadline = 30 * time.Second
 
 	defaultKeyPrefix = "cp:v1:casual:"
@@ -66,11 +67,11 @@ func (cryptoIDGen) NewID() (string, error) {
 	return newUUIDv4()
 }
 
-// TicketTime 便于 JSON RFC3339。
+// TicketTime 便于 JSON；与 Redis/HTTP 同源（整秒 RFC3339，亚秒到毫秒）。
 type TicketTime time.Time
 
 func (t TicketTime) MarshalJSON() ([]byte, error) {
-	return json.Marshal(time.Time(t).UTC().Format(time.RFC3339))
+	return json.Marshal(formatTicketTime(time.Time(t).UTC()))
 }
 
 func (t *TicketTime) UnmarshalJSON(b []byte) error {
@@ -78,7 +79,7 @@ func (t *TicketTime) UnmarshalJSON(b []byte) error {
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
 	}
-	parsed, err := time.Parse(time.RFC3339, s)
+	parsed, err := parseTicketTime(s)
 	if err != nil {
 		return err
 	}
@@ -97,6 +98,12 @@ type Ticket struct {
 	Status     string     `json:"status"`
 	QueuedAt   TicketTime `json:"queued_at"`
 	DeadlineAt TicketTime `json:"deadline_at"`
+	// 以下字段仅 status=assigned 时有意义（跨 CP 实例 Redis 可读）。
+	RoomID    string `json:"room_id,omitempty"`
+	Seat      int    `json:"seat,omitempty"`
+	Worker    string `json:"worker,omitempty"`
+	RoomToken string `json:"room_token,omitempty"`
+	HasSeat   bool   `json:"-"` // 内部：区分 seat=0 与未分配
 }
 
 // Options 构造队列服务。
@@ -196,6 +203,8 @@ if existing then
 end
 
 redis.call('SET', gkey, ticket_id, 'EX', ttl)
+-- 完整替换 ticket 哈希，避免同 id 复用时残留 room/seat/token 半状态字段。
+redis.call('DEL', tkey)
 redis.call('HSET', tkey,
   'ticket_id', ticket_id,
   'guest_id', guest_id,
@@ -209,7 +218,10 @@ redis.call('ZADD', pkey, score, ticket_id)
 return {'CREATED', ticket_id}
 `)
 
-// cancelScript 原子取消：校验属主、标 cancelled、ZREM 池、清理 guest 索引。
+// cancelScript 原子取消：与 match 消费互斥。
+// - waiting → cancelled + ZREM + 清 guest 索引
+// - cancelled → 幂等 OK
+// - assigned → 不得改写，返回 ASSIGNED（调用方回读终态）
 var cancelScript = redis.NewScript(`
 local tkey = KEYS[1]
 local gkey = KEYS[2]
@@ -225,8 +237,15 @@ if owner ~= guest_id then
 end
 local tid = redis.call('HGET', tkey, 'ticket_id')
 local status = redis.call('HGET', tkey, 'status')
+if status == 'assigned' then
+  redis.call('ZREM', pkey, tid)
+  return {'ASSIGNED'}
+end
 if status == 'cancelled' then
   redis.call('ZREM', pkey, tid)
+  return {'OK'}
+end
+if status ~= 'waiting' then
   return {'OK'}
 end
 redis.call('HSET', tkey, 'status', 'cancelled')
@@ -251,7 +270,8 @@ func (s *Service) Enqueue(ctx context.Context, guestID string, rk RoundKind, gm 
 	if err != nil {
 		return Ticket{}, err
 	}
-	now := time.Unix(s.clock.Now().UTC().Unix(), 0).UTC()
+	// 毫秒精度：业务 30s 边界与 Redis score / queued_at 同源，避免整秒截断提前匹配。
+	now := time.UnixMilli(s.clock.Now().UTC().UnixMilli()).UTC()
 	deadline := now.Add(QueueWaitDeadline)
 
 	res, err := enqueueScript.Run(ctx, s.rdb, []string{
@@ -265,9 +285,9 @@ func (s *Service) Enqueue(ctx context.Context, guestID string, rk RoundKind, gm 
 		string(rk),
 		string(gm),
 		StatusWaiting,
-		now.Format(time.RFC3339),
-		deadline.Format(time.RFC3339),
-		fmt.Sprintf("%d", now.Unix()),
+		formatTicketTime(now),
+		formatTicketTime(deadline),
+		fmt.Sprintf("%d", now.UnixMilli()),
 		int(ticketTTL.Seconds()),
 	).Result()
 	if err != nil {
@@ -322,7 +342,8 @@ func (s *Service) Cancel(ctx context.Context, guestID, ticketID string) (Ticket,
 		return Ticket{}, ErrNotFound
 	case "FORBIDDEN":
 		return Ticket{}, ErrForbidden
-	case "OK":
+	case "OK", "ASSIGNED":
+		// OK=已取消（或幂等）；ASSIGNED=消费已胜出，返回实际终态且不得变 cancelled。
 		return s.loadTicket(ctx, ticketID)
 	default:
 		return Ticket{}, fmt.Errorf("unexpected cancel kind: %v", arr[0])
@@ -363,15 +384,15 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (Ticket, erro
 	if len(m) == 0 {
 		return Ticket{}, ErrNotFound
 	}
-	queuedAt, err := time.Parse(time.RFC3339, m["queued_at"])
+	queuedAt, err := parseTicketTime(m["queued_at"])
 	if err != nil {
 		return Ticket{}, fmt.Errorf("corrupt queued_at: %w", err)
 	}
-	deadlineAt, err := time.Parse(time.RFC3339, m["deadline_at"])
+	deadlineAt, err := parseTicketTime(m["deadline_at"])
 	if err != nil {
 		return Ticket{}, fmt.Errorf("corrupt deadline_at: %w", err)
 	}
-	return Ticket{
+	tk := Ticket{
 		TicketID:   m["ticket_id"],
 		GuestID:    m["guest_id"],
 		RoundKind:  RoundKind(m["round_kind"]),
@@ -379,5 +400,40 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (Ticket, erro
 		Status:     m["status"],
 		QueuedAt:   TicketTime(queuedAt.UTC()),
 		DeadlineAt: TicketTime(deadlineAt.UTC()),
-	}, nil
+		RoomID:     m["room_id"],
+		Worker:     m["worker"],
+		RoomToken:  m["room_token"],
+	}
+	if rawSeat, ok := m["seat"]; ok && rawSeat != "" {
+		seat, err := strconv.Atoi(rawSeat)
+		if err != nil {
+			return Ticket{}, fmt.Errorf("corrupt seat: %w", err)
+		}
+		tk.Seat = seat
+		tk.HasSeat = true
+	}
+	return tk, nil
+}
+
+// formatTicketTime 持久化与 HTTP 共用：整秒用 RFC3339，亚秒保留到毫秒。
+func formatTicketTime(t time.Time) string {
+	t = t.UTC()
+	if t.Nanosecond() == 0 {
+		return t.Format(time.RFC3339)
+	}
+	return t.Format("2006-01-02T15:04:05.000Z07:00")
+}
+
+func parseTicketTime(s string) (time.Time, error) {
+	if s == "" {
+		return time.Time{}, fmt.Errorf("empty time")
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t.UTC(), nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t.UTC(), nil
 }
