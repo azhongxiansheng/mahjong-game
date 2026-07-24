@@ -1,20 +1,19 @@
 # AGENTS.md
 
 > 本文件是 mahjong-game 的 **Agent 开发原则 / 工作流唯一权威源**。
-> `CLAUDE.md` 描述项目技术事实，并在文首给红线摘要、文末内联本文件全文。
-> `agent.md` 是 Codex / Grok / Claude 等 AI agent 的**轻量入口**，关键规则必须与本文件同步。
+> `CLAUDE.md` 只描述项目技术事实，并链接本文件，不再复制工作流规则。
 >
-> **改规则时：先改本文件 → 再回灌 `CLAUDE.md` 与 `agent.md`。**
+> **工作流规则只改本文件；技术事实才改 `CLAUDE.md`。**
 >
 > 原则对齐 `~/project/lov-video/AGENTS.md` 的结构与纪律，并按本仓库现状适配
 > （Godot 4.5/4.6 客户端 + GUT 9.x + 肉鸽 Run + 日麻引擎 + 根目录 Go 健康检查桩）。
 
 ## 优先级
 
-当本文件与 `CLAUDE.md`、`agent.md`、用户即时指令、系统默认行为冲突时：
+当本文件与 `CLAUDE.md`、用户即时指令、系统默认行为冲突时：
 
 1. **用户即时指令** —— 最高
-2. **本文件**（与内联到 `CLAUDE.md` 的同一内容）—— 高
+2. **本文件** —— 高
 3. 默认系统行为 —— 最低
 
 本文件内部条款冲突时，以**更具体、约束更强**者为准。
@@ -175,69 +174,74 @@ godot --path godot -s tools/capture_screens.gd
 
 ---
 
-## Grok CLI Worker 开发与验收流程（强制）
+## Codex App + Grok CLI 单 Issue 闭环（强制）
 
-> 适用于用户明确要求使用 Grok CLI，或主 Agent 判断任务适合交给 Grok 且已先告知用户的场景。
-> Grok 是受约束的实现 worker；主 Agent 始终对需求对齐、范围控制、代码审查、验证与最终结论负责。
+> 适用于用户明确选择由 Grok CLI 开发的任务。每个 GitHub Issue 使用一个 Codex App 任务；
+> 同一个 Codex 任务负责需求对齐、驱动 Grok、独立 Review、验证、返工、Git 交付、合并和后续 Issue 分析。
+> 不额外创建 Review 任务，不引入 `agentctl` 或调度器；右侧终端可直接运行 Grok，tmux 仅在用户明确需要断线恢复时使用。
 
 ### 适用边界与状态
 
-- 默认只使用 **1 个 Grok worker 串行开发**；除非任务可独立拆分且用户明确同意，不启动多个 Grok / 子 Agent 并行改同一需求。
+- 一个 Issue 对应一个 Codex App 任务、一个任务分支和一个 worktree；同一 worktree 同时只能有一个 Grok 写入。
+- 默认只运行 **1 个 Grok CLI 会话串行开发**；禁止 Grok 再派生子任务修改同一需求。
 - 高歧义需求、需要产品取舍、不可逆生产操作、权限或凭证不明确时，不得先让 Grok 猜测实现。
 - 需要用户选择时进入 `BLOCKED_USER_DECISION`，明确列出选项、影响和推荐项并等待答复；不得跳过。若宿主提供 goal/status 工具，按该工具自身规则设置阻塞状态，不得伪造状态。
 - 推荐状态流：
 
 ```text
 BLOCKED_USER_DECISION（如需）
-  → GROK_PLAN_REVIEW
+  → GROK_PLAN_INTERACTIVE
+  → USER_PLAN_CONFIRMED
   → GROK_IMPLEMENTING
-  → MAIN_AGENT_REVIEW
+  → CODEX_REVIEW
   → REWORK_REQUIRED（如有 P0/P1/P2）
   → VALIDATING
   → READY_FOR_PR
-  → WAITING_HUMAN_MERGE
+  → MERGED
+  → NEXT_ISSUE_ANALYSIS
 ```
 
-### 1. 主 Agent 先完成前置闸门
+### 1. 当前 Codex 任务先完成前置闸门
 
-调用 Grok 前，主 Agent 必须独立完成：
+调用 Grok 前，当前 Codex 任务必须独立完成：
 
-1. 阅读用户原始需求、本文件、相关代码和 Git 现场；不能把需求理解本身外包给 worker。
+1. 阅读用户原始需求、本文件、相关代码和 Git 现场；不能把需求理解本身交给 Grok。
 2. 确认任务 worktree、基线分支、允许修改的文件范围、禁止项、验收命令和成功标准。
 3. 写出关键假设与真实歧义；需要用户选择的内容先向用户确认。
 4. 将任务整理成可核对的 prompt contract：原需求、已确认决策、非目标、TDD 要求、验证门禁、Git 权限和交付格式。
 
-### 2. 每项实现必须先跑 Grok Plan 模式
+### 2. 在当前任务右侧终端交互确认 Grok Plan
 
-使用本机 Grok CLI 已验证的计划权限模式；默认禁用 Grok 子 Agent：
+使用当前 Codex App 任务的右侧终端直接启动 Grok TUI，不使用单轮 `-p/--single`，让用户能在同一窗口追问、修改并确认计划：
 
 ```bash
 grok --cwd "$TASK_WORKTREE" \
   --permission-mode plan \
   --no-subagents \
-  -p "$PLAN_PROMPT"
+  "$PLAN_PROMPT"
 ```
 
 - `PLAN_PROMPT` 必须要求 Grok 只分析和给计划，不改文件、不执行 Git 写操作。
-- 主 Agent 审查计划是否逐条覆盖原需求、Red → Green → Refactor、改动边界、真实验证和风险。
-- 计划遗漏、越界或替用户做了未确认选择时，先打回重写；**未通过计划审查不得进入编码**。
+- 用户必须在 Grok TUI 中明确确认计划；确认前不得切换到开发权限。
+- 当前 Codex 任务同时审查计划是否逐条覆盖原需求、Red → Green → Refactor、改动边界、真实验证和风险。
+- 计划遗漏、越界或替用户做了未确认选择时，先在 TUI 中要求重写；**未通过计划审查不得进入编码**。
 - Plan 模式若仍产生文件改动，视为异常变更，按“闸门 A”处理。
 
-### 3. 计划通过后才让 Grok 真正开发
+### 3. 确认后恢复同一 Grok 会话开发
 
-开发调用必须明确关闭 Plan 模式，并使用可编辑但非无条件放权的权限模式：
+用户确认计划后，退出 Plan TUI，再从同一 worktree 恢复最近的 Grok 会话；必须明确关闭 Plan 模式，并使用可编辑但非无条件放权的权限模式：
 
 ```bash
 grok --cwd "$TASK_WORKTREE" \
+  --continue \
   --permission-mode acceptEdits \
   --no-plan \
-  --no-subagents \
-  -p "$IMPLEMENT_PROMPT"
+  --no-subagents
 ```
 
-- `IMPLEMENT_PROMPT` 必须完整包含或引用**已批准计划**，并要求先读 worktree 内的 `AGENTS.md`。
+- 继续会话后必须明确要求按已确认计划实施，并先读 worktree 内的 `AGENTS.md`。
 - 明确允许修改的路径、禁止修改的路径、先写失败测试、相关验证命令，以及不可静默决定的事项。
-- 默认禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限；确有需要必须由主 Agent 说明风险并取得用户授权。
+- 默认禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限；确有需要必须由当前 Codex 任务说明风险并取得用户授权。
 - Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
 
 ### 4. Grok 的固定交付格式
@@ -250,18 +254,18 @@ Grok 完成一轮后必须汇报：
 4. 未验证项、已知风险、网络端到端缺口；
 5. 当前 `git status`、commit / push / PR 状态（若获授权执行）。
 
-Worker 自述仅用于定位证据，**不能作为验收结论**。
+Grok 自述仅用于定位证据，**不能作为验收结论**。
 
-### 5. 主 Agent 必须独立从 diff 开始审查
+### 5. 当前 Codex 任务必须独立从 diff 开始 Review
 
-Grok 交付后，主 Agent 必须亲自运行并阅读结果：
+Grok 交付后，当前 Codex 任务必须亲自运行并阅读结果：
 
 ```bash
 git status --short --branch
 git diff --stat
 git diff --check
 git diff
-# worker 已提交时，改用实际基线：
+# Grok 已提交时，改用实际基线：
 git diff "$BASE_REF"...HEAD
 ```
 
@@ -270,25 +274,26 @@ git diff "$BASE_REF"...HEAD
 - 对照用户原需求与批准计划逐条核对，不能只看“代码能跑”；
 - 逐个读取所有变更文件，确认没有隐藏的范围扩张、未确认决策、临时代码或意外文件；
 - 检查测试是否真正覆盖核心行为，mock 是否越过真实逻辑，Red 证据是否合理；
-- 按风险由主 Agent **独立复跑** focused 测试、模块测试、全量 GUT、import、UI 截图或其他必要门禁；
-- worker 声称的测试、提交、推送、PR、CI 与远端状态都要重新核实。
+- 按风险由当前 Codex 任务**独立复跑** focused 测试、模块测试、全量 GUT、import、UI 截图或其他必要门禁；
+- Grok 声称的测试、提交、推送、PR、CI 与远端状态都要重新核实。
 
 问题严重度统一为：P0 阻断/数据安全，P1 主要功能或架构错误，P2 正确性、契约或关键覆盖缺口，P3 非阻断改进。**P0、P1、P2 必须全部关闭后才可进入提交/PR 交付；P3 可记录后续。**
 
-### 6. 打回与复验循环
+### 6. 返回同一 Grok 会话返工并复验
 
 - 打回 Grok 时给出具体证据：文件与行、违反的需求/规则、失败命令与期望结果；禁止只说“质量不好”。
-- 修复调用继续使用 `acceptEdits + --no-plan + --no-subagents`，prompt 只包含已确认范围和本轮问题，不借机扩需求。
-- 每轮修复后，主 Agent 重新审查**完整累计 diff**并复跑受影响验证；不能只看最后一个补丁或只相信 Grok 的复测结果。
+- 修复继续从原 worktree 使用 `--continue + acceptEdits + --no-plan + --no-subagents` 恢复同一会话，只处理已确认范围和本轮问题，不另开第二个写入会话，不借机扩需求。
+- 每轮修复后，当前 Codex 任务重新审查**完整累计 diff**并复跑受影响验证；不能只看最后一个补丁或只相信 Grok 的复测结果。
 - 循环直到 P0–P2 清零且所有成功标准有独立证据；否则状态保持 `REWORK_REQUIRED` 或真实阻塞状态。
 
-### 7. Git、PR 与合并
+### 7. Git、合并与下一批 Issue
 
-- Grok 可以在主 Agent 明确授权后执行 commit、push、创建 PR 或合并，以节省操作时间；授权必须写清分支、目标分支和允许动作。
-- Grok 执行后，主 Agent 仍须核对本地 `HEAD`、远端分支 SHA、PR diff/状态、CI 和目标分支，不能把“命令成功”当作已交付。
-- 默认在代码验收通过后才授权 Git 交付；禁止把未审查改动先提交来规避 diff 审查。
+- 默认由当前 Codex 任务在验收通过后执行 commit、push、创建 PR 和获授权的合并；Grok 不负责最终 Git 交付。
+- 当前 Codex 任务必须核对本地 `HEAD`、远端分支 SHA、PR 完整 diff/状态、CI 和目标分支，不能把“命令成功”当作已交付。
+- 禁止把未审查改动先提交来规避 diff 审查。
 - **禁止自动合并**，除非用户在当前任务中明确授权；需要人工合并时停在 `WAITING_HUMAN_MERGE`。
-- 合并后的后续开发必须重新确认最新 `origin/main`，不能沿用合并前的陈旧基线。
+- 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场，分析下一批可做任务。
+- 只有依赖已满足且修改范围不会冲突的 Issue 才能并行；每个后续 Issue 分别创建新的 Codex App 任务、分支和 worktree，并从交互 Grok Plan 重新开始。
 
 ---
 
