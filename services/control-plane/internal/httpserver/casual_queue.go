@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/queue"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
@@ -33,17 +34,40 @@ type ticketResponse struct {
 	Status     string `json:"status"`
 	QueuedAt   string `json:"queued_at"`
 	DeadlineAt string `json:"deadline_at"`
+	// assigned 时填充（ADR：Worker / room / seat / token）
+	Worker    string `json:"worker,omitempty"`
+	RoomID    string `json:"room_id,omitempty"`
+	Seat      *int   `json:"seat,omitempty"`
+	RoomToken string `json:"room_token,omitempty"`
+}
+
+func formatAPITime(t time.Time) string {
+	t = t.UTC()
+	if t.Nanosecond() == 0 {
+		return t.Format("2006-01-02T15:04:05Z")
+	}
+	return t.Format("2006-01-02T15:04:05.000Z")
 }
 
 func ticketToResponse(tk queue.Ticket) ticketResponse {
-	return ticketResponse{
+	resp := ticketResponse{
 		TicketID:   tk.TicketID,
 		RoundKind:  string(tk.RoundKind),
 		GameMode:   string(tk.GameMode),
 		Status:     tk.Status,
-		QueuedAt:   tk.QueuedAt.Time().UTC().Format("2006-01-02T15:04:05Z"),
-		DeadlineAt: tk.DeadlineAt.Time().UTC().Format("2006-01-02T15:04:05Z"),
+		QueuedAt:   formatAPITime(tk.QueuedAt.Time()),
+		DeadlineAt: formatAPITime(tk.DeadlineAt.Time()),
 	}
+	if tk.Status == queue.StatusAssigned {
+		resp.Worker = tk.Worker
+		resp.RoomID = tk.RoomID
+		resp.RoomToken = tk.RoomToken
+		if tk.HasSeat {
+			seat := tk.Seat
+			resp.Seat = &seat
+		}
+	}
+	return resp
 }
 
 // handleCasualQueueCollectionFallback 捕获集合路径非 POST 方法，返回 ADR JSON 405。
