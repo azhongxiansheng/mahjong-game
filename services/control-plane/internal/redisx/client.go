@@ -13,7 +13,7 @@ type Options struct {
 	DB       int
 }
 
-// Client 封装 go-redis，仅提供本 Issue 所需的 Ping/Close。
+// Client 封装 go-redis，提供 Ping/Close 与底层访问（队列等真实 Redis 语义）。
 type Client struct {
 	rdb *redis.Client
 }
@@ -26,6 +26,11 @@ func New(opts Options) (*Client, error) {
 		DB:       opts.DB,
 	})
 	return &Client{rdb: rdb}, nil
+}
+
+// Redis 返回底层 go-redis 客户端（队列/票据等真实命令）。
+func (c *Client) Redis() *redis.Client {
+	return c.rdb
 }
 
 // Ping 对真实 Redis 执行 PING。

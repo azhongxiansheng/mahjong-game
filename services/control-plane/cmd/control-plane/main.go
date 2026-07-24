@@ -12,6 +12,7 @@ import (
 
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/config"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/httpserver"
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/queue"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/redisx"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
 )
@@ -43,10 +44,18 @@ func main() {
 		}
 	}()
 
+	queueSvc, err := queue.NewService(queue.Options{
+		Redis: redisClient.Redis(),
+	})
+	if err != nil {
+		log.Fatalf("queue: %v", err)
+	}
+
 	srv := httpserver.New(httpserver.Config{
 		Addr:         cfg.HTTPAddr,
 		Pinger:       redisClient,
 		TokenService: tokenSvc,
+		CasualQueue:  queueSvc,
 	})
 
 	errCh := make(chan error, 1)
