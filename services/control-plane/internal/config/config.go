@@ -6,15 +6,19 @@ import (
 	"strconv"
 )
 
+const minTokenSigningSecretLen = 32
+
 // Config 为 Control Plane 进程配置（仅环境变量入口）。
 type Config struct {
-	HTTPAddr      string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
+	HTTPAddr           string
+	RedisAddr          string
+	RedisPassword      string
+	RedisDB            int
+	TokenSigningSecret string
 }
 
 // Load 从环境变量读取配置；空值使用计划冻结的默认值。
+// TOKEN_SIGNING_SECRET 必填且长度 >= 32；缺失/空/过短时稳定失败。
 func Load() (Config, error) {
 	cfg := Config{
 		HTTPAddr:      envOr("HTTP_ADDR", ":8081"),
@@ -30,6 +34,15 @@ func Load() (Config, error) {
 		}
 		cfg.RedisDB = db
 	}
+
+	secret := os.Getenv("TOKEN_SIGNING_SECRET")
+	if secret == "" {
+		return Config{}, fmt.Errorf("TOKEN_SIGNING_SECRET is required")
+	}
+	if len(secret) < minTokenSigningSecretLen {
+		return Config{}, fmt.Errorf("TOKEN_SIGNING_SECRET must be at least %d bytes", minTokenSigningSecretLen)
+	}
+	cfg.TokenSigningSecret = secret
 
 	return cfg, nil
 }

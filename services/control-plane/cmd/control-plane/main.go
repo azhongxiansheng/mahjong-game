@@ -13,12 +13,20 @@ import (
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/config"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/httpserver"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/redisx"
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
 )
 
 func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	tokenSvc, err := tokens.NewService(tokens.Options{
+		Secret: cfg.TokenSigningSecret,
+	})
+	if err != nil {
+		log.Fatalf("tokens: %v", err)
 	}
 
 	redisClient, err := redisx.New(redisx.Options{
@@ -36,8 +44,9 @@ func main() {
 	}()
 
 	srv := httpserver.New(httpserver.Config{
-		Addr:   cfg.HTTPAddr,
-		Pinger: redisClient,
+		Addr:         cfg.HTTPAddr,
+		Pinger:       redisClient,
+		TokenService: tokenSvc,
 	})
 
 	errCh := make(chan error, 1)
