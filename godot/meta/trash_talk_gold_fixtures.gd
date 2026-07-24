@@ -1,6 +1,8 @@
 class_name TrashTalkGoldFixtures extends RefCounted
 
-# E5-01 / #249：黄金数值 fixture（全零 + 有文本），供 #250/#251 字节级消费。
+# E5-01 / #249 + E5-03 / #251：黄金数值 fixture（全零 + 有文本）。
+# expected.matrix_components 必须与 scorer 每 cell 冻结字段字节级一致：
+# seat, item_id, persona, item_tag, public_context, expression, total_score, matched_rule_ids
 
 
 static func all() -> Array:
@@ -9,11 +11,12 @@ static func all() -> Array:
 
 static func gold_zero() -> Dictionary:
 	var seats := [0, 1, 2, 3]
+	# 字典序冻结奖池（与评分器 _normalize_pool_item_ids 一致）
 	var items := [
+		"dora_charm_v1",
+		"double_payout_v1",
 		"iron_shield_v1",
 		"wall_peek_v1",
-		"double_payout_v1",
-		"dora_charm_v1",
 	]
 	var matrix: Array = []
 	var matched := {}
@@ -27,6 +30,8 @@ static func gold_zero() -> Dictionary:
 				"item_tag": 0,
 				"public_context": 0,
 				"expression": 0,
+				"total_score": 0,
+				"matched_rule_ids": [],
 			})
 	return {
 		"fixture_id": "gold_zero_v1",
@@ -46,24 +51,35 @@ static func gold_zero() -> Dictionary:
 
 
 static func gold_text() -> Dictionary:
-	# seat1=裘绝 固定文本；CTX_RIICHI_OPEN；奖池含 double_payout_v1
+	# seat1=裘绝 AI 模板整句；CTX_RIICHI_OPEN；奖池字典序
+	# persona: keyword 220 + template 100 = 320
+	# expression: 180
+	# public_context: riichi 120（仅有文本活动席）
+	# item_tag: double_payout 150（secondary DOMINATION）+ relic_lucky_cat 130（primary PASSION）
 	var items := [
 		"double_payout_v1",
 		"iron_shield_v1",
-		"wall_peek_v1",
 		"relic_lucky_cat_v1",
+		"wall_peek_v1",
 	]
-	var seat1_rules := [
+	var seat1_base := [
+		"r_ctx_riichi_open_01",
+		"r_expr_generic_zh_01",
 		"r_persona_qiu_jue_kw_zh_01",
+		"r_persona_qiu_jue_tpl_zh_01",
+	]
+	var seat1_all := [
+		"r_ctx_riichi_open_01",
 		"r_expr_generic_zh_01",
 		"r_item_double_payout_tag_01",
-		"r_ctx_riichi_open_01",
+		"r_item_relic_lucky_cat_tag_01",
+		"r_persona_qiu_jue_kw_zh_01",
+		"r_persona_qiu_jue_tpl_zh_01",
 	]
-	# persona 220 + expression 180 + item_tag 150 + public_context 120
 	var matrix: Array = []
 	var matched := {
 		"0": [],
-		"1": seat1_rules.duplicate(),
+		"1": seat1_all.duplicate(),
 		"2": [],
 		"3": [],
 	}
@@ -73,12 +89,20 @@ static func gold_text() -> Dictionary:
 			var item_tag := 0
 			var public_context := 0
 			var expression := 0
+			var cell_rules: Array = []
 			if seat == 1:
-				persona = 220
+				persona = 320
 				expression = 180
 				public_context = 120
+				cell_rules = seat1_base.duplicate()
 				if item_id == "double_payout_v1":
 					item_tag = 150
+					cell_rules.append("r_item_double_payout_tag_01")
+				elif item_id == "relic_lucky_cat_v1":
+					item_tag = 130
+					cell_rules.append("r_item_relic_lucky_cat_tag_01")
+				cell_rules.sort()
+			var total: int = persona + item_tag + public_context + expression
 			matrix.append({
 				"seat": seat,
 				"item_id": item_id,
@@ -86,6 +110,8 @@ static func gold_text() -> Dictionary:
 				"item_tag": item_tag,
 				"public_context": public_context,
 				"expression": expression,
+				"total_score": total,
+				"matched_rule_ids": cell_rules,
 			})
 	return {
 		"fixture_id": "gold_text_v1",

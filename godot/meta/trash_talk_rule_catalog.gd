@@ -14,6 +14,11 @@ const PUBLIC_CONTEXT_TAGS: Array[String] = [
 	"CTX_SEAT_TRAILING",
 	"CTX_WINDOW_LATE",
 	"CTX_DORA_REVEALED",
+	# E5-03 / #251：庄家 / 和牌公开事实（逐席；CANCELLED 路径供适配器审计）
+	"CTX_IS_DEALER",
+	"CTX_RON_WINNER",
+	"CTX_TSUMO_WINNER",
+	"CTX_DEAL_IN_LOSER",
 ]
 
 static func rule_version() -> String:
@@ -1338,6 +1343,50 @@ static func _public_context_rules_table() -> Array:
 			"match": {
 				"kind": "PUBLIC_CONTEXT",
 				"context_tag": "CTX_DORA_REVEALED",
+			},
+		},
+		{
+			"rule_id": "r_ctx_is_dealer_01",
+			"component": "public_context",
+			"points": 90,
+			"cap": 1000,
+			"once_per_window_seat": true,
+			"match": {
+				"kind": "PUBLIC_CONTEXT",
+				"context_tag": "CTX_IS_DEALER",
+			},
+		},
+		{
+			"rule_id": "r_ctx_ron_winner_01",
+			"component": "public_context",
+			"points": 130,
+			"cap": 1000,
+			"once_per_window_seat": true,
+			"match": {
+				"kind": "PUBLIC_CONTEXT",
+				"context_tag": "CTX_RON_WINNER",
+			},
+		},
+		{
+			"rule_id": "r_ctx_tsumo_winner_01",
+			"component": "public_context",
+			"points": 130,
+			"cap": 1000,
+			"once_per_window_seat": true,
+			"match": {
+				"kind": "PUBLIC_CONTEXT",
+				"context_tag": "CTX_TSUMO_WINNER",
+			},
+		},
+		{
+			"rule_id": "r_ctx_deal_in_loser_01",
+			"component": "public_context",
+			"points": 100,
+			"cap": 1000,
+			"once_per_window_seat": true,
+			"match": {
+				"kind": "PUBLIC_CONTEXT",
+				"context_tag": "CTX_DEAL_IN_LOSER",
 			},
 		},
 	]
