@@ -34,8 +34,15 @@ func launch(config: GameSessionConfig) -> GameDriver:
 	elif verified.round_kind != GameSessionConfig.ROUND_EAST:
 		return null
 
+	# E2-04：构造边界按 game_mode 装配模块（STANDARD 四零 / TRASH_TALK 最小对象）
+	var modules: ModeModuleBundle = ModeModuleBundle.from_config(verified)
+	if modules == null:
+		return null
+
 	var driver := GameDriver.new(verified.seed, total_hands, HANDS_PER_ROUND)
-	# 练习玩家席语义：PlayableBattleController；不绑定 UI、不进入 run 循环
+	driver.mode_modules = modules
+	# 练习玩家席语义：PlayableBattleController；不绑定 UI、不进入 run 循环。
+	# 签名对齐 GameDriver 开局工厂 5 参（含 hand_seq）。
 	driver.bc_factory = func(
 		hand_seed: int,
 		dealer: int,
@@ -43,7 +50,10 @@ func launch(config: GameSessionConfig) -> GameDriver:
 		round_wind: int,
 		hand_seq: int
 	) -> PlayableBattleController:
-		return PlayableBattleController.new(
+		var pbc := PlayableBattleController.new(
 			hand_seed, dealer, use_heuristic, round_wind, hand_seq
 		)
+		# E2-04：模式模块进入真实 PBC 行动入口与 Momentum 装配
+		pbc.bind_mode_modules(modules)
+		return pbc
 	return driver

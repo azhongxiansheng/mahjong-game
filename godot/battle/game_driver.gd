@@ -40,6 +40,8 @@ var use_shanten_ai: bool = false
 # - total_hands=8, hands_per_round=4 → 半庄战（前 4 局东、后 4 局南）
 var total_hands: int = NUM_HANDS_EAST_ROUND
 var hands_per_round: int = NUM_HANDS_EAST_ROUND
+# E2-04：构造期注入的模式模块包（可空兼容旧路径；生产启动器必填）
+var mode_modules: ModeModuleBundle = null
 # M7：start_hand 时拍照 battle.state.scores，apply_result 时算"in-hand skill
 # 转分增量"（由 ctx.transfer_points / steal_score 写入 state.scores），把
 # 这部分 delta 应用到 cumulative_scores 让玩家技能（如 soul_drain_hatsu）真生效
