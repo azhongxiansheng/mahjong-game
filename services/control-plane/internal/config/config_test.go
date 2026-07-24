@@ -1,14 +1,18 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
+
+const validSigningSecret = "0123456789abcdef0123456789abcdef" // 32 bytes
 
 func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("HTTP_ADDR", "")
 	t.Setenv("REDIS_ADDR", "")
 	t.Setenv("REDIS_PASSWORD", "")
 	t.Setenv("REDIS_DB", "")
+	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 
 	cfg, err := Load()
 	if err != nil {
@@ -26,6 +30,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RedisDB != 0 {
 		t.Fatalf("RedisDB = %d, want 0", cfg.RedisDB)
 	}
+	if cfg.TokenSigningSecret != validSigningSecret {
+		t.Fatalf("TokenSigningSecret mismatch")
+	}
 }
 
 func TestLoad_FromEnv(t *testing.T) {
@@ -33,6 +40,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	t.Setenv("REDIS_ADDR", "10.0.0.2:6380")
 	t.Setenv("REDIS_PASSWORD", "secret")
 	t.Setenv("REDIS_DB", "3")
+	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 
 	cfg, err := Load()
 	if err != nil {
@@ -50,13 +58,43 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.RedisDB != 3 {
 		t.Fatalf("RedisDB = %d, want 3", cfg.RedisDB)
 	}
+	if cfg.TokenSigningSecret != validSigningSecret {
+		t.Fatalf("TokenSigningSecret mismatch")
+	}
 }
 
 func TestLoad_InvalidRedisDB(t *testing.T) {
+	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 	t.Setenv("REDIS_DB", "not-a-number")
 
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() expected error for invalid REDIS_DB, got nil")
+	}
+}
+
+func TestLoad_MissingTokenSigningSecret(t *testing.T) {
+	t.Setenv("TOKEN_SIGNING_SECRET", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() expected error for missing TOKEN_SIGNING_SECRET")
+	}
+	if !strings.Contains(err.Error(), "TOKEN_SIGNING_SECRET") {
+		t.Fatalf("error should mention TOKEN_SIGNING_SECRET: %v", err)
+	}
+	// Must not echo a real secret value (empty path has nothing to leak).
+	if strings.Contains(err.Error(), validSigningSecret) {
+		t.Fatal("error must not contain a signing secret value")
+	}
+}
+
+func TestLoad_ShortTokenSigningSecret(t *testing.T) {
+	t.Setenv("TOKEN_SIGNING_SECRET", "too-short-secret-value!!") // 24 chars
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() expected error for short TOKEN_SIGNING_SECRET")
+	}
+	if strings.Contains(err.Error(), "too-short-secret-value!!") {
+		t.Fatal("error must not echo the provided secret")
 	}
 }
