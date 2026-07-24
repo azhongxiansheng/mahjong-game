@@ -48,7 +48,7 @@ func launch(config: GameSessionConfig) -> GameDriver:
 		dealer: int,
 		use_heuristic: bool,
 		round_wind: int,
-		hand_seq: int = 0
+		hand_seq: int
 	) -> PlayableBattleController:
 		var pbc := PlayableBattleController.new(
 			hand_seed, dealer, use_heuristic, round_wind, hand_seq

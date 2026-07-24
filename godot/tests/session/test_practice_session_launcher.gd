@@ -156,12 +156,29 @@ func test_launch_sets_playable_battle_controller_factory() -> void:
 	var driver: Variant = launcher.launch(cfg)
 	assert_not_null(driver)
 	assert_true(driver.bc_factory.is_valid(), "应设置 bc_factory 以确保练习玩家席语义")
-	var bc: Variant = driver.bc_factory.call(33, 0, false, TileId.E)
+	var bc: Variant = driver.bc_factory.call(33, 0, false, TileId.E, 7)
 	assert_not_null(bc)
 	assert_true(
 		bc is PlayableBattleController,
 		"bc_factory 必须产出 PlayableBattleController"
 	)
+	assert_eq(bc.state.hand_seq, 7, "E2-02 的 hand_seq 必须透传到可玩控制器")
+
+
+func test_launch_driver_can_start_first_hand_with_e2_02_factory_contract() -> void:
+	var cfg: Variant = _make_practice_config(&"EAST", &"STANDARD", 34)
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	var driver: GameDriver = PracticeSessionLauncher.new().launch(cfg)
+	assert_not_null(driver)
+	if driver == null:
+		return
+	var bc := driver.start_hand()
+	assert_not_null(bc, "启动器工厂必须兼容 GameDriver 的五参数调用")
+	if bc != null:
+		assert_true(bc is PlayableBattleController)
+		assert_eq(bc.state.hand_seq, 0)
 
 
 func test_launcher_does_not_bind_ui_or_run_loop_or_legacy_runners() -> void:
