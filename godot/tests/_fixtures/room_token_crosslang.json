@@ -1,0 +1,22 @@
+{
+  "claims": {
+    "exp": 1784901600,
+    "game_mode": "STANDARD",
+    "participants": [
+      "HUMAN",
+      "HUMAN",
+      "AI",
+      "AI"
+    ],
+    "room_id": "room-fixture",
+    "round_kind": "EAST",
+    "seat": 1,
+    "session_id": "sess-fixture"
+  },
+  "expires_at_unix": 1784901600,
+  "issued_at_unix": 1784894400,
+  "note": "Go tokens.TestExportCrossLangRoomTokenFixture 签发；GDScript 只验不重签。网络端到端未验证。",
+  "secret": "0123456789abcdef0123456789abcdef",
+  "session_token_must_fail_as_room": true,
+  "token": "v1.r.eyJ0eXAiOiJyb29tIiwicm9vbV9pZCI6InJvb20tZml4dHVyZSIsInNlYXQiOjEsInNlc3Npb25faWQiOiJzZXNzLWZpeHR1cmUiLCJleHAiOjE3ODQ5MDE2MDAsInJvdW5kX2tpbmQiOiJFQVNUIiwiZ2FtZV9tb2RlIjoiU1RBTkRBUkQiLCJwYXJ0aWNpcGFudHMiOlsiSFVNQU4iLCJIVU1BTiIsIkFJIiwiQUkiXX0.-RYAleHd6uSI8mbKsv-3wA90AX6Upb-RuMCu_nuqSX4"
+}

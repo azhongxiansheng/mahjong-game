@@ -1,13 +1,26 @@
 package tokens
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
 
 const testSecret = "0123456789abcdef0123456789abcdef" // 32 bytes
+
+// 测试默认 bootstrap（1 真人 + 3 AI，EAST/STANDARD）。
+func testBootstrap() RoomBootstrap {
+	return RoomBootstrap{
+		RoundKind:    "EAST",
+		GameMode:     "STANDARD",
+		Participants: []string{"HUMAN", "AI", "AI", "AI"},
+	}
+}
 
 type fixedClock struct {
 	t time.Time
@@ -154,7 +167,12 @@ func TestIssueAndVerifyRoomToken_Bound(t *testing.T) {
 	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	svc := newTestService(t, now)
 
-	token, exp, err := svc.IssueRoomToken("sess-1", "room-a", 2)
+	boot := RoomBootstrap{
+		RoundKind:    "HANCHAN",
+		GameMode:     "TRASH_TALK",
+		Participants: []string{"HUMAN", "HUMAN", "AI", "AI"},
+	}
+	token, exp, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 2, boot)
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -169,6 +187,12 @@ func TestIssueAndVerifyRoomToken_Bound(t *testing.T) {
 	}
 	if claims.RoomID != "room-a" || claims.Seat != 2 || claims.SessionID != "sess-1" {
 		t.Fatalf("claims = %+v", claims)
+	}
+	if claims.RoundKind != "HANCHAN" || claims.GameMode != "TRASH_TALK" {
+		t.Fatalf("bootstrap round/mode = %s/%s", claims.RoundKind, claims.GameMode)
+	}
+	if len(claims.Participants) != 4 || claims.Participants[0] != "HUMAN" || claims.Participants[2] != "AI" {
+		t.Fatalf("participants = %#v", claims.Participants)
 	}
 	if !claims.ExpiresAt.Equal(wantExp) {
 		t.Fatalf("claims.ExpiresAt = %v", claims.ExpiresAt)
@@ -186,7 +210,7 @@ func TestVerifyRoomToken_CrossRoomSeatExpiredTampered(t *testing.T) {
 		t.Fatalf("NewService: %v", err)
 	}
 
-	token, _, err := svc.IssueRoomToken("sess-1", "room-a", 1)
+	token, _, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 1, testBootstrap())
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -205,7 +229,7 @@ func TestVerifyRoomToken_CrossRoomSeatExpiredTampered(t *testing.T) {
 
 	// Restore clock for tamper check with a fresh token.
 	clock.t = now
-	token2, _, err := svc.IssueRoomToken("sess-1", "room-a", 1)
+	token2, _, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 1, testBootstrap())
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -224,7 +248,7 @@ func TestTokenTypeIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IssueGuestSession: %v", err)
 	}
-	room, _, err := svc.IssueRoomToken(guest.GuestID, "room-x", 0)
+	room, _, err := svc.IssueRoomTokenBootstrap(guest.GuestID, "room-x", 0, testBootstrap())
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -240,11 +264,56 @@ func TestTokenTypeIsolation(t *testing.T) {
 func TestIssueRoomToken_InvalidSeat(t *testing.T) {
 	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	svc := newTestService(t, now)
-	if _, _, err := svc.IssueRoomToken("s", "r", -1); err == nil {
+	if _, _, err := svc.IssueRoomTokenBootstrap("s", "r", -1, testBootstrap()); err == nil {
 		t.Fatal("expected error for seat -1")
 	}
-	if _, _, err := svc.IssueRoomToken("s", "r", 4); err == nil {
+	if _, _, err := svc.IssueRoomTokenBootstrap("s", "r", 4, testBootstrap()); err == nil {
 		t.Fatal("expected error for seat 4")
+	}
+}
+
+func TestIssueRoomToken_InvalidBootstrap(t *testing.T) {
+	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	svc := newTestService(t, now)
+	cases := []RoomBootstrap{
+		{RoundKind: "east", GameMode: "STANDARD", Participants: []string{"HUMAN", "AI", "AI", "AI"}},
+		{RoundKind: "EAST", GameMode: "standard", Participants: []string{"HUMAN", "AI", "AI", "AI"}},
+		{RoundKind: "EAST", GameMode: "STANDARD", Participants: []string{"HUMAN", "AI"}},
+		{RoundKind: "EAST", GameMode: "STANDARD", Participants: []string{"BOT", "AI", "AI", "AI"}},
+		{RoundKind: "EAST", GameMode: "STANDARD", Participants: []string{"AI", "AI", "AI", "AI"}},
+	}
+	for i, boot := range cases {
+		if _, _, err := svc.IssueRoomTokenBootstrap("s", "r", 0, boot); err == nil {
+			t.Fatalf("case %d: expected invalid bootstrap error", i)
+		}
+	}
+}
+
+func TestVerifyRoomToken_BootstrapClaimsTamperedFail(t *testing.T) {
+	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	svc := newTestService(t, now)
+	token, _, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 0, testBootstrap())
+	if err != nil {
+		t.Fatalf("IssueRoomToken: %v", err)
+	}
+	// 改写 payload 中 game_mode 后签名必失败。
+	parts := strings.Split(token, ".")
+	if len(parts) != 4 {
+		t.Fatalf("token parts = %d", len(parts))
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	// 最小篡改：替换 STANDARD → TRASH_TALK 的字节会导致 JSON 变化
+	tampered := strings.Replace(string(raw), `"STANDARD"`, `"TRASH_TALK"`, 1)
+	if tampered == string(raw) {
+		t.Fatal("fixture payload missing STANDARD")
+	}
+	parts[2] = base64.RawURLEncoding.EncodeToString([]byte(tampered))
+	bad := strings.Join(parts, ".")
+	if _, err := svc.VerifyRoomToken(bad, "room-a", 0); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("tampered bootstrap: %v", err)
 	}
 }
 
@@ -285,7 +354,7 @@ func TestIssueRoomToken_ExpiresAtMatchesTokenSecondPrecision(t *testing.T) {
 	now := time.Date(2026, 7, 24, 12, 0, 0, 987654321, time.UTC)
 	svc := newTestService(t, now)
 
-	token, exp, err := svc.IssueRoomToken("sess-1", "room-a", 2)
+	token, exp, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 2, testBootstrap())
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -299,5 +368,93 @@ func TestIssueRoomToken_ExpiresAtMatchesTokenSecondPrecision(t *testing.T) {
 	}
 	if exp.Nanosecond() != 0 {
 		t.Fatalf("expiresAt must be second-aligned for token wire format, got ns=%d", exp.Nanosecond())
+	}
+}
+
+// crossLangFixturePath 指向仓库内已提交的 Go→GDScript 跨语言 fixture。
+func crossLangFixturePath() string {
+	return filepath.Join("..", "..", "..", "..", "godot", "tests", "_fixtures", "room_token_crosslang.json")
+}
+
+func issueCrossLangFixtureToken(t *testing.T) (token string, issuedAt, expiresAt int64) {
+	t.Helper()
+	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
+	svc := newTestService(t, now)
+	boot := RoomBootstrap{
+		RoundKind:    "EAST",
+		GameMode:     "STANDARD",
+		Participants: []string{"HUMAN", "HUMAN", "AI", "AI"},
+	}
+	tok, exp, err := svc.IssueRoomTokenBootstrap("sess-fixture", "room-fixture", 1, boot)
+	if err != nil {
+		t.Fatalf("IssueRoomToken: %v", err)
+	}
+	return tok, now.Unix(), exp.Unix()
+}
+
+// TestCrossLangRoomTokenFixture_MatchesCommitted 默认无副作用：
+// Go 真实签发后与已提交 fixture 字节级比对；禁止普通 go test 改写仓库。
+func TestCrossLangRoomTokenFixture_MatchesCommitted(t *testing.T) {
+	token, issuedAt, expiresAt := issueCrossLangFixtureToken(t)
+	raw, err := os.ReadFile(crossLangFixturePath())
+	if err != nil {
+		t.Fatalf("read committed fixture: %v (若需重建请 UPDATE_CROSSLANG_FIXTURE=1)", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	gotTok, _ := doc["token"].(string)
+	if gotTok != token {
+		t.Fatalf("committed fixture token mismatch Go re-issue; set UPDATE_CROSSLANG_FIXTURE=1 to refresh")
+	}
+	if int64(doc["issued_at_unix"].(float64)) != issuedAt {
+		t.Fatalf("issued_at_unix mismatch")
+	}
+	if int64(doc["expires_at_unix"].(float64)) != expiresAt {
+		t.Fatalf("expires_at_unix mismatch")
+	}
+	// 自洽：刚签发的 token 必须可验
+	svc := newTestService(t, time.Unix(issuedAt, 0).UTC())
+	if _, err := svc.VerifyRoomToken(token, "room-fixture", 1); err != nil {
+		t.Fatalf("re-issued token verify: %v", err)
+	}
+}
+
+// TestUpdateCrossLangRoomTokenFixture 仅在显式环境变量下写回 fixture（维护入口）。
+func TestUpdateCrossLangRoomTokenFixture(t *testing.T) {
+	if os.Getenv("UPDATE_CROSSLANG_FIXTURE") != "1" {
+		t.Skip("set UPDATE_CROSSLANG_FIXTURE=1 to rewrite godot/tests/_fixtures/room_token_crosslang.json")
+	}
+	token, issuedAt, expiresAt := issueCrossLangFixtureToken(t)
+	svc := newTestService(t, time.Unix(issuedAt, 0).UTC())
+	claims, err := svc.VerifyRoomToken(token, "room-fixture", 1)
+	if err != nil {
+		t.Fatalf("VerifyRoomToken: %v", err)
+	}
+	doc := map[string]any{
+		"secret":          testSecret,
+		"token":           token,
+		"issued_at_unix":  issuedAt,
+		"expires_at_unix": expiresAt,
+		"claims": map[string]any{
+			"room_id":      claims.RoomID,
+			"seat":         claims.Seat,
+			"session_id":   claims.SessionID,
+			"round_kind":   claims.RoundKind,
+			"game_mode":    claims.GameMode,
+			"participants": claims.Participants,
+			"exp":          claims.ExpiresAt.Unix(),
+		},
+		"session_token_must_fail_as_room": true,
+		"note":                           "Go tokens 真实签发；GDScript 只验不重签。UPDATE_CROSSLANG_FIXTURE=1 维护。网络端到端未验证。",
+	}
+	body, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	body = append(body, '\n')
+	if err := os.WriteFile(crossLangFixturePath(), body, 0o600); err != nil {
+		t.Fatalf("write fixture: %v", err)
 	}
 }

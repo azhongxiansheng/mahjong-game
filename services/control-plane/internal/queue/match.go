@@ -33,8 +33,9 @@ const (
 )
 
 // RoomTokenIssuer 签发房间令牌（由 tokens.Service 实现）。
+// roundKind / gameMode / participants 为 #240 不可篡改房间启动声明。
 type RoomTokenIssuer interface {
-	IssueRoomToken(sessionID, roomID string, seat int) (token string, expiresAt time.Time, err error)
+	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (token string, expiresAt time.Time, err error)
 }
 
 // MatchParams 单次池匹配参数。
@@ -107,9 +108,20 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 		}
 
 		// 预签发：失败则不写 Redis，池与 ticket 保持 waiting。
+		// participants 全房一致：前 human 席 HUMAN，其余 AI（与 Redis seat_*_kind 对齐）。
+		participants := make([]string, 4)
+		for i := 0; i < 4; i++ {
+			if i < len(cands) {
+				participants[i] = SeatKindHuman
+			} else {
+				participants[i] = SeatKindAI
+			}
+		}
 		tokens := make([]string, len(cands))
 		for i, c := range cands {
-			tok, _, err := params.TokenIssuer.IssueRoomToken(c.GuestID, roomID, i)
+			tok, _, err := params.TokenIssuer.IssueRoomToken(
+				c.GuestID, roomID, i, string(rk), string(gm), participants,
+			)
 			if err != nil {
 				return MatchResult{}, fmt.Errorf("issue room token: %w", err)
 			}

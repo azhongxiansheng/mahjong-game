@@ -108,12 +108,24 @@ type GuestClaims struct {
 	ExpiresAt   time.Time
 }
 
-// RoomClaims 为房间令牌解析结果。
+// RoomClaims 为房间令牌解析结果（含 #240 不可篡改启动声明）。
 type RoomClaims struct {
-	RoomID    string
-	Seat      int
-	SessionID string
-	ExpiresAt time.Time
+	RoomID       string
+	Seat         int
+	SessionID    string
+	ExpiresAt    time.Time
+	RoundKind    string
+	GameMode     string
+	Participants []string
+}
+
+// RoomBootstrap 房间启动声明：签入 room_token，客户端只能运输不能改写。
+// RoundKind ∈ EAST|HANCHAN；GameMode ∈ STANDARD|TRASH_TALK；
+// Participants 恰 4 席，每席 HUMAN|AI。
+type RoomBootstrap struct {
+	RoundKind    string
+	GameMode     string
+	Participants []string
 }
 
 type guestPayload struct {
@@ -124,11 +136,14 @@ type guestPayload struct {
 }
 
 type roomPayload struct {
-	Typ       string `json:"typ"`
-	RoomID    string `json:"room_id"`
-	Seat      int    `json:"seat"`
-	SessionID string `json:"session_id"`
-	Exp       int64  `json:"exp"`
+	Typ          string   `json:"typ"`
+	RoomID       string   `json:"room_id"`
+	Seat         int      `json:"seat"`
+	SessionID    string   `json:"session_id"`
+	Exp          int64    `json:"exp"`
+	RoundKind    string   `json:"round_kind"`
+	GameMode     string   `json:"game_mode"`
+	Participants []string `json:"participants"`
 }
 
 // IssueGuestSession 签发游客会话。
@@ -182,23 +197,73 @@ func (s *Service) VerifyGuestToken(token string) (GuestClaims, error) {
 	}, nil
 }
 
-// IssueRoomToken 签发绑定 room/seat/session 的短期房间令牌（内部 API，供 #238 调用）。
-func (s *Service) IssueRoomToken(sessionID, roomID string, seat int) (token string, expiresAt time.Time, err error) {
+func validateRoomBootstrap(b RoomBootstrap) error {
+	switch b.RoundKind {
+	case "EAST", "HANCHAN":
+	default:
+		return fmt.Errorf("invalid round_kind")
+	}
+	switch b.GameMode {
+	case "STANDARD", "TRASH_TALK":
+	default:
+		return fmt.Errorf("invalid game_mode")
+	}
+	if len(b.Participants) != 4 {
+		return fmt.Errorf("participants must have length 4")
+	}
+	human := 0
+	for _, p := range b.Participants {
+		switch p {
+		case "HUMAN":
+			human++
+		case "AI":
+		default:
+			return fmt.Errorf("invalid participant kind")
+		}
+	}
+	if human < 1 {
+		return fmt.Errorf("participants must include at least one HUMAN")
+	}
+	return nil
+}
+
+// IssueRoomToken 签发绑定 room/seat/session 与启动声明的短期房间令牌。
+// roundKind / gameMode / participants 为不可篡改 bootstrap claims（#240）。
+// 形参列表与 queue.RoomTokenIssuer 对齐，便于 main 直接注入。
+func (s *Service) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (token string, expiresAt time.Time, err error) {
+	return s.IssueRoomTokenBootstrap(sessionID, roomID, seat, RoomBootstrap{
+		RoundKind:    roundKind,
+		GameMode:     gameMode,
+		Participants: participants,
+	})
+}
+
+// IssueRoomTokenBootstrap 与 IssueRoomToken 等价，接受结构体形式的启动声明。
+func (s *Service) IssueRoomTokenBootstrap(sessionID, roomID string, seat int, bootstrap RoomBootstrap) (token string, expiresAt time.Time, err error) {
 	if sessionID == "" || roomID == "" {
 		return "", time.Time{}, fmt.Errorf("session_id and room_id required")
 	}
 	if seat < 0 || seat > 3 {
 		return "", time.Time{}, fmt.Errorf("seat must be 0..3")
 	}
+	if err := validateRoomBootstrap(bootstrap); err != nil {
+		return "", time.Time{}, err
+	}
+	// 拷贝 participants，避免调用方后续改写影响已签语义。
+	parts := make([]string, 4)
+	copy(parts, bootstrap.Participants)
 	now := s.clock.Now().UTC()
 	// 与 payload exp.Unix() / 校验 time.Unix(exp,0) 对齐到 UTC 秒，避免纳秒偏差。
 	exp := time.Unix(now.Add(RoomTokenTTL).Unix(), 0).UTC()
 	tok, err := s.sign(typRoom, roomPayload{
-		Typ:       claimRoom,
-		RoomID:    roomID,
-		Seat:      seat,
-		SessionID: sessionID,
-		Exp:       exp.Unix(),
+		Typ:          claimRoom,
+		RoomID:       roomID,
+		Seat:         seat,
+		SessionID:    sessionID,
+		Exp:          exp.Unix(),
+		RoundKind:    bootstrap.RoundKind,
+		GameMode:     bootstrap.GameMode,
+		Participants: parts,
 	})
 	if err != nil {
 		return "", time.Time{}, err
@@ -207,6 +272,7 @@ func (s *Service) IssueRoomToken(sessionID, roomID string, seat int) (token stri
 }
 
 // VerifyRoomToken 校验房间令牌，并要求 room_id 与 seat 匹配期望值。
+// 同时校验 bootstrap claims 形态；改写 claims 会因 HMAC 失败或形态失败返回 ErrUnauthorized。
 func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int) (RoomClaims, error) {
 	raw, err := s.verifyRaw(token, typRoom)
 	if err != nil {
@@ -222,6 +288,13 @@ func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int
 	if p.Seat < 0 || p.Seat > 3 {
 		return RoomClaims{}, ErrUnauthorized
 	}
+	if err := validateRoomBootstrap(RoomBootstrap{
+		RoundKind:    p.RoundKind,
+		GameMode:     p.GameMode,
+		Participants: p.Participants,
+	}); err != nil {
+		return RoomClaims{}, ErrUnauthorized
+	}
 	exp := time.Unix(p.Exp, 0).UTC()
 	if !s.clock.Now().UTC().Before(exp) {
 		return RoomClaims{}, ErrUnauthorized
@@ -229,11 +302,16 @@ func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int
 	if p.RoomID != expectedRoomID || p.Seat != expectedSeat {
 		return RoomClaims{}, ErrUnauthorized
 	}
+	parts := make([]string, 4)
+	copy(parts, p.Participants)
 	return RoomClaims{
-		RoomID:    p.RoomID,
-		Seat:      p.Seat,
-		SessionID: p.SessionID,
-		ExpiresAt: exp,
+		RoomID:       p.RoomID,
+		Seat:         p.Seat,
+		SessionID:    p.SessionID,
+		ExpiresAt:    exp,
+		RoundKind:    p.RoundKind,
+		GameMode:     p.GameMode,
+		Participants: parts,
 	}, nil
 }
 

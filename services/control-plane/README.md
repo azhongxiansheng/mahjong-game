@@ -2,7 +2,7 @@
 
 独立 Go module：配置入口、探针、游客会话签发、房间令牌内部服务、**公共休闲队列**与 **30 秒 AI 补位匹配**（#238–#239）。
 
-**网络端到端未验证。** 本目录尚未实现 Headless Worker 牌局、WebSocket、房间快照/重连、Worker 注册续租（#240–#242、#256）。匹配结果中的 Worker 地址来自静态环境变量 `WORKER_ENDPOINT`（过渡契约）。
+**网络端到端未验证。** Headless Worker 牌局在 Godot 进程（`godot/server/headless_worker*.gd`，#240）；本目录不跑日麻规则。房间快照重连 / Worker 注册续租见 #241/#256。匹配结果中的 Worker 地址来自静态环境变量 `WORKER_ENDPOINT`（过渡契约，须指向真实监听中的 Worker）。
 
 ## 环境变量
 
@@ -109,8 +109,9 @@ curl -sS -X DELETE "http://127.0.0.1:8081/v1/queues/casual/$TICKET_ID" \
 - **完整原子分配**：先预签发全部真人 `room_token`，再经 **单次 Redis Lua** 校验候选仍有效后，一次写入 room + 全部 ticket 的 `status=assigned` / `worker` / `room_id` / `seat` / `room_token`。提交前对外不可见不完整 assigned；issuer 失败不写 Redis。
 - 多 Control Plane 实例通过真实 Redis 原子语义收敛；同一 ticket 只进一房。
 - 座位种类 ADR 稳定值：`HUMAN` / `AI`。
-- 房间令牌经 `tokens.Service.IssueRoomToken` 签发，绑定 `session_id(=guest_id) + room_id + seat`；`session_token` 与 `room_token` 不可互冒。
+- 房间令牌经 `tokens.Service.IssueRoomToken` 签发，绑定 `session_id(=guest_id) + room_id + seat + exp`，并签入不可篡改 **`round_kind` / `game_mode` / `participants`**（#240 bootstrap）；`session_token` 与 `room_token` 不可互冒。
 - `WORKER_ENDPOINT` 原样写入分配结果的 `worker` 字段（无 Worker 注册/健康回收）。
+- 本地牌局 smoke（真实 Redis+CP+Worker+多客户端，**非公网**）：`godot/tools/e3_240_multiproc_smoke.sh`；声明 **网络端到端未验证**。
 
 HTTP 错误体（ADR 逻辑包络）：`{"code":"...","message":"...","request_id":"..."}`。
 
@@ -118,8 +119,10 @@ HTTP 错误体（ADR 逻辑包络）：`{"code":"...","message":"...","request_i
 
 - 算法：HMAC-SHA256，线格式 `v1.<g|r>.<payload_b64url>.<sig_b64url>`
 - 游客 TTL：24h；房间 TTL：2h（代码常量）
+- 房间 payload 字段：`typ,room_id,seat,session_id,exp,round_kind,game_mode,participants`
 - 展示名：`游客-` + guest_id 去连字符前 4 位大写 hex
 - 密钥仅来自环境变量；日志与错误不得输出密钥或完整 token
+- 跨语言 fixture：`go test ./internal/tokens -run TestExportCrossLangRoomTokenFixture` → `godot/tests/_fixtures/room_token_crosslang.json`
 
 ## 队列 / 房间 Redis 键（实现摘要）
 
