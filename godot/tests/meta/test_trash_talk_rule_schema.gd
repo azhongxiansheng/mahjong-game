@@ -59,6 +59,18 @@ func test_every_rule_has_stable_id_match_kind_and_once() -> void:
 			assert_true(ALLOWED_CTX.has(String(match.get("context_tag", ""))))
 		if kind in ["PERSONA_KEYWORD", "PERSONA_TEMPLATE", "EXPRESSION"]:
 			assert_true(LANGS.has(String(match.get("language", ""))))
+			assert_true(match.get("patterns") is Array and match["patterns"].size() > 0)
+
+
+func test_persona_template_rules_present_in_catalog() -> void:
+	var found := 0
+	for rule in TrashTalkRuleCatalog.all_rules():
+		if String(rule.get("match", {}).get("kind", "")) == "PERSONA_TEMPLATE":
+			found += 1
+			var rid := String(rule.get("rule_id", ""))
+			assert_true(TrashTalkRuleCatalog.has_rule_id(rid))
+			assert_true(rid.contains("_tpl_"))
+	assert_true(found >= 36, "PERSONA_TEMPLATE 至少 12×3")
 
 
 func test_accumulation_order_fixed_by_rule_version() -> void:
