@@ -303,7 +303,10 @@ git diff "$BASE_REF"...HEAD
 ### 6. 返回同一 Grok 会话返工并复验
 
 - 打回 Grok 时给出具体证据：文件与行、违反的需求/规则、失败命令与期望结果；禁止只说“质量不好”。
-- 修复直接在当前 Issue 唯一的可见 tmux session 与仍打开的 Grok TUI 中输入中文返工 prompt，只处理已确认范围和本轮问题，不退出/重启 Grok，不使用 `--continue`，不另开第二个 tmux session 或写入会话，不借机扩需求。标记出现前禁止补充 prompt 或干预；标记出现且 Review 确认需要返工后，将仓库外 prompt 用 `tmux load-buffer` + `tmux paste-buffer` 送入记录的精确 session/pane，再用一次 `tmux send-keys ... Enter` 提交，不得读取或捕获 pane 输出。提交后同样只等待新的交付文件完成标记。
+- 修复继续复用当前 Issue 唯一的可见 tmux session 与仍打开的 Grok TUI，只处理已确认范围和本轮问题；不退出/重启 Grok，不使用 `--continue`，不另开第二个 tmux session，不借机扩需求。
+- 标记出现前禁止补充 prompt 或干预。标记出现且 Review 确认需要返工后，先把完整中文返工合同写入唯一的仓库外 `/tmp/*.md` 文件；**禁止把长篇、多行合同本身直接粘贴进 TUI**，避免 bracketed paste / 多行解析造成卡顿或提交状态不清。
+- tmux 只投递一行短指令，例如：`请读取 /tmp/<project>-issue-<number>-grok-rework-round-<n>.md，并严格执行其中全部返工指令；读取后立即按文件要求更新状态文件。` 将这行短指令写入另一个唯一仓库外文本文件，再用 `tmux load-buffer` + `tmux paste-buffer` 送入记录的精确 session/pane，最后仅用一次 `tmux send-keys ... Enter` 提交；不得读取或捕获 pane 输出。
+- 提交短指令后只轮询该轮状态/交付文件；短时间内状态尚未出现属于正常接收延迟，不得因“看起来卡住”重复粘贴或重复发送 Enter。用户正在 TUI 内操作时先避免并发输入。
 - 每轮修复后，当前 Codex 任务重新审查**完整累计 diff**并复跑受影响验证；不能只看最后一个补丁或只相信 Grok 的复测结果。
 - 循环直到 P0–P2 清零且所有成功标准有独立证据；否则状态保持 `REWORK_REQUIRED` 或真实阻塞状态。
 
