@@ -1,12 +1,10 @@
-name: core-tests
+name: manual-core-tests
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 concurrency:
-  group: core-tests-${{ github.ref }}
+  group: manual-core-tests-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
