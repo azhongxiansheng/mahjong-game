@@ -30,13 +30,15 @@ type Config struct {
 	Addr         string
 	Pinger       Pinger
 	TokenService TokenService
+	CasualQueue  CasualQueue
 }
 
-// Server 提供探针与游客会话 HTTP，并支持优雅关闭。
+// Server 提供探针、游客会话与公共休闲队列 HTTP，并支持优雅关闭。
 type Server struct {
 	httpServer   *http.Server
 	pinger       Pinger
 	tokenService TokenService
+	casualQueue  CasualQueue
 }
 
 // New 创建服务器（尚未监听）。
@@ -44,12 +46,18 @@ func New(cfg Config) *Server {
 	s := &Server{
 		pinger:       cfg.Pinger,
 		tokenService: cfg.TokenService,
+		casualQueue:  cfg.CasualQueue,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
 	mux.HandleFunc("POST /v1/guest-sessions", s.handleCreateGuestSession)
 	mux.HandleFunc("/v1/guest-sessions", s.handleGuestSessionsFallback)
+	mux.HandleFunc("POST /v1/queues/casual", s.handleEnqueueCasual)
+	mux.HandleFunc("/v1/queues/casual", s.handleCasualQueueCollectionFallback)
+	mux.HandleFunc("GET /v1/queues/casual/{ticket_id}", s.handleGetCasualTicket)
+	mux.HandleFunc("DELETE /v1/queues/casual/{ticket_id}", s.handleCancelCasualTicket)
+	mux.HandleFunc("/v1/queues/casual/{ticket_id}", s.handleCasualTicketFallback)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,

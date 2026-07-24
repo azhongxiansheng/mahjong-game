@@ -1,8 +1,8 @@
 # Control Plane（E3 匹配控制面）
 
-独立 Go module：配置入口、探针、游客会话签发、房间令牌内部服务。
+独立 Go module：配置入口、探针、游客会话签发、房间令牌内部服务、**公共休闲队列**（加入 / 查询 / 取消）。
 
-**网络端到端未验证。** 本目录尚未实现公共队列 / Worker / 业务 WebSocket（#238–#242）。
+**网络端到端未验证。** 本目录尚未实现 30 秒 AI 补位消费、房间创建、Worker 注册或业务 WebSocket（#239–#242）。公共队列仅建立 ticket / 匹配池 / 取消与 `queued_at`/`deadline_at` 契约。
 
 ## 环境变量
 
@@ -66,9 +66,36 @@ curl -sS -X POST http://127.0.0.1:8081/v1/guest-sessions
 # 请勿在日志或工单中粘贴真实 session_token
 ```
 
+### 公共休闲队列（#238）
+
+鉴权：`Authorization: Bearer <session_token>`（#237 游客会话令牌）。缺失 / 篡改 / 过期 / 房间令牌 → `401` `UNAUTHORIZED`。
+
+`round_kind` ∈ `EAST` \| `HANCHAN`；`game_mode` ∈ `STANDARD` \| `TRASH_TALK`（ADR 稳定值，大小写敏感）。非法值 → `400` `INVALID_REQUEST`。
+
+```bash
+# 先拿 session_token（勿记录到日志）
+TOKEN=$(curl -sS -X POST http://127.0.0.1:8081/v1/guest-sessions | jq -r .session_token)
+
+# 加入队列（同游客+同规则组合幂等返回同一 ticket）
+curl -sS -X POST http://127.0.0.1:8081/v1/queues/casual \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"round_kind":"EAST","game_mode":"STANDARD"}'
+# 200 JSON: ticket_id, round_kind, game_mode, status=waiting, queued_at, deadline_at
+# deadline_at = queued_at + 30s（契约字段；本 Issue 不消费）
+
+# 查询（仅 ticket 所属游客；status=waiting|cancelled）
+curl -sS "http://127.0.0.1:8081/v1/queues/casual/$TICKET_ID" \
+  -H "Authorization: Bearer $TOKEN"
+
+# 取消（幂等；原子移出匹配池，ticket 不再可被未来分配消费，仍可查 cancelled）
+curl -sS -X DELETE "http://127.0.0.1:8081/v1/queues/casual/$TICKET_ID" \
+  -H "Authorization: Bearer $TOKEN"
+```
+
 HTTP 错误体（ADR 逻辑包络）：`{"code":"...","message":"...","request_id":"..."}`。
 
-房间令牌：仅 Control Plane **内部** API（`tokens.IssueRoomToken` / `VerifyRoomToken`），无独立 HTTP 端点；供 #238 队列分配调用。游客 `session_token` 不可直接当房间令牌。
+房间令牌：仅 Control Plane **内部** API（`tokens.IssueRoomToken` / `VerifyRoomToken`），无独立 HTTP 端点；供后续 #239 队列分配调用。游客 `session_token` 不可直接当房间令牌。
 
 ## 令牌说明（实现摘要）
 
@@ -77,13 +104,27 @@ HTTP 错误体（ADR 逻辑包络）：`{"code":"...","message":"...","request_i
 - 展示名：`游客-` + guest_id 去连字符前 4 位大写 hex
 - 密钥仅来自环境变量；日志与错误不得输出密钥或完整 token
 
+## 队列 Redis 键（实现摘要）
+
+按 `round_kind + game_mode` 隔离四个匹配池；guest 索引保证同组合 waiting 幂等。
+
+| 键 | 类型 | 用途 |
+|---|---|---|
+| `cp:v1:casual:ticket:{id}` | Hash | ticket 字段（含 status / timestamps） |
+| `cp:v1:casual:guest:{guest_id}:{round_kind}:{game_mode}` | String | 当前 waiting ticket_id |
+| `cp:v1:casual:pool:{round_kind}:{game_mode}` | ZSet | 可消费匹配池（score=`queued_at` unix） |
+
+取消：`status=cancelled` + `ZREM` 出池 + 清理 guest 索引。本 Issue **不**实现池消费 / 开房。
+
 ## 测试
 
 ```bash
 export TOKEN_SIGNING_SECRET='dev-only-example-secret-32bytes!'
+export REDIS_ADDR=127.0.0.1:6379
+# 先 compose up 真实 Redis；队列集成测试在 Redis 不可用时直接失败（不 Skip 冒充 Green）
 go test ./...
 go test -race ./...
 go vet ./...
-# 真实 Redis 集成：先 compose up，再
-REDIS_ADDR=127.0.0.1:6379 go test ./internal/redisx -count=1
 ```
+
+**网络端到端未验证**（无 Godot 客户端联调、无公网部署验收）。
