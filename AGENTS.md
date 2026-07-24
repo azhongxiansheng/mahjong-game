@@ -245,6 +245,8 @@ grok --cwd "$TASK_WORKTREE" \
 - 用户已确认 Grok Plan 并明确进入开发阶段后，当前 Codex 任务可直接使用 `--always-approve`，避免逐条批准开发命令；但仍须保留既定 worktree、允许修改路径、`--no-subagents`、禁止项、TDD/验证门禁与 Git 权限边界。`--always-approve` 不得用于跳过 Plan 确认、用户决策或扩大任务范围。
 - Grok 开发阶段不得由 Codex 在后台 PTY 中启动或轮询 TUI。优先使用只返回最终交付结果的非交互调用；确需交互时，由用户在当前任务可见终端直接操作，Codex 不以内部 PTY 冒充可见终端。
 - Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
+- Codex 调用 Grok 开发时，应在 prompt contract 中指定仓库外的交付文件，例如 `/tmp/mahjong-game-issue-<number>-grok-delivery.md`。Grok 只在本轮实现和自测全部结束后写入该文件，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`；不得在仓库内新增进度、状态或完成报告文档。
+- Codex 以“Grok 进程正常结束 + 交付文件存在 + 末行完成标记正确”判断本轮开发是否结束，不通过轮询过程输出来猜测。进程异常退出、文件缺失或标记不完整均视为未完成，应先检查 Git 现场再决定恢复会话。
 - Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
 
 ### 4. Grok 的固定交付格式
@@ -256,6 +258,8 @@ Grok 完成一轮后必须汇报：
 3. Red / Green / Refactor 各阶段执行的命令和结果摘要；
 4. 未验证项、已知风险、网络端到端缺口；
 5. 当前 `git status`、commit / push / PR 状态（若获授权执行）。
+
+上述内容写入指定的仓库外交付文件；最后一行写入 `GROK_DELIVERY_COMPLETE`。Codex 读取该文件仅用于确认完成并定位证据，不能用它替代完整 diff Review、业务实现 Review 或独立复测。
 
 Grok 自述仅用于定位证据，**不能作为验收结论**。
 
