@@ -40,7 +40,10 @@ func launch(config: GameSessionConfig) -> GameDriver:
 		hand_seed: int,
 		dealer: int,
 		use_heuristic: bool,
-		round_wind: int
+		round_wind: int,
+		hand_seq: int
 	) -> PlayableBattleController:
-		return PlayableBattleController.new(hand_seed, dealer, use_heuristic, round_wind)
+		return PlayableBattleController.new(
+			hand_seed, dealer, use_heuristic, round_wind, hand_seq
+		)
 	return driver

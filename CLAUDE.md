@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This repo contains **two unrelated trees** that share a directory but not a build:
 
-1. **`godot/`** — a Godot 4.5 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/lobby/lobby_shell.tscn`** (set in `godot/project.godot`; E1-01). Tree layout:
+1. **`godot/`** — a Godot 4.6 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/lobby/lobby_shell.tscn`** (set in `godot/project.godot`; E1-01). Tree layout:
    - `ui/lobby/` — 生产大厅入口壳（练习/匹配挂点；选择态与正式配置分属后续 Issue）
    - `ui/run/` — 肉鸽 Run 流（已退出生产入口；legacy / GUT 可显式实例化）
    - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
