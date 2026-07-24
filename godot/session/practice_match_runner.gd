@@ -1,7 +1,7 @@
 class_name PracticeMatchRunner extends RefCounted
 
-# E2-03（#233）：只负责把正式练习配置、启动器产出的 GameDriver 与单局执行入口
-# 串成完整东风/半庄。结算页面、排名、重赛与导航归 #235。
+# E2-03（#233）+ E2-05（#235）：把正式练习配置、启动器产出的 GameDriver 与单局执行入口
+# 串成完整东风/半庄；summary 含 final_scores/seat_order。结算 UI 与导航在协调层。
 
 const HAND_LIMIT: int = 60
 
@@ -52,13 +52,15 @@ static func _summary(
 	completed: bool,
 	error: StringName
 ) -> Dictionary:
+	var finals: Array = driver.cumulative_scores.duplicate() if driver != null else []
 	return {
 		"completed": completed,
 		"error": error,
 		"session_id": config.session_id if config != null else "",
 		"round_kind": config.round_kind if config != null else &"",
 		"hand_count": hand_count,
-		"final_scores": driver.cumulative_scores.duplicate() if driver != null else [],
+		"final_scores": finals,
+		"seat_order": MatchSettlement.build_seat_order(finals),
 		"riichi_sticks": driver.riichi_sticks if driver != null else 0,
 		"score_conserved": driver.is_score_conserved() if driver != null else false,
 	}

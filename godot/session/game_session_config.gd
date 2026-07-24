@@ -401,6 +401,28 @@ static func create_validated(
 	)
 
 
+## E2-05：再来一局 — 复用规则字段，强制新 seed / session_id。
+static func create_rematch_from(
+	src: GameSessionConfig,
+	new_seed: int,
+	new_session_id: String
+) -> GameSessionConfig:
+	if src == null:
+		return null
+	if new_session_id.is_empty():
+		return null
+	return create_validated(
+		src.room_kind,
+		src.round_kind,
+		src.game_mode,
+		src.participants,
+		src.character_ids,
+		new_seed,
+		new_session_id,
+		src.rule_version
+	)
+
+
 ## SessionIntent → GameSessionConfig 唯一转换入口。
 ## 逐字段白名单；不依赖 intent.mode_id 作合法性闸门。
 ## seed / session_id / rule_version 由调用方显式传入（练习）或 authority（公共）。
