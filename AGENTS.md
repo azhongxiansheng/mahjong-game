@@ -184,13 +184,13 @@ godot --path godot -s tools/capture_screens.gd
 ## Codex App + Grok CLI 单 Issue 闭环（强制）
 
 > 适用于用户明确选择由 Grok CLI 开发的任务。每个 GitHub Issue 使用一个 Codex App 任务；
-> 同一个 Codex 任务负责需求对齐、驱动 Grok、独立 Review、验证、返工、Git 交付、合并和后续 Issue 分析。
+> 同一个 Codex 任务负责需求对齐、驱动 Grok、独立 Review、验证、返工、Git 交付、合并，以及合并后直接启动已解锁的后续 Issue。
 > 不额外创建 Review 任务，不引入 `agentctl` 或调度器；Grok 统一通过可见 macOS Terminal + attached tmux inline TUI 运行，不使用 Codex 右侧终端或后台 PTY。同一 Issue 始终保留并复用一个 tmux session 和其中的 Grok TUI，最终验收通过后才关闭。
 
 ### 适用边界与状态
 
 - 一个 Issue 对应一个 Codex App 任务、一个任务分支和一个 worktree；同一 worktree 同时只能有一个 Grok 写入。
-- 默认只运行 **1 个 Grok CLI 会话串行开发**；禁止 Grok 再派生子任务修改同一需求。
+- **每个 Issue 内**默认只运行 1 个 Grok CLI 会话串行开发；不同 Issue 可在各自独立 Codex App 任务、分支、worktree 和 Grok TUI 中并行，禁止 Grok 再派生子任务修改同一需求。
 - 高歧义需求、需要产品取舍、不可逆生产操作、权限或凭证不明确时，不得先让 Grok 猜测实现。
 - 需要用户选择时进入 `BLOCKED_USER_DECISION`，明确列出选项、影响和推荐项并等待答复；不得跳过。若宿主提供 goal/status 工具，按该工具自身规则设置阻塞状态，不得伪造状态。
 - 推荐状态流：
@@ -217,9 +217,9 @@ BLOCKED_USER_DECISION（如需）
 3. 写出关键假设与真实歧义；需要用户选择的内容先向用户确认。
 4. 将任务整理成可核对的 prompt contract：原需求、已确认决策、非目标、TDD 要求、验证门禁、Git 权限和交付格式。
 
-### 2. 在可见 Terminal + tmux 交互确认 Grok Plan
+### 2. 在同一个可见 Terminal + tmux TUI 中确认 Plan 并继续开发
 
-使用可见 macOS Terminal + attached tmux 启动 Grok inline TUI，不使用 Codex 右侧终端或单轮 `-p/--single`，让用户能在弹窗中追问、修改并确认计划：
+使用可见 macOS Terminal + attached tmux 一次启动 Grok inline TUI，不使用 Codex 右侧终端或单轮 `-p/--single`。Grok 先给 Plan，用户在弹窗中追问、修改并明确确认后，Grok 在同一个 TUI 进程内原地继续开发：
 
 ```bash
 grok --cwd "$TASK_WORKTREE" \
@@ -227,36 +227,25 @@ grok --cwd "$TASK_WORKTREE" \
   --no-alt-screen \
   --permission-mode plan \
   --no-subagents \
+  --always-approve \
   --rules "全程使用简体中文与用户交互；命令、代码、标识符和原始错误可保留英文，但必须用中文解释。" \
-  "$PLAN_PROMPT"
+  "$PLAN_AND_IMPLEMENT_PROMPT"
 ```
 
 - 当前 Issue 启动时记录唯一精确 tmux session 名；tmux 必须开启 `mouse`，`history-limit` 至少为 50000。用户可滚轮回看，或按 `Ctrl-b`、`[` 进入 copy-mode，按 `q` 返回。
-- `PLAN_PROMPT` 必须要求 Grok 只分析和给计划，不改文件、不执行 Git 写操作。
-- 用户必须在 Grok TUI 中明确确认计划；确认前不得切换到开发权限。
+- `PLAN_AND_IMPLEMENT_PROMPT` 必须要求 Grok 先只分析和给计划；用户确认前不改文件、不执行 Git 写操作。
+- 用户必须在 Grok TUI 中明确确认计划；确认后由 Grok 在原 TUI 中继续开发，不退出、不调用 `--continue`、不启动第二个 Grok。
 - 当前 Codex 任务同时审查计划是否逐条覆盖原需求、Red → Green → Refactor、改动边界、真实验证和风险。
 - 计划遗漏、越界或替用户做了未确认选择时，先在 TUI 中要求重写；**未通过计划审查不得进入编码**。
 - Plan 模式若仍产生文件改动，视为异常变更，按“闸门 A”处理。
+- `--always-approve` 只免除开发阶段逐条工具审批，不授权跳过 Plan 确认、扩大 worktree/路径/Git 权限或替用户决定歧义。
 
-### 3. 确认后恢复同一 Grok 会话开发
+### 3. 确认后在原 TUI 内开发
 
-用户确认计划后，在当前 Issue 唯一的可见 tmux session 中进入开发；如需退出 Plan TUI 再恢复，则仍在同一 tmux 中从同一 worktree 继续最近会话。必须明确关闭 Plan 模式，并使用可编辑但非无条件放权的权限模式：
+用户确认计划后，Grok 在当前 Issue 唯一的可见 tmux session 和同一个 TUI 进程中按已确认计划实施，并先读 worktree 内的 `AGENTS.md`。
 
-```bash
-grok --cwd "$TASK_WORKTREE" \
-  --continue \
-  --minimal \
-  --no-alt-screen \
-  --permission-mode acceptEdits \
-  --no-plan \
-  --no-subagents \
-  --rules "全程使用简体中文与用户交互；命令、代码、标识符和原始错误可保留英文，但必须用中文解释。"
-```
-
-- 继续会话后必须明确要求按已确认计划实施，并先读 worktree 内的 `AGENTS.md`。
 - 明确允许修改的路径、禁止修改的路径、先写失败测试、相关验证命令，以及不可静默决定的事项。
-- 用户尚未确认进入开发阶段时，禁止 `--always-approve`、`--permission-mode bypassPermissions` 和无边界 shell 权限。
-- 用户已确认 Grok Plan 并明确进入开发阶段后，当前 Codex 任务可直接使用 `--always-approve`，避免逐条批准开发命令；但仍须保留既定 worktree、允许修改路径、`--no-subagents`、禁止项、TDD/验证门禁与 Git 权限边界。`--always-approve` 不得用于跳过 Plan 确认、用户决策或扩大任务范围。
+- 即使启动时启用 `--always-approve`，确认前也只允许 Plan；确认后仍须保留既定 worktree、允许修改路径、`--no-subagents`、禁止项、TDD/验证门禁与 Git 权限边界。
 - Grok 开发阶段不得由 Codex 在后台 PTY 中启动；必须使用可见 Terminal + tmux inline TUI。用户可在弹窗直接观察和交互，Codex 不以内部 PTY 冒充可见终端。
 - Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
 - Codex 调用 Grok 开发时，应在 prompt contract 中指定仓库外的交付文件，例如 `/tmp/mahjong-game-issue-<number>-grok-delivery.md`。Grok 只在本轮实现和自测全部结束后写入该文件，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`；不得在仓库内新增进度、状态或完成报告文档。
@@ -319,8 +308,8 @@ git diff "$BASE_REF"...HEAD
 - 本仓库不把 GitHub CI 作为合并门禁；`.github/workflows/core-tests.yml` 仅允许手动触发。当前 Codex 任务独立完成风险相关测试、全量 GUT（适用时）、Review PASS 且 P0–P2 清零后，方可认定验证通过。
 - 当前 Issue 只记录并复用一个精确 tmux session 名，覆盖 Plan、开发、Review、返工与复验，并始终保留同一个 Grok TUI；每轮完成标记出现后不得关闭。只有完整 diff Review 完成、P0–P2 清零且当前 Codex 任务独立验证全部通过后，才先用 `tmux list-sessions` 只读确认名称，再执行 `tmux kill-session -t "$EXACT_SESSION"` 手工关闭，并复查该精确 session 已不存在。禁止 `tmux kill-server`、glob、前缀/模糊匹配或关闭未经记录的其他 session；全程不管理 Grok session ID。
 - PR 处于可合并状态且验证通过后，由当前 Codex 任务直接合并，无需再次等待用户授权。高歧义需求、不可逆生产操作、权限或凭证不明确等情形仍按前述阻塞规则请求用户决策。
-- 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场，分析下一批可做任务。
-- 只有依赖已满足且修改范围不会冲突的 Issue 才能并行；每个后续 Issue 分别创建新的 Codex App 任务、分支和 worktree，并从交互 Grok Plan 重新开始。
+- 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场；不得只给下一 Issue 建议，必须直接为所有已解锁且可安全并行的后续 Issue 创建并启动新的 Codex App 任务。
+- 只有依赖已满足且主要写文件不会冲突的 Issue 才能并行；每个后续 Issue 分别使用新的 Codex App 任务、分支、worktree 和 Grok TUI，并从交互 Grok Plan 重新开始。暂未解锁的 Issue 保留在 Epic 中，待前置合并后由完成该前置的任务继续自动启动。
 
 ---
 
