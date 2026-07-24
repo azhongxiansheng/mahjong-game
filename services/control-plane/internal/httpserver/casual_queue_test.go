@@ -239,7 +239,7 @@ func TestCasualQueue_AuthNegatives(t *testing.T) {
 	assertNoSecretLeak(t, raw, goodToken)
 
 	// 房间 token 不得当 session
-	roomTok, _, err := ts.IssueRoomToken("sess-1", "room-1", 0)
+	roomTok, _, err := ts.IssueRoomToken("sess-1", "room-1", 0, "EAST", "STANDARD", []string{"HUMAN", "AI", "AI", "AI"})
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}

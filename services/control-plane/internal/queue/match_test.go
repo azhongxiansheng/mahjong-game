@@ -56,11 +56,11 @@ func newRecordingIssuer(t *testing.T, clk Clock) *recordingIssuer {
 	return &recordingIssuer{inner: svc}
 }
 
-func (r *recordingIssuer) IssueRoomToken(sessionID, roomID string, seat int) (string, time.Time, error) {
+func (r *recordingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
 	r.mu.Lock()
 	r.n++
 	r.mu.Unlock()
-	return r.inner.IssueRoomToken(sessionID, roomID, seat)
+	return r.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants)
 }
 
 func (r *recordingIssuer) VerifyRoomToken(token, roomID string, seat int) (tokens.RoomClaims, error) {

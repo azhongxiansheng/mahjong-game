@@ -275,7 +275,7 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 
 	const rawSecret = "raw-secret-value-should-never-log"
 	const leakTok = "v1.r.eyJ0eXAiOiJyb29tIn0.signaturepart"
-	leaky := RoomTokenIssuerFunc(func(sessionID, roomID string, seat int) (string, time.Time, error) {
+	leaky := RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("issuer boom secret=%s token=%s extra=%s", matchTestSecret, leakTok, rawSecret)
 	})
 

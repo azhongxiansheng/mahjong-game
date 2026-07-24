@@ -25,7 +25,7 @@ type blockingIssuer struct {
 	release chan struct{}
 }
 
-func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int) (string, time.Time, error) {
+func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
 	b.mu.Lock()
 	idx := b.n
 	b.n++
@@ -40,7 +40,7 @@ func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int) (str
 		}
 		<-b.release
 	}
-	return b.inner.IssueRoomToken(sessionID, roomID, seat)
+	return b.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants)
 }
 
 // TestRework_P1_BlockingIssuerNeverExposesPartialAssigned
@@ -456,7 +456,7 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 	}
 
 	// 后台 loop 路径：始终失败的 issuer，验证 OnError 被调用
-	alwaysFail := RoomTokenIssuer(RoomTokenIssuerFunc(func(sessionID, roomID string, seat int) (string, time.Time, error) {
+	alwaysFail := RoomTokenIssuer(RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
 		return "", time.Time{}, errors.New("issuer synthetic failure")
 	}))
 	m2, err := NewMatcher(MatcherOptions{
@@ -511,8 +511,8 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 }
 
 // RoomTokenIssuerFunc 测试用函数适配器。
-type RoomTokenIssuerFunc func(sessionID, roomID string, seat int) (string, time.Time, error)
+type RoomTokenIssuerFunc func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error)
 
-func (f RoomTokenIssuerFunc) IssueRoomToken(sessionID, roomID string, seat int) (string, time.Time, error) {
-	return f(sessionID, roomID, seat)
+func (f RoomTokenIssuerFunc) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
+	return f(sessionID, roomID, seat, roundKind, gameMode, participants)
 }

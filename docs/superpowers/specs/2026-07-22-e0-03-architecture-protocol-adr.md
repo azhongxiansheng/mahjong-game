@@ -264,7 +264,7 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `view_
 
 - 匹配池按 `round_kind + game_mode` 隔离；重复加入同池返回既有 ticket。
 - 四真人到齐**立即**开房；最早 ticket 自 `queued_at` 起 **30 秒**后补 1–3 AI，且**只创建一个**房间。
-- 游客 `session_token` **不可**直接当房间令牌；房间令牌绑定 `room_id + seat + session_id + expires_at`。
+- 游客 `session_token` **不可**直接当房间令牌；房间令牌绑定 `room_id + seat + session_id + expires_at`，并签入 `round_kind + game_mode + participants` 启动声明（#240）。
 - **根 `main.go` 的 `/api/health` 与上述 CP 探针是不同进程职责，禁止合并进根桩。**
 
 ---
@@ -308,6 +308,23 @@ WebSocket `ERROR` 控制响应示例（可解析；**无** `server_seq` / `view_
 `DISCARD`、`CHI`、`PON`、`KAN`、`RIICHI`、`RON`、`TSUMO`、`PASS`、`ITEM_USE`、`DECLARE_ABORTIVE_DRAW`。
 
 `JOIN`、`READY`、`RESYNC_REQUEST` 属于会话 / 传输控制命令，由 E3 的控制协议定义；它们**不是** `Action v1`，不得伪造 `decision_id` 后进入牌局行动入口。
+
+#### 牌局控制命令 exact schema（#240 冻结）
+
+顶层键必须**恰好**如下（多键 / 缺键 / 错类型拒绝）：
+
+| kind | exact keys | 说明 |
+|---|---|---|
+| `JOIN` | `protocol_version` · `kind` · `room_id` · `seat` · `room_token` | `protocol_version=1`；`room_token` 为 CP 签名房间令牌（**禁止** session_token）；成功后连接绑定 room/seat/session |
+| `READY` | `protocol_version` · `kind` · `room_id` · `seat` | 必须匹配本连接 JOIN 已绑定的 room/seat；全部 **HUMAN** READY 后 Worker 才启动权威牌局；AI 席无需连接 |
+| `RESYNC_REQUEST` | （#241 所有权） | 本 Issue 不实现 |
+
+房间令牌 `room_token`（#237 线格式 `v1.r.<payload>.<sig>`，#240 扩展 claims）：
+
+- 既有绑定：`room_id` · `seat` · `session_id` · `exp`
+- **不可篡改启动声明**：`round_kind` · `game_mode` · `participants`（恰 4 席 `HUMAN`/`AI`）
+- Worker 仅用环境变量同密钥验签；**不**读 Redis、**不**依赖 CP 内房间服务；客户端只能运输声明不能改写
+- 首个合法 `JOIN` 惰性建房：Worker 自生成 `seed` 与 `character_ids`；客户端不得提交 seed/牌墙/随机数/AI/结果
 
 #### 按 kind 的精确 payload schema（Action v1 冻结）
 

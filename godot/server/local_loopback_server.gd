@@ -656,12 +656,22 @@ func _emit_private_prompt() -> bool:
 		var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
 		if cloned == null:
 			return false
+		# #240：同一 candidate 上非目标席发 ROOM_SNAPSHOT filler，保证每席可见流连续
+		var prepared: Array = [{"seat": seat, "clone": cloned}]
+		for other in range(4):
+			if other == seat:
+				continue
+			var fill: NetworkedEvent = _prepare_snapshot_filler(other, candidate)
+			if fill == null:
+				return false
+			prepared.append({"seat": other, "clone": fill})
 		_server_seq = candidate
-		(_journals[seat] as Array).append(cloned)
+		for item in prepared:
+			(_journals[int(item["seat"])] as Array).append(item["clone"])
 		return true
 
 	if dw.kind == DecisionWindow.KIND_CLAIM or dw.kind == DecisionWindow.KIND_ROB_KAN:
-		# 同一逻辑 seq，多 recipient variant（仅 human 未响应席）
+		# 同一逻辑 seq，多 recipient variant（仅 human 未响应席）+ 非目标 filler
 		var targets: Array = []
 		for s in dw.seats():
 			var si: int = int(s)
@@ -672,9 +682,10 @@ func _emit_private_prompt() -> bool:
 			targets.append(si)
 		if targets.is_empty():
 			return false
-		# 候选 seq：全部 target 构造/roundtrip 成功前不得 _alloc_seq / 写 journal
+		# 候选 seq：全部 seat 构造/roundtrip 成功前不得推进 _server_seq / 写 journal
 		var candidate: int = _server_seq + 1
 		var prepared: Array = []
+		var covered: Dictionary = {}
 		for si2 in targets:
 			var seat_i: int = int(si2)
 			var ctx2: DecisionContext = dw.context_for_seat(seat_i)
@@ -696,7 +707,15 @@ func _emit_private_prompt() -> bool:
 			if cloned2 == null:
 				return false
 			prepared.append({"seat": seat_i, "clone": cloned2})
-		# 全部 target 成功后单线程提交：共享 candidate，每席一条
+			covered[seat_i] = true
+		for other2 in range(4):
+			if covered.has(other2):
+				continue
+			var fill2: NetworkedEvent = _prepare_snapshot_filler(other2, candidate)
+			if fill2 == null:
+				return false
+			prepared.append({"seat": other2, "clone": fill2})
+		# 全部席成功后单线程提交：共享 candidate，每席恰好一条
 		_server_seq = candidate
 		for item in prepared:
 			var seat_j: int = int(item["seat"])
@@ -704,6 +723,25 @@ func _emit_private_prompt() -> bool:
 		return true
 
 	return false
+
+
+## 私有 prompt 序号上非目标席的 ROOM_SNAPSHOT filler（#240 每席可见流连续）。
+## 与 TURN_PROMPT/CLAIM_WINDOW 共享同一 candidate server_seq；失败返回 null。
+func _prepare_snapshot_filler(seat: int, candidate_seq: int) -> NetworkedEvent:
+	if seat < 0 or seat > 3:
+		return null
+	var sp: Dictionary = _build_room_snapshot_payload(seat, candidate_seq)
+	if sp.is_empty():
+		return null
+	var vh: String = ProtocolViewCodec.compute_view_hash(sp)
+	if vh.is_empty() or vh.length() != 64:
+		return null
+	var ne: NetworkedEvent = NetworkedEvent.make(
+		"ROOM_SNAPSHOT", candidate_seq, _room_id, sp, vh
+	)
+	if ne == null:
+		return null
+	return NetworkedEvent.from_dict(ne.to_dict())
 
 
 func _build_turn_prompt_payload(ctx: DecisionContext, seat: int) -> Dictionary:

@@ -17,11 +17,11 @@ type Pinger interface {
 	Ping(ctx context.Context) error
 }
 
-// TokenService 游客会话与房间令牌能力（房间签发/校验供 #238 使用，本 Issue 仅 HTTP 暴露 guest）。
+// TokenService 游客会话与房间令牌能力（房间签发/校验供 #238/#240 使用，本 Issue 仅 HTTP 暴露 guest）。
 type TokenService interface {
 	IssueGuestSession() (tokens.GuestSession, error)
 	VerifyGuestToken(token string) (tokens.GuestClaims, error)
-	IssueRoomToken(sessionID, roomID string, seat int) (string, time.Time, error)
+	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error)
 	VerifyRoomToken(token, expectedRoomID string, expectedSeat int) (tokens.RoomClaims, error)
 }
 

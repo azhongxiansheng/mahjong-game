@@ -488,9 +488,14 @@ func test_start_snapshot_then_private_prompt() -> void:
 		if p.is_empty():
 			return
 		assert_eq(int(p["snapshot_server_seq"]), seq)
+		# #240：非目标席无 TURN/CLAIM，但在 prompt 序号上有 ROOM_SNAPSHOT filler，条数与决策席一致
+		assert_eq(evs.size(), s0.size(), "seat%d 可见流条数须与决策席一致" % seat)
 		if seat != 0:
 			assert_null(_find(evs, "TURN_PROMPT"))
 			assert_null(_find(evs, "CLAIM_WINDOW"))
+			assert_eq((evs[1] as NetworkedEvent).kind, "ROOM_SNAPSHOT",
+				"seat%d prompt 序号 filler 须 ROOM_SNAPSHOT" % seat)
+			assert_eq(int((evs[1] as NetworkedEvent).server_seq), int(s0[1].server_seq))
 
 	# 真实 NBC(SID,0) 消费 seat0 真实 journal 两条：须直接 commit prompt，无 pending
 	var nbc := NetworkedBattleController.new(SID, 0)
@@ -694,7 +699,11 @@ func test_events_since_gap_journal_deepcopy() -> void:
 	for e in _exact_ne(server.call("events_since", 0, first), "g>"):
 		assert_gt(e.server_seq, first)
 	assert_eq(_exact_ne(server.call("events_since", 0, 999999), "ge").size(), 0)
-	assert_lt(_exact_ne(server.call("events_since", 1, 0), "g1").size(), all0.size())
+	# #240 filler 后 start 阶段四席条数一致；仍校验 seat1 首条为 SNAPSHOT 且无 TURN_PROMPT
+	var g1 := _exact_ne(server.call("events_since", 1, 0), "g1")
+	assert_eq(g1.size(), all0.size(), "filler 后 seat1 条数须与 seat0 一致")
+	assert_eq(g1[0].kind, "ROOM_SNAPSHOT")
+	assert_null(_find(g1, "TURN_PROMPT"))
 	var j := _exact_ne(server.call("event_journal", 0), "gj0")
 	assert_eq(j.size(), all0.size())
 	if j.is_empty():
@@ -1188,7 +1197,7 @@ func test_claim_window_fail_second_target_atomic_zero_mutation() -> void:
 
 
 ## Red/契约：同 fixture 成功路径——eligible human recipients 同逻辑 seq 各恰 +1 CLAIM_WINDOW；
-## view_hash=各席最后 committed ROOM_SNAPSHOT；非 target journal 不变；seq 只 +1。
+## view_hash=各席最后 committed ROOM_SNAPSHOT；非 target 同 seq 得 ROOM_SNAPSHOT filler；seq 只 +1。
 func test_claim_window_success_multi_recipient_atomic_publish() -> void:
 	if not _contract_ok():
 		return
@@ -1268,18 +1277,26 @@ func test_claim_window_success_multi_recipient_atomic_publish() -> void:
 		assert_eq(last.view_hash, str(frozen_vh[seat_i]),
 			"seat%d CLAIM_WINDOW.view_hash 须等于该席冻结 ROOM_SNAPSHOT hash" % seat_i)
 	assert_eq(shared_seq, seq0 + 1, "CLAIM_WINDOW.server_seq 须为冻结 seq+1")
-	# 非 target journal 完整不变
+	# #240：非 target 同逻辑 seq 追加 ROOM_SNAPSHOT filler（每席可见流连续）
 	for seat3 in range(4):
 		if eligible.has(seat3):
 			continue
-		assert_eq(
-			JSON.stringify(_journal_dicts_one(server, seat3, "claim_ok_nt1")),
-			JSON.stringify(j0_non_target[seat3]),
-			"非 target seat%d journal 完整不变" % seat3)
-		assert_eq(
-			_exact_ne(server.call("event_journal", seat3), "claim_ok_sz1/%d" % seat3).size(),
-			int(sizes0[seat3]),
-			"非 target seat%d size 不变" % seat3)
+		var jnt := _exact_ne(server.call("event_journal", seat3), "claim_ok_sz1/%d" % seat3)
+		assert_eq(jnt.size(), int(sizes0[seat3]) + 1,
+			"非 target seat%d 恰 +1 filler" % seat3)
+		if jnt.size() != int(sizes0[seat3]) + 1:
+			return
+		var last_nt: NetworkedEvent = jnt[jnt.size() - 1] as NetworkedEvent
+		assert_eq(last_nt.kind, "ROOM_SNAPSHOT",
+			"非 target seat%d filler 须 ROOM_SNAPSHOT" % seat3)
+		assert_eq(int(last_nt.server_seq), shared_seq,
+			"非 target seat%d filler 须共享 claim seq" % seat3)
+		# 前缀 journal 不变
+		var prefix: Array = []
+		for i in range(int(sizes0[seat3])):
+			prefix.append((jnt[i] as NetworkedEvent).to_dict())
+		assert_eq(JSON.stringify(prefix), JSON.stringify(j0_non_target[seat3]),
+			"非 target seat%d filler 前缀 journal 不变" % seat3)
 
 
 func _journal_dicts_one(s: Object, seat: int, tag: String) -> Array:
