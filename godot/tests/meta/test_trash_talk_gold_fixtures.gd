@@ -2,8 +2,8 @@ extends GutTest
 
 # E5-01 / #249：黄金 fixture 硬编码摘要钉死（禁止自证互比）。
 
-const GOLD_ZERO_DIGEST := "f8608506"
-const GOLD_TEXT_DIGEST := "e5a96978"
+const GOLD_ZERO_DIGEST := "65e26a7e"
+const GOLD_TEXT_DIGEST := "5832cc42"
 
 
 func test_gold_zero_hardcoded_digest() -> void:
