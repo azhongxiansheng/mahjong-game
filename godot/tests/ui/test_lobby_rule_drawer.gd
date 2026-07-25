@@ -334,16 +334,47 @@ func test_rule_drawer_consumes_real_lobby_material_assets() -> void:
 		"res://assets/ui/lobby_materials/lobby_choice_selected_9slice.png")
 
 
-func test_rule_drawer_groups_sections_and_footer_without_dead_center_space() -> void:
+func test_rule_drawer_groups_sections_and_footer_without_dead_space_at_either_end() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
-	if not _require_hooks(shell, ["DrawerContentGroup", "ModeSection", "DrawerFooter"]):
+	if not _require_hooks(shell, ["RuleDrawerPanel", "DrawerContentGroup", "ModeSection", "DrawerFooter"]):
 		return
 	shell.request_practice()
 	await get_tree().create_timer(0.25).timeout
+	var panel := shell.get_node("%RuleDrawerPanel") as Control
 	var group := shell.get_node("%DrawerContentGroup") as Control
+	var header := panel.find_child("DrawerPlaqueHeader", true, false) as Control
+	var round_section := panel.find_child("RoundSection", true, false) as Control
+	var round_caption := panel.find_child("RoundCaption", true, false) as Control
+	var round_row := panel.find_child("RoundRow", true, false) as Control
 	var mode := shell.get_node("%ModeSection") as Control
+	var mode_caption := panel.find_child("ModeCaption", true, false) as Control
+	var mode_hint := panel.find_child("ModeHint", true, false) as Control
 	var footer := shell.get_node("%DrawerFooter") as Control
+	assert_not_null(header)
+	assert_not_null(round_section)
+	assert_not_null(round_caption)
+	assert_not_null(round_row)
+	assert_not_null(mode_caption)
+	assert_not_null(mode_hint)
+	if null in [header, round_section, round_caption, round_row, mode_caption, mode_hint]:
+		return
+	var header_to_round := round_caption.get_global_rect().position.y - header.get_global_rect().end.y
+	var round_content_to_mode := mode_caption.get_global_rect().position.y - round_row.get_global_rect().end.y
+	var mode_content_to_footer := footer.get_global_rect().position.y - mode_hint.get_global_rect().end.y
+	var round_to_mode := mode.get_global_rect().position.y - round_section.get_global_rect().end.y
+	var mode_to_footer := footer.get_global_rect().position.y - mode.get_global_rect().end.y
+	var footer_to_bottom := panel.get_global_rect().end.y - footer.get_global_rect().end.y
+	assert_between(header_to_round, 8.0, 64.0,
+		"标题后应紧接局制，不得留下顶部死区：%s" % header_to_round)
+	assert_between(round_content_to_mode, 16.0, 100.0,
+		"局制选项与玩法标题之间不得留下无意义大空白：%s" % round_content_to_mode)
+	assert_between(mode_content_to_footer, 16.0, 100.0,
+		"玩法说明与操作区之间不得留下无意义大空白：%s" % mode_content_to_footer)
+	assert_between(round_to_mode, 12.0, 40.0, "局制与玩法应形成稳定纵向节奏")
+	assert_between(mode_to_footer, 12.0, 40.0, "操作区应自然收束在玩法之后")
+	assert_between(footer_to_bottom, 24.0, 96.0,
+		"操作区下方只保留漆木安全边距，不得留下底部死区：%s" % footer_to_bottom)
 	assert_lt(footer.get_global_rect().position.y - mode.get_global_rect().end.y, 80.0,
 		"操作区必须跟随选择组，不能隔着无意义大空白")
 	assert_gt(group.get_global_rect().size.y, 360.0, "规则内容应形成完整纵向组")

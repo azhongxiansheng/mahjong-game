@@ -108,11 +108,11 @@ func _build_ui() -> void:
 	_panel = PanelContainer.new()
 	_panel.name = "RuleDrawerPanel"
 	_panel.custom_minimum_size = Vector2(DRAWER_W, 0)
-	# 锚定右侧全高；用 offset 做入场滑动，不依赖首帧 size。
+	# 锚定右侧高面板；用 offset 做入场滑动，不依赖首帧 size。
 	_panel.anchor_left = 1.0
-	_panel.anchor_top = 0.0
+	_panel.anchor_top = 0.108
 	_panel.anchor_right = 1.0
-	_panel.anchor_bottom = 1.0
+	_panel.anchor_bottom = 0.892
 	_panel.offset_top = 0.0
 	_panel.offset_bottom = 0.0
 	_snap_panel_closed()
@@ -134,7 +134,7 @@ func _build_ui() -> void:
 	_content_group.name = "DrawerContentGroup"
 	_content_group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content_group.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_content_group.alignment = BoxContainer.ALIGNMENT_CENTER
+	_content_group.alignment = BoxContainer.ALIGNMENT_BEGIN
 	_content_group.add_theme_constant_override("separation", 22)
 	root.add_child(_content_group)
 	_content_group.add_child(_build_round_section())
@@ -207,7 +207,8 @@ func _build_round_section() -> Control:
 func _build_mode_section() -> Control:
 	var col := VBoxContainer.new()
 	col.name = "ModeSection"
-	col.custom_minimum_size.y = 244
+	col.custom_minimum_size.y = 300
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
 	col.add_theme_constant_override("separation", DesignTokens.GAP_TIGHT)
 
 	var caption := Label.new()

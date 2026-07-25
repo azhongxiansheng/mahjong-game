@@ -13,6 +13,7 @@ var _current_page: StringName = PAGE_CHARACTERS
 var _catalog: LobbyCodexCatalog = LobbyCodexCatalog.new()
 var _panel: PanelContainer = null
 var _header_plaque: PanelContainer = null
+var _header_title: Label = null
 var _tabs: HBoxContainer = null
 var _stage: PanelContainer = null
 var _stage_body: VBoxContainer = null
@@ -52,6 +53,7 @@ func get_hook_nodes() -> Array[Node]:
 		self,
 		_panel,
 		_header_plaque,
+		_header_title,
 		_tabs,
 		_stage,
 		_roster,
@@ -179,22 +181,22 @@ func _build_header() -> Control:
 	_header_plaque.name = "CodexHeaderPlaque"
 	_header_plaque.custom_minimum_size.y = 66
 	_header_plaque.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_WOOD_NAMEPLATE, 54, 20, 54, 20, 30, 9
+		DesignTokens.LOBBY_WOOD_NAMEPLATE, 54, 20, 54, 20, 200, 12
 	))
 
 	var header := HBoxContainer.new()
 	header.name = "CodexHeader"
-	header.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
+	header.add_theme_constant_override("separation", 24)
 	_header_plaque.add_child(header)
 
-	var title := Label.new()
-	title.name = "CodexTitle"
-	title.text = "资料馆"
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 30)
-	title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
-	header.add_child(title)
+	_header_title = Label.new()
+	_header_title.name = "CodexTitle"
+	_header_title.text = "资料馆"
+	_header_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_header_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_header_title.add_theme_font_size_override("font_size", 30)
+	_header_title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	header.add_child(_header_title)
 
 	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.PRIMARY, Vector2(140, 52))
 	_close_btn.name = "CodexCloseButton"
