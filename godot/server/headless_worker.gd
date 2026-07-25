@@ -6,6 +6,7 @@ extends Node
 # #241：连接代际、掉线 30s lease、重连快照、AI 接管/归还。
 # #244：同进程可选托管独立 VoiceRelayServer（第二 listener）；语音背压不进本通道。
 # #247：可选 SttBridge → 内部 faster-whisper 服务；Worker 唯一 ingest 入口。
+# #256：可选向 Control Plane 注册/续租（WorkerControlPlaneClient；不直连 Redis）。
 # 不依赖 Redis。网络端到端未验证。
 
 const JOIN_KEYS := ["protocol_version", "kind", "room_id", "seat", "room_token"]
@@ -28,6 +29,7 @@ var _listening: bool = false
 var _voice_relay: VoiceRelayServer = null
 var _stt_bridge: SttBridge = null
 var _token_secret: String = ""
+var _cp_client: WorkerControlPlaneClient = null
 
 # conn_id -> connection state
 var _conns: Dictionary = {}
@@ -77,6 +79,8 @@ func start_listen() -> Error:
 			return verr
 		voice_bind_port = _voice_relay.get_listen_port()
 		_ensure_stt_bridge()
+	if _cp_client != null:
+		_cp_client.start()
 	return OK
 
 
@@ -146,8 +150,52 @@ func allocate_ptt_end_authority(
 	return session.server.allocate_ptt_end_server_seq(seat, utterance_id)
 
 
+## #256：配置 Control Plane 注册客户端；须在 start_listen 前后均可调用。
+## 密钥不入日志。返回 false 表示配置无效（不启动注册）。
+func configure_control_plane_registration(
+	base_url: String,
+	reg_token: String,
+	p_worker_id: String,
+	p_game_endpoint: String,
+	p_voice_endpoint: String,
+	p_capacity: int = 4,
+	renew_interval_ms: int = 5000
+) -> bool:
+	if _cp_client != null:
+		_cp_client.stop()
+		if is_instance_valid(_cp_client):
+			_cp_client.queue_free()
+		_cp_client = null
+	var client := WorkerControlPlaneClient.new()
+	add_child(client)
+	if not client.configure(
+		base_url,
+		reg_token,
+		p_worker_id,
+		p_game_endpoint,
+		p_voice_endpoint,
+		p_capacity,
+		renew_interval_ms
+	):
+		client.queue_free()
+		return false
+	_cp_client = client
+	if _listening:
+		_cp_client.start()
+	return true
+
+
+func get_control_plane_client() -> WorkerControlPlaneClient:
+	return _cp_client
+
+
 func stop() -> void:
 	_listening = false
+	if _cp_client != null:
+		_cp_client.stop()
+		if is_instance_valid(_cp_client):
+			_cp_client.queue_free()
+		_cp_client = null
 	if _stt_bridge != null:
 		if _voice_relay != null:
 			_stt_bridge.unbind_voice_relay(_voice_relay)
@@ -177,8 +225,17 @@ func is_listening() -> bool:
 	return _listening and _tcp.is_listening()
 
 
+## #256：当前未结束房间数。完成态由 session 游标缓存 O(1) 读取。
 func room_count() -> int:
-	return _rooms.size()
+	var n: int = 0
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null:
+			continue
+		if session.is_match_completed():
+			continue
+		n += 1
+	return n
 
 
 func get_room(room_id: String) -> HeadlessRoomSession:
@@ -204,6 +261,11 @@ func set_clock_ms_for_test(ms: int) -> void:
 func poll() -> void:
 	if not _listening:
 		return
+	_cleanup_completed_rooms()
+	if _cp_client != null and _cp_client.is_started():
+		if clock_now_ms >= 0:
+			_cp_client.clock_now_ms = clock_now_ms
+		_cp_client.poll(room_count())
 	if _voice_relay != null:
 		_voice_relay.token_now_unix = token_now_unix
 		_voice_relay.poll()
@@ -292,7 +354,10 @@ func _poll_conn(cid: int) -> bool:
 	if not _conns.has(cid):
 		return false
 	var st: Dictionary = _conns[cid]
-	var peer: WebSocketPeer = st["peer"] as WebSocketPeer
+	var peer: WebSocketPeer = st.get("peer") as WebSocketPeer
+	# 测试桩注入的无 peer 连接：不收包、不关闭；生产路径 accept 后 peer 恒非 null
+	if peer == null:
+		return true
 	peer.poll()
 	var state: int = peer.get_ready_state()
 	if state == WebSocketPeer.STATE_CLOSING or state == WebSocketPeer.STATE_CLOSED:
@@ -606,6 +671,7 @@ func _send_reject_control(cid: int, room_id: String, cr: CommandResult) -> void:
 
 func _broadcast_room_events(room_id: String) -> void:
 	_broadcast_room_events_except(room_id, -1)
+	_maybe_finalize_completed_room(room_id)
 
 
 func _broadcast_room_events_except(room_id: String, except_cid: int) -> void:
@@ -617,6 +683,41 @@ func _broadcast_room_events_except(room_id: String, except_cid: int) -> void:
 		if str(st.get("room_id", "")) == room_id and bool(st.get("joined", false)) \
 				and not bool(st.get("superseded", false)):
 			_flush_events(id)
+	# 非全量 broadcast 路径也检查（部分 flush 后可能已发 MATCH_SETTLED）
+	if except_cid < 0:
+		pass
+
+
+## #256：检测到权威 MATCH_SETTLED 后：先保证事件已 flush 到连接，再精确上报完成并清理本地房间。
+func _maybe_finalize_completed_room(room_id: String) -> void:
+	var session: HeadlessRoomSession = get_room(room_id)
+	if session == null or not session.is_match_completed():
+		return
+	if bool(session.get_meta("cp_complete_enqueued", false)):
+		return
+	session.set_meta("cp_complete_enqueued", true)
+	# 再 flush 一次，确保最后事件先于本地移除
+	for cid in _conns.keys():
+		var st: Dictionary = _conns[cid]
+		if str(st.get("room_id", "")) == room_id and bool(st.get("joined", false)) \
+				and not bool(st.get("superseded", false)):
+			_flush_events(int(cid))
+	if _cp_client != null and _cp_client.is_started():
+		_cp_client.enqueue_room_complete(room_id)
+	# 延迟一帧级清理：本 poll 周期内先上报；下一 poll 若已 completed 则移除
+	session.set_meta("cp_complete_cleanup_pending", true)
+
+
+func _cleanup_completed_rooms() -> void:
+	var to_drop: Array = []
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null:
+			continue
+		if bool(session.get_meta("cp_complete_cleanup_pending", false)) and session.is_match_completed():
+			to_drop.append(str(rid))
+	for rid2 in to_drop:
+		_rooms.erase(str(rid2))
 
 
 func _flush_events(cid: int) -> void:
@@ -782,6 +883,7 @@ func _participants_equal(a: Array, b: Variant) -> bool:
 func _ensure_test_conn(cid: int) -> void:
 	if _conns.has(cid):
 		return
+	# peer=null：测试桩走 outbox；生产 accept 后 peer 必非 null
 	_conns[cid] = {
 		"peer": null,
 		"stream": null,
@@ -810,6 +912,7 @@ func handle_binary_for_test(cid: int, raw: PackedByteArray) -> void:
 
 
 ## 测试：注入已启动会话并绑定连接（绕过 token，专测 Action 错误通道）。
+## peer 保持 null 以写入 outbox；_poll_conn 对 null peer 不收包（生产 accept 后 peer 必非 null）。
 func inject_bound_session_for_test(
 	cid: int,
 	session: HeadlessRoomSession,

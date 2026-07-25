@@ -54,6 +54,10 @@ var _fail_next_snapshot: bool = false
 var _fail_next_action_publish: bool = false
 # #241：本局 HAND_SETTLED 是否已发布（幂等，禁止重复 seq/journal；多局不得靠全局 journal 粗查）
 var _hand_settled_emitted: bool = false
+## #256：整场 MATCH_SETTLED 是否已权威发布（O(1) 完成态；不经 event_journal 克隆）
+var _match_settled_emitted: bool = false
+## 测试/诊断：event_journal 被调用次数（每次会 _clone_events 全量复制）
+var event_journal_call_count: int = 0
 ## E5-04：权威奖励时钟（仅 advance_reward_time 单调推进；禁止墙钟/伪造跳跃）
 var _reward_authority_now_ms: int = REWARD_CLOCK_BASE_MS
 ## 整场是否结束：仅显式注入；默认 null=未知→流局按 match 继续(FULL_GRANT)
@@ -101,6 +105,8 @@ func _init(
 	_fail_next_snapshot = false
 	_fail_next_action_publish = false
 	_hand_settled_emitted = false
+	_match_settled_emitted = false
+	event_journal_call_count = 0
 	_reward_authority_now_ms = REWARD_CLOCK_BASE_MS
 	_reward_match_ended = null
 	_reward_claim_seen_open = false
@@ -334,7 +340,13 @@ func allocate_ptt_end_server_seq(seat: int, utterance_id: String) -> Dictionary:
 func event_journal(recipient_seat: int) -> Array:
 	if recipient_seat < 0 or recipient_seat > 3:
 		return []
+	event_journal_call_count += 1
 	return _clone_events(_journals[recipient_seat] as Array)
+
+
+## #256：整场是否已权威 MATCH_SETTLED（O(1)，不克隆 journal）。
+func has_match_settled() -> bool:
+	return _match_settled_emitted
 
 
 func events_since(recipient_seat: int, after_server_seq: int) -> Array:
@@ -2117,6 +2129,8 @@ func _publish_domain_events_with_matching_snapshot(events: Array) -> bool:
 		var pack: Dictionary = prepared_by_seat[seat2] as Dictionary
 		for ne2 in pack["events"]:
 			(_journals[seat2] as Array).append(ne2)
+			if ne2 is NetworkedEvent and (ne2 as NetworkedEvent).kind == "MATCH_SETTLED":
+				_match_settled_emitted = true
 		(_journals[seat2] as Array).append(pack["snap"])
 	return true
 
@@ -2250,11 +2264,10 @@ func _is_match_ended_now() -> bool:
 func _emit_match_settled_and_clear_items() -> bool:
 	if not _is_match_ended_now():
 		return true
-	# 已发过则幂等清场
-	for ne in event_journal(0):
-		if ne is NetworkedEvent and (ne as NetworkedEvent).kind == "MATCH_SETTLED":
-			ItemAuthority.clear_match(_bc, _item_module(), _ability_slots())
-			return true
+	# 已发过则幂等清场（O(1) 标志，不克隆 journal）
+	if _match_settled_emitted:
+		ItemAuthority.clear_match(_bc, _item_module(), _ability_slots())
+		return true
 	var scores: Array = _capture_scores_array()
 	if scores.size() != 4:
 		return false
@@ -2277,6 +2290,8 @@ func _emit_match_settled_and_clear_items() -> bool:
 		{"kind": "MATCH_SETTLED", "payload": payload},
 	]):
 		return false
+	# 双保险：publish 路径已置位；此处保证语义显式
+	_match_settled_emitted = true
 	return true
 
 

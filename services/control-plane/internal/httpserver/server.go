@@ -31,22 +31,30 @@ type Config struct {
 	Pinger       Pinger
 	TokenService TokenService
 	CasualQueue  CasualQueue
+	// WorkerRegistry #256 内部注册/续租。
+	WorkerRegistry WorkerRegistrar
+	// WorkerRegistrationToken 独立注册 token；不得等于 TOKEN_SIGNING_SECRET。
+	WorkerRegistrationToken string
 }
 
 // Server 提供探针、游客会话与公共休闲队列 HTTP，并支持优雅关闭。
 type Server struct {
-	httpServer   *http.Server
-	pinger       Pinger
-	tokenService TokenService
-	casualQueue  CasualQueue
+	httpServer     *http.Server
+	pinger         Pinger
+	tokenService   TokenService
+	casualQueue    CasualQueue
+	workerRegistry WorkerRegistrar
+	workerRegToken string
 }
 
 // New 创建服务器（尚未监听）。
 func New(cfg Config) *Server {
 	s := &Server{
-		pinger:       cfg.Pinger,
-		tokenService: cfg.TokenService,
-		casualQueue:  cfg.CasualQueue,
+		pinger:         cfg.Pinger,
+		tokenService:   cfg.TokenService,
+		casualQueue:    cfg.CasualQueue,
+		workerRegistry: cfg.WorkerRegistry,
+		workerRegToken: cfg.WorkerRegistrationToken,
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -58,6 +66,10 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("GET /v1/queues/casual/{ticket_id}", s.handleGetCasualTicket)
 	mux.HandleFunc("DELETE /v1/queues/casual/{ticket_id}", s.handleCancelCasualTicket)
 	mux.HandleFunc("/v1/queues/casual/{ticket_id}", s.handleCasualTicketFallback)
+	mux.HandleFunc("POST /v1/internal/workers/register", s.handleRegisterWorker)
+	mux.HandleFunc("/v1/internal/workers/register", s.handleWorkersFallback)
+	mux.HandleFunc("POST /v1/internal/workers/rooms/complete", s.handleCompleteWorkerRoom)
+	mux.HandleFunc("/v1/internal/workers/rooms/complete", s.handleCompleteRoomFallback)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,

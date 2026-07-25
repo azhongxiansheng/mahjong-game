@@ -66,9 +66,7 @@ func TestRework_P1_BlockingIssuerNeverExposesPartialAssigned(t *testing.T) {
 	go func() {
 		defer close(done)
 		res, matchErr = f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-			WorkerEndpoint:      f.worker,
-			VoiceWorkerEndpoint: f.voiceWorker,
-			TokenIssuer:         issuer,
+			TokenIssuer: issuer,
 		})
 	}()
 
@@ -129,9 +127,7 @@ func TestRework_P1_IssuerFailLeavesPoolUntouched(t *testing.T) {
 
 			bad := &blockingIssuer{inner: f.issuer, blockAt: -1, failAt: failAt}
 			res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      f.worker,
-				VoiceWorkerEndpoint: f.voiceWorker,
-				TokenIssuer:         bad,
+				TokenIssuer: bad,
 			})
 			if err == nil {
 				t.Fatal("expected issuer error")
@@ -163,9 +159,7 @@ func TestRework_P1_IssuerFailLeavesPoolUntouched(t *testing.T) {
 
 			// 正常 issuer 一次完整成功
 			res2, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      f.worker,
-				VoiceWorkerEndpoint: f.voiceWorker,
-				TokenIssuer:         f.issuer,
+				TokenIssuer: f.issuer,
 			})
 			if err != nil || !res2.Matched {
 				t.Fatalf("retry match: %+v err=%v", res2, err)
@@ -212,14 +206,13 @@ func TestRework_P1_AssignedAlwaysHasCompleteTokenFields(t *testing.T) {
 						KeyPrefix: f.prefix,
 						Clock:     f.clk,
 						IDGen:     &seqIDGenVal{n: 5000 + i*50},
+						Workers:   f.reg,
 					})
 					if err != nil {
 						return
 					}
 					_, _ = svc2.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-						WorkerEndpoint:      f.worker,
-						VoiceWorkerEndpoint: f.voiceWorker,
-						TokenIssuer:         f.issuer,
+						TokenIssuer: f.issuer,
 					})
 				}(i)
 			}
@@ -231,9 +224,7 @@ func TestRework_P1_AssignedAlwaysHasCompleteTokenFields(t *testing.T) {
 
 			f.clk.Advance(30 * time.Second)
 			_, _ = f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      f.worker,
-				VoiceWorkerEndpoint: f.voiceWorker,
-				TokenIssuer:         f.issuer,
+				TokenIssuer: f.issuer,
 			})
 
 			for _, tk0 := range tickets {
@@ -399,10 +390,8 @@ func TestRework_P2_MatchAllDrainsEightHumansInOneScan(t *testing.T) {
 		tickets = append(tickets, tk)
 	}
 	m, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         f.issuer,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
+		Service:     f.svc,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
@@ -449,11 +438,9 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 	// 直接 MatchAll 应返回错误
 	failingDirect := &blockingIssuer{inner: f.issuer, blockAt: -1, failAt: 0}
 	mFail, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         failingDirect,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		OnError:             onErr,
+		Service:     f.svc,
+		TokenIssuer: failingDirect,
+		OnError:     onErr,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
@@ -467,12 +454,10 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 		return "", time.Time{}, errors.New("issuer synthetic failure")
 	}))
 	m2, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         alwaysFail,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		ScanInterval:        15 * time.Millisecond,
-		OnError:             onErr,
+		Service:      f.svc,
+		TokenIssuer:  alwaysFail,
+		ScanInterval: 15 * time.Millisecond,
+		OnError:      onErr,
 	})
 	if err != nil {
 		t.Fatalf("m2: %v", err)
@@ -500,10 +485,8 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 
 	// 恢复：正常 issuer MatchAll 成功
 	mOK, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         f.issuer,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
+		Service:     f.svc,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("mOK: %v", err)

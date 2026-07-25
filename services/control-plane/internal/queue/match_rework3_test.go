@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/workers"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -58,9 +59,7 @@ func TestRework3_P1_StaleHeadMustNotAIFillWhenFourthHumanExists(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.issuer,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -102,9 +101,7 @@ func TestRework3_P1_FullStaleWindowThenFourHumans(t *testing.T) {
 	tickets := enqueueN(t, f.svc, 4, RoundKindEast, GameModeStandard)
 
 	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.issuer,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -112,10 +109,8 @@ func TestRework3_P1_FullStaleWindowThenFourHumans(t *testing.T) {
 	if !res.Matched {
 		// 允许更严格有界：同一 MatchAll 扫描完成
 		m, err := NewMatcher(MatcherOptions{
-			Service:             f.svc,
-			TokenIssuer:         f.issuer,
-			WorkerEndpoint:      f.worker,
-			VoiceWorkerEndpoint: f.voiceWorker,
+			Service:     f.svc,
+			TokenIssuer: f.issuer,
 		})
 		if err != nil {
 			t.Fatalf("NewMatcher: %v", err)
@@ -168,11 +163,24 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 		}
 		cancel()
 		clients[i] = c
+	}
+	reg, err := workers.NewRegistry(workers.Options{
+		Redis:        clients[0],
+		KeyPrefix:    prefix + "reg:",
+		CasualPrefix: prefix,
+		Clock:        clk,
+		LeaseTTL:     24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	for i := 0; i < nClients; i++ {
 		svc, err := NewService(Options{
-			Redis:     c,
+			Redis:     clients[i],
 			KeyPrefix: prefix,
 			Clock:     clk,
 			IDGen:     &seqIDGenVal{n: i * 1000},
+			Workers:   reg,
 		})
 		if err != nil {
 			t.Fatalf("NewService %d: %v", i, err)
@@ -196,6 +204,15 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 	worker := "ws://worker.indep.test:9000"
 	voiceWorker := "ws://voice.indep.test:9001"
 	ctx := context.Background()
+	if _, err := reg.Register(ctx, workers.Registration{
+		WorkerID:      "indep-w1",
+		GameEndpoint:  worker,
+		VoiceEndpoint: voiceWorker,
+		Capacity:      32,
+		ActiveRooms:   0,
+	}); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
 
 	// stale + 4 humans via client 0
 	base := clk.Now().UTC().UnixMilli()
@@ -222,9 +239,7 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			results[i], errs[i] = svcs[i].MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      worker,
-				VoiceWorkerEndpoint: voiceWorker,
-				TokenIssuer:         issuer,
+				TokenIssuer: issuer,
 			})
 		}(i)
 	}
@@ -289,11 +304,9 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 	var mu sync.Mutex
 
 	m, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         leaky,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		ScanInterval:        15 * time.Millisecond,
+		Service:      f.svc,
+		TokenIssuer:  leaky,
+		ScanInterval: 15 * time.Millisecond,
 		OnError: func(op string, safeMsg string) {
 			reports.Add(1)
 			mu.Lock()
@@ -344,10 +357,8 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 
 	// 恢复后仍可分配
 	mOK, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         f.issuer,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
+		Service:     f.svc,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("mOK: %v", err)
