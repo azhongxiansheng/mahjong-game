@@ -204,13 +204,17 @@ func _accept_transcript_msg(d: Dictionary) -> bool:
 		return false
 	if not _is_json_int(d.get("hand_seq", null)):
 		return false
-	if str(d.get("source", "")) != "faster_whisper":
-		return false
+	var src := str(d.get("source", ""))
 	var kind := str(d.get("kind", ""))
+	# #248：partial 仅 faster_whisper；final 可 faster_whisper 或 new_api；其它组合拒绝。
 	if kind == "TRANSCRIPT_PARTIAL":
+		if src != "faster_whisper":
+			return false
 		if bool(d.get("is_final", true)):
 			return false
 	elif kind == "TRANSCRIPT_FINAL":
+		if src != "faster_whisper" and src != "new_api":
+			return false
 		if not bool(d.get("is_final", false)):
 			return false
 		if not _is_json_int(d.get("ptt_end_server_seq", null)) or int(d["ptt_end_server_seq"]) <= 0:

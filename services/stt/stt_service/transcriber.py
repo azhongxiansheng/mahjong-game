@@ -20,7 +20,8 @@ class TranscribeResult:
     duration_before_vad: float
     duration_after_vad: float
     wall_ms: int
-    empty_reason: str | None = None  # EMPTY | VAD_NO_SPEECH | LANG_FILTERED | None
+    empty_reason: str | None = None  # EMPTY | VAD_NO_SPEECH | LANG_FILTERED | PRIMARY_* | NEW_API_* | None
+    source: str = "faster_whisper"
 
 
 class WhisperTranscriber:

@@ -17,6 +17,7 @@ const MAX_OVERFLOW_TOMBSTONES: int = 64
 const MAX_DROP_TOMBSTONES: int = 64
 const PROTOCOL_VERSION: int = 1
 const SOURCE_FASTER_WHISPER := "faster_whisper"
+const SOURCE_NEW_API := "new_api"
 const PARTIAL_EVERY_N_FRAMES: int = 10
 
 var _worker: HeadlessWorker = null
@@ -507,10 +508,17 @@ func _ctx_matches_msg(ctx: Dictionary, msg: Dictionary, require_ptt: bool) -> bo
 	return true
 
 
+func _is_allowed_source(source: String, require_final: bool) -> bool:
+	# partial 仅 faster_whisper；final 允许主备 source（#248 new_api）。
+	if require_final:
+		return source == SOURCE_FASTER_WHISPER or source == SOURCE_NEW_API
+	return source == SOURCE_FASTER_WHISPER
+
+
 func _validate_service_msg(msg: Dictionary, require_final: bool) -> bool:
 	if not _is_json_int(msg.get("protocol_version", null)) or int(msg["protocol_version"]) != PROTOCOL_VERSION:
 		return false
-	if str(msg.get("source", "")) != SOURCE_FASTER_WHISPER:
+	if not _is_allowed_source(str(msg.get("source", "")), require_final):
 		return false
 	if require_final:
 		if str(msg.get("kind", "")) != "TRANSCRIPT_FINAL":
@@ -759,6 +767,9 @@ func _broadcast_room_transcript(msg: Dictionary) -> void:
 	var room_id := str(msg.get("room_id", ""))
 	if room_id.is_empty():
 		return
+	var src := str(msg.get("source", SOURCE_FASTER_WHISPER))
+	if not _is_allowed_source(src, bool(msg.get("is_final", false))):
+		src = SOURCE_FASTER_WHISPER
 	relay.broadcast_control_to_room(room_id, {
 		"protocol_version": PROTOCOL_VERSION,
 		"kind": str(msg.get("kind", "")),
@@ -768,7 +779,7 @@ func _broadcast_room_transcript(msg: Dictionary) -> void:
 		"window_id": str(msg.get("window_id", "")),
 		"utterance_id": str(msg.get("utterance_id", "")),
 		"ptt_end_server_seq": msg.get("ptt_end_server_seq", null),
-		"source": SOURCE_FASTER_WHISPER,
+		"source": src,
 		"lang": str(msg.get("lang", "")),
 		"text": str(msg.get("text", "")),
 		"is_final": bool(msg.get("is_final", false)),

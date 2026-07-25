@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Any, Mapping
 
 PROTOCOL_VERSION = 1
-SOURCE = "faster_whisper"
+SOURCE_FASTER_WHISPER = "faster_whisper"
+SOURCE_NEW_API = "new_api"
+# Backward-compatible alias used by partial / service-level failed messages.
+SOURCE = SOURCE_FASTER_WHISPER
+
+ALLOWED_SOURCES = frozenset({SOURCE_FASTER_WHISPER, SOURCE_NEW_API})
 
 KIND_UTTERANCE_START = "UTTERANCE_START"
 KIND_AUDIO_CHUNK = "AUDIO_CHUNK"
@@ -216,7 +221,9 @@ def make_final(
     duration_before_vad: float | None = None,
     duration_after_vad: float | None = None,
     wall_ms: int | None = None,
+    source: str = SOURCE_FASTER_WHISPER,
 ) -> dict[str, Any]:
+    src = source if source in ALLOWED_SOURCES else SOURCE_FASTER_WHISPER
     out: dict[str, Any] = {
         "protocol_version": PROTOCOL_VERSION,
         "kind": KIND_TRANSCRIPT_FINAL,
@@ -226,7 +233,7 @@ def make_final(
         "window_id": window_id,
         "utterance_id": utterance_id,
         "ptt_end_server_seq": ptt_end_server_seq,
-        "source": SOURCE,
+        "source": src,
         "lang": lang,
         "text": text,
         "is_final": True,
