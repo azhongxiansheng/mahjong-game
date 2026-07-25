@@ -2854,3 +2854,56 @@ func test_ars_rejects_restore_recapture_hash_drift() -> void:
 		var corrupted: Object = _ars_from_data(ars, row[1] as Dictionary)
 		var target := _make_bc(bc_scr, 400 + i, i % 8)
 		_assert_strict_atomic_reject(ars, target, corrupted, case_name)
+
+
+## #253：墙顶 reveal 后真实摸入 hand 时，revealed 可与 hand 共享 iid；capture/can_restore/restore 成功且 hash 稳定。
+## 真正活动区重复（hand/river 同 iid）仍 fail-closed。
+func test_ars_allows_revealed_overlap_with_drawn_hand_tile() -> void:
+	var ars := _ars_ready()
+	var bc_scr := _bc_ready()
+	if ars == null or bc_scr == null:
+		return
+	var bc := _make_bc(bc_scr, 2531, 0)
+	if bc == null:
+		return
+	var st: BattleState = bc.get("state") as BattleState
+	assert_not_null(st)
+	assert_gt(st.wall.live_wall_size(), 0)
+	var top: Tile = st.wall._tiles[st.wall._draw_index]
+	assert_not_null(top)
+	var top_iid: int = int(top.instance_id)
+	# 墙顶 peek 式 reveal（投影），随后真实 draw 进 hand
+	st.revealed_tiles = [{
+		"tile": TileInstance.make(top, 0, null),
+		"visible_to": [0, 1, 2, 3],
+	}]
+	var drawn: Tile = st.wall.draw()
+	assert_not_null(drawn)
+	assert_eq(int(drawn.instance_id), top_iid)
+	var seat_i: int = int(st.current_seat)
+	assert_true(st.seats[seat_i].hand.add(drawn))
+	var snap1: Variant = _capture(ars, bc)
+	assert_not_null(snap1, "revealed∩hand capture 须成功")
+	assert_true(bool(snap1.call("can_restore")), "revealed∩hand 须 can_restore")
+	var h1: String = _sha(snap1)
+	assert_true(_hex64(h1))
+	var target := _make_bc(bc_scr, 2532, 1)
+	assert_true(bool(snap1.call("restore_into", target)), "revealed∩hand restore_into 须成功")
+	var snap2: Variant = _capture(ars, target)
+	assert_not_null(snap2)
+	assert_eq(_sha(snap2), h1, "restore 后 hash 须稳定")
+	# 负例：同一 tile 同时出现在 hand 与 river → fail-closed
+	var data: Dictionary = (snap1.call("to_dict") as Dictionary).duplicate(true)
+	var seats: Array = (data.get("seats", []) as Array).duplicate(true)
+	assert_gt(seats.size(), 0)
+	var s0: Dictionary = (seats[seat_i] as Dictionary).duplicate(true)
+	var hand: Array = (s0.get("hand", []) as Array)
+	assert_gt(hand.size(), 0, "须有 hand 牌以构造 river 重复")
+	var river: Array = (s0.get("river", []) as Array).duplicate(true)
+	river.append((hand[hand.size() - 1] as Dictionary).duplicate(true))
+	s0["river"] = river
+	seats[seat_i] = s0
+	data["seats"] = seats
+	var corrupted: Object = _ars_from_data(ars, data)
+	assert_not_null(corrupted)
+	assert_false(bool(corrupted.call("can_restore")), "hand∩river 真重复须 fail-closed")

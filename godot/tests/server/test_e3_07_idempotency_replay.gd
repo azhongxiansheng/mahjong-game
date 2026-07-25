@@ -761,9 +761,11 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var server_tt := LocalLoopbackServer.new(cfg_tt, 0)
 	assert_true(server_tt.snapshot_registry.is_trash_talk_registry())
 	var keys_tt: Array = server_tt.snapshot_registry.registered_keys()
-	assert_eq(keys_tt.size(), 2)
+	# #253：TRASH_TALK registry 升序 core_table + item_inventory + reward_window
+	assert_eq(keys_tt.size(), 3)
 	assert_eq(str(keys_tt[0]), "core_table")
-	assert_eq(str(keys_tt[1]), "reward_window")
+	assert_eq(str(keys_tt[1]), "item_inventory")
+	assert_eq(str(keys_tt[2]), "reward_window")
 	assert_true(server_tt.start())
 	assert_true(server_tt.publish_snapshot())
 	var snap_tt: NetworkedEvent = null
@@ -776,9 +778,10 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var tt_keys: Array = []
 	for m2 in snap_tt.payload.get("modules", []):
 		tt_keys.append(str((m2 as Dictionary).get("module_key", "")))
-	assert_eq(tt_keys.size(), 2)
+	assert_eq(tt_keys.size(), 3)
 	assert_eq(str(tt_keys[0]), "core_table")
-	assert_eq(str(tt_keys[1]), "reward_window")
+	assert_eq(str(tt_keys[1]), "item_inventory")
+	assert_eq(str(tt_keys[2]), "reward_window")
 	var room_tt: String = str(server_tt.get("_room_id"))
 	var nbc_tt := NetworkedBattleController.new(room_tt, 0)
 	nbc_tt.configure_snapshot_registry_for_mode(str(GameSessionConfig.MODE_TRASH_TALK))

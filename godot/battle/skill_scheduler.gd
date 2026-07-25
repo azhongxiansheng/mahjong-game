@@ -35,7 +35,8 @@ func emit_event(event: BattleEvent) -> SkillCtx:
 
 func _collect(event: BattleEvent) -> Array:
 	var candidates: Array = []
-	var seen_ability_ids: Dictionary = {}
+	# 角色能力仍按 ability id 去重；同 item_id 多实例用 item_instance_id 区分（#253）。
+	var seen_ability_keys: Dictionary = {}
 	for entry in _registry.get_all_entries():
 		var skill: SkillResource = entry.skill
 		if skill.consumed:
@@ -43,13 +44,14 @@ func _collect(event: BattleEvent) -> Array:
 		if entry.hook == null:
 			continue
 		if skill.is_ability:
-			if seen_ability_ids.has(skill.id):
+			var dedupe_key: String = _ability_dedupe_key(skill)
+			if seen_ability_keys.has(dedupe_key):
 				continue
 			var owner_hit := skill.owner_triggers.has(event.type)
 			var holder_hit := skill.holder_triggers.has(event.type)
 			if not owner_hit and not holder_hit:
 				continue
-			seen_ability_ids[skill.id] = true
+			seen_ability_keys[dedupe_key] = true
 			candidates.append({
 				"group": _GROUP_OWNER,
 				"skill": skill,
@@ -155,3 +157,14 @@ func _dump_state() -> Dictionary:
 		"ron_cancelled": _state.ron_cancelled.duplicate(),
 		"haitei_forced_seat": _state.haitei_forced_seat,
 	}
+
+
+## 角色：ab:<id>；道具多实例：ii:<item_instance_id>（最小改动，不破坏角色语义）。
+func _ability_dedupe_key(skill: SkillResource) -> String:
+	if skill == null:
+		return "ab:"
+	if skill.params.has("item_instance_id"):
+		var iid := String(skill.params["item_instance_id"]).strip_edges()
+		if not iid.is_empty():
+			return "ii:" + iid
+	return "ab:" + String(skill.id)

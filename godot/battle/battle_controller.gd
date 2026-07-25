@@ -994,11 +994,31 @@ func _impl_apply_action(action: Action, source: StringName = ActionSource.HUMAN)
 		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
 	if not ActionSource.is_valid(source):
 		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	# #253：练习 TT 生产入口 — 路由到共享 LocalLoopback（与 Worker 同事务）
+	var auth = _get_practice_authority()
+	if auth != null and not bool(auth.call("is_processing_internal")):
+		if not bool(auth.get("_started")):
+			if not bool(auth.call("start")):
+				return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+		# PBC 生产 Action 使用 DEFAULT_ROOM_ID("local")；仅该默认值可转为 session room。
+		# 任意错误 room 不得静默修正（返回 null → WRONG_ROOM）。
+		action = _align_action_room_for_practice_authority(action, auth)
+		if action == null:
+			return ActionResolution.rejected(ActionResolution.WRONG_ROOM)
+		if source == ActionSource.HUMAN:
+			var cr: CommandResult = auth.call("submit_action", action) as CommandResult
+			return _command_result_to_resolution(cr)
+		# AI / REPLAY：传入原始 source，禁止在 Loopback 内降级为 HUMAN
+		return auth.call("process_internal_action", action, source) as ActionResolution
 	# E2-04：模式硬隔离门控（可区分 MODE_FORBIDDEN；先于 E5 NOT_ENABLED）
 	if mode_modules != null and not mode_modules.accepts_command_kind(action.kind):
 		return ActionResolution.rejected(ActionResolution.MODE_FORBIDDEN)
+	# #253：ITEM_USE 仅经 LocalLoopback（PBC meta local_authority）统一事务。
+	# 裸 BC（含 TT modules 但无权威）fail-closed，禁止无事件侧写库存。
 	if action.kind == "ITEM_USE":
-		return ActionResolution.rejected(ActionResolution.NOT_ENABLED)
+		if mode_modules == null or not mode_modules.is_trash_talk():
+			return ActionResolution.rejected(ActionResolution.NOT_ENABLED)
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
 
 	# REPLAY：先对齐期望队列（不得被 WRONG_* 抢走）
 	if source == ActionSource.REPLAY:
@@ -1099,6 +1119,44 @@ func _impl_progress_server_draw() -> bool:
 		return false
 	_step_draw()
 	return true
+
+
+func _get_practice_authority():
+	# 仅本局 PBC meta；禁止 ModeModuleBundle 双权威跨 hand 错路由
+	if has_meta("local_authority"):
+		return get_meta("local_authority")
+	return null
+
+
+## 练习共享 Loopback room 契约：
+## - 已是权威 session room → 保持
+## - 生产默认 DEFAULT_ROOM_ID("local") → 转换为 session
+## - 其它任意非空错误 room → 返回 null，由调用方稳定拒绝 WRONG_ROOM
+func _align_action_room_for_practice_authority(action: Action, auth) -> Action:
+	if action == null or auth == null:
+		return action
+	var rid := str(auth.get("_room_id"))
+	if rid.is_empty():
+		return null
+	if action.room_id == rid:
+		return action
+	if action.room_id == DEFAULT_ROOM_ID:
+		var d: Dictionary = action.to_dict()
+		d["room_id"] = rid
+		return Action.from_dict(d)
+	return null
+
+
+func _command_result_to_resolution(cr: CommandResult) -> ActionResolution:
+	if cr == null:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if cr.status == "ACCEPTED":
+		return ActionResolution.success([])
+	var code := StringName(cr.error_code)
+	var mapped: ActionResolution = ActionResolution.rejected(code)
+	if mapped == null:
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	return mapped
 
 
 func _prevalidate_action(action: Action) -> ActionResolution:
