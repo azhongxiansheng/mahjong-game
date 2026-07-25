@@ -168,6 +168,8 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_bc.bind_decision_port(_decision_adapter, get_tree())
 	# E4-01：从真实 mode_modules.voice_port 绑定（STANDARD 为 null → 零语音节点）
 	bind_voice_from_battle(bc)
+	# E5-06：TRASH_TALK 奖励 HUD/抽屉只读接线（不改权威）
+	_bind_reward_feedback_from_battle(bc)
 	_bind_state_for_deal(bc.state, 0, 4)
 	_decision_adapter.present(&"idle", {"text": "准备开局…"})
 	_attach_event_polling()
@@ -1473,6 +1475,8 @@ func _polling_loop() -> void:
 					_dora_widget.update_indicators(ind_ids)
 		if n < _last_event_count:
 			_last_event_count = 0
+		# E5-06：奖励 journal 可在无 BattleEvent 时前进（STT/grace/ITEM_*）
+		_sync_reward_feedback_if_advanced()
 
 
 # BC 事件 → AudioManager SFX 播放;调 AudioManager.sfx_key_for_event 算 key,
@@ -1803,10 +1807,290 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 
 func _exit_tree() -> void:
 	_polling_active = false
+	_reward_sync_active = false
+	_disconnect_public_transcript()
+	_public_reward_session = null
 	release_voice_runtime()
 
 
 ## E4-01：生产绑定入口。STANDARD 的 voice_port=null → 不创建按钮/采集/播放。
+# E5-06 rework-3：奖励 journal 运行时同步（room/epoch + seq）；公共会话生命周期绑定。
+var _reward_journal_cursor: int = 0
+var _public_reward_session: PublicCasualNetworkSession = null
+var _reward_source_epoch: String = ""
+var _reward_local_seat: int = 0
+var _reward_sync_active: bool = false
+var _reward_bootstrapped: bool = false
+var _last_reward_head_seq: int = -1
+var _last_reward_view_sig: String = ""
+var _reward_source_gen: int = 0
+var _reward_apply_count: int = 0  # 可观察：视图 apply 次数（pending 不得空转加）
+
+
+## E5-06：练习 TT 只读奖励绑定。ITEM_USE 走 PBC.submit_item_use → apply_action。
+func _bind_reward_feedback_from_battle(bc: PlayableBattleController) -> void:
+	if bc == null or _table == null:
+		return
+	if not (_table is FourPlayerTable):
+		return
+	_disconnect_public_transcript()
+	_public_reward_session = null
+	if not _table.has_signal("inventory_use_requested"):
+		return
+	if not _table.inventory_use_requested.is_connected(_on_inventory_use_requested):
+		_table.inventory_use_requested.connect(_on_inventory_use_requested)
+	_reward_local_seat = 0
+	if _table.has_method("set_local_seat"):
+		_table.set_local_seat(0)
+	var room := "practice"
+	if bc.has_meta("local_authority"):
+		var auth = bc.get_meta("local_authority")
+		if auth != null and auth.get("_room_id") != null:
+			room = str(auth.get("_room_id"))
+	_begin_reward_source("practice|%s|seat0" % room, 0, true)
+	_ensure_reward_sync_loop()
+
+
+## 公共场只读展示 seam：可在 session.start()/nbc 创建之前调用。
+## 生命周期内自动跟进 committed journal；pending 不投影。公共 ITEM_USE fail-closed。
+func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
+	_disconnect_public_transcript()
+	_public_reward_session = session
+	if _table != null and _table.has_signal("inventory_use_requested"):
+		if not _table.inventory_use_requested.is_connected(_on_inventory_use_requested):
+			_table.inventory_use_requested.connect(_on_inventory_use_requested)
+	var seat := 0
+	var room := "public"
+	if session != null:
+		seat = int(session.seat) if session.seat >= 0 else 0
+		room = str(session.room_id) if not str(session.room_id).is_empty() else "public"
+		if not session.transcript_caption.is_connected(_on_public_transcript_caption):
+			session.transcript_caption.connect(_on_public_transcript_caption)
+	_reward_local_seat = seat
+	if _table != null and _table.has_method("set_local_seat"):
+		_table.set_local_seat(seat)
+	_begin_reward_source("public|%s|seat%d" % [room, seat], seat, true)
+	_ensure_reward_sync_loop()
+
+
+func _disconnect_public_transcript() -> void:
+	if _public_reward_session == null:
+		return
+	if _public_reward_session.transcript_caption.is_connected(_on_public_transcript_caption):
+		_public_reward_session.transcript_caption.disconnect(_on_public_transcript_caption)
+
+
+func _on_public_transcript_caption(msg: Dictionary) -> void:
+	# 仅展示；不触达 RewardWindow / 库存
+	if _table == null or not _table.has_method("inject_caption_display"):
+		return
+	if msg.is_empty():
+		return
+	_table.inject_caption_display(msg.duplicate(true))
+
+
+func _begin_reward_source(epoch: String, seat: int, bootstrap_skip_history: bool) -> void:
+	# 每次显式 bind 新 authority/hand 递增 generation，同 room 新 hand seq 重用仍生效
+	_reward_source_gen += 1
+	_reward_source_epoch = "%s|gen%d" % [String(epoch), _reward_source_gen]
+	_reward_local_seat = seat
+	_reward_bootstrapped = false
+	_last_reward_head_seq = -1
+	_last_reward_view_sig = ""
+	_reward_journal_cursor = 0
+	_reward_apply_count = 0
+	if _table != null and _table.has_method("begin_reward_display_source"):
+		_table.begin_reward_display_source(_reward_source_epoch, seat)
+	if bootstrap_skip_history:
+		# 首帧：视图恢复库存，cursor 推到当前 committed head，不重放历史到账/发动
+		_bootstrap_reward_display()
+
+
+func _bootstrap_reward_display() -> void:
+	_apply_reward_views_only()
+	var head: int = _peek_reward_journal_head_seq()
+	_reward_journal_cursor = maxi(0, head)
+	_last_reward_head_seq = head
+	if _table != null and _table.has_method("mark_reward_feedback_up_to"):
+		_table.mark_reward_feedback_up_to(_reward_source_epoch, head)
+	_reward_bootstrapped = true
+
+
+func _ensure_reward_sync_loop() -> void:
+	if _reward_sync_active:
+		return
+	_reward_sync_active = true
+	_reward_sync_loop()
+
+
+func _reward_sync_loop() -> void:
+	while _reward_sync_active:
+		await get_tree().process_frame
+		# 练习场主循环已调 _sync；公共-only 或 bind 早于 start 时由此兜底
+		if _public_reward_session != null:
+			_sync_reward_feedback_if_advanced()
+		elif _bc == null:
+			_reward_sync_active = false
+			return
+
+
+func _sync_reward_feedback_if_advanced() -> void:
+	if _table == null:
+		return
+	if not _reward_bootstrapped:
+		_bootstrap_reward_display()
+		return
+	var head: int = _peek_reward_journal_head_seq()
+	var sig: String = _reward_view_signature()
+	if head <= _reward_journal_cursor and sig == _last_reward_view_sig:
+		return
+	# 视图有变或 journal 前进：快照恢复 + 仅新 seq 反馈
+	_apply_reward_views_only()
+	if head > _reward_journal_cursor:
+		_consume_reward_journal_events()
+	_last_reward_head_seq = head
+	_last_reward_view_sig = sig
+
+
+func _peek_reward_journal_head_seq() -> int:
+	# 仅 committed journal head；不得用 current_seq()（含 pending）以免空转 rebuild
+	var head := 0
+	if _public_reward_session != null and _public_reward_session.nbc != null:
+		for item in _public_reward_session.nbc.get_event_journal():
+			if item is NetworkedEvent:
+				head = maxi(head, int((item as NetworkedEvent).server_seq))
+		return head
+	if _bc != null and _bc.has_meta("local_authority"):
+		var auth = _bc.get_meta("local_authority")
+		if auth != null and auth.has_method("event_journal"):
+			for ne in auth.event_journal(0):
+				if ne is NetworkedEvent:
+					head = maxi(head, int((ne as NetworkedEvent).server_seq))
+	return head
+
+
+func get_reward_apply_count() -> int:
+	return _reward_apply_count
+
+
+func _reward_view_signature() -> String:
+	var reward_view: Dictionary = {}
+	var inv_view: Dictionary = {}
+	_fill_reward_views(reward_view, inv_view)
+	# 轻量签名：phase/discard/items 数 + 本席 seat
+	var phase := str(reward_view.get("phase", ""))
+	var disc := int(reward_view.get("discard_count", -1))
+	var items: Array = inv_view.get("items", []) as Array if inv_view.has("items") else []
+	var exit_s := str(reward_view.get("window_exit", ""))
+	return "%s|%d|%d|%s|%d" % [phase, disc, items.size(), exit_s, _reward_local_seat]
+
+
+func _fill_reward_views(reward_view: Dictionary, inv_view: Dictionary) -> void:
+	reward_view.clear()
+	inv_view.clear()
+	if _public_reward_session != null and _public_reward_session.nbc != null:
+		var nbc: NetworkedBattleController = _public_reward_session.nbc
+		reward_view.merge(nbc.get_reward_window_view())
+		inv_view.merge(nbc.get_item_inventory_view())
+		return
+	if _bc != null and _bc.mode_modules != null and _bc.mode_modules.is_trash_talk():
+		var rw = _bc.mode_modules.reward_window
+		var inv = _bc.mode_modules.item_inventory
+		if rw != null and rw.has_method("to_snapshot_dto"):
+			var dto: Dictionary = rw.to_snapshot_dto()
+			var pay: Variant = dto.get("payload", null)
+			if typeof(pay) == TYPE_DICTIONARY:
+				reward_view.merge(pay as Dictionary)
+		if inv != null and inv.has_method("to_seat_snapshot_dto"):
+			var env: Dictionary = inv.to_seat_snapshot_dto(_reward_local_seat)
+			if env.has("payload") and typeof(env["payload"]) == TYPE_DICTIONARY:
+				inv_view.merge(env["payload"] as Dictionary)
+			elif env.has("items"):
+				inv_view.merge(env)
+
+
+func _apply_reward_views_only() -> void:
+	if _table == null or not _table.has_method("apply_reward_views"):
+		return
+	var reward_view: Dictionary = {}
+	var inv_view: Dictionary = {}
+	_fill_reward_views(reward_view, inv_view)
+	_table.apply_reward_views(reward_view, inv_view)
+	if _table.has_method("apply_reward_utterances_display") and not reward_view.is_empty():
+		_table.apply_reward_utterances_display(reward_view)
+	_reward_apply_count += 1
+	_last_reward_view_sig = _reward_view_signature()
+
+
+## 兼容测试/旧调用：完整刷新（含 journal 增量）。
+func _refresh_reward_feedback_views() -> void:
+	if not _reward_bootstrapped:
+		_bootstrap_reward_display()
+	_apply_reward_views_only()
+	_consume_reward_journal_events()
+	_last_reward_head_seq = _peek_reward_journal_head_seq()
+	_last_reward_view_sig = _reward_view_signature()
+
+
+func _consume_reward_journal_events() -> void:
+	if _table == null:
+		return
+	var events: Array = _collect_committed_reward_events()
+	for item in events:
+		var ne: NetworkedEvent = null
+		if item is NetworkedEvent:
+			ne = item as NetworkedEvent
+		elif typeof(item) == TYPE_DICTIONARY:
+			ne = NetworkedEvent.from_dict(item)
+		if ne == null:
+			continue
+		var seq: int = int(ne.server_seq)
+		if seq <= _reward_journal_cursor:
+			continue
+		var kind := String(ne.kind)
+		match kind:
+			"REWARD_WINDOW_OPENED", "REWARD_WINDOW_CLOSING", \
+			"REWARD_WINDOW_SETTLED", "REWARD_WINDOW_CANCELLED", \
+			"ITEM_GRANTED", "ITEM_APPLIED", "ITEM_CONSUMED", \
+			"MATCH_SETTLED", "ROOM_SNAPSHOT":
+				if _table.has_method("inject_reward_journal_event"):
+					_table.inject_reward_journal_event(ne, _reward_source_epoch)
+				elif _table.has_method("inject_reward_feedback"):
+					_table.inject_reward_feedback(ne)
+		_reward_journal_cursor = maxi(_reward_journal_cursor, seq)
+
+
+func _collect_committed_reward_events() -> Array:
+	# 公共：仅 NBC committed journal（pending 不在 journal）
+	if _public_reward_session != null and _public_reward_session.nbc != null:
+		return _public_reward_session.nbc.get_event_journal()
+	# 练习：完整 journal，由 cursor 过滤
+	if _bc != null and _bc.has_meta("local_authority"):
+		var auth = _bc.get_meta("local_authority")
+		if auth != null and auth.has_method("event_journal"):
+			return auth.event_journal(0)
+	return []
+
+
+func _on_inventory_use_requested(item_instance_id: String) -> void:
+	var iid := String(item_instance_id).strip_edges()
+	if iid.is_empty():
+		return
+	# 公共场无真实命令发送 API → fail-closed
+	if _public_reward_session != null and (
+		_bc == null or not _bc.has_meta("local_authority")
+	):
+		return
+	if _bc == null:
+		return
+	if not _bc.has_method("submit_item_use"):
+		return
+	# 经 PBC 既有 command_id 序列与 apply_action → LocalLoopback
+	var res: ActionResolution = _bc.submit_item_use(iid, _reward_local_seat)
+	if res != null and res.accepted:
+		call_deferred("_sync_reward_feedback_if_advanced")
+
+
 func bind_voice_from_battle(bc: PlayableBattleController) -> void:
 	release_voice_runtime()
 	if bc == null or bc.mode_modules == null:

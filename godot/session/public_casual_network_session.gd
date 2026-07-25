@@ -40,6 +40,15 @@ var _released: bool = false
 var _owns_voice_port: bool = false
 
 
+## E5-06：可选只读 UI 绑定。不改 schema/权威；展示侧消费 nbc committed journal。
+## 生产大厅 bootstrap 未接通前可由测试/未来接线调用。
+func bind_playable_table(table: Node) -> void:
+	if table == null:
+		return
+	if table.has_method("bind_public_casual_session"):
+		table.bind_public_casual_session(self)
+
+
 ## assigned：CP GET ticket 成功体；p_session_id 为 guest/session（token 绑定）。
 func configure_from_assigned(assigned: Dictionary, p_session_id: String = "") -> bool:
 	if assigned.is_empty():

@@ -17,10 +17,22 @@ const LABEL_LOCAL_MIC := "本地麦克风"
 const LABEL_SERVER_STT := "服务端转写"
 const LABEL_AI_TEXT := "AI 文本"
 
+const STT_FAILED_TEXT := "转写失败或超时 · 未计分"
+
+const AFFINITY_LABELS := {
+	"DOMINATION": "统治",
+	"CALM": "冷静",
+	"CUNNING": "诡诈",
+	"PASSION": "热血",
+	"MYSTIC": "神秘",
+}
+
 # utterance_id → 终态记录（含过期后幂等）
 var _by_utt: Dictionary = {}
 # seat → 当前可见 utterance_id（空串表示无）
 var _seat_utt: Dictionary = {0: "", 1: "", 2: "", 3: ""}
+# seat 是否曾有过成功非失败发言记录（静默判定用）
+var _seat_ever_spoke: Dictionary = {0: false, 1: false, 2: false, 3: false}
 
 
 static func source_label(source: String) -> String:
@@ -98,8 +110,12 @@ func ingest(input: Dictionary) -> Dictionary:
 	if typeof(text_v) != TYPE_STRING and typeof(text_v) != TYPE_STRING_NAME:
 		return _reject("INVALID_TEXT")
 	var text := String(text_v)
+	var stt_failed: bool = bool(input.get("stt_failed", false))
+	# 终态空文本 + stt_failed：转写失败展示（非发奖）
 	if text.strip_edges().is_empty():
-		return _reject("EMPTY_TEXT")
+		if not stt_failed:
+			return _reject("EMPTY_TEXT")
+		text = STT_FAILED_TEXT
 
 	var kind := _canonicalize_kind(String(input.get("kind", "")))
 	if kind.is_empty():
@@ -127,11 +143,19 @@ func ingest(input: Dictionary) -> Dictionary:
 		if rev < 0:
 			return _reject("INVALID_REVISION")
 
+	var character_id := String(input.get("character_id", "")).strip_edges()
+	# 冻结 AI utterance identity：ai|{rule_version}|{window_id}|{seat}
+	if utt.begins_with("ai|") or source == SOURCE_AI_TEXT:
+		source = SOURCE_AI_TEXT
+		kind = KIND_FINAL
 	# AI 文本强制非麦克风语义 + final
 	if source == SOURCE_AI_TEXT:
 		kind = KIND_FINAL
+	# STT 失败强制 final
+	if stt_failed:
+		kind = KIND_FINAL
 
-	var fingerprint := _fingerprint(seat, utt, text, kind, source, lang)
+	var fingerprint := _fingerprint(seat, utt, text, kind, source, lang, character_id)
 
 	if _by_utt.has(utt):
 		var prev: Dictionary = _by_utt[utt]
@@ -149,6 +173,23 @@ func ingest(input: Dictionary) -> Dictionary:
 		if bool(prev.get("is_final", false)):
 			if kind == KIND_PARTIAL:
 				return _reject("AFTER_FINAL")
+			# final 文本/语言/来源冲突拒绝；仅 character_id 从空补全走 enrichment
+			if String(prev.get("text", "")) != text \
+					or String(prev.get("kind", "")) != kind \
+					or String(prev.get("source", "")) != source \
+					or String(prev.get("lang", "")) != lang:
+				return _reject("FINAL_CONFLICT")
+			# 允许 enrichment：同 final 补 character_id → 重算徽标，不延长 TTL
+			var prev_cid := String(prev.get("character_id", ""))
+			if prev_cid.is_empty() and not character_id.is_empty() and not stt_failed:
+				prev["character_id"] = character_id
+				prev["affinity_badges"] = compute_affinity_badges(text, character_id, lang)
+				prev["fingerprint"] = _fingerprint(
+					seat, utt, text, kind, source, lang, character_id
+				)
+				_by_utt[utt] = prev
+				_seat_utt[seat] = utt
+				return {"ok": true, "idempotent": false, "reason": "ENRICHED"}
 			return _reject("FINAL_CONFLICT")
 
 		# display_revision 只约束 incoming partial（拒绝旧/冲突 partial）。
@@ -161,6 +202,9 @@ func ingest(input: Dictionary) -> Dictionary:
 				return _reject("REVISION_CONFLICT")
 
 	var ttl: int = TTL_PARTIAL_MS if kind == KIND_PARTIAL else TTL_FINAL_MS
+	var badges: Array = []
+	if kind == KIND_FINAL and not stt_failed:
+		badges = compute_affinity_badges(text, character_id, lang)
 	var rec := {
 		"seat": seat,
 		"utterance_id": utt,
@@ -177,13 +221,73 @@ func ingest(input: Dictionary) -> Dictionary:
 		"expires_at_ms": now_ms + ttl,
 		"fingerprint": fingerprint,
 		"accepted_at_ms": now_ms,
+		"stt_failed": stt_failed,
+		"is_reward": false,
+		"affinity_badges": badges,
+		"character_id": character_id,
 	}
 	if has_rev:
 		rec["display_revision"] = rev
 
 	_by_utt[utt] = rec
 	_seat_utt[seat] = utt
+	# 有过发言尝试（含 STT 失败终态）即非静默；静默=完全无记录
+	_seat_ever_spoke[seat] = true
 	return {"ok": true, "idempotent": false}
+
+
+## 完全无发言记录的席位视为静默席。
+func is_silent_seat(seat: int) -> bool:
+	if seat < 0 or seat > 3:
+		return true
+	return not bool(_seat_ever_spoke.get(seat, false))
+
+
+## display-only：公开文字 + 公开角色 → 五类 affinity 徽标。
+## 使用 TextAnalyzer.accumulate_window（版本化/定点整数）；绝不读隐藏牌/seed。
+## 未命中规则时不得用角色 affinity 冒充命中。
+static func compute_affinity_badges(
+	text: String,
+	character_id: String = "",
+	language: String = "zh"
+) -> Array:
+	var t := text.strip_edges()
+	if t.is_empty():
+		return []
+	var cid := character_id.strip_edges()
+	if cid.is_empty():
+		return []
+	var lang := language.strip_edges().to_lower()
+	if lang != "zh" and lang != "en" and lang != "ja":
+		lang = "zh"
+	var result: Dictionary = TextAnalyzer.accumulate_window({
+		"rule_version": TrashTalkRuleCatalog.rule_version(),
+		"window_id": "display_only_caption",
+		"seat": 0,
+		"character_id": cid,
+		"language": lang,
+		"utterances": [{
+			"utterance_id": "caption_display",
+			"text": t,
+			"language": lang,
+		}],
+	})
+	if result.is_empty():
+		return []
+	var aff: Dictionary = {}
+	if typeof(result.get("affinity", null)) == TYPE_DICTIONARY:
+		aff = result["affinity"] as Dictionary
+	# 仅当整数亲和分 > 0（规则命中累计）时展示；禁止角色标签空投
+	var ordered: Array = []
+	for k in ["DOMINATION", "CALM", "CUNNING", "PASSION", "MYSTIC"]:
+		var score := 0
+		if aff.has(k):
+			score = int(aff[k])
+		elif aff.has(StringName(k)):
+			score = int(aff[StringName(k)])
+		if score > 0:
+			ordered.append(k)
+	return ordered
 
 
 func display_for_seat(seat: int) -> Dictionary:
@@ -216,6 +320,9 @@ func tick(now_ms: int) -> void:
 
 
 func _public_view(rec: Dictionary) -> Dictionary:
+	var badges: Array = []
+	if typeof(rec.get("affinity_badges", null)) == TYPE_ARRAY:
+		badges = (rec["affinity_badges"] as Array).duplicate()
 	var out := {
 		"seat": int(rec["seat"]),
 		"utterance_id": String(rec["utterance_id"]),
@@ -231,15 +338,52 @@ func _public_view(rec: Dictionary) -> Dictionary:
 		"is_partial": bool(rec["is_partial"]),
 		"is_final": bool(rec["is_final"]),
 		"expires_at_ms": int(rec["expires_at_ms"]),
+		"stt_failed": bool(rec.get("stt_failed", false)),
+		"is_reward": false,
+		"affinity_badges": badges,
 	}
 	if rec.has("display_revision"):
 		out["display_revision"] = int(rec["display_revision"])
 	return out
 
 
-static func _fingerprint(seat: int, utt: String, text: String, kind: String,
-		source: String, lang: String) -> String:
-	return "%d|%s|%s|%s|%s|%s" % [seat, utt, text, kind, source, lang]
+static func _fingerprint(
+	seat: int, utt: String, text: String, kind: String,
+	source: String, lang: String, character_id: String = ""
+) -> String:
+	return "%d|%s|%s|%s|%s|%s|%s" % [seat, utt, text, kind, source, lang, character_id]
+
+
+## 公开 character_id 补全徽标（不延长 TTL、不改文本）。
+func enrich_character(seat: int, utterance_id: String, character_id: String) -> Dictionary:
+	var utt := utterance_id.strip_edges()
+	var cid := character_id.strip_edges()
+	if utt.is_empty() or cid.is_empty():
+		return _reject("EMPTY")
+	if not _by_utt.has(utt):
+		return _reject("UNKNOWN_UTTERANCE")
+	var prev: Dictionary = _by_utt[utt]
+	if int(prev.get("seat", -1)) != seat:
+		return _reject("SEAT_MISMATCH")
+	if not bool(prev.get("is_final", false)):
+		return _reject("NOT_FINAL")
+	if bool(prev.get("stt_failed", false)):
+		return _reject("STT_FAILED")
+	var prev_cid := String(prev.get("character_id", ""))
+	if prev_cid == cid:
+		return {"ok": true, "idempotent": true, "reason": "DUPLICATE"}
+	if not prev_cid.is_empty() and prev_cid != cid:
+		return _reject("CHARACTER_CONFLICT")
+	var text := String(prev.get("text", ""))
+	var lang := String(prev.get("lang", "zh"))
+	prev["character_id"] = cid
+	prev["affinity_badges"] = compute_affinity_badges(text, cid, lang)
+	prev["fingerprint"] = _fingerprint(
+		seat, utt, text, String(prev.get("kind", "")),
+		String(prev.get("source", "")), lang, cid
+	)
+	_by_utt[utt] = prev
+	return {"ok": true, "idempotent": false, "reason": "ENRICHED"}
 
 
 static func _resolve_lang(input: Dictionary) -> String:

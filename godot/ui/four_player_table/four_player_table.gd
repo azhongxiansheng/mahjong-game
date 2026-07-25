@@ -24,6 +24,12 @@ const SEAT_CAPTION_OVERLAY_SCR := preload("res://ui/four_player_table/seat_capti
 const REWARD_FEEDBACK_PROJECTOR_SCR := preload(
 	"res://ui/four_player_table/reward_feedback_projector.gd"
 )
+const REWARD_POOL_HUD_SCR := preload("res://ui/four_player_table/reward_pool_hud.gd")
+const ITEM_INVENTORY_DRAWER_SCR := preload(
+	"res://ui/four_player_table/item_inventory_drawer.gd"
+)
+
+signal inventory_use_requested(item_instance_id: String)
 
 # 4 个 seat_panel 实例（索引 = seat_id）
 var seat_panels: Array[SeatPanel] = []
@@ -36,9 +42,14 @@ var discard_rivers: Array = []
 var meld_areas: Array = []
 
 # E4-04 / #246：字幕覆盖层（自动创建；仅 UI 注入，不接语音/奖励权威）
+# E5-06 / #254：奖池 HUD + 库存抽屉 + 投影 store（display-only）
 # 路径 preload，避免新增全局 class_name 触发全量门禁。
 var caption_overlay: Control = null
 var _reward_feedback_projector = null
+var reward_pool_hud: Control = null
+var item_inventory_drawer: Control = null
+var _inventory_btn: Button = null
+var _local_seat: int = 0
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
@@ -229,9 +240,32 @@ func _build_layout() -> void:
 	caption_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(caption_overlay)
 	_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+	_reward_feedback_projector.set_local_seat(_local_seat)
+
+	# E5-06：奖池 HUD（常驻）
+	reward_pool_hud = REWARD_POOL_HUD_SCR.new()
+	reward_pool_hud.name = "RewardPoolHud"
+	add_child(reward_pool_hud)
+
+	# E5-06：库存抽屉（默认关闭）
+	item_inventory_drawer = ITEM_INVENTORY_DRAWER_SCR.new()
+	item_inventory_drawer.name = "ItemInventoryDrawer"
+	item_inventory_drawer.use_item_requested.connect(_on_inventory_use_requested)
+	add_child(item_inventory_drawer)
+
+	# 顶栏「库存 N」入口（不改牌桌尺寸）
+	_inventory_btn = Button.new()
+	_inventory_btn.name = "InventoryButton"
+	_inventory_btn.text = "库存 0"
+	_inventory_btn.focus_mode = Control.FOCUS_NONE
+	_inventory_btn.position = Vector2(1040.0, 8.0)
+	_inventory_btn.size = Vector2(100.0, 32.0)
+	_inventory_btn.pressed.connect(_on_inventory_btn_pressed)
+	add_child(_inventory_btn)
+	_refresh_reward_ui()
 
 
-# ---- E4-04 字幕 / 奖励反馈注入（仅 display；零权威副作用）----
+# ---- E4-04 字幕 / E5-06 奖励反馈注入（仅 display；零权威副作用）----
 
 ## 注入一条字幕 partial/final/AI 文本。成功更新覆盖层显示。
 func inject_caption_display(input: Dictionary) -> Dictionary:
@@ -250,6 +284,9 @@ func inject_ai_caption_display(ai_line: Variant, extras: Dictionary = {}) -> Dic
 	payload["source"] = "ai_text"
 	payload["kind"] = "final"
 	payload.erase("is_mic")
+	# language → lang
+	if payload.has("language") and not payload.has("lang"):
+		payload["lang"] = payload["language"]
 	if extras.has("now_ms"):
 		payload["now_ms"] = extras["now_ms"]
 	if extras.has("display_revision"):
@@ -258,22 +295,218 @@ func inject_ai_caption_display(ai_line: Variant, extras: Dictionary = {}) -> Dic
 
 
 ## 注入奖励权威事件的展示投影。仅接受 NetworkedEvent 或 schema-valid 六键 wire。
-## 不修改 RewardWindow/库存。
+## 不修改权威 RewardWindow/库存模块。
 func inject_reward_feedback(event: Variant) -> Dictionary:
 	if _reward_feedback_projector == null:
 		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+		_reward_feedback_projector.set_local_seat(_local_seat)
 	var proj: Dictionary = _reward_feedback_projector.project(event)
 	if not bool(proj.get("ok", false)):
 		return proj
-	if caption_overlay != null:
-		caption_overlay.set_reward_banner_text(String(proj.get("message", "")))
+	_refresh_reward_ui()
 	return proj
 
 
+## 从 NBC/练习权威只读视图刷新（不改权威状态）。
+func apply_reward_views(reward_view: Dictionary, inventory_view: Dictionary) -> void:
+	if _reward_feedback_projector == null:
+		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+		_reward_feedback_projector.set_local_seat(_local_seat)
+	if not reward_view.is_empty():
+		_reward_feedback_projector.apply_reward_window_view(reward_view)
+	if not inventory_view.is_empty():
+		_reward_feedback_projector.apply_item_inventory_view(inventory_view)
+	_refresh_reward_ui()
+
+
+## 新房间/本席/authority source：无条件清空去重与上一席库存。
+func begin_reward_display_source(epoch: String, seat: int) -> void:
+	_local_seat = seat
+	if _reward_feedback_projector == null:
+		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+	_reward_feedback_projector.begin_source(epoch, seat, true)
+	_refresh_reward_ui()
+
+
+func mark_reward_feedback_up_to(epoch: String, server_seq: int) -> void:
+	if _reward_feedback_projector == null:
+		return
+	_reward_feedback_projector.mark_feedback_up_to(epoch, server_seq)
+
+
+## journal 增量（epoch+seq 去重在 projector）。
+func inject_reward_journal_event(event: Variant, epoch: String = "") -> Dictionary:
+	if _reward_feedback_projector == null:
+		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+		_reward_feedback_projector.set_local_seat(_local_seat)
+	var proj: Dictionary = _reward_feedback_projector.ingest_journal_event(event, -1, epoch)
+	if not bool(proj.get("ok", false)):
+		return proj
+	if bool(proj.get("idempotent", false)):
+		return proj
+	_refresh_reward_ui()
+	return proj
+
+
+## 公开 utterances_by_seat → 字幕 STT 失败 / final / AI（display-only enrichment）。
+func apply_reward_utterances_display(reward_view: Dictionary) -> void:
+	if _reward_feedback_projector == null:
+		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+	var caps: Array = _reward_feedback_projector.project_utterances_for_display(reward_view)
+	for c in caps:
+		if typeof(c) != TYPE_DICTIONARY:
+			continue
+		# enrichment：允许补全 character_id 徽标，不强制新 TTL
+		if caption_overlay != null and caption_overlay.has_method("ingest_caption_enrichment"):
+			caption_overlay.ingest_caption_enrichment(c as Dictionary)
+		else:
+			inject_caption_display(c as Dictionary)
+
+
 func reward_feedback_text() -> String:
+	# 契约文案取投影器 last message（不含 HUD 分配摘要后缀）
+	if _reward_feedback_projector != null:
+		var core: String = String(_reward_feedback_projector.last_feedback_message())
+		if not core.is_empty():
+			return core
 	if caption_overlay == null:
 		return ""
 	return caption_overlay.reward_feedback_text()
+
+
+func prize_pool_display() -> Array:
+	if _reward_feedback_projector == null:
+		return []
+	return _reward_feedback_projector.prize_pool()
+
+
+func pool_title_text() -> String:
+	if _reward_feedback_projector == null:
+		return ""
+	return String(_reward_feedback_projector.pool_title_text())
+
+
+func inventory_count() -> int:
+	if _reward_feedback_projector == null:
+		return 0
+	return int(_reward_feedback_projector.inventory_count_for_seat(_local_seat))
+
+
+func inventory_row_ids() -> Array:
+	# 真相源为 projector；抽屉仅是视图
+	if _reward_feedback_projector == null:
+		return []
+	var ids: Array = []
+	for r in _reward_feedback_projector.local_inventory_instances():
+		ids.append(String(r.get("item_instance_id", "")))
+	return ids
+
+
+func open_inventory_drawer() -> void:
+	if item_inventory_drawer == null:
+		return
+	_sync_drawer_rows()
+	if item_inventory_drawer.has_method("open_drawer"):
+		item_inventory_drawer.open_drawer()
+	else:
+		item_inventory_drawer.visible = true
+
+
+func close_inventory_drawer() -> void:
+	if item_inventory_drawer == null:
+		return
+	if item_inventory_drawer.has_method("close_drawer"):
+		item_inventory_drawer.close_drawer()
+	else:
+		item_inventory_drawer.visible = false
+
+
+func is_inventory_drawer_open() -> bool:
+	if item_inventory_drawer == null:
+		return false
+	if item_inventory_drawer.has_method("is_open"):
+		return bool(item_inventory_drawer.is_open())
+	return item_inventory_drawer.visible
+
+
+func has_assignment_display() -> bool:
+	if _reward_feedback_projector == null:
+		return false
+	return bool(_reward_feedback_projector.has_assignment_display())
+
+
+func set_local_seat(seat: int) -> void:
+	_local_seat = seat
+	if _reward_feedback_projector != null:
+		_reward_feedback_projector.set_local_seat(seat)
+
+
+func _on_inventory_btn_pressed() -> void:
+	if is_inventory_drawer_open():
+		close_inventory_drawer()
+	else:
+		open_inventory_drawer()
+
+
+func _on_inventory_use_requested(item_instance_id: String) -> void:
+	var iid := item_instance_id.strip_edges()
+	if iid.is_empty():
+		return
+	if _reward_feedback_projector != null:
+		var target: String = String(_reward_feedback_projector.use_target_instance_id(iid))
+		if target.is_empty():
+			return
+		inventory_use_requested.emit(target)
+	else:
+		inventory_use_requested.emit(iid)
+
+
+func _sync_drawer_rows() -> void:
+	if item_inventory_drawer == null or _reward_feedback_projector == null:
+		return
+	if item_inventory_drawer.has_method("set_instances"):
+		item_inventory_drawer.set_instances(
+			_reward_feedback_projector.local_inventory_instances()
+		)
+
+
+func _refresh_reward_ui() -> void:
+	if _reward_feedback_projector == null:
+		return
+	var title: String = String(_reward_feedback_projector.pool_title_text())
+	var rows: Array = _reward_feedback_projector.prize_pool_display_rows()
+	var msg: String = String(_reward_feedback_projector.last_feedback_message())
+	# 出口分配摘要附加到反馈条（CANCELLED 不带）
+	if _reward_feedback_projector.has_assignment_display():
+		var asg: Dictionary = _reward_feedback_projector.assignment_display()
+		var parts: PackedStringArray = PackedStringArray()
+		for s in range(4):
+			var key := str(s)
+			if asg.has(key):
+				parts.append("S%d→%s" % [s, String(asg[key])])
+			elif asg.has(s):
+				parts.append("S%d→%s" % [s, String(asg[s])])
+		if parts.size() > 0 and not msg.contains("作废"):
+			msg = "%s｜%s" % [msg, " ".join(parts)]
+	if reward_pool_hud != null:
+		if reward_pool_hud.has_method("set_title"):
+			reward_pool_hud.set_title(title)
+		if reward_pool_hud.has_method("set_prize_pool_rows"):
+			reward_pool_hud.set_prize_pool_rows(rows)
+		if reward_pool_hud.has_method("set_feedback"):
+			reward_pool_hud.set_feedback(msg)
+	# 兼容 #246 banner 路径
+	if caption_overlay != null:
+		var kind := String(_reward_feedback_projector.last_feedback().get("feedback_kind", ""))
+		if kind.begins_with("SETTLED_") or kind == "CANCELLED_BY_WIN" \
+				or kind == "ITEM_GRANTED" or kind == "ITEM_APPLIED":
+			caption_overlay.set_reward_banner_text(
+				String(_reward_feedback_projector.last_feedback_message())
+			)
+	if _inventory_btn != null:
+		_inventory_btn.text = "库存 %d" % inventory_count()
+	if is_inventory_drawer_open():
+		_sync_drawer_rows()
 
 
 # 直接翻译参考 `.board-frame` SVG：1 条闭合外框 + 4 条斜接线。
