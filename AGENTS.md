@@ -252,6 +252,15 @@ grok --cwd "$TASK_WORKTREE" \
 - 必须由用户决定的产品取舍、权限、安全或不可逆事项应已在前置闸门解决；开发中才发现的新阻塞不得猜测，写入仓库外状态文件并停在 TUI 等待。
 - 当前 Codex 任务不得通过读取 pane 审查 Grok 的过程计划；最终仍以完整累计 diff、真实业务调用链和独立复测验收。计划自检不能替代最终 Review。
 
+### 2.1 Grok 图像 / UI 概念稿 / 视频生成
+
+- 用户选择 Grok CLI 后，任务所需的生图、UI mockup、游戏资产、动效概念和视频也交给**同一个可见 Grok TUI** 使用其当前内置生成能力完成；主 Agent 只负责合同、决策、监工和独立验收，不另开生图 worker、不代替 Grok 生成。
+- 视觉 prompt contract 必须写明用途、画幅/分辨率或视频时长、风格与世界观、参考图允许借鉴的维度、必须/禁止元素、精确文字、候选数量、仓库外 staging 路径和选稿门禁。竞品只可参考构图、层级、节奏或交互，不得复刻角色、Logo、专有纹样、文案、具体控件造型或像素布局。
+- 纯视觉任务使用 `smoke → 首稿 → 目视 QA → 单点修正 → 最终交付`，不强套代码 TDD；后续代码实现仍执行 Red → Green → Refactor。Grok 必须先用最小 smoke 验证真实能力与输出限制，不得凭印象写死模型参数或绕过内置能力直连供应商。
+- 所有预览、原始图和视频先放仓库外唯一 `/tmp/<project>-<issue>-grok-visual-<round>/`。用户或 Issue 未明确选定前，不得复制进生产资产、修改 Godot 场景或按未确认稿编码；选定后仍遵守资产文件名、尺寸、版权/IP、import 与 staging 契约。
+- 需要选稿时，Grok 将候选绝对路径、实际尺寸/时长、最终 prompt、设计取舍、推荐项与已知缺陷写入仓库外决策文件，状态切换为 `GROK_BLOCKED_USER_DECISION` 并停在同一 TUI。主 Agent 独立查看原图；视频至少核对元数据、代表性帧和可播放成片，再向用户展示并把选择送回同一 Grok 会话。
+- 最终交付须记录采用/淘汰产物、实际内置工具或模型、生成次数、QA、选稿结果、是否进入仓库和 Git 状态。Grok 自述或网页预览不等于视觉验收；必须有可读取的本地原文件证据。
+
 ### 3. 启动后立即轮询状态与最终交付
 
 启动前为本轮指定两个唯一仓库外路径：
@@ -386,6 +395,6 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
 8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
 9. **网络改动**须显式声明未端到端验证。
-10. **资产生成**：`godot/tools/asset_gen/`；先 smoke 锁风格；staging QA 后 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。可用 Grok 内置 game-asset skills 补图标，仍遵守文件名与 import 纪律。
+10. **资产生成**：`godot/tools/asset_gen/`；用户选择 Grok CLI 时，生图、UI mockup、游戏资产、动效概念和视频统一交给同一个可见 Grok TUI 的内置生成能力；先 smoke 锁能力与风格，仓库外 staging QA 和选稿后再 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。仍遵守文件名、尺寸、版权/IP 与 import 纪律。
 11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。
 12. **Autoload / 纹理隐式契约** —— 改 `TextureExtractor`、牌尺寸、调制规则前先查最近相关 commit。
