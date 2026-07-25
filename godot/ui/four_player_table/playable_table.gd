@@ -34,6 +34,13 @@ var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
 # 雀魂式真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
 var _use_3d: bool = false
 
+# E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
+var _voice_port: VoicePortModule = null
+var _ptt_button: Button = null
+var _ptt_status: Label = null
+var _voice_capture: VoiceCapturePipeline = null
+var _voice_playback: VoicePlaybackRouter = null
+
 func _ready() -> void:
 	# 操作条位于 1600×900 舞台内，是 overlay，不额外增加 72px 高度。
 	custom_minimum_size = Vector2(DT.VIEW_W, TableLayout.VIEW_H)
@@ -174,6 +181,8 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 			_seat_panel_player.hand_tile_hover.connect(_on_hand_tile_hover)
 	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
 	_bc.bind_decision_port(_decision_adapter, get_tree())
+	# E4-01：从真实 mode_modules.voice_port 绑定（STANDARD 为 null → 零语音节点）
+	bind_voice_from_battle(bc)
 	_bind_state_for_deal(bc.state, 0, 4)
 	_decision_adapter.present(&"idle", {"text": "准备开局…"})
 	_attach_event_polling()
@@ -1828,6 +1837,124 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 
 func _exit_tree() -> void:
 	_polling_active = false
+	release_voice_runtime()
+
+
+## E4-01：生产绑定入口。STANDARD 的 voice_port=null → 不创建按钮/采集/播放。
+func bind_voice_from_battle(bc: PlayableBattleController) -> void:
+	release_voice_runtime()
+	if bc == null or bc.mode_modules == null:
+		return
+	var port: VoicePortModule = bc.mode_modules.voice_port
+	if port == null:
+		return
+	_voice_port = port
+	_ensure_ptt_ui()
+	_voice_capture = VoiceCapturePipeline.new()
+	_voice_capture.name = "VoiceCapturePipeline"
+	add_child(_voice_capture)
+	_voice_capture.bind_voice_port(_voice_port)
+	_voice_playback = VoicePlaybackRouter.new()
+	_voice_playback.name = "VoicePlaybackRouter"
+	add_child(_voice_playback)
+	_voice_playback.bind_voice_port(_voice_port)
+	if not _voice_port.ptt_state_changed.is_connected(_on_ptt_state_changed):
+		_voice_port.ptt_state_changed.connect(_on_ptt_state_changed)
+	if not _voice_port.microphone_unavailable.is_connected(_on_microphone_unavailable):
+		_voice_port.microphone_unavailable.connect(_on_microphone_unavailable)
+
+
+func has_voice_runtime() -> bool:
+	return _voice_port != null
+
+
+func release_voice_runtime() -> void:
+	if _voice_port != null:
+		if _voice_port.ptt_state_changed.is_connected(_on_ptt_state_changed):
+			_voice_port.ptt_state_changed.disconnect(_on_ptt_state_changed)
+		if _voice_port.microphone_unavailable.is_connected(_on_microphone_unavailable):
+			_voice_port.microphone_unavailable.disconnect(_on_microphone_unavailable)
+		_voice_port.release_all()
+	if _voice_capture != null and is_instance_valid(_voice_capture):
+		_voice_capture.stop_capture()
+		_voice_capture.queue_free()
+	_voice_capture = null
+	if _voice_playback != null and is_instance_valid(_voice_playback):
+		_voice_playback.release_all()
+		_voice_playback.queue_free()
+	_voice_playback = null
+	if _ptt_button != null and is_instance_valid(_ptt_button):
+		_ptt_button.queue_free()
+	_ptt_button = null
+	if _ptt_status != null and is_instance_valid(_ptt_status):
+		_ptt_status.queue_free()
+	_ptt_status = null
+	_voice_port = null
+
+
+func _ensure_ptt_ui() -> void:
+	if _ptt_button != null and is_instance_valid(_ptt_button):
+		return
+	# 右下角，避开居中行动栏（Y=700,W=720）与 seat0 手牌。
+	_ptt_button = Button.new()
+	_ptt_button.name = "PttButton"
+	_ptt_button.text = "🎙 按住说话"
+	_ptt_button.position = Vector2(TableLayout.TABLE_W - 176.0, 820.0)
+	_ptt_button.size = Vector2(160.0, 40.0)
+	_ptt_button.focus_mode = Control.FOCUS_NONE
+	_ptt_button.button_down.connect(_on_ptt_button_down)
+	_ptt_button.button_up.connect(_on_ptt_button_up)
+	add_child(_ptt_button)
+
+	_ptt_status = Label.new()
+	_ptt_status.name = "PttStatusLabel"
+	_ptt_status.text = ""
+	_ptt_status.position = Vector2(TableLayout.TABLE_W - 176.0, 792.0)
+	_ptt_status.size = Vector2(160.0, 24.0)
+	_ptt_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ptt_status.add_theme_font_size_override("font_size", 14)
+	_ptt_status.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	_ptt_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ptt_status)
+
+
+func _on_ptt_button_down() -> void:
+	if _voice_port == null:
+		return
+	_voice_port.press_ptt()
+
+
+func _on_ptt_button_up() -> void:
+	if _voice_port == null:
+		return
+	_voice_port.release_ptt()
+
+
+func _on_ptt_state_changed(state: StringName) -> void:
+	if _ptt_status == null or not is_instance_valid(_ptt_status):
+		return
+	if state == &"speaking":
+		_ptt_status.text = "正在说话…"
+		_ptt_status.visible = true
+	elif state == &"unavailable":
+		_ptt_status.text = "麦克风不可用"
+		_ptt_status.visible = true
+	else:
+		_ptt_status.text = ""
+
+
+func _on_microphone_unavailable() -> void:
+	if _ptt_status == null or not is_instance_valid(_ptt_status):
+		return
+	_ptt_status.text = "麦克风不可用"
+	_ptt_status.visible = true
+	# 短暂提示后恢复
+	if get_tree() != null:
+		get_tree().create_timer(1.2).timeout.connect(func():
+			if _ptt_status != null and is_instance_valid(_ptt_status) \
+					and _ptt_status.text == "麦克风不可用":
+				_ptt_status.text = ""
+		)
 
 func _on_player_tile_clicked(tile_instance_id: int) -> void:
 	# 记录起点：按 instance 查 slot；飞牌渲染仍用 slot 上的 tile_id/red

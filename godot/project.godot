@@ -20,6 +20,11 @@ config/version="0.1.0"
 run/main_scene="res://ui/lobby/lobby_shell.tscn"
 config/features=PackedStringArray("4.6")
 
+[audio]
+
+; E4-01（#243）：进程级声明允许麦克风输入。STANDARD 仍不构造 PTT/采集/播放链路。
+driver/enable_input=true
+
 [autoload]
 
 DT="*res://ui/design_tokens.gd"

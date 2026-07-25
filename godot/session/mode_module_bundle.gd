@@ -94,6 +94,8 @@ func _build_trash_talk_modules(config: GameSessionConfig) -> void:
 	momentum = Momentum.new()
 	text_analyzer = TextAnalyzer.new()
 	voice_port = VoicePortModule.new()
+	# E4-01：练习场 seat 0；room_id 默认 session_id，公共场未来由 authority 覆盖。
+	voice_port.bind_context(config, 0)
 	character_ability_slots = []
 	var ids: Array = config.character_ids
 	for seat in range(4):

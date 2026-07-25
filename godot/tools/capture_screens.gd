@@ -59,6 +59,8 @@ func _run() -> void:
 	# 额外:一张「带牌局的战斗桌」截图,真实绑定 BattleState 让 38 张麻将牌、
 	# dealer 标记、当前回合金边、座位分数都一起亮相,证明对战可玩。
 	await _capture_battle_with_state()
+	# E4-01：欢乐场 PTT 空闲 / 按下态截图（不遮挡手牌与行动栏）。
+	await _capture_battle_ptt()
 	print("[capture] done")
 	quit()
 
@@ -168,5 +170,53 @@ func _capture_battle_with_state() -> void:
 	var img2 := root.get_texture().get_image()
 	img2.save_png("/tmp/shot_battle_end.png")
 	print("[capture] saved /tmp/shot_battle_end.png")
+	table.queue_free()
+	await process_frame
+
+
+func _capture_battle_ptt() -> void:
+	# 运行时 load，避免 -s 早期编译拖入 Anima autoload 依赖。
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
+	root.add_child(table)
+	table.set_player_persona(
+		"林夜彻",
+		"res://assets/roguelike/characters/char_lin_yeche.png"
+	)
+	var intent := SessionIntent.new(&"PRACTICE", &"EAST", &"TRASH_TALK", &"lin_yeche")
+	var converted := GameSessionConfig.from_intent(
+		intent, 42, "capture-ptt", "e4-01-v1", {}
+	)
+	if not converted.ok:
+		print("[capture] PTT config failed")
+		table.queue_free()
+		return
+	var driver := PracticeSessionLauncher.new().launch(converted.config)
+	if driver == null:
+		print("[capture] PTT launch failed")
+		table.queue_free()
+		return
+	var bc: PlayableBattleController = driver.bc_factory.call(
+		42, 0, false, TileId.E, 0
+	)
+	table._table.bind_battle_state(bc.state, 0, 4)
+	var vp: VoicePortModule = bc.mode_modules.voice_port
+	if vp != null:
+		vp.set_capture_backend(VoicePortModule.CaptureBackend.FIXTURE)
+	table.bind_voice_from_battle(bc)
+	for _i in range(30):
+		await process_frame
+	var idle_img := root.get_texture().get_image()
+	idle_img.save_png("/tmp/shot_battle_ptt_idle.png")
+	print("[capture] saved /tmp/shot_battle_ptt_idle.png")
+	var btn := table.get_node_or_null("PttButton") as BaseButton
+	if btn != null:
+		btn.button_down.emit()
+	for _i in range(20):
+		await process_frame
+	var pressed_img := root.get_texture().get_image()
+	pressed_img.save_png("/tmp/shot_battle_ptt_pressed.png")
+	print("[capture] saved /tmp/shot_battle_ptt_pressed.png")
+	if btn != null:
+		btn.button_up.emit()
 	table.queue_free()
 	await process_frame

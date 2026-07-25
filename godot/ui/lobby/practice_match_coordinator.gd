@@ -263,6 +263,9 @@ func _free_table() -> void:
 	if _table != null and is_instance_valid(_table):
 		var table := _table
 		_table = null
+		# E4-01：返回大厅 / 再来一局前显式释放 PTT 采集与分座播放资源。
+		if table.has_method("release_voice_runtime"):
+			table.release_voice_runtime()
 		_discard_node(table)
 	else:
 		_table = null
