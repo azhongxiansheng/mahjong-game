@@ -2,7 +2,8 @@ class_name VoicePortModule extends RefCounted
 
 # E4-01（#243）：欢乐场语音生产模块。
 # PTT 状态、PCM 帧元数据、有界出站/入站队列、远端分座位入口（#244 可调用）。
-# 不实现 WebSocket / STT / 静音 / 音量 / 举报。客户端 PTT_END 不含权威序号字段。
+# E4-03（#245）：可附着 WhisperModelManager（按需模型生命周期）；不实现推理/字幕。
+# 不实现 WebSocket / STT 推理 / 静音 / 音量 / 举报。客户端 PTT_END 不含权威序号字段。
 
 signal outbound_control(msg: Dictionary)
 signal outbound_frame(frame: Dictionary)
@@ -39,10 +40,27 @@ var _remote: Dictionary = {}  # seat(int) -> VoiceFrameQueue
 
 var _live_mic_nodes: bool = false
 var _capture_pipeline: Node = null  # VoiceCapturePipeline，由 UI 注入
+var _whisper_model_manager: WhisperModelManager = null
 
 
 func _init() -> void:
 	_rebuild_remote_queues()
+
+
+## E4-03：附着模型管理器（PlayableTable 首次 bind 创建，或测试预注入）。
+func attach_whisper_model_manager(manager: WhisperModelManager) -> void:
+	_whisper_model_manager = manager
+
+
+func whisper_model_manager() -> WhisperModelManager:
+	return _whisper_model_manager
+
+
+## 确定释放模型管理器（cancel/release + 清引用）。调用方负责 queue_free 已入树节点。
+func clear_whisper_model_manager() -> void:
+	if _whisper_model_manager != null and is_instance_valid(_whisper_model_manager):
+		_whisper_model_manager.release()
+	_whisper_model_manager = null
 
 
 func bind_context(config: GameSessionConfig, seat: int = 0, p_room_id: String = "") -> void:
@@ -200,7 +218,7 @@ func release_ptt() -> void:
 	ptt_state_changed.emit(&"idle")
 
 
-## 离房 / exit_tree / 返回大厅：释放全部缓冲与采集。
+## 离房 / exit_tree / 返回大厅：释放全部缓冲与采集；并确定释放模型管理器引用。
 func release_all() -> void:
 	if _ptt_pressed:
 		release_ptt()
@@ -215,6 +233,15 @@ func release_all() -> void:
 		(_remote[seat] as VoiceFrameQueue).clear()
 	# 保持当前 local_seat 的远端队列结构，仅清空内容
 	_live_mic_nodes = false
+	# 若仍持有未入树 manager（未绑定牌桌即结束 session），此处 release 并丢弃引用。
+	# 已入树节点由 PlayableTable 负责 queue_free。
+	if _whisper_model_manager != null and is_instance_valid(_whisper_model_manager):
+		if not _whisper_model_manager.is_inside_tree():
+			_whisper_model_manager.release()
+			_whisper_model_manager.free()
+		else:
+			_whisper_model_manager.release()
+	_whisper_model_manager = null
 	ptt_state_changed.emit(&"idle")
 
 

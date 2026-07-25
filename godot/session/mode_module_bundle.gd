@@ -96,6 +96,8 @@ func _build_trash_talk_modules(config: GameSessionConfig) -> void:
 	voice_port = VoicePortModule.new()
 	# E4-01：练习场 seat 0；room_id 默认 session_id，公共场未来由 authority 覆盖。
 	voice_port.bind_context(config, 0)
+	# E4-03：WhisperModelManager 不在此构造脱树 Node（避免无所有者泄漏）；
+	# 由 PlayableTable.bind 首次创建/挂树，或测试预注入 fixture manager。
 	character_ability_slots = []
 	var ids: Array = config.character_ids
 	for seat in range(4):

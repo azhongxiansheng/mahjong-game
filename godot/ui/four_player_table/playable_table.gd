@@ -35,7 +35,9 @@ var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
 var _use_3d: bool = false
 
 # E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
+# E4-03（#245）：挂接 WhisperModelManager 按需 ensure；失败不阻断牌局。
 var _voice_port: VoicePortModule = null
+var _whisper_model_manager: WhisperModelManager = null
 var _ptt_button: Button = null
 var _ptt_status: Label = null
 var _voice_capture: VoiceCapturePipeline = null
@@ -1862,6 +1864,8 @@ func bind_voice_from_battle(bc: PlayableBattleController) -> void:
 		_voice_port.ptt_state_changed.connect(_on_ptt_state_changed)
 	if not _voice_port.microphone_unavailable.is_connected(_on_microphone_unavailable):
 		_voice_port.microphone_unavailable.connect(_on_microphone_unavailable)
+	# E4-03：首次欢乐场绑定按需准备模型；未就绪不阻断 PTT/牌局。
+	_bind_whisper_model_manager(port)
 
 
 func has_voice_runtime() -> bool:
@@ -1869,6 +1873,7 @@ func has_voice_runtime() -> bool:
 
 
 func release_voice_runtime() -> void:
+	_release_whisper_model_manager()
 	if _voice_port != null:
 		if _voice_port.ptt_state_changed.is_connected(_on_ptt_state_changed):
 			_voice_port.ptt_state_changed.disconnect(_on_ptt_state_changed)
@@ -1890,6 +1895,44 @@ func release_voice_runtime() -> void:
 		_ptt_status.queue_free()
 	_ptt_status = null
 	_voice_port = null
+
+
+func _bind_whisper_model_manager(port: VoicePortModule) -> void:
+	_release_whisper_model_manager()
+	if port == null:
+		return
+	var mgr: WhisperModelManager = port.whisper_model_manager()
+	# 生产：首次 bind 创建生产 manager；测试可预注入 fixture manager。
+	if mgr == null or not is_instance_valid(mgr):
+		mgr = WhisperModelManager.new()
+		mgr.name = "WhisperModelManager"
+		mgr.apply_production_manifest()
+		port.attach_whisper_model_manager(mgr)
+	if mgr.get_parent() != null and mgr.get_parent() != self:
+		mgr.get_parent().remove_child(mgr)
+	if mgr.get_parent() != self:
+		mgr.name = "WhisperModelManager"
+		add_child(mgr)
+	_whisper_model_manager = mgr
+	mgr.ensure_ready()
+
+
+func _release_whisper_model_manager() -> void:
+	if _whisper_model_manager == null:
+		return
+	var mgr: WhisperModelManager = _whisper_model_manager
+	_whisper_model_manager = null
+	if not is_instance_valid(mgr):
+		if _voice_port != null:
+			_voice_port.attach_whisper_model_manager(null)
+		return
+	mgr.release()
+	if mgr.get_parent() == self:
+		remove_child(mgr)
+	if _voice_port != null:
+		_voice_port.attach_whisper_model_manager(null)
+	# 立即 free，避免 queue_free 延迟导致 GUT orphan / 无主 Node
+	mgr.free()
 
 
 func _ensure_ptt_ui() -> void:
