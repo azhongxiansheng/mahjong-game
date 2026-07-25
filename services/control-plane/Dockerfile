@@ -24,6 +24,8 @@ COPY --from=build /out/control-plane /usr/local/bin/control-plane
 ENV HTTP_ADDR=":8081"
 ENV REDIS_ADDR="redis:6379"
 ENV TOKEN_SIGNING_SECRET=""
+ENV WORKER_REGISTRATION_TOKEN=""
+# 遗留可选；匹配不再依赖静态 WORKER_ENDPOINT。
 ENV WORKER_ENDPOINT=""
 ENV VOICE_WORKER_ENDPOINT=""
 

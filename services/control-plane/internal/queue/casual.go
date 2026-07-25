@@ -104,7 +104,9 @@ type Ticket struct {
 	Worker      string `json:"worker,omitempty"`
 	VoiceWorker string `json:"voice_worker,omitempty"`
 	RoomToken   string `json:"room_token,omitempty"`
-	HasSeat     bool   `json:"-"` // 内部：区分 seat=0 与未分配
+	// FailCode 在 status=failed 时为 ADR 稳定码（如 ROOM_FAILED）。
+	FailCode string `json:"code,omitempty"`
+	HasSeat  bool   `json:"-"` // 内部：区分 seat=0 与未分配
 }
 
 // Options 构造队列服务。
@@ -113,14 +115,17 @@ type Options struct {
 	KeyPrefix string
 	Clock     Clock
 	IDGen     IDGen
+	// Workers #256 注册表；MatchPool 原子选 Worker 时必填。
+	Workers WorkerRegistry
 }
 
 // Service 真实 Redis 队列。
 type Service struct {
-	rdb    *redis.Client
-	prefix string
-	clock  Clock
-	idGen  IDGen
+	rdb     *redis.Client
+	prefix  string
+	clock   Clock
+	idGen   IDGen
+	workers WorkerRegistry
 }
 
 // NewService 创建队列服务；Redis 客户端必填。
@@ -141,10 +146,11 @@ func NewService(opts Options) (*Service, error) {
 		idg = cryptoIDGen{}
 	}
 	return &Service{
-		rdb:    opts.Redis,
-		prefix: prefix,
-		clock:  clk,
-		idGen:  idg,
+		rdb:     opts.Redis,
+		prefix:  prefix,
+		clock:   clk,
+		idGen:   idg,
+		workers: opts.Workers,
 	}, nil
 }
 
@@ -222,7 +228,7 @@ return {'CREATED', ticket_id}
 // cancelScript 原子取消：与 match 消费互斥。
 // - waiting → cancelled + ZREM + 清 guest 索引
 // - cancelled → 幂等 OK
-// - assigned → 不得改写，返回 ASSIGNED（调用方回读终态）
+// - assigned / failed → 不得改写，返回 ASSIGNED/FAILED（调用方回读终态）
 var cancelScript = redis.NewScript(`
 local tkey = KEYS[1]
 local gkey = KEYS[2]
@@ -241,6 +247,10 @@ local status = redis.call('HGET', tkey, 'status')
 if status == 'assigned' then
   redis.call('ZREM', pkey, tid)
   return {'ASSIGNED'}
+end
+if status == 'failed' then
+  redis.call('ZREM', pkey, tid)
+  return {'FAILED'}
 end
 if status == 'cancelled' then
   redis.call('ZREM', pkey, tid)
@@ -343,8 +353,8 @@ func (s *Service) Cancel(ctx context.Context, guestID, ticketID string) (Ticket,
 		return Ticket{}, ErrNotFound
 	case "FORBIDDEN":
 		return Ticket{}, ErrForbidden
-	case "OK", "ASSIGNED":
-		// OK=已取消（或幂等）；ASSIGNED=消费已胜出，返回实际终态且不得变 cancelled。
+	case "OK", "ASSIGNED", "FAILED":
+		// OK=已取消（或幂等）；ASSIGNED/FAILED=终态不得变 cancelled。
 		return s.loadTicket(ctx, ticketID)
 	default:
 		return Ticket{}, fmt.Errorf("unexpected cancel kind: %v", arr[0])
@@ -405,6 +415,7 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (Ticket, erro
 		Worker:      m["worker"],
 		VoiceWorker: m["voice_worker"],
 		RoomToken:   m["room_token"],
+		FailCode:    m["fail_code"],
 	}
 	if rawSeat, ok := m["seat"]; ok && rawSeat != "" {
 		seat, err := strconv.Atoi(rawSeat)

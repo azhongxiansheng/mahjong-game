@@ -398,6 +398,13 @@ func submit_action_for_seat(bound_seat: int, action: Action) -> CommandResult:
 	return server.submit_action(action, bound_session)
 
 
+## #256：权威整场结束（MATCH_SETTLED）。O(1) 读 LocalLoopbackServer 完成标志，不调用 event_journal。
+func is_match_completed() -> bool:
+	if server == null:
+		return false
+	return server.has_match_settled()
+
+
 func events_since(seat: int, after_seq: int) -> Array:
 	if server == null:
 		return []

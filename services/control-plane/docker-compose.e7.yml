@@ -1,12 +1,13 @@
-# #255 E7-01 容器化测试拓扑：Control Plane + Redis + STT + Headless Worker。
-# 本机主命令（无 compose 插件时；成功退出即四服务 healthy）：
+# #255/#256 E7 容器化测试拓扑：Control Plane + Redis + STT + ≥2 Headless Worker。
+# #256：Worker 经内部 HTTP 向 CP 注册/续租；匹配按租约/容量原子选择，不再用静态 WORKER_ENDPOINT 决定分配。
+# 本机主命令（无 compose 插件时；成功退出即服务 healthy）：
 #   docker-compose -f docker-compose.e7.yml --env-file .env.example up -d --build --wait --wait-timeout 900
 # Compose V2 等价：
 #   docker compose -f docker-compose.e7.yml --env-file .env.example up -d --build --wait --wait-timeout 900
 # 清理（删除容器/网络与 STT 模型缓存卷）：
 #   docker-compose -f docker-compose.e7.yml --env-file .env.example down -v --remove-orphans
 # 宿主端口默认绑定 127.0.0.1；容器间走 compose 网络。
-# 网络端到端未验证。不实现 #256 注册/租约/容量。
+# 网络端到端未验证。
 name: mahjong-e7
 
 services:
@@ -33,13 +34,17 @@ services:
       HTTP_ADDR: ":8081"
       REDIS_ADDR: "redis:6379"
       TOKEN_SIGNING_SECRET: "${TOKEN_SIGNING_SECRET}"
-      # 静态过渡契约：返回给宿主客户端的可达地址（非 worker 容器 DNS）。
-      WORKER_ENDPOINT: "${WORKER_ENDPOINT:-ws://127.0.0.1:9000}"
-      VOICE_WORKER_ENDPOINT: "${VOICE_WORKER_ENDPOINT:-ws://127.0.0.1:9001}"
+      WORKER_REGISTRATION_TOKEN: "${WORKER_REGISTRATION_TOKEN}"
+      WORKER_LEASE_TTL_SEC: "${WORKER_LEASE_TTL_SEC:-15}"
+      WORKER_REAP_INTERVAL_MS: "${WORKER_REAP_INTERVAL_MS:-1000}"
+      # 遗留可选；匹配权威路径使用已注册 Worker 端点。
+      WORKER_ENDPOINT: "${WORKER_ENDPOINT:-}"
+      VOICE_WORKER_ENDPOINT: "${VOICE_WORKER_ENDPOINT:-}"
     depends_on:
       redis:
         condition: service_healthy
     healthcheck:
+      # readiness 仅依赖 Redis，不把「至少一个 Worker 在线」等同于 ready。
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8081/readyz"]
       interval: 3s
       timeout: 3s
@@ -61,12 +66,10 @@ services:
       STT_DEVICE: "${STT_DEVICE:-cpu}"
       STT_COMPUTE_TYPE: "${STT_COMPUTE_TYPE:-int8}"
       STT_MODEL_CACHE: "/var/cache/stt-models"
-      # 可选备份；未设置则禁用。不得在日志/PONG 中回显 token。
       STT_NEW_API_ENDPOINT: "${STT_NEW_API_ENDPOINT:-}"
       STT_NEW_API_MODEL: "${STT_NEW_API_MODEL:-}"
       STT_NEW_API_TOKEN: "${STT_NEW_API_TOKEN:-}"
     volumes:
-      # 可清理外部缓存卷：down -v 会删除模型缓存。
       - stt_model_cache:/var/cache/stt-models
     healthcheck:
       test:
@@ -88,7 +91,7 @@ services:
     networks: [e7]
     restart: "no"
 
-  worker:
+  worker-a:
     build:
       context: ../../godot
       dockerfile: server/Dockerfile.headless_worker
@@ -101,9 +104,17 @@ services:
       VOICE_WORKER_PORT: "9001"
       WORKER_BIND_HOST: "0.0.0.0"
       WORKER_PORT: "9000"
+      WORKER_ID: "${WORKER_A_ID:-e7-worker-a}"
+      CONTROL_PLANE_URL: "http://control-plane:8081"
+      WORKER_REGISTRATION_TOKEN: "${WORKER_REGISTRATION_TOKEN}"
+      WORKER_GAME_ENDPOINT: "${WORKER_A_GAME_ENDPOINT:-ws://127.0.0.1:9000}"
+      WORKER_VOICE_ENDPOINT: "${WORKER_A_VOICE_ENDPOINT:-ws://127.0.0.1:9001}"
+      WORKER_CAPACITY: "${WORKER_A_CAPACITY:-2}"
+      WORKER_RENEW_INTERVAL_MS: "${WORKER_RENEW_INTERVAL_MS:-5000}"
     depends_on:
+      # STT 冷启动/外网模型拉取可能失败；注册生命周期不依赖 STT healthy。
       stt:
-        condition: service_healthy
+        condition: service_started
       control-plane:
         condition: service_healthy
     healthcheck:
@@ -116,6 +127,51 @@ services:
           "worker",
           "--url",
           "ws://127.0.0.1:9000",
+          "--timeout",
+          "5",
+        ]
+      interval: 5s
+      timeout: 6s
+      retries: 24
+      start_period: 90s
+    networks: [e7]
+    restart: "no"
+
+  worker-b:
+    build:
+      context: ../../godot
+      dockerfile: server/Dockerfile.headless_worker
+    ports:
+      - "127.0.0.1:9002:9002"
+      - "127.0.0.1:9003:9003"
+    environment:
+      TOKEN_SIGNING_SECRET: "${TOKEN_SIGNING_SECRET}"
+      STT_SERVICE_URL: "ws://stt:9100"
+      VOICE_WORKER_PORT: "9003"
+      WORKER_BIND_HOST: "0.0.0.0"
+      WORKER_PORT: "9002"
+      WORKER_ID: "${WORKER_B_ID:-e7-worker-b}"
+      CONTROL_PLANE_URL: "http://control-plane:8081"
+      WORKER_REGISTRATION_TOKEN: "${WORKER_REGISTRATION_TOKEN}"
+      WORKER_GAME_ENDPOINT: "${WORKER_B_GAME_ENDPOINT:-ws://127.0.0.1:9002}"
+      WORKER_VOICE_ENDPOINT: "${WORKER_B_VOICE_ENDPOINT:-ws://127.0.0.1:9003}"
+      WORKER_CAPACITY: "${WORKER_B_CAPACITY:-2}"
+      WORKER_RENEW_INTERVAL_MS: "${WORKER_RENEW_INTERVAL_MS:-5000}"
+    depends_on:
+      stt:
+        condition: service_started
+      control-plane:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python3",
+          "/usr/local/bin/healthcheck_ws.py",
+          "--mode",
+          "worker",
+          "--url",
+          "ws://127.0.0.1:9002",
           "--timeout",
           "5",
         ]

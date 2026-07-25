@@ -40,6 +40,8 @@ type ticketResponse struct {
 	RoomID      string `json:"room_id,omitempty"`
 	Seat        *int   `json:"seat,omitempty"`
 	RoomToken   string `json:"room_token,omitempty"`
+	// failed 时填充稳定码（ADR ROOM_FAILED）；不得伪装 waiting/cancelled/assigned。
+	Code string `json:"code,omitempty"`
 }
 
 func formatAPITime(t time.Time) string {
@@ -68,6 +70,15 @@ func ticketToResponse(tk queue.Ticket) ticketResponse {
 			seat := tk.Seat
 			resp.Seat = &seat
 		}
+	}
+	if tk.Status == queue.StatusFailed {
+		resp.Code = tk.FailCode
+		if resp.Code == "" {
+			resp.Code = queue.FailCodeRoomFailed
+		}
+		// 失败可保留 room_id 便于客户端识别，但不得伪装 assigned 字段集合。
+		resp.RoomID = tk.RoomID
+		resp.Worker = tk.Worker
 	}
 	return resp
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/queue"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/redisx"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/workers"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -42,6 +43,7 @@ type matchHTTPFixture struct {
 	worker      string
 	voiceWorker string
 	prefix      string
+	reg         *workers.Registry
 }
 
 func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
@@ -67,10 +69,22 @@ func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
 
 	prefix := "test:http:match:" + t.Name() + ":"
 	clk := &httpMutableClock{t: time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)}
+	reg, err := workers.NewRegistry(workers.Options{
+		Redis:        c.Redis(),
+		KeyPrefix:    prefix + "reg:",
+		CasualPrefix: prefix,
+		Clock:        clk,
+		// 远大于 30s AI 补位窗口，避免 deadline 测试误伤 worker 租约。
+		LeaseTTL: 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("registry: %v", err)
+	}
 	q, err := queue.NewService(queue.Options{
 		Redis:     c.Redis(),
 		KeyPrefix: prefix,
 		Clock:     clk,
+		Workers:   reg,
 	})
 	if err != nil {
 		t.Fatalf("queue: %v", err)
@@ -97,6 +111,16 @@ func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
 		t.Fatalf("tokens: %v", err)
 	}
 	worker := "ws://worker.http.test:9000"
+	voiceWorker := "ws://voice.test:9001"
+	if _, err := reg.Register(context.Background(), workers.Registration{
+		WorkerID:      "http-w1",
+		GameEndpoint:  worker,
+		VoiceEndpoint: voiceWorker,
+		Capacity:      32,
+		ActiveRooms:   0,
+	}); err != nil {
+		t.Fatalf("Register worker: %v", err)
+	}
 	srv := New(Config{
 		Addr:         "127.0.0.1:0",
 		Pinger:       stubPinger{},
@@ -112,8 +136,9 @@ func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
 		rdb:         c.Redis(),
 		clk:         clk,
 		worker:      worker,
-		voiceWorker: "ws://voice.test:9001",
+		voiceWorker: voiceWorker,
 		prefix:      prefix,
+		reg:         reg,
 	}
 }
 
@@ -172,9 +197,7 @@ func TestHTTP_MatchAssignedQuery_WaitingCancelledAssigned(t *testing.T) {
 	// 满 30s 匹配（服务层 MatchPool，模拟 matcher 自动推进）
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.ts,
+		TokenIssuer: f.ts,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("MatchPool: matched=%v err=%v", res.Matched, err)
@@ -268,9 +291,7 @@ func TestHTTP_TrashTalkAssignedReturnsExactVoiceWorker(t *testing.T) {
 	// 满 30s 匹配（服务层 MatchPool，模拟 matcher 自动推进）
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeTrashTalk, queue.MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.ts,
+		TokenIssuer: f.ts,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("MatchPool TRASH_TALK: matched=%v err=%v", res.Matched, err)
@@ -338,9 +359,7 @@ func TestHTTP_MatchCancelledStable(t *testing.T) {
 	// 取消后满 30s 不得再被消费
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.ts,
+		TokenIssuer: f.ts,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -363,9 +382,7 @@ func TestHTTP_MatchFourHumansAssigned(t *testing.T) {
 		players[i] = player{token: tok, ticketID: join["ticket_id"].(string)}
 	}
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.ts,
+		TokenIssuer: f.ts,
 	})
 	if err != nil || !res.Matched || res.HumanCount != 4 {
 		t.Fatalf("match: %+v err=%v", res, err)
@@ -405,9 +422,7 @@ func TestHTTP_MatchCrossInstanceVisible(t *testing.T) {
 	ticketID := join["ticket_id"].(string)
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.ts,
+		TokenIssuer: f.ts,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("match: %+v %v", res, err)
@@ -418,6 +433,7 @@ func TestHTTP_MatchCrossInstanceVisible(t *testing.T) {
 		Redis:     f.rdb,
 		KeyPrefix: f.prefix,
 		Clock:     f.clk,
+		Workers:   f.reg,
 	})
 	if err != nil {
 		t.Fatalf("q2: %v", err)
@@ -458,11 +474,9 @@ func TestHTTP_MatcherAutoAssignWithoutClientGET(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	m, err := queue.NewMatcher(queue.MatcherOptions{
-		Service:             f.q,
-		TokenIssuer:         f.ts,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		ScanInterval:        15 * time.Millisecond,
+		Service:      f.q,
+		TokenIssuer:  f.ts,
+		ScanInterval: 15 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)

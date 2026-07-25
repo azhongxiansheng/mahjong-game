@@ -15,6 +15,7 @@ import (
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/queue"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/redisx"
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/workers"
 )
 
 func main() {
@@ -44,18 +45,25 @@ func main() {
 		}
 	}()
 
+	workerReg, err := workers.NewRegistry(workers.Options{
+		Redis:    redisClient.Redis(),
+		LeaseTTL: cfg.WorkerLeaseTTL,
+	})
+	if err != nil {
+		log.Fatalf("workers: %v", err)
+	}
+
 	queueSvc, err := queue.NewService(queue.Options{
-		Redis: redisClient.Redis(),
+		Redis:   redisClient.Redis(),
+		Workers: workerReg,
 	})
 	if err != nil {
 		log.Fatalf("queue: %v", err)
 	}
 
 	matcher, err := queue.NewMatcher(queue.MatcherOptions{
-		Service:             queueSvc,
-		TokenIssuer:         tokenSvc,
-		WorkerEndpoint:      cfg.WorkerEndpoint,
-		VoiceWorkerEndpoint: cfg.VoiceWorkerEndpoint,
+		Service:     queueSvc,
+		TokenIssuer: tokenSvc,
 		OnError: func(op string, safeDetail string) {
 			// 仅记录稳定操作类别与固定安全文案；不得输出原始 err/密钥/token。
 			log.Printf("matcher error op=%s detail=%s", op, safeDetail)
@@ -73,11 +81,32 @@ func main() {
 		}
 	}()
 
+	reaper, err := workers.NewReaper(workers.ReaperOptions{
+		Registry: workerReg,
+		Interval: cfg.WorkerReapInterval,
+		OnError: func(op string, safeDetail string) {
+			log.Printf("reaper error op=%s detail=%s", op, safeDetail)
+		},
+	})
+	if err != nil {
+		log.Fatalf("reaper: %v", err)
+	}
+	reaper.Start()
+	defer func() {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := reaper.Stop(stopCtx); err != nil {
+			log.Printf("reaper stop: %v", err)
+		}
+	}()
+
 	srv := httpserver.New(httpserver.Config{
-		Addr:         cfg.HTTPAddr,
-		Pinger:       redisClient,
-		TokenService: tokenSvc,
-		CasualQueue:  queueSvc,
+		Addr:                    cfg.HTTPAddr,
+		Pinger:                  redisClient,
+		TokenService:            tokenSvc,
+		CasualQueue:             queueSvc,
+		WorkerRegistry:          workerReg,
+		WorkerRegistrationToken: cfg.WorkerRegistrationToken,
 	})
 
 	errCh := make(chan error, 1)

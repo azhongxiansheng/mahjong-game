@@ -2,7 +2,7 @@
 
 独立 Go module：配置入口、探针、游客会话签发、房间令牌内部服务、**公共休闲队列**与 **30 秒 AI 补位匹配**（#238–#239）。
 
-**网络端到端未验证。** Headless Worker 牌局在 Godot 进程（`godot/server/headless_worker*.gd`，#240）；本目录不跑日麻规则。房间快照重连 / Worker 注册续租见 #241/#256。匹配结果中的 Worker 地址来自静态环境变量 `WORKER_ENDPOINT`（过渡契约，须指向真实监听中的 Worker）。
+**网络端到端未验证。** Headless Worker 牌局在 Godot 进程（`godot/server/headless_worker*.gd`，#240）；本目录不跑日麻规则。房间快照重连见 #241；Worker 注册/续租/容量/失联回收见 #256。匹配结果中的游戏/语音地址来自本次原子选择的已注册 Worker（租约有效且有容量），不再以静态 `WORKER_ENDPOINT` 决定匹配。
 
 ## 环境变量
 
@@ -13,8 +13,11 @@
 | `REDIS_PASSWORD` | （空） | Redis 密码 |
 | `REDIS_DB` | `0` | Redis DB 编号 |
 | `TOKEN_SIGNING_SECRET` | **必填** | HMAC 签名密钥，长度 ≥ 32；缺失/过短时进程拒绝启动。**勿提交真实密钥** |
-| `WORKER_ENDPOINT` | **必填** | 匹配分配返回的静态 Worker 地址（trim 后非空）；缺失/空白时进程拒绝启动。**不**做多 Worker 选择 |
-| `VOICE_WORKER_ENDPOINT` | **必填** | #244 独立语音 WebSocket 地址（trim 后非空）。Matcher 启动时强制配置；**仅** `TRASH_TALK` 的 room/ticket/HTTP assigned 写入并返回 `voice_worker`；`STANDARD` **不写** Redis 字段且 HTTP JSON 不出现该字段。**不得**从 `WORKER_ENDPOINT` 隐式猜端口 |
+| `WORKER_REGISTRATION_TOKEN` | **必填** | Worker 内部注册/续租 token，长度 ≥ 16；**不得**与 `TOKEN_SIGNING_SECRET` 相同；禁止匿名注册 |
+| `WORKER_LEASE_TTL_SEC` | `15` | Worker 租约秒数（安全默认） |
+| `WORKER_REAP_INTERVAL_MS` | `1000` | 失联回收扫描间隔 ms |
+| `WORKER_ENDPOINT` | （可选遗留） | 不再驱动匹配；生产入口不得绕过健康/容量选择 |
+| `VOICE_WORKER_ENDPOINT` | （可选遗留） | 不再驱动匹配；TRASH_TALK 语音地址来自注册 Worker 的 `voice_endpoint` |
 
 ## 一条命令启动本地 Redis（仅 Redis）
 
@@ -44,7 +47,7 @@ docker compose -f docker-compose.yml down -v
 
 ## E7-01 四服务测试拓扑（#255）
 
-一条文档化命令启动**真实** Control Plane、Redis、faster-whisper STT、至少一个 Godot Headless Worker（Linux 容器）。宿主端口默认绑定 `127.0.0.1`；容器间经 Compose 网络互联。
+一条文档化命令启动**真实** Control Plane、Redis、faster-whisper STT、至少两个 Godot Headless Worker（Linux 容器；#256 注册/容量）。宿主端口默认绑定 `127.0.0.1`；容器间经 Compose 网络互联。
 
 **本机主命令**（已确认部分环境无 `docker compose` 插件，可用独立 `docker-compose`）：
 
@@ -62,12 +65,14 @@ docker-compose -f docker-compose.e7.yml --env-file .env.example up -d --build --
 | Redis | `127.0.0.1:6379` | `redis-cli PING` → `PONG` |
 | Control Plane | `127.0.0.1:8081` | `GET /healthz` + Redis-backed `GET /readyz` |
 | STT | `127.0.0.1:9100` | WebSocket `PING` → `PONG`（`primary.ok`；不含 token） |
-| Headless Worker | `127.0.0.1:9000`（牌局）、`9001`（语音） | 真实 WebSocket 握手 + 协议探活（非日志 grep） |
+| Headless Worker A | `127.0.0.1:9000`（牌局）、`9001`（语音） | 协议探活；向 CP 注册 `e7-worker-a` |
+| Headless Worker B | `127.0.0.1:9002`（牌局）、`9003`（语音） | 协议探活；向 CP 注册 `e7-worker-b` |
 
-静态 #239 过渡契约（**不**实现 #256 注册/租约/容量）：
+#256 注册契约：
 
-- `WORKER_ENDPOINT=ws://127.0.0.1:9000`
-- `VOICE_WORKER_ENDPOINT=ws://127.0.0.1:9001`
+- `WORKER_REGISTRATION_TOKEN` 独立必填（Worker → CP 内部 HTTP）
+- Worker：`CONTROL_PLANE_URL=http://control-plane:8081` + `WORKER_ID` + 宿主可达 `WORKER_GAME_ENDPOINT` / `WORKER_VOICE_ENDPOINT` + `WORKER_CAPACITY`
+- 匹配仅选择租约有效且有容量的注册 Worker；失联 → ticket/room `status=failed` `code=ROOM_FAILED`
 - Worker 容器内 `STT_SERVICE_URL=ws://stt:9100`
 
 密钥与可选 new-api 备份**只经环境变量**注入（见 `.env.example`）。STT 模型二进制**不入 Git/镜像**，使用命名卷 `mahjong_e7_stt_model_cache`（`STT_MODEL_CACHE`）；默认仍为 multilingual `small` + CPU `int8`，可用 `STT_MODEL` / `STT_DEVICE` / `STT_COMPUTE_TYPE` 覆盖。
@@ -92,6 +97,9 @@ Godot 官方 Linux 发布物 zip 可放在 `godot/tools/godot_release_cache/`（
 scripts/e7_255_topology_smoke.sh
 # 契约（不启动重型服务）
 scripts/e7_255_topology_contract_test.sh
+# #256 Worker 生命周期契约 + 双 Worker 注册/失联/恢复 smoke
+scripts/e7_256_worker_lifecycle_contract_test.sh
+scripts/e7_256_worker_lifecycle_smoke.sh
 ```
 
 安全关闭 / 清理：

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/tokens"
+	"github.com/lov-team/mahjong-game/services/control-plane/internal/workers"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -77,25 +78,40 @@ func (r *recordingIssuer) IssueGuestSession() (tokens.GuestSession, error) {
 
 type matchFixture struct {
 	svc         *Service
+	reg         *workers.Registry
 	rdb         *redis.Client
 	clk         *mutableClock
 	issuer      *recordingIssuer
 	worker      string
 	voiceWorker string
 	prefix      string
+	workerID    string
 }
 
 func newMatchFixture(t *testing.T) *matchFixture {
 	t.Helper()
 	rdb := requireRealRedis(t)
 	prefix := "test:match:" + t.Name() + ":"
+	regPrefix := prefix + "reg:"
 	start := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	clk := &mutableClock{t: start}
+	reg, err := workers.NewRegistry(workers.Options{
+		Redis:        rdb,
+		KeyPrefix:    regPrefix,
+		CasualPrefix: prefix,
+		Clock:        clk,
+		// 远大于 30s AI 补位窗口，避免 deadline 测试误伤 worker 租约。
+		LeaseTTL: 24 * time.Hour,
+	})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
 	svc, err := NewService(Options{
 		Redis:     rdb,
 		KeyPrefix: prefix,
 		Clock:     clk,
 		IDGen:     &seqIDGenVal{},
+		Workers:   reg,
 	})
 	if err != nil {
 		t.Fatalf("NewService: %v", err)
@@ -112,23 +128,39 @@ func newMatchFixture(t *testing.T) *matchFixture {
 			_ = rdb.Del(ctx, keys...).Err()
 		}
 	})
-	return &matchFixture{
+	f := &matchFixture{
 		svc:         svc,
+		reg:         reg,
 		rdb:         rdb,
 		clk:         clk,
 		issuer:      newRecordingIssuer(t, clk),
 		worker:      "ws://worker.test:9000",
 		voiceWorker: "ws://voice.worker.test:9001",
 		prefix:      prefix,
+		workerID:    "worker-default",
+	}
+	f.mustRegisterWorker(t, f.workerID, f.worker, f.voiceWorker, 32)
+	return f
+}
+
+func (f *matchFixture) mustRegisterWorker(t *testing.T, id, game, voice string, capacity int) {
+	t.Helper()
+	_, err := f.reg.Register(context.Background(), workers.Registration{
+		WorkerID:      id,
+		GameEndpoint:  game,
+		VoiceEndpoint: voice,
+		Capacity:      capacity,
+		ActiveRooms:   0,
+	})
+	if err != nil {
+		t.Fatalf("Register worker %s: %v", id, err)
 	}
 }
 
 func (f *matchFixture) matchOnce(t *testing.T) MatchResult {
 	t.Helper()
 	res, err := f.svc.MatchPool(context.Background(), RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.issuer,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -238,9 +270,7 @@ func TestMatch_TrashTalkAssignedHasExactVoiceWorker(t *testing.T) {
 	ctx := context.Background()
 	tickets := enqueueN(t, f.svc, 4, RoundKindEast, GameModeTrashTalk)
 	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeTrashTalk, MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		TokenIssuer:         f.issuer,
+		TokenIssuer: f.issuer,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("MatchPool TRASH_TALK: matched=%v err=%v", res.Matched, err)
@@ -267,10 +297,8 @@ func TestMatch_StandardIgnoresEmptyVoiceEndpoint(t *testing.T) {
 	f := newMatchFixture(t)
 	ctx := context.Background()
 	_ = enqueueN(t, f.svc, 4, RoundKindEast, GameModeStandard)
-	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: "", // STANDARD 单池可不带 voice
-		TokenIssuer:         f.issuer,
+	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{ // STANDARD 单池可不带 voice
+		TokenIssuer: f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("STANDARD MatchPool with empty voice must succeed: %v", err)
@@ -430,15 +458,14 @@ func TestMatch_ConcurrentMatchersSingleRoom(t *testing.T) {
 				KeyPrefix: f.prefix,
 				Clock:     f.clk,
 				IDGen:     &seqIDGenVal{n: 1000 + i*100},
+				Workers:   f.reg,
 			})
 			if err != nil {
 				errs[i] = err
 				return
 			}
 			results[i], errs[i] = svc2.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      f.worker,
-				VoiceWorkerEndpoint: f.voiceWorker,
-				TokenIssuer:         f.issuer,
+				TokenIssuer: f.issuer,
 			})
 		}(i)
 	}
@@ -505,9 +532,7 @@ func TestMatch_CancelVsConsumeRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint:      f.worker,
-				VoiceWorkerEndpoint: f.voiceWorker,
-				TokenIssuer:         f.issuer,
+				TokenIssuer: f.issuer,
 			})
 			if err != nil {
 				matchErr.Store(err)
@@ -584,9 +609,7 @@ func TestMatch_PoolsIsolated(t *testing.T) {
 	rooms := map[string]bool{}
 	for _, c := range combos {
 		res, err := f.svc.MatchPool(ctx, c.rk, c.gm, MatchParams{
-			WorkerEndpoint:      f.worker,
-			VoiceWorkerEndpoint: f.voiceWorker,
-			TokenIssuer:         f.issuer,
+			TokenIssuer: f.issuer,
 		})
 		if err != nil {
 			t.Fatalf("match: %v", err)
@@ -640,11 +663,9 @@ func TestMatcher_StartStopLifecycle(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	m, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         f.issuer,
-		WorkerEndpoint:      f.worker,
-		VoiceWorkerEndpoint: f.voiceWorker,
-		ScanInterval:        15 * time.Millisecond,
+		Service:      f.svc,
+		TokenIssuer:  f.issuer,
+		ScanInterval: 15 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
@@ -671,16 +692,23 @@ func TestMatcher_StartStopLifecycle(t *testing.T) {
 	}
 }
 
-func TestMatch_WorkerEndpointRequiredOnMatcher(t *testing.T) {
+func TestMatch_WorkerRegistryRequiredOnMatcher(t *testing.T) {
 	f := newMatchFixture(t)
-	_, err := NewMatcher(MatcherOptions{
-		Service:             f.svc,
-		TokenIssuer:         f.issuer,
-		WorkerEndpoint:      "   ",
-		VoiceWorkerEndpoint: "ws://127.0.0.1:9001",
+	// 无 registry 的 Service 不得构造 Matcher
+	bare, err := NewService(Options{
+		Redis:     f.rdb,
+		KeyPrefix: f.prefix + "bare:",
+		Clock:     f.clk,
+	})
+	if err != nil {
+		t.Fatalf("bare service: %v", err)
+	}
+	_, err = NewMatcher(MatcherOptions{
+		Service:     bare,
+		TokenIssuer: f.issuer,
 	})
 	if err == nil {
-		t.Fatal("expected error for blank worker")
+		t.Fatal("expected error when worker registry missing")
 	}
 	if strings.Contains(err.Error(), matchTestSecret) {
 		t.Fatal("error must not leak secrets")
@@ -700,6 +728,7 @@ func TestMatch_CrossInstanceAssignmentVisible(t *testing.T) {
 		Redis:     f.rdb,
 		KeyPrefix: f.prefix,
 		Clock:     f.clk,
+		Workers:   f.reg,
 	})
 	if err != nil {
 		t.Fatalf("svc2: %v", err)

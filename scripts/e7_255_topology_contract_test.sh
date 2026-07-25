@@ -58,16 +58,23 @@ pass "compose config --quiet ok"
 # shellcheck disable=SC2086
 SERVICES="$($COMPOSE_BIN -f "$COMPOSE_FILE" --env-file "$ENV_EXAMPLE" config --services 2>/dev/null)" \
   || fail "compose config --services failed (details omitted)"
-for svc in redis control-plane stt worker; do
+# #256 起至少两个 Worker；兼容历史名 worker → worker-a/worker-b
+for svc in redis control-plane stt; do
   echo "$SERVICES" | grep -qx "$svc" || fail "service missing: $svc"
 done
-pass "services redis control-plane stt worker present"
+if echo "$SERVICES" | grep -qx "worker-a" && echo "$SERVICES" | grep -qx "worker-b"; then
+  pass "services redis control-plane stt worker-a worker-b present"
+elif echo "$SERVICES" | grep -qx "worker"; then
+  pass "services redis control-plane stt worker present (legacy single worker)"
+else
+  fail "need worker-a+worker-b (#256) or legacy worker"
+fi
 
 # --- host port bindings prefer 127.0.0.1（只读 compose 源文件，不读展开 config）---
 grep -E '127\.0\.0\.1:6379:6379' "$COMPOSE_FILE" >/dev/null || fail "redis must bind 127.0.0.1:6379"
 grep -E '127\.0\.0\.1:8081:8081' "$COMPOSE_FILE" >/dev/null || fail "control-plane must bind 127.0.0.1:8081"
-grep -E '127\.0\.0\.1:9000:9000' "$COMPOSE_FILE" >/dev/null || fail "worker game ws must bind 127.0.0.1:9000"
-grep -E '127\.0\.0\.1:9001:9001' "$COMPOSE_FILE" >/dev/null || fail "worker voice ws must bind 127.0.0.1:9001"
+grep -E '127\.0\.0\.1:9000:9000' "$COMPOSE_FILE" >/dev/null || fail "worker-a game ws must bind 127.0.0.1:9000"
+grep -E '127\.0\.0\.1:9001:9001' "$COMPOSE_FILE" >/dev/null || fail "worker-a voice ws must bind 127.0.0.1:9001"
 grep -E '127\.0\.0\.1:9100:9100' "$COMPOSE_FILE" >/dev/null || fail "stt must bind 127.0.0.1:9100"
 pass "loopback host bindings documented"
 
@@ -133,12 +140,14 @@ for pin in \
 done
 pass "STT runtime lock is sole pip input with exact versions"
 
-# --- static worker endpoints (no #256) ---
-grep -E 'WORKER_ENDPOINT|VOICE_WORKER_ENDPOINT' "$COMPOSE_FILE" >/dev/null \
-  || fail "static WORKER_ENDPOINT / VOICE_WORKER_ENDPOINT required (#239 contract)"
-! grep -E 'worker.?regist|lease|capacity.?limit' "$COMPOSE_FILE" >/dev/null \
-  || fail "must not implement #256 registration/lease/capacity in #255 compose"
-pass "static worker endpoint transition contract preserved"
+# --- #256 worker registration / dual workers（拓扑已升级）---
+grep -E 'WORKER_REGISTRATION_TOKEN' "$COMPOSE_FILE" >/dev/null \
+  || fail "WORKER_REGISTRATION_TOKEN must be env-injected for worker registration"
+grep -E 'CONTROL_PLANE_URL' "$COMPOSE_FILE" >/dev/null \
+  || fail "workers must register via CONTROL_PLANE_URL"
+grep -E 'worker-a|worker-b' "$COMPOSE_FILE" >/dev/null \
+  || fail "compose must declare dual workers for #256 lifecycle"
+pass "#256 registration + dual-worker topology present"
 
 # --- Godot SHA-512 hard verification in Dockerfile ---
 WORKER_DF="$ROOT/godot/server/Dockerfile.headless_worker"
@@ -229,8 +238,7 @@ cleanup_tmp() { rm -f "$TMP_ENV" "$TMP_OUT"; }
 trap cleanup_tmp EXIT
 {
   echo "TOKEN_SIGNING_SECRET=${FAKE_SECRET}"
-  echo "WORKER_ENDPOINT=ws://127.0.0.1:9000"
-  echo "VOICE_WORKER_ENDPOINT=ws://127.0.0.1:9001"
+  echo "WORKER_REGISTRATION_TOKEN=dev-only-worker-reg-token-fake"
 } >"$TMP_ENV"
 # quiet config
 # shellcheck disable=SC2086
