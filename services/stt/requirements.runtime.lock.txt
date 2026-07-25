@@ -1,0 +1,11 @@
+# #255 STT 运行时精确依赖（从 requirements.lock.txt 派生，排除测试包）。
+# Dockerfile 唯一 pip 输入；勿在镜像内再手写版本范围。
+av==18.0.0
+ctranslate2==4.7.1
+faster-whisper==1.2.1
+httpx==0.28.1
+huggingface_hub==1.24.0
+numpy==2.2.6
+onnxruntime==1.28.0
+tokenizers==0.23.1
+websockets==14.2

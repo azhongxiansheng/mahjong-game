@@ -8,7 +8,7 @@
 
 ## 非目标
 
-- 不扩张 Control Plane 匹配 / 根 `Dockerfile` / `main.go` / E7 compose
+- 不扩张 Control Plane 匹配 / 根 `main.go` 业务职责
 - 不持久化 PCM 或转写；服务重启不恢复
 - 不创建第二个 `grace_deadline`；只遵从 Worker 的 `window_id` 代际与唯一 deadline
 - 不实现举报、静音、自动禁言（E6）
@@ -75,6 +75,24 @@ godot --headless --path godot \
   -s res://server/headless_worker_main.gd \
   -- --host=127.0.0.1 --port=9000 --voice-port=9001 --stt-url=ws://127.0.0.1:9100
 ```
+
+### 容器（#255 E7-01）
+
+STT 作为四服务拓扑的一部分，见 `services/control-plane/docker-compose.e7.yml` 与 `services/control-plane/README.md`「E7-01」节。
+
+- 镜像：`services/stt/Dockerfile`（不烘焙模型）
+- 运行时依赖：`requirements.runtime.lock.txt`（从 `requirements.lock.txt` 派生的精确 pin，**不含** pytest；Dockerfile 唯一 pip 输入）
+- 健康：`scripts/healthcheck_ws.py --mode stt`（真实 `PING`/`PONG`）
+- 模型缓存：卷 `mahjong_e7_stt_model_cache` → `STT_MODEL_CACHE=/var/cache/stt-models`；`down -v` 可清理
+- 默认 `small` + `cpu` + `int8`；可用 `STT_MODEL` / `STT_DEVICE` / `STT_COMPUTE_TYPE` 覆盖
+
+```bash
+# 仓库根：契约 + 真实四服务 smoke（含 STT）
+scripts/e7_255_topology_contract_test.sh
+scripts/e7_255_topology_smoke.sh
+```
+
+**网络端到端未验证。**
 
 ## 内部协议（摘要）
 

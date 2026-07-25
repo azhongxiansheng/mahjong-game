@@ -1,0 +1,94 @@
+# #255 Godot Headless Worker 测试镜像。
+# 使用官方 Godot 4.6.1 Linux 发布物（按 TARGETARCH 选择 arm64 / x86_64）。
+# 发布物 SHA-512 绑定官方 SHA512-SUMS.txt；缓存与下载共用同一硬校验。
+# import：首轮 bootstrap 静默 + 第二轮 clean 审计（错误模式硬失败）。
+# 网络端到端未验证。
+FROM debian:bookworm-slim
+
+# BuildKit 提供 TARGETARCH；legacy builder 可能为空，回退 uname -m。
+ARG TARGETARCH=
+ARG GODOT_VERSION=4.6.1
+# 官方：https://github.com/godotengine/godot/releases/download/4.6.1-stable/SHA512-SUMS.txt
+ARG GODOT_SHA512_LINUX_ARM64=7301207e346dc2064f3f6b474c199ebbc904b045c0620a98580ee6ff3743e185c3ff24b414c974cb9b4e79494356149c52c0614c9a778444de5d01f42c18160c
+ARG GODOT_SHA512_LINUX_X86_64=a76fd0fe1d44a2dd6c065b6f7b434ad75f5593c07bda3d3017f8304f2d069acbcf0f39cb5d0976f0434b56e9ea852032ddbcbdb7e0ce1c75a47e1dacb6794bd7
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates curl unzip python3 coreutils \
+    libfontconfig1 libgl1 libx11-6 libxcursor1 libxinerama1 \
+    libxi6 libxrandr2 libxext6 libxrender1 libxfixes3 \
+  && rm -rf /var/lib/apt/lists/*
+
+# 官方发布物：优先使用构建上下文 tools/godot_release_cache/*.zip（可离线）；
+# 缺失时再从 GitHub Releases 下载。下载与缓存均在 unzip 前做 SHA-512 硬失败校验。
+COPY tools/godot_release_cache/ /tmp/godot_release_cache/
+RUN set -eux; \
+  arch="${TARGETARCH}"; \
+  if [ -z "${arch}" ]; then \
+    case "$(uname -m)" in \
+      x86_64) arch=amd64 ;; \
+      aarch64|arm64) arch=arm64 ;; \
+      *) echo "unsupported uname -m=$(uname -m)" >&2; exit 1 ;; \
+    esac; \
+  fi; \
+  case "${arch}" in \
+    amd64|x86_64) GODOT_ARCH=x86_64; EXPECT_SHA="${GODOT_SHA512_LINUX_X86_64}" ;; \
+    arm64|aarch64) GODOT_ARCH=arm64; EXPECT_SHA="${GODOT_SHA512_LINUX_ARM64}" ;; \
+    *) echo "unsupported arch=${arch}" >&2; exit 1 ;; \
+  esac; \
+  ZIP="Godot_v${GODOT_VERSION}-stable_linux.${GODOT_ARCH}.zip"; \
+  URL="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/${ZIP}"; \
+  if [ -f "/tmp/godot_release_cache/${ZIP}" ]; then \
+    echo "using cached Godot release ${ZIP}"; \
+    cp "/tmp/godot_release_cache/${ZIP}" /tmp/godot.zip; \
+  else \
+    echo "downloading ${URL}"; \
+    curl -fsSL --retry 5 --retry-delay 2 -o /tmp/godot.zip "${URL}"; \
+  fi; \
+  echo "${EXPECT_SHA}  /tmp/godot.zip" | sha512sum -c -; \
+  mkdir -p /opt/godot; \
+  unzip -q /tmp/godot.zip -d /opt/godot; \
+  BIN="$(find /opt/godot -type f \( -name 'Godot*' -o -name 'godot*' \) ! -name '*.zip' | head -n1)"; \
+  test -n "${BIN}"; \
+  install -m 755 "${BIN}" /usr/local/bin/godot; \
+  rm -rf /tmp/godot.zip /opt/godot /tmp/godot_release_cache; \
+  godot --version
+
+WORKDIR /app
+
+# 构建上下文为 godot/ 目录。
+COPY . /app/godot/
+COPY tools/healthcheck_ws.py /usr/local/bin/healthcheck_ws.py
+COPY server/docker-entrypoint-headless-worker.sh /usr/local/bin/docker-entrypoint-headless-worker.sh
+COPY server/godot_import_gate.sh /usr/local/bin/godot_import_gate.sh
+ENV HOME="/tmp/godot-home"
+ENV XDG_DATA_HOME="/tmp/godot-home/.local/share"
+ENV XDG_CONFIG_HOME="/tmp/godot-home/.config"
+ENV XDG_CACHE_HOME="/tmp/godot-home/.cache"
+# 两轮 import 门禁：bootstrap 静默 + clean 审计；失败则镜像构建失败。
+# 变更此 RUN 层以确保重建时实际执行 import（勿只复用旧层）。
+RUN chmod +x /usr/local/bin/healthcheck_ws.py \
+      /usr/local/bin/docker-entrypoint-headless-worker.sh \
+      /usr/local/bin/godot_import_gate.sh \
+  && mkdir -p /tmp/godot-home/.local/share/godot/app_userdata/MahjongGame/logs \
+  && mkdir -p /app/godot/.godot \
+  && HOME=/tmp/godot-home /usr/local/bin/godot_import_gate.sh /app/godot \
+  && test -f /app/godot/.godot/global_script_class_cache.cfg \
+  && chown -R nobody:nogroup /app /tmp/godot-home
+
+# 密钥与 STT URL 仅环境变量注入。
+ENV TOKEN_SIGNING_SECRET=""
+ENV STT_SERVICE_URL="ws://stt:9100"
+ENV VOICE_WORKER_PORT="9001"
+# 容器内监听所有接口；宿主映射仍绑定 127.0.0.1。
+ENV WORKER_BIND_HOST="0.0.0.0"
+ENV WORKER_PORT="9000"
+
+EXPOSE 9000 9001
+
+# 协议级探活：WebSocket 握手 + 未知 kind → ERROR（非日志 grep）。
+HEALTHCHECK --interval=5s --timeout=6s --start-period=90s --retries=20 \
+  CMD python3 /usr/local/bin/healthcheck_ws.py --mode worker --url ws://127.0.0.1:9000 --timeout 5
+
+USER nobody
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint-headless-worker.sh"]
