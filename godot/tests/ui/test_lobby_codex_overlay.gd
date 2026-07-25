@@ -156,6 +156,33 @@ func test_codex_is_full_screen_bounded_and_has_keyboard_focus_hooks() -> void:
 		assert_eq((shell.get_node("%%%s" % hook_name) as Control).focus_mode, Control.FOCUS_ALL)
 
 
+func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, [
+		"CharacterCodexButton", "CodexPanel", "CodexStage", "CodexRoster",
+		"CodexDetailScroll", "CodexDetailTitle",
+	]):
+		return
+	_press(shell, "CharacterCodexButton")
+	await get_tree().process_frame
+	var panel_style := (shell.get_node("%CodexPanel") as Control).get_theme_stylebox("panel")
+	var detail_style := (shell.get_node("%CodexDetailScroll") as Control).get_theme_stylebox("panel")
+	assert_true(panel_style is StyleBoxTexture)
+	assert_true(detail_style is StyleBoxTexture)
+	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png")
+	assert_eq((detail_style as StyleBoxTexture).texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_scroll_panel_9slice.png")
+	var entries := shell.get_node("%CodexRoster").find_children("CodexRosterEntry*", "Button", true, false)
+	assert_gte(entries.size(), 2, "木札名录必须来自真实 catalog")
+	if entries.size() >= 2:
+		var expected := String((entries[1] as Button).get_meta("entry_title"))
+		(entries[1] as Button).pressed.emit()
+		await get_tree().process_frame
+		assert_eq((shell.get_node("%CodexDetailTitle") as Label).text, expected)
+
+
 func test_codex_and_audio_are_mutually_exclusive_and_tab_stays_in_top_layer() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame

@@ -314,6 +314,26 @@ func test_open_drawer_stays_on_right_and_inside_1600_by_900() -> void:
 	assert_almost_eq(rect.end.x, bounds.end.x, 1.0, "展开态右边缘必须贴齐 1600 设计边界")
 
 
+func test_rule_drawer_consumes_real_lobby_material_assets() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, ["RuleDrawerPanel", "EastButton", "DrawerStartButton"]):
+		return
+	var panel_style := (shell.get_node("%RuleDrawerPanel") as Control).get_theme_stylebox("panel")
+	assert_true(panel_style is StyleBoxTexture, "规则抽屉必须消费真实漆木 9-slice，而非纯色模拟")
+	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png")
+	var choice := shell.get_node("%EastButton") as Button
+	var normal := choice.get_theme_stylebox("normal") as StyleBoxTexture
+	var pressed := choice.get_theme_stylebox("pressed") as StyleBoxTexture
+	assert_not_null(normal)
+	assert_not_null(pressed)
+	assert_eq(normal.texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_washi_choice_9slice.png")
+	assert_eq(pressed.texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_choice_selected_9slice.png")
+
+
 func test_capture_tool_has_expanded_rule_drawer_shot() -> void:
 	var script: GDScript = load("res://tools/capture_screens.gd")
 	assert_not_null(script)

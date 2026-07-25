@@ -6,7 +6,7 @@ class_name RuleDrawer extends Control
 signal confirmed(intent: SessionIntent)
 signal cancelled
 
-const DRAWER_W: float = 520.0
+const DRAWER_W: float = 560.0
 const OPEN_SEC: float = 0.22
 
 var _room_kind: StringName = &"PRACTICE"
@@ -93,7 +93,7 @@ func _build_ui() -> void:
 
 	var dim := ColorRect.new()
 	dim.name = "DrawerDim"
-	dim.color = Color(0, 0, 0, DesignTokens.MODAL_BG_DIM * 0.55)
+	dim.color = Color(0.04, 0.015, 0.01, DesignTokens.MODAL_BG_DIM * 0.62)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.gui_input.connect(_on_dim_gui_input)
@@ -110,20 +110,9 @@ func _build_ui() -> void:
 	_panel.offset_top = 0.0
 	_panel.offset_bottom = 0.0
 	_snap_panel_closed()
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = DesignTokens.SURFACE_PANEL
-	sb.border_color = DesignTokens.BORDER_GOLD
-	sb.border_width_left = DesignTokens.CARD_BORDER
-	sb.border_width_top = 0
-	sb.border_width_right = 0
-	sb.border_width_bottom = 0
-	sb.content_margin_left = DesignTokens.GAP_LOOSE
-	sb.content_margin_right = DesignTokens.GAP_LOOSE
-	sb.content_margin_top = DesignTokens.GAP_NORMAL
-	sb.content_margin_bottom = DesignTokens.GAP_NORMAL
-	sb.shadow_color = Color(0, 0, 0, 0.45)
-	sb.shadow_size = 18
-	sb.shadow_offset = Vector2(-6, 0)
+	var sb := DesignTokens.make_lobby_texture_style(
+		DesignTokens.LOBBY_LACQUER_PANEL, 108, 92, 108, 92, 42, 44
+	)
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 
@@ -149,13 +138,21 @@ func _build_ui() -> void:
 
 
 func _build_header() -> Control:
+	var plaque := PanelContainer.new()
+	plaque.name = "DrawerPlaqueHeader"
+	plaque.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
+		DesignTokens.LOBBY_WASHI_PANEL, 44, 22, 44, 22, 24, 12
+	))
+
 	var row := HBoxContainer.new()
 	row.name = "DrawerHeader"
 	row.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
+	plaque.add_child(row)
 
-	_back_btn = DesignTokens.make_button("返回", DesignTokens.BtnRole.GHOST, Vector2(88, DesignTokens.BUTTON_H))
+	_back_btn = DesignTokens.make_button("返回", DesignTokens.BtnRole.GHOST, Vector2(112, DesignTokens.BUTTON_H))
 	_back_btn.name = "DrawerBackButton"
 	_back_btn.focus_mode = Control.FOCUS_ALL
+	DesignTokens.apply_lobby_material_button(_back_btn, true)
 	_back_btn.pressed.connect(_emit_cancelled)
 	row.add_child(_back_btn)
 
@@ -165,9 +162,9 @@ func _build_header() -> Control:
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", DesignTokens.FONT_SUBTITLE)
-	_title.add_theme_color_override("font_color", DesignTokens.TEXT_TITLE)
+	_title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
 	row.add_child(_title)
-	return row
+	return plaque
 
 
 func _build_round_section() -> Control:
@@ -179,7 +176,7 @@ func _build_round_section() -> Control:
 	caption.name = "RoundCaption"
 	caption.text = "局制"
 	caption.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	caption.add_theme_color_override("font_color", DesignTokens.TEXT_PRIMARY)
+	caption.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
 	col.add_child(caption)
 
 	var row := HBoxContainer.new()
@@ -206,7 +203,7 @@ func _build_mode_section() -> Control:
 	caption.name = "ModeCaption"
 	caption.text = "玩法"
 	caption.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	caption.add_theme_color_override("font_color", DesignTokens.TEXT_PRIMARY)
+	caption.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
 	col.add_child(caption)
 
 	var row := VBoxContainer.new()
@@ -255,6 +252,8 @@ func _build_footer() -> Control:
 	)
 	_start_btn.name = "DrawerStartButton"
 	_start_btn.focus_mode = Control.FOCUS_ALL
+	DesignTokens.apply_lobby_material_button(_cancel_btn, true)
+	DesignTokens.apply_lobby_material_button(_start_btn)
 	_start_btn.pressed.connect(_emit_confirmed)
 	row.add_child(_start_btn)
 	return row
@@ -267,6 +266,7 @@ func _make_choice_button(btn_name: String, text: String, group: ButtonGroup) -> 
 	btn.button_group = group
 	btn.focus_mode = Control.FOCUS_ALL
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	DesignTokens.apply_lobby_material_button(btn)
 	return btn
 
 

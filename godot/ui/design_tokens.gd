@@ -54,6 +54,21 @@ const BORDER_GOLD_SOFT: Color = Color(0.85, 0.71, 0.36, 0.40)
 const CARD_RADIUS: int = 10
 const CARD_BORDER: int = 2
 
+# ---- 大厅实体材质（#302，真实生产 PNG；不扩散到牌桌/Run Theme）----
+
+const LOBBY_LACQUER_PANEL := "res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png"
+const LOBBY_WASHI_PANEL := "res://assets/ui/lobby_materials/lobby_washi_panel_9slice.png"
+const LOBBY_WASHI_CHOICE := "res://assets/ui/lobby_materials/lobby_washi_choice_9slice.png"
+const LOBBY_CHOICE_SELECTED := "res://assets/ui/lobby_materials/lobby_choice_selected_9slice.png"
+const LOBBY_SCROLL_PANEL := "res://assets/ui/lobby_materials/lobby_scroll_panel_9slice.png"
+const LOBBY_WOOD_NAMEPLATE := "res://assets/ui/lobby_materials/lobby_wood_nameplate_9slice.png"
+const LOBBY_OMAMORI_CASE := "res://assets/ui/lobby_materials/lobby_omamori_case_9slice.png"
+const LOBBY_SLIDER_TRACK := "res://assets/ui/lobby_materials/lobby_slider_track.png"
+const LOBBY_SLIDER_GRABBER := "res://assets/ui/lobby_materials/lobby_slider_grabber.png"
+const LOBBY_INK: Color = Color("281713")
+const LOBBY_CINNABAR: Color = Color("a52f22")
+const LOBBY_WASHI_TEXT: Color = Color("f4e5c6")
+
 # ---- 节点主色 (8-15% 透明叠在 BG_BASE 上,保留主题信号,底色仍统一) ----
 
 const NODE_TINT_NORMAL: Color = Color(0.40, 0.55, 0.70, 0.08)
@@ -239,6 +254,67 @@ static func _flat_sb(bg: Color, border: Color, bw: int = 2, radius: int = 8,
 	sb.content_margin_top = pad_v
 	sb.content_margin_bottom = pad_v
 	return sb
+
+
+static func make_lobby_texture_style(
+		path: String,
+		margin_left: float,
+		margin_top: float,
+		margin_right: float,
+		margin_bottom: float,
+		content_h: float = 24.0,
+		content_v: float = 18.0,
+) -> StyleBoxTexture:
+	var style := StyleBoxTexture.new()
+	style.texture = load(path) as Texture2D
+	style.texture_margin_left = margin_left
+	style.texture_margin_top = margin_top
+	style.texture_margin_right = margin_right
+	style.texture_margin_bottom = margin_bottom
+	style.content_margin_left = content_h
+	style.content_margin_right = content_h
+	style.content_margin_top = content_v
+	style.content_margin_bottom = content_v
+	style.draw_center = true
+	return style
+
+
+static func apply_lobby_material_button(btn: Button, wood: bool = false) -> void:
+	if btn == null:
+		return
+	var normal_path := LOBBY_WOOD_NAMEPLATE if wood else LOBBY_WASHI_CHOICE
+	var margin_h := 42.0 if wood else 36.0
+	var margin_v := 16.0 if wood else 18.0
+	var normal := make_lobby_texture_style(normal_path, margin_h, margin_v, margin_h, margin_v, 14, 7)
+	var active := make_lobby_texture_style(LOBBY_CHOICE_SELECTED, 36, 18, 36, 18, 14, 7)
+	var disabled := make_lobby_texture_style(normal_path, margin_h, margin_v, margin_h, margin_v, 14, 7)
+	disabled.modulate_color = Color(0.52, 0.48, 0.44, 0.72)
+	btn.add_theme_stylebox_override("normal", normal)
+	btn.add_theme_stylebox_override("hover", active)
+	btn.add_theme_stylebox_override("pressed", active)
+	btn.add_theme_stylebox_override("focus", active)
+	btn.add_theme_stylebox_override("disabled", disabled)
+	btn.add_theme_color_override("font_color", LOBBY_INK)
+	btn.add_theme_color_override("font_hover_color", LOBBY_CINNABAR)
+	btn.add_theme_color_override("font_pressed_color", LOBBY_CINNABAR)
+	btn.add_theme_color_override("font_focus_color", LOBBY_CINNABAR)
+	btn.add_theme_color_override("font_disabled_color", Color("756b5f"))
+
+
+static func style_lobby_material_slider(slider: HSlider) -> void:
+	if slider == null:
+		return
+	var track := make_lobby_texture_style(LOBBY_SLIDER_TRACK, 42, 10, 42, 10, 0, 0)
+	track.content_margin_top = 7
+	track.content_margin_bottom = 7
+	slider.add_theme_stylebox_override("slider", track)
+	slider.add_theme_stylebox_override("grabber_area", track)
+	slider.add_theme_stylebox_override("grabber_area_highlight", track)
+	var grabber := load(LOBBY_SLIDER_GRABBER) as Texture2D
+	slider.add_theme_icon_override("grabber", grabber)
+	slider.add_theme_icon_override("grabber_highlight", grabber)
+	slider.add_theme_constant_override("grabber_offset", 0)
+	slider.custom_minimum_size.y = 34
 
 
 # 给已有 Button 套角色外观（不改 text / 信号）

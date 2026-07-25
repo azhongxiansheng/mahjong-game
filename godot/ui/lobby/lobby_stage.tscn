@@ -1,0 +1,304 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://ui/lobby/lobby_stage.gd" id="1_stage"]
+[ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/lobby_environment_16x9.png" id="2_environment"]
+[ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/hero_male_transparent.png" id="3_hero"]
+[ext_resource type="PackedScene" path="res://ui/lobby/lobby_mode_banner.tscn" id="4_banner"]
+[ext_resource type="PackedScene" path="res://ui/lobby/lobby_omamori_button.tscn" id="5_omamori"]
+
+[sub_resource type="Gradient" id="Gradient_ground"]
+offsets = PackedFloat32Array(0, 0.65, 1)
+colors = PackedColorArray(0.05, 0.01, 0.015, 0, 0.05, 0.01, 0.015, 0.28, 0.02, 0.005, 0.008, 0.82)
+
+[sub_resource type="GradientTexture2D" id="GradientTexture_ground"]
+gradient = SubResource("Gradient_ground")
+fill_from = Vector2(0.5, 0)
+fill_to = Vector2(0.5, 1)
+
+[node name="LobbyStage" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_stage")
+
+[node name="EnvironmentBackdrop" type="TextureRect" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("2_environment")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="WarmWash" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.16, 0.025, 0.018, 0.12)
+
+[node name="CharacterStage" type="Control" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_right = 0.62
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 56.0
+offset_bottom = -46.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="ResidentPortrait" type="TextureRect" parent="CharacterStage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -58.0
+offset_top = -10.0
+offset_right = 62.0
+offset_bottom = 74.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("3_hero")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="GroundAtmosphere" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -280.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+texture = SubResource("GradientTexture_ground")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="TopResourceBar" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 0.9
+offset_left = 24.0
+offset_top = 18.0
+offset_right = -10.0
+offset_bottom = 88.0
+grow_horizontal = 2
+
+[node name="ResourceRow" type="HBoxContainer" parent="TopResourceBar"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="PlayerSeal" type="Label" parent="TopResourceBar/ResourceRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
+theme_override_font_sizes/font_size = 20
+text = "雀士印｜游客"
+vertical_alignment = 1
+
+[node name="Spacer" type="Control" parent="TopResourceBar/ResourceRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RankChip" type="Label" parent="TopResourceBar/ResourceRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
+theme_override_font_sizes/font_size = 16
+text = "段位　初心"
+vertical_alignment = 1
+
+[node name="ResourceChip" type="Label" parent="TopResourceBar/ResourceRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
+theme_override_font_sizes/font_size = 16
+text = "雀晶　—"
+vertical_alignment = 1
+
+[node name="ActivityButton" type="Button" parent="TopResourceBar/ResourceRow"]
+custom_minimum_size = Vector2(190, 46)
+layout_mode = 2
+focus_mode = 2
+text = "活动｜雨夜雀庄"
+
+[node name="ModeBannerRail" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.545
+anchor_top = 0.19
+anchor_right = 0.9
+anchor_bottom = 0.76
+offset_left = 0.0
+offset_right = -8.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 8
+alignment = 1
+
+[node name="PracticeButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
+unique_name_in_owner = true
+layout_mode = 2
+banner_index = 0
+title = "电脑练习"
+subtitle = "一人即可 · 三位 AI 陪练"
+
+[node name="MatchButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
+unique_name_in_owner = true
+layout_mode = 2
+banner_index = 1
+title = "公共匹配"
+subtitle = "真人优先 · 空位自动补全"
+
+[node name="RulesBannerButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
+unique_name_in_owner = true
+layout_mode = 2
+banner_index = 2
+title = "规则研习"
+subtitle = "查看役种、牌型与对局规则"
+
+[node name="StatusLabel" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.58
+anchor_top = 0.77
+anchor_right = 0.87
+anchor_bottom = 0.82
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 0.9)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 15
+text = "选择一种游戏方式"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="OmamoriRail" type="VBoxContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.915
+anchor_top = 0.13
+anchor_right = 0.985
+anchor_bottom = 0.78
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 5
+alignment = 1
+
+[node name="NoticeButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 0
+action_text = "公告"
+
+[node name="HelpButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 1
+action_text = "帮助"
+
+[node name="SettingsButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 2
+action_text = "设置"
+
+[node name="CharacterCodexButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 3
+action_text = "角色"
+
+[node name="ItemCodexButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 4
+action_text = "道具"
+
+[node name="RulesButton" parent="OmamoriRail" instance=ExtResource("5_omamori")]
+unique_name_in_owner = true
+layout_mode = 2
+icon_index = 5
+action_text = "规则"
+
+[node name="BottomNav" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -82.0
+offset_right = -24.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 0
+
+[node name="NavRow" type="HBoxContainer" parent="BottomNav"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="VenueMark" type="Label" parent="BottomNav/NavRow"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.839216, 0.14902, 0.0901961, 1)
+theme_override_font_sizes/font_size = 24
+text = "虚席馆 · 异能雀庄"
+vertical_alignment = 1
+
+[node name="NavSpacer" type="Control" parent="BottomNav/NavRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="CharacterNavButton" type="Button" parent="BottomNav/NavRow"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+focus_mode = 2
+text = "雀士名录"
+
+[node name="ItemNavButton" type="Button" parent="BottomNav/NavRow"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+focus_mode = 2
+text = "异能道具"
+
+[node name="RulesNavButton" type="Button" parent="BottomNav/NavRow"]
+custom_minimum_size = Vector2(150, 48)
+layout_mode = 2
+focus_mode = 2
+text = "规则卷轴"
+
+[node name="BgmButton" type="Button" parent="BottomNav/NavRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 48)
+layout_mode = 2
+focus_mode = 2
+text = "BGM"
+
+[node name="SfxButton" type="Button" parent="BottomNav/NavRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(96, 48)
+layout_mode = 2
+focus_mode = 2
+text = "SFX"

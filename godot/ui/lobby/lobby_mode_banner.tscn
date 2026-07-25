@@ -1,0 +1,50 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://ui/lobby/lobby_mode_banner.gd" id="1_script"]
+
+[node name="LobbyModeBanner" type="Button"]
+custom_minimum_size = Vector2(540, 132)
+focus_mode = 2
+script = ExtResource("1_script")
+
+[node name="BannerArt" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+expand_mode = 1
+stretch_mode = 6
+mouse_filter = 2
+
+[node name="Copy" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 178.0
+offset_top = 24.0
+offset_right = -42.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 2
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="Copy"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.105882, 0.0705882, 0.0509804, 1)
+theme_override_colors/font_shadow_color = Color(1, 0.941176, 0.807843, 0.5)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 28
+text = "玩法入口"
+mouse_filter = 2
+
+[node name="Subtitle" type="Label" parent="Copy"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.337255, 0.0901961, 0.0627451, 1)
+theme_override_font_sizes/font_size = 15
+text = "说明"
+mouse_filter = 2

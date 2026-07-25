@@ -5,9 +5,12 @@ class_name LobbyAudioPopup extends Control
 
 signal closed
 
-const PANEL_W: float = 360.0
-const PANEL_H: float = 280.0
+const PANEL_W: float = 410.0
+const PANEL_H: float = 320.0
+const PANEL_RIGHT_GAP: float = 112.0
 
+var _panel: PanelContainer = null
+var _inner: PanelContainer = null
 var _bgm_slider: HSlider = null
 var _sfx_slider: HSlider = null
 var _bgm_value: Label = null
@@ -30,7 +33,7 @@ func _ready() -> void:
 
 func get_hook_nodes() -> Array[Node]:
 	var nodes: Array[Node] = []
-	for n in [self, _bgm_slider, _sfx_slider, _preview_btn, _close_btn]:
+	for n in [self, _panel, _inner, _bgm_slider, _sfx_slider, _preview_btn, _close_btn]:
 		if n != null:
 			nodes.append(n)
 	return nodes
@@ -50,43 +53,44 @@ func _build_ui() -> void:
 
 	var dim := ColorRect.new()
 	dim.name = "AudioPopupDim"
-	dim.color = Color(0, 0, 0, 0.35)
+	dim.color = Color(0.04, 0.015, 0.01, 0.28)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	dim.gui_input.connect(_on_dim_gui_input)
 	add_child(dim)
 
-	var panel := PanelContainer.new()
-	panel.name = "AudioPopupPanel"
-	panel.custom_minimum_size = Vector2(PANEL_W, PANEL_H)
-	panel.anchor_left = 1.0
-	panel.anchor_top = 1.0
-	panel.anchor_right = 1.0
-	panel.anchor_bottom = 1.0
-	panel.offset_left = -PANEL_W - DesignTokens.PANEL_PAD
-	panel.offset_top = -PANEL_H - DesignTokens.PANEL_PAD
-	panel.offset_right = -DesignTokens.PANEL_PAD
-	panel.offset_bottom = -DesignTokens.PANEL_PAD
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = DesignTokens.SURFACE_PANEL
-	sb.border_color = DesignTokens.BORDER_GOLD
-	sb.set_border_width_all(DesignTokens.CARD_BORDER)
-	sb.set_corner_radius_all(DesignTokens.CARD_RADIUS)
-	sb.content_margin_left = DesignTokens.GAP_LOOSE
-	sb.content_margin_right = DesignTokens.GAP_LOOSE
-	sb.content_margin_top = DesignTokens.GAP_NORMAL
-	sb.content_margin_bottom = DesignTokens.GAP_NORMAL
-	sb.shadow_color = Color(0, 0, 0, 0.45)
-	sb.shadow_size = 12
-	panel.add_theme_stylebox_override("panel", sb)
-	add_child(panel)
+	_panel = PanelContainer.new()
+	_panel.name = "AudioPopupPanel"
+	_panel.custom_minimum_size = Vector2(PANEL_W, PANEL_H)
+	_panel.anchor_left = 1.0
+	_panel.anchor_top = 1.0
+	_panel.anchor_right = 1.0
+	_panel.anchor_bottom = 1.0
+	_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_panel.offset_left = -PANEL_W - PANEL_RIGHT_GAP
+	_panel.offset_top = -PANEL_H - DesignTokens.PANEL_PAD
+	_panel.offset_right = -PANEL_RIGHT_GAP
+	_panel.offset_bottom = -40.0
+	_panel.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
+		DesignTokens.LOBBY_OMAMORI_CASE, 48, 90, 48, 72, 38, 42
+	))
+	add_child(_panel)
+
+	_inner = PanelContainer.new()
+	_inner.name = "AudioWashiInner"
+	_inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_inner.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
+		DesignTokens.LOBBY_WASHI_PANEL, 44, 24, 44, 24, 24, 18
+	))
+	_panel.add_child(_inner)
 
 	var root := VBoxContainer.new()
 	root.name = "AudioPopupRoot"
 	root.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	panel.add_child(root)
+	_inner.add_child(root)
 
 	var header := HBoxContainer.new()
 	header.add_theme_constant_override("separation", DesignTokens.GAP_TIGHT)
@@ -96,12 +100,13 @@ func _build_ui() -> void:
 	title.text = "音量"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", DesignTokens.FONT_SUBTITLE)
-	title.add_theme_color_override("font_color", DesignTokens.TEXT_TITLE)
+	title.add_theme_color_override("font_color", DesignTokens.LOBBY_CINNABAR)
 	header.add_child(title)
 
 	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.GHOST, Vector2(88, 36))
 	_close_btn.name = "AudioPopupCloseButton"
 	_close_btn.focus_mode = Control.FOCUS_ALL
+	DesignTokens.apply_lobby_material_button(_close_btn, true)
 	_close_btn.pressed.connect(_on_close_pressed)
 	header.add_child(_close_btn)
 
@@ -112,6 +117,7 @@ func _build_ui() -> void:
 	_preview_btn.name = "SfxPreviewButton"
 	_preview_btn.focus_mode = Control.FOCUS_ALL
 	_preview_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	DesignTokens.apply_lobby_material_button(_preview_btn)
 	_preview_btn.pressed.connect(_on_preview_pressed)
 	root.add_child(_preview_btn)
 
@@ -130,14 +136,14 @@ func _build_slider_block(title_text: String, is_bgm: bool) -> Control:
 	title.text = title_text
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	title.add_theme_color_override("font_color", DesignTokens.TEXT_PRIMARY)
+	title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
 	row.add_child(title)
 
 	var value_lbl := Label.new()
 	value_lbl.custom_minimum_size = Vector2(52, 0)
 	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	value_lbl.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	value_lbl.add_theme_color_override("font_color", DesignTokens.TEXT_TITLE)
+	value_lbl.add_theme_color_override("font_color", DesignTokens.LOBBY_CINNABAR)
 	row.add_child(value_lbl)
 
 	var slider := HSlider.new()
@@ -147,7 +153,7 @@ func _build_slider_block(title_text: String, is_bgm: bool) -> Control:
 	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	slider.custom_minimum_size = Vector2(0, 28)
 	slider.focus_mode = Control.FOCUS_ALL
-	DesignTokens.style_hslider(slider)
+	DesignTokens.style_lobby_material_slider(slider)
 	col.add_child(slider)
 
 	if is_bgm:
