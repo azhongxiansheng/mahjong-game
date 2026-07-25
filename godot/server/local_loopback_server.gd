@@ -1761,6 +1761,12 @@ func _reward_now_ms() -> int:
 	return _reward_authority_now_ms
 
 
+## #247/#252：公开只读 RewardWindow 权威当前时间（与 advance_reward_time 同一时钟域）。
+## 非 Worker 墙钟 / lease 单调时钟；调用方不得据此自行推进。
+func reward_authority_now_ms() -> int:
+	return _reward_authority_now_ms
+
+
 ## 显式权威时钟 tick：原子事务。settle/open/HAND_SETTLED/恢复推进失败则全回滚。
 func advance_reward_time(now_ms: int) -> bool:
 	if _rollback_failed or not _started:

@@ -31,6 +31,8 @@ const AUTHORITY_FIELD_KEYS := [
 signal stt_frame_hook(frame: Dictionary)
 ## STT 挂点：权威归一化 PTT_END（含 server_seq）
 signal stt_ptt_end_hook(msg: Dictionary)
+## #247：仍在 speaking 的连接断开/同座替换时通知 STT 释放在途流
+signal stt_utterance_abort_hook(info: Dictionary)
 signal client_message_handled(conn_id: int, kind: String)
 
 var bind_host: String = "127.0.0.1"
@@ -306,6 +308,12 @@ func _handle_ptt_start(cid: int, d: Dictionary) -> void:
 	if not bool(gate.get("ok", false)):
 		_send_error(cid, str(st.get("room_id", "")), str(gate.get("code", "COMMAND_REJECTED")), str(gate.get("message", "")))
 		return
+	var room_id: String = str(st.get("room_id", ""))
+	# #247：CLOSING/终态后关闭新语音；由 Worker 读 RewardWindow 权威 phase
+	if _worker != null and _worker.has_method("voice_accepts_new_utterance"):
+		if not bool(_worker.voice_accepts_new_utterance(room_id)):
+			_send_error(cid, room_id, "COMMAND_REJECTED", "voice closed for window phase")
+			return
 	var utt: String = String(d["utterance_id"])
 	# 已在 speaking：禁止重复 START 重置缓冲逃逸
 	if bool(st.get("ptt_speaking", false)):
@@ -325,12 +333,12 @@ func _handle_ptt_start(cid: int, d: Dictionary) -> void:
 	_conns[cid] = st
 	var out_msg := {
 		"protocol_version": 1,
-		"room_id": str(st["room_id"]),
+		"room_id": room_id,
 		"seat": int(st["seat"]),
 		"kind": "PTT_START",
 		"utterance_id": utt,
 	}
-	_broadcast_control_to_others(str(st["room_id"]), int(st["seat"]), out_msg)
+	_broadcast_control_to_others(room_id, int(st["seat"]), out_msg)
 
 
 func _handle_ptt_end(cid: int, d: Dictionary) -> void:
@@ -448,6 +456,19 @@ func _broadcast_control_to_others(room_id: String, from_seat: int, msg: Dictiona
 		var seat: int = int(s)
 		if seat == from_seat:
 			continue
+		if not _is_human_seat(room_id, seat):
+			continue
+		var tid: int = int(seats[s])
+		_send_json(tid, msg)
+
+
+## #247：向房间全部当前 HUMAN 成员广播控制帧（字幕 partial/final；不跨房）。
+func broadcast_control_to_room(room_id: String, msg: Dictionary) -> void:
+	if not _rooms.has(room_id):
+		return
+	var seats: Dictionary = (_rooms[room_id] as Dictionary).get("seats", {})
+	for s in seats.keys():
+		var seat: int = int(s)
 		if not _is_human_seat(room_id, seat):
 			continue
 		var tid: int = int(seats[s])
@@ -646,6 +667,15 @@ func _close_conn(cid: int, _supersede: bool) -> void:
 	var st: Dictionary = _conns[cid]
 	var room_id: String = str(st.get("room_id", ""))
 	var seat: int = int(st.get("seat", -1))
+	# #247：speaking 中断 → 通知 STT 释放在途 stream（不跨房）
+	if bool(st.get("ptt_speaking", false)):
+		var utt_abort := str(st.get("active_utterance", ""))
+		if not room_id.is_empty() and not utt_abort.is_empty() and seat >= 0:
+			stt_utterance_abort_hook.emit({
+				"room_id": room_id,
+				"seat": seat,
+				"utterance_id": utt_abort,
+			})
 	_clear_utterance_buffer(cid)
 	if not room_id.is_empty() and _rooms.has(room_id):
 		var rm: Dictionary = _rooms[room_id]

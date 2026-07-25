@@ -14,6 +14,8 @@ signal voice_joined()
 signal room_started_hint()
 signal session_failed(code: String, message: String)
 signal authority_ptt_end(msg: Dictionary)
+## #247：服务端字幕 → 调用方可接 PlayableTable.inject_caption_display
+signal transcript_caption(msg: Dictionary)
 
 var game_mode: String = ""
 var room_id: String = ""
@@ -139,6 +141,8 @@ func _start_voice() -> Error:
 	_voice_client.bind_authority_seq_bridge(seq_bridge)
 	if not _voice_client.authority_ptt_end.is_connected(_on_voice_ptt_end):
 		_voice_client.authority_ptt_end.connect(_on_voice_ptt_end)
+	if not _voice_client.transcript_caption.is_connected(_on_voice_transcript_caption):
+		_voice_client.transcript_caption.connect(_on_voice_transcript_caption)
 	if not _voice_client.connected.is_connected(_on_voice_connected):
 		_voice_client.connected.connect(_on_voice_connected)
 	if not _voice_client.error_received.is_connected(_on_voice_error):
@@ -250,6 +254,11 @@ func _on_voice_error(msg: Dictionary) -> void:
 
 func _on_voice_ptt_end(msg: Dictionary) -> void:
 	authority_ptt_end.emit(msg)
+
+
+func _on_voice_transcript_caption(msg: Dictionary) -> void:
+	# 仅转发；展示侧用 inject_caption_display，不触达 RewardWindow
+	transcript_caption.emit(msg.duplicate(true))
 
 
 func is_voice_enabled() -> bool:

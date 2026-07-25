@@ -11,6 +11,8 @@ signal disconnected()
 signal join_result(ok: bool, msg: Dictionary)
 signal authority_ptt_end(msg: Dictionary)
 signal error_received(msg: Dictionary)
+## #247：房间字幕（已 schema/room 校验；不触发奖励）
+signal transcript_caption(msg: Dictionary)
 
 var _peer: WebSocketPeer = WebSocketPeer.new()
 var _port: VoicePortModule = null
@@ -178,8 +180,58 @@ func _handle_text(text: String) -> void:
 			error_received.emit(d)
 		"PTT_START":
 			pass
+		"TRANSCRIPT_PARTIAL", "TRANSCRIPT_FINAL":
+			if _joined and _accept_transcript_msg(d):
+				transcript_caption.emit(d.duplicate(true))
 		_:
 			pass
+
+
+## 仅接受本房字幕；严格基础 schema，拒绝跨房/缺字段。
+func _accept_transcript_msg(d: Dictionary) -> bool:
+	if not _is_json_int(d.get("protocol_version", null)) or int(d["protocol_version"]) != 1:
+		return false
+	if str(d.get("room_id", "")) != _room_id or _room_id.is_empty():
+		return false
+	if not _is_json_int(d.get("seat", null)):
+		return false
+	var s: int = int(d["seat"])
+	if s < 0 or s > 3:
+		return false
+	if str(d.get("utterance_id", "")).strip_edges().is_empty():
+		return false
+	if str(d.get("window_id", "")).strip_edges().is_empty():
+		return false
+	if not _is_json_int(d.get("hand_seq", null)):
+		return false
+	if str(d.get("source", "")) != "faster_whisper":
+		return false
+	var kind := str(d.get("kind", ""))
+	if kind == "TRANSCRIPT_PARTIAL":
+		if bool(d.get("is_final", true)):
+			return false
+	elif kind == "TRANSCRIPT_FINAL":
+		if not bool(d.get("is_final", false)):
+			return false
+		if not _is_json_int(d.get("ptt_end_server_seq", null)) or int(d["ptt_end_server_seq"]) <= 0:
+			return false
+	else:
+		return false
+	if typeof(d.get("text", null)) != TYPE_STRING and typeof(d.get("text", null)) != TYPE_STRING_NAME:
+		return false
+	if typeof(d.get("lang", null)) != TYPE_STRING and typeof(d.get("lang", null)) != TYPE_STRING_NAME:
+		return false
+	return true
+
+
+## JSON 整型：Godot JSON 可能把整数解为 float，仅接受整值 float，拒绝 1.5。
+func _is_json_int(v: Variant) -> bool:
+	if typeof(v) == TYPE_INT:
+		return true
+	if typeof(v) == TYPE_FLOAT:
+		var f: float = float(v)
+		return f == floorf(f)
+	return false
 
 
 func _handle_binary(raw: PackedByteArray) -> void:
