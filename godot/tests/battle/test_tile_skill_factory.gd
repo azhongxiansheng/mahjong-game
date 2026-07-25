@@ -98,7 +98,7 @@ func test_inject_batch_with_variant_objects():
 	assert_eq(reg.get_all_entries().size(), 2)
 
 func test_inject_batch_with_string_ids():
-	# 模拟 RunState.deck dict：{tile_id: variant_id (StringName)}
+	# variant id 字典输入
 	var reg := SkillRegistry.new()
 	var variants: Dictionary = {
 		TileId.W5: &"thunder_5w_v1",
@@ -140,14 +140,3 @@ func test_seal_chun_inject_then_ron_cancels():
 	# discarder = owner = 0 → cancel ron from actor=2
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 2, null, {"discarder_seat": 0}))
 	assert_true(st.ron_cancelled[2])
-
-# ---- BattleNodeRunner: player_tile_variants 参数 ----
-
-func test_battle_node_runner_with_player_tile_variants_completes():
-	var variants: Dictionary = {TileId.W5: &"thunder_5w_v1"}
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", [], false, variants)
-	assert_not_null(r)
-	var sum: int = 0
-	for s in r.final_scores:
-		sum += int(s)
-	assert_eq(sum, 100000, "tile skill inject 后总分仍守恒")

@@ -3,10 +3,8 @@ class_name HelpOverlay extends Control
 # H 键唤起的快捷帮助 overlay — 列所有键盘热键 + 战斗按钮速查 + 日麻关键术语。
 # Pro polish:玩家任何时刻按 H 就能查热键,不用记忆。
 #
-# 区别 TutorialOverlay (5 页详细教程):本 overlay 单页,纯参考文档,只查不
-# 看故事。
-#
-# RunFlow / PlayableTable 在 _input 监到 H 键时实例化挂根。
+# 本 overlay 是单页参考文档，不修改对局状态。
+# PlayableTable 在 _input 监到 H 键时实例化挂根。
 
 signal closed
 

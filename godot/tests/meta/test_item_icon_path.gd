@@ -32,13 +32,4 @@ func test_default_icon_path_missing_returns_empty() -> void:
 func test_newly_added_pool_icons_resolve() -> void:
 	assert_true(ResourceLoader.exists(RelicItem.default_icon_path(&"relic_red_string_v1")))
 	assert_true(ResourceLoader.exists(RelicItem.default_icon_path(&"relic_pity_breaker_v1")))
-	assert_true(ResourceLoader.exists(ConsumableItem.default_icon_path(&"hp_potion_v1")))
 	assert_true(ResourceLoader.exists(ConsumableItem.default_icon_path(&"tsubame_v1")))
-
-func test_run_ui_resolve_gacha_icon() -> void:
-	var r := GachaResult.new()
-	r.kind = GachaResult.KIND_RELIC
-	r.relic = RelicItem.new(&"relic_soul_mirror_v1")
-	r.relic.icon_path = RelicItem.default_icon_path(r.relic.id)
-	var path: String = RunUi.resolve_gacha_icon_path(r)
-	assert_eq(path, "res://assets/roguelike/relics/relic_soul_mirror.png")

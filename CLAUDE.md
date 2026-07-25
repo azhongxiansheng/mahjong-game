@@ -14,7 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **简单优先 + 外科手术式修改**：最小改动，不顺手重构无关代码。
 - **计划与 UI 确认**：实现前给可执行计划；UI 分档 —— 简单 ASCII / 复杂草图+取舍（可选截图）/ 复杂流程 Mermaid。
 - **验证驱动**：功能/缺陷优先 TDD + GUT；改 class/资产后必须 `godot --headless --path godot --import`；声称完成须附命令与结果。禁止 mock 顶替核心规则逻辑。
-- **主路径**：`ui/lobby/lobby_shell.tscn`（生产入口）+ `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口（legacy 可显式实例化）；勿接中式 `game_ui` / 微信登录遗留为主路径。
+- **主路径**：`ui/lobby/lobby_shell.tscn`（生产入口）+ `ui/four_player_table/`；退役肉鸽 Run 与旧中式 `legacy/` 已物理删除；勿接 `game_ui` / 微信登录遗留为主路径。
 - **牌面契约**：`mahjong_tiles_riichi` 文件名 + 272×389；WHITE modulate；赤宝 `0m/0p/0s`；滤波 LINEAR_WITH_MIPMAPS。
 - **不扩张 `main.go`**；不新增根目录状态报告 markdown；不信根目录 200+ 陈旧笔记。
 - **提交即推送**：本地已 commit 默认尽快 push，除非用户明确要求只留本地。
@@ -29,7 +29,6 @@ This repo contains **two unrelated trees** that share a directory but not a buil
 
 1. **`godot/`** — a Godot 4.6 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/lobby/lobby_shell.tscn`** (set in `godot/project.godot`; E1-01). Tree layout:
    - `ui/lobby/` — 生产大厅入口壳（练习/匹配挂点；选择态与正式配置分属后续 Issue）
-   - `ui/run/` — 肉鸽 Run 流（已退出生产入口；legacy / GUT 可显式实例化）
    - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
    - `core/` — pure-logic 日麻 engine：
      - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall`（含 dead wall API）
@@ -37,10 +36,10 @@ This repo contains **two unrelated trees** that share a directory but not a buil
      - `core/turn_engine/` — `TurnEngine` + `ClaimValidator` / `RiichiValidator` / `DrawDetector`
    - `battle/` — 对战运行时：`BattleState`、`Seat`、`PlayableBattleController`、`SkillScheduler` 等
    - `skills/` — 技能框架 + hooks
-   - `meta/` — Run 状态、存档、抽卡、角色池等
-   - `tests/` — **GUT 9.x** 单元测试（`tests/core/`、`tests/battle/`、`tests/ui/` 等；全量约 250+ 脚本 / 1800+ 用例）
+   - `meta/` — 当前角色/卡牌目录、设置与战绩等持久数据
+   - `tests/` — **GUT 9.x** 测试；日常快速门禁与重型协议/UI/STT 回归分开运行
    - `addons/gut/`、`addons/anima/` — 测试与动效
-   - `assets/` — 牌面 `mahjong_tiles_riichi/`（38 张）、Run 图标、桌布、立绘等
+   - `assets/` — 牌面 `mahjong_tiles_riichi/`（38 张）、桌布、立绘等
    - `scripts/` — **legacy** 中式麻将 / 登录 / 网络草图（平铺）；**新代码不要再加进 `scripts/`**
    - `scenes/` — 遗留场景（`wechat_login_final.tscn`、`game_ui.tscn` 等，**非** main_scene）
    - `tools/asset_gen/` — 资产生成与导入管线
@@ -67,8 +66,8 @@ godot --path godot -s tools/capture_screens.gd   # /tmp/shot_*.png
 ```bash
 godot --headless --path godot --import
 
-godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
-    -gdir=res://tests -ginclude_subdirs -gexit
+scripts/test_run_core.sh  # 日常：core/battle/skills/ai/meta/health
+scripts/test_run_slow.sh  # 显式：integration/protocol/server/session/UI/STT 等
 
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests/battle -gselect=test_skill_scheduler -gexit
@@ -97,7 +96,7 @@ docker build -t mahjong .
 
 ### Autoloads（见 `project.godot`）
 生产仅注册 `DT`、`GameManager`、`TextureExtractor`、`AudioManager`、`SettingsManager`、`DebugOverlay`、`StatsManager`、`Log`、`ANIMA`。
-E1-02 起 `SaveSystem`、`MetaProgress`、`SaveToast`、`DailyQuest`、`BattlePass` 不再是生产 Autoload；对应脚本仅供 legacy Run / GUT 显式实例化。
+退役的肉鸽 Run、旧中式客户端及其存档/抽卡/章节脚本已经物理删除，不再提供显式加载兼容。
 
 **`TextureExtractor`**：按名加载 `res://assets/mahjong_tiles_riichi/<key>.png`（38 张），`get_tile_texture(key)` 供牌桌渲染。
 

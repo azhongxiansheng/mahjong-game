@@ -6,7 +6,7 @@
 > **工作流规则只改本文件；技术事实才改 `CLAUDE.md`。**
 >
 > 原则对齐 `~/project/lov-video/AGENTS.md` 的结构与纪律，并按本仓库现状适配
-> （Godot 4.5/4.6 客户端 + GUT 9.x + 肉鸽 Run + 日麻引擎 + 根目录 Go 健康检查桩）。
+> （Godot 4.5/4.6 客户端 + GUT 9.x + 日麻引擎 + 根目录 Go 健康检查桩）。
 
 ## 优先级
 
@@ -143,7 +143,7 @@
 # 1) class_name / 纹理缓存（改 class 或资产后必跑）
 godot --headless --path godot --import
 
-# 2) GUT 全量（应 0 fail / 0 parse error；当前约 250+ 脚本 / 1800+ 用例）
+# 2) GUT 全量（应 0 fail / 0 parse error；仅风险触发/发布回归）
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests -ginclude_subdirs -gexit
 
@@ -163,6 +163,8 @@ godot --path godot -s tools/capture_screens.gd
 | 纯文档 / agent 说明 | `git diff --check` + 人工通读 |
 | 网络 / WebSocket 客户端 | **必须声明「未端到端验证」**（本仓无对战服） |
 | Go 桩 `main.go` | 如修改则先写 `_test.go`；**默认不扩张职责** |
+
+日常快速门禁使用 `scripts/test_run_core.sh`；协议、服务器、整局、UI、STT 等重型回归使用 `scripts/test_run_slow.sh`。两者不可互相冒充覆盖范围。
 
 ### 分层验证与全量升级条件
 
@@ -401,7 +403,7 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 5. **改 PNG / 新 `class_name` 后必须** `godot --headless --path godot --import` —— 否则 ctex 全黑或 Parse Error 雪崩。
 6. **牌面契约**：`assets/mahjong_tiles_riichi/<key>.png` 文件名不变；**272×389**；face 用 **WHITE** modulate（dim 用遮罩）；赤宝走 **`0m/0p/0s`** 真图。
 7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
-8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
+8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；肉鸽 `ui/run/` 与旧中式 `legacy/` 已删除。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` **勿接生产**。
 9. **网络改动**须显式声明未端到端验证。
 10. **资产生成**：`godot/tools/asset_gen/`；用户选择 Grok CLI 时，生图、UI mockup、游戏资产、动效概念和视频统一交给同一个可见 Grok TUI 的内置生成能力；先 smoke 锁能力与风格，仓库外 staging QA 和选稿后再 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。仍遵守文件名、尺寸、版权/IP 与 import 纪律。用户明确选择 Codex 内置生图且会话暴露 `image_gen` 时，可通过活动 OpenAI-compatible provider 指向 `https://llmapi.lovbrowser.com/v1` 使用 `gpt-image-2`；Key 只从 `OPENAI_API_KEY` 环境变量读取，禁止写入 prompt、仓库或日志。该 new-api 路径已实测 `/v1/images/generations` 在省略 `response_format` 时返回非空 `data[].b64_json`，可被 Codex 内置工具直接解析；`/v1/images/edits` 虽共享响应路径，但未经本任务生产端到端实测，使用前须单独 smoke。
 11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。

@@ -4,7 +4,7 @@ extends GutTest
 #
 # 此前 BossAbilityFactory 只支持 3 章 Boss inject；玩家 deck.abilities
 # 永不在真战斗 fire。本批改：扩 _ABILITY_TRIGGERS 覆盖 9 张 M6 玩家能力，
-# 加 inject_player_abilities helper，BattleNodeRunner 接受
+# 玩家能力批量注入契约
 # player_ability_ids 参数。
 
 # ---- _ABILITY_TRIGGERS 完整性 ----
@@ -94,28 +94,3 @@ func test_inject_shichu_then_emit_pre_with_high_score_no_han():
 	BossAbilityFactory.inject(reg, &"shichu_kyu_katsu_v1", 0)
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(int(ctx.han_deltas.get(0, 0)), 0)
-
-# ---- BattleNodeRunner: player_ability_ids 参数 ----
-
-func test_run_battle_with_player_abilities_completes():
-	var ids: Array = [&"shichu_kyu_katsu_v1"]
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", ids)
-	assert_not_null(r)
-	# 守恒
-	var sum := 0
-	for s in r.final_scores:
-		sum += int(s)
-	assert_eq(sum, 100000, "玩家 ability inject 后总分仍守恒")
-
-func test_run_battle_with_player_and_boss_abilities():
-	# 同时 inject Boss + 玩家能力（不同 seat 不冲突）
-	var ids: Array = [&"shichu_kyu_katsu_v1", &"san_kyoku_kiseki_v1"]
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(
-		42, &"boss1_iron_curtain_v1", ids
-	)
-	assert_not_null(r)
-
-func test_run_battle_with_unknown_player_ability_silently_skips():
-	var ids: Array = [&"unknown_ability_v1"]
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", ids)
-	assert_not_null(r)

@@ -1,6 +1,6 @@
 extends SceneTree
 
-# 一次性视觉验证工具：实例化 run-flow / 战斗桌场景，渲染若干帧后把视口
+# 一次性视觉验证工具：实例化大厅 / 战斗桌场景，渲染若干帧后把视口
 # 截图存到 /tmp，供人工核对新资产与牌桌渲染效果。
 #
 # 跑法（必须带窗口渲染，不能 --headless）：
@@ -8,17 +8,6 @@ extends SceneTree
 
 const SHOTS := [
 	["res://ui/lobby/lobby_shell.tscn", "lobby_shell"],
-	["res://ui/run/starter_pack_picker.tscn", "starter_picker"],
-	["res://ui/run/character_picker.tscn", "character_picker"],
-	["res://ui/run/continue_prompt.tscn", "continue_prompt"],
-	["res://ui/run/chapter_map_view.tscn", "chapter_map"],
-	["res://ui/run/pack_open_view.tscn", "pack_open_view"],
-	["res://ui/run/shop_view.tscn", "shop_view"],
-	["res://ui/run/event_node.tscn", "event_node"],
-	["res://ui/run/camp_node.tscn", "camp_node"],
-	["res://ui/run/placeholder_node.tscn", "placeholder_node"],
-	["res://ui/run/run_summary.tscn", "run_summary"],
-	["res://ui/run/run_hud.tscn", "run_hud"],
 	["res://ui/four_player_table/four_player_table.tscn", "four_player_table"],
 ]
 const CAPTURE_SIZE := Vector2i(1600, 900)

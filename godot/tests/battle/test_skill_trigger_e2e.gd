@@ -6,19 +6,6 @@ extends GutTest
 # 在关键事件节点真实改变了 ctx 状态和 event 产出。
 
 
-# ---- helper ----
-
-func _make_bc_with_skills(seed_val: int, ability_ids: Array = [], tile_variants: Dictionary = {}, boss_id: StringName = &"") -> BattleController:
-	var bc := BattleController.new(seed_val)
-	if boss_id != &"":
-		BossAbilityFactory.inject(bc.registry, boss_id)
-	if not ability_ids.is_empty():
-		BossAbilityFactory.inject_player_abilities(bc.registry, ability_ids, 0)
-	if not tile_variants.is_empty():
-		TileSkillFactory.inject_player_tile_variants(bc.registry, tile_variants, 0)
-	return bc
-
-
 # ============================================================
 # 第 1 组：SkillScheduler 在真 BC 中正确 emit
 # ============================================================
@@ -36,16 +23,17 @@ func test_bc_emits_game_begin_event():
 func test_bc_emits_win_declared_pre_on_any_win():
 	var found_win := false
 	var found_pre := false
-	# 用 heuristic AI 跑 4 局东风战提高胡牌概率
+	# 每个 seed 只跑一手，避免旧 Run 节点为一次事件契约重复跑完整东风战。
 	for seed_val in [42, 99, 200, 555, 1001]:
-		var result_dict: Dictionary = BattleNodeRunner.run_battle_with_stats(
-			seed_val, &"", [], true
-		)
-		if int(result_dict.hand_outcomes.get("tsumo", 0)) > 0 or int(result_dict.hand_outcomes.get("ron", 0)) > 0:
-			found_win = true
-			found_pre = true
+		var result: Dictionary = BattleController.new(seed_val, 0, true).run_to_end()
+		for event: BattleEvent in result.events:
+			if event.type == &"WIN_DECLARED":
+				found_win = true
+			elif event.type == &"WIN_DECLARED_PRE":
+				found_pre = true
+		if found_win:
 			break
-	assert_true(found_win, "至少一个 seed 的东风战应有胡牌")
+	assert_true(found_win, "至少一个 seed 的单手应有胡牌")
 	assert_true(found_pre, "有胡牌则必有 WIN_DECLARED_PRE")
 
 
@@ -209,25 +197,3 @@ func test_soul_drain_transfers_points():
 	# soul_drain 用 transfer_points 或 steal_score
 	var changed := (st.scores[0] != initial_s0) or (st.scores[1] != initial_s1)
 	assert_true(changed, "soul_drain 应在对手胡牌时转分")
-
-
-# ============================================================
-# 第 11 组：全套 starter pack 技能在真实 BC 中不崩溃
-# ============================================================
-
-func test_all_3_packs_full_battle_no_crash():
-	for pack_id in [&"starter_control", &"starter_aggro", &"starter_fast"]:
-		var rs := RunState.new(42)
-		StarterPacks.apply_to(rs, pack_id)
-		var ability_ids: Array = []
-		for a in rs.player_deck.abilities:
-			ability_ids.append(a.id)
-		var bc := _make_bc_with_skills(42, ability_ids, rs.player_deck.tile_variants)
-		var result: Dictionary = bc.run_to_end()
-		assert_true(result.has("events"), "%s: run_to_end 应返回 events" % pack_id)
-		var has_game_begin := false
-		for ev: BattleEvent in result.events:
-			if ev.type == &"GAME_BEGIN":
-				has_game_begin = true
-				break
-		assert_true(has_game_begin, "%s: 应有 GAME_BEGIN" % pack_id)

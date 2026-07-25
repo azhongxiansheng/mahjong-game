@@ -27,7 +27,7 @@ const _SUITED_RANGES: Array = [
 func _init(seed_arg: int = 0) -> void:
 	super(seed_arg)
 
-# M8.5：strategic context 注入（GameDriver / BattleNodeRunner 可选调用）。
+# M8.5：strategic context 注入（GameDriver 可选调用）。
 # 默认为空 → AI 维持 M7 stateless 行为。设值后开启终局策略：
 # 半庄南场尾盘 + 自家排名第 1 时不立直（防止立直棒丢失 + 振听被反超）。
 var _cumulative_scores: Array[int] = []

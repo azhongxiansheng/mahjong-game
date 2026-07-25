@@ -10,34 +10,6 @@ func _make_table(use_3d: bool = false) -> PlayableTable:
 	return table
 
 
-func _global_aabb(item: CanvasItem, local_rect: Rect2) -> Rect2:
-	var transform := item.get_global_transform()
-	var points := [
-		transform * local_rect.position,
-		transform * Vector2(local_rect.end.x, local_rect.position.y),
-		transform * local_rect.end,
-		transform * Vector2(local_rect.position.x, local_rect.end.y),
-	]
-	var minimum: Vector2 = points[0]
-	var maximum: Vector2 = points[0]
-	for point: Vector2 in points:
-		minimum = minimum.min(point)
-		maximum = maximum.max(point)
-	return Rect2(minimum, maximum - minimum)
-
-
-func _assert_rect_almost_eq(actual: Rect2, expected: Rect2,
-		tolerance: float, label: String) -> void:
-	assert_almost_eq(actual.position.x, expected.position.x, tolerance,
-		"%s x" % label)
-	assert_almost_eq(actual.position.y, expected.position.y, tolerance,
-		"%s y" % label)
-	assert_almost_eq(actual.size.x, expected.size.x, tolerance,
-		"%s width" % label)
-	assert_almost_eq(actual.size.y, expected.size.y, tolerance,
-		"%s height" % label)
-
-
 func test_default_uses_complete_2d_table_path() -> void:
 	var table: PlayableTable = PLAYABLE_TABLE.instantiate()
 	add_child_autofree(table)
@@ -97,29 +69,3 @@ func test_3d_table_remains_explicit_opt_in() -> void:
 
 	assert_true(table._table is MahjongTable3D,
 		"显式开启实验开关时仍应保留 MahjongTable3D 路径")
-
-
-func test_run_selected_character_populates_live_player_avatar() -> void:
-	var table := _make_table()
-	var flow := RunFlow.new()
-	flow._run_state = RunState.new(20260720)
-	flow._run_state.selected_character_id = &"lin_yeche"
-	assert_true(flow.has_method("_apply_player_persona_to_table"),
-		"RunFlow 必须把已选角色接到生产牌桌，而不只传能力")
-	if not flow.has_method("_apply_player_persona_to_table"):
-		flow.free()
-		return
-	flow.call("_apply_player_persona_to_table", table)
-	await get_tree().process_frame
-	var player := table._table.seat_panels[0] as SeatPanel
-	assert_eq(player._persona_name, "林夜彻")
-	# Gate B 前 portrait 文件可能尚未入库：有图才校验 avatar 几何，无图不得崩溃
-	if player._portrait_rect != null:
-		_assert_rect_almost_eq(_global_aabb(player._portrait_rect,
-			Rect2(Vector2.ZERO, player._portrait_rect.size)),
-			TableLayout.avatar_rect(0), 0.02, "seat0 live avatar")
-	else:
-		var ch: Character = CharacterPool.find(&"lin_yeche")
-		assert_false(ch != null and ch.portrait_path != "" and ResourceLoader.exists(ch.portrait_path),
-			"若 portrait 已存在则 seat0 必须显示头像")
-	flow.free()

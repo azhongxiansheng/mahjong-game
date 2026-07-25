@@ -1,6 +1,6 @@
 extends GutTest
 
-# E1-02 (#226)：生产入口切断肉鸽依赖；旧脚本仅保留给 legacy 测试显式实例化。
+# 生产入口只保留大厅与四人牌桌；退役的肉鸽 Run 与旧中式客户端不再留在仓库。
 
 const REMOVED_AUTOLOADS: Array[String] = [
 	"SaveSystem",
@@ -10,12 +10,17 @@ const REMOVED_AUTOLOADS: Array[String] = [
 	"SaveToast",
 ]
 
-const LEGACY_SCRIPTS: Array[String] = [
+const REMOVED_PATHS: Array[String] = [
+	"res://ui/run",
+	"res://legacy",
 	"res://meta/save_system.gd",
 	"res://meta/meta_progress.gd",
 	"res://meta/battle_pass.gd",
 	"res://meta/daily_quest.gd",
 	"res://meta/save_toast.gd",
+	"res://meta/run_state.gd",
+	"res://tools/simulate_runs.gd",
+	"res://tools/simulation_harness.gd",
 ]
 
 const LOBBY_SCENE := "res://ui/lobby/lobby_shell.tscn"
@@ -34,15 +39,12 @@ func test_production_does_not_register_roguelike_autoloads() -> void:
 		)
 
 
-func test_legacy_roguelike_scripts_remain_explicitly_loadable() -> void:
-	for script_path in LEGACY_SCRIPTS:
-		var script: GDScript = load(script_path)
-		assert_not_null(script, "legacy 脚本应继续可加载：%s" % script_path)
-		if script == null:
-			continue
-		var instance: Object = script.new()
-		assert_not_null(instance, "legacy 脚本应继续可显式实例化：%s" % script_path)
-		instance.free()
+func test_retired_gameplay_paths_are_removed() -> void:
+	for path in REMOVED_PATHS:
+		assert_false(
+			FileAccess.file_exists(path) or DirAccess.dir_exists_absolute(path),
+			"退役玩法文件不得继续留在仓库：%s" % path
+		)
 
 
 func test_legacy_save_does_not_change_lobby_cold_start() -> void:

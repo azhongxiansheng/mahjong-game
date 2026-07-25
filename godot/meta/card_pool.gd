@@ -366,14 +366,6 @@ static func all_consumables() -> Array:
 		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
 		"res://skills/hooks/consumable_dora_charm_hook.gd"))
 
-	pool.append(_mk_consumable(&"hp_potion_v1", "回复药",
-		"恢复 1 点 HP（旅途消耗品）",
-		ConsumableItem.Kind.RUN, Rarity.Kind.COMMON, ""))
-
-	pool.append(_mk_consumable(&"gold_doubler_v1", "聚宝盆",
-		"下场战斗 gold 奖励 ×2（旅途消耗品）",
-		ConsumableItem.Kind.RUN, Rarity.Kind.UNCOMMON, ""))
-
 	# M12 新增消耗品
 	pool.append(_mk_consumable(&"wall_collapse_v1", "牌墙崩塌",
 		"开局减少牌墙 10 张（消耗品）",

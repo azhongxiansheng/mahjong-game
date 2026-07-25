@@ -16,11 +16,11 @@
 
 | 层级 | 代号 | 环境与工具（仅写仓库/工作流**真实已有或本矩阵明确要求后续交付**的能力） | 阻断规则 |
 |---|---|---|---|
-| L0 | `IMPORT` | **独立**运行 `godot --headless --path godot --import`（**不得**带 `\|\| true`；退出码必须为 0） | 改 PNG / 新 `class_name` / 影响资源缓存后**必跑且必须成功**；失败则阻断全部 Godot 层。**`scripts/test_run_core.sh` 不能替代 L0**：该脚本在 import 后使用 `\|\| true`，仅为 best-effort，不构成 L0 证据 |
+| L0 | `IMPORT` | **独立**运行 `godot --headless --path godot --import`（**不得**带 `\|\| true`；退出码必须为 0） | 改 PNG / 新 `class_name` / 影响资源缓存后**必跑且必须成功**；失败则阻断全部 Godot 层。`scripts/test_run_core.sh` 也会严格 import，但涉及资源/类缓存时仍应单独记录 L0 证据 |
 | L1 | `GUT_LOCAL` | `godot --headless --path godot -d -s addons/gut/gut_cmdln.gd -gdir=res://tests/<module> -gselect=<name> -gexit` | 功能/缺陷 Red→Green 的最小证据；0 fail / 0 parse error |
-| L2 | `GUT_CORE_CI` | `.github/workflows/core-tests.yml` → `scripts/test_run_core.sh`：内部会 best-effort import（`\|\| true`）后跑 GUT 目录 `res://tests/core,battle,skills,integration`；CI 固定 `GODOT_VERSION=4.5-stable` | 触及 core/battle/skills/integration 的 PR 必须绿；Epic 结束前不得靠「只跑局部」放行。**L2 绿 ≠ L0 已证明**；涉及资源/`class_name` 时仍须单独提交 L0 成功日志 |
+| L2 | `GUT_CORE_CI` | `.github/workflows/core-tests.yml` → `scripts/test_run_core.sh`：严格 import 后跑快速目录 `core,battle,skills,ai,meta,health`；CI 固定 `GODOT_VERSION=4.5-stable` | 快速门禁必须绿；integration/protocol/server/session/UI/STT 等按影响范围另跑 `scripts/test_run_slow.sh`。**L2 绿不代表慢速回归已证明** |
 | L3 | `GUT_FULL` | 全量：`godot --headless --path godot -d -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit`（约 250+ 脚本 / 1800+ 用例） | 跨模块回归、Autoload/主场景契约变更后的阻断层 |
-| L4 | `UI_SHOT` | 非 headless：`godot --path godot -s tools/capture_screens.gd`；`CAPTURE_SIZE = Vector2i(1600, 900)`；**当前**可出 Run 场景与牌桌/battle_live 等 `/tmp/shot_*.png`。**当前尚无生产大厅截图** | UI 几何与主路径观感；**禁止用 headless 冒充截图**。大厅证据仅在 #227/#228 **扩展** `capture_screens.gd` 并实际产出后才可引用，不得把未来能力写成当前事实 |
+| L4 | `UI_SHOT` | 非 headless：`godot --path godot -s tools/capture_screens.gd`；`CAPTURE_SIZE = Vector2i(1600, 900)`；当前可出大厅与四人牌桌 `/tmp/shot_*.png` | UI 几何与主路径观感；**禁止用 headless 冒充截图**，引用时必须核对实际产物路径 |
 | L5a | `SVC_LOCAL` | 真实 **Control Plane + Redis + Headless Worker**（及 E4 后 **STT**）；健康检查 / readiness；**不扩张根 `main.go` 业务职责** | 无真实进程/容器 smoke 不得关闭 E3/E7 服务叶子 |
 | L5b | `VOICE_STT` | **证据族**（非整族一次齐套才可关闭叶子）：真实麦克风 PTT、双客户端语音环回、本地 whisper.cpp、服务端 faster-whisper（主）、new-api 回退（备）；固定 PCM16 LE / 16 kHz / mono / 20 ms | 各 E4 叶子**只须**其负责组件的真实证据（见 §1.3）；**禁止**因整族未齐而反向阻塞上游叶子（例如 #243 不得依赖尚未实现的 #247/#248）。核心链路仍**不得 mock** |
 | L5c | `PUBLIC_E2E` | 公网至少两个明确场景（见 #259）：**(A) 4 真人完整整场**；**(B) 1–3 真人 + AI 补位完整整场**；东风/半庄、标准/欢乐至少各一场 | **桌面 Alpha 最终阻断**；此前相关 PR 必须写「网络端到端未验证」 |
@@ -126,10 +126,12 @@ godot --headless --path godot --import
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
   -gdir=res://tests/<module> -gselect=<test_name> -gexit
 
-# L2 CI 同源（core/battle/skills/integration）—— 不构成 L0
+# L2 CI 同源快速门禁——严格 import，但不覆盖慢速回归
 scripts/test_run_core.sh
+# 重型回归（按影响范围或里程碑执行）
+scripts/test_run_slow.sh
 # 或：GODOT=/path/to/godot scripts/test_run_core.sh
-# 脚本事实：先执行 godot --import || true，再跑 GUT；import 非零不会阻断脚本
+# 脚本事实：先严格执行 godot --import，再跑 GUT；import 非零会阻断脚本
 
 # L3 全量 GUT
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
@@ -146,8 +148,8 @@ godot --path godot -s tools/capture_screens.gd
 ### 3.2 CI 事实
 
 - 工作流：`.github/workflows/core-tests.yml`（`pull_request` + `push` to `main`）。
-- Job：下载 Godot **4.5-stable** headless → `scripts/test_run_core.sh`。
-- 该脚本**不会**因 import 非零而失败；因此 **CI 绿不能当作 L0 import 成功证据**。
+- Job：下载 Godot **4.5-stable** headless → `scripts/test_run_core.sh`；重型目录由 `scripts/test_run_slow.sh` 显式执行。
+- 该脚本会因 import 非零而失败；涉及资源/`class_name` 时仍按 L0 单独保留 import 日志。
 - **当前 CI 不覆盖**：强制成功的独立 import 门禁、UI 截图、Control Plane、Redis、Worker、麦克风、公网 E2E、桌面打包。这些必须在对应叶子用 L0 / L4 / L5* 证据关闭，不得假装「CI 绿 = Alpha 完成」。
 
 ### 3.3 截图工具事实（`godot/tools/capture_screens.gd`）
@@ -443,9 +445,9 @@ rg -o '#[0-9]+' docs/superpowers/specs/2026-07-22-e0-04-acceptance-test-matrix.m
 
 - [ ] 关联叶子 Issue；中文 PR；worktree/任务分支。
 - [ ] Red → Green → Refactor（功能/缺陷）；结果附命令摘要。
-- [ ] 触及资源/`class_name` → **独立**运行 `godot --headless --path godot --import` 且 **exit 0**（L0）；**不得**用 `scripts/test_run_core.sh`（内部 `import \|\| true`）冒充 L0。
-- [ ] 触及 core/battle/skills/integration → `scripts/test_run_core.sh` 或等价 GUT 绿（L2，与 L0 分离记录）。
-- [ ] UI → 1600×900 几何 GUT；若声称 L4 截图，路径须对应当前 `capture_screens.gd` **真实已有**标签（Run/牌桌等）。生产大厅/抽屉截图仅在 #227/#228 扩展工具并出图后可引用。
+- [ ] 触及资源/`class_name` → **独立**运行 `godot --headless --path godot --import` 且 **exit 0**（L0）；不得只用快速门禁 totals 代替独立 import 证据。
+- [ ] 触及 core/battle/skills/ai/meta/health → `scripts/test_run_core.sh` 绿；触及 integration/protocol/server/session/UI/STT 等 → `scripts/test_run_slow.sh` 对应范围绿（均与 L0 分离记录）。
+- [ ] UI → 1600×900 几何 GUT；若声称 L4 截图，路径须对应当前 `capture_screens.gd` 真实已有的大厅/牌桌标签。
 - [ ] 网络相关 → 正文含「网络端到端未验证」或 L5c 场景 A/B 证据链接。
 - [ ] 语音/STT → 只声称本叶子负责组件的真实证据（§1.3）；不反向依赖未交付下游；核心不 mock。
 - [ ] 快照/重连 → 使用 `snapshot_server_seq` / `next_server_seq`；强制 `envelope.server_seq == payload.snapshot_server_seq` 且 `next_server_seq == snapshot_server_seq + 1`（SNAP-02/05）；不用 `last_server_seq` 别名。

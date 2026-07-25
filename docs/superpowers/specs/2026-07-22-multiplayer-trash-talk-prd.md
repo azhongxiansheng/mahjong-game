@@ -11,8 +11,8 @@
 
 当前项目已经有完整四人日麻规则、东风/半庄跨局驱动、玩家 seat 0 + 3 AI、角色能力、遗物/道具、`Momentum`、`TextAnalyzer`、事件回放与本地 loopback 联机骨架，但仍存在以下产品断层：
 
-- `godot/project.godot` 的生产主场景仍指向 `res://ui/run/run_flow.tscn`。
-- `SaveSystem`、`RunState`、章节、HP、金币、商店、抽卡、营地和战令仍位于生产流程。
+- `godot/project.godot` 的生产主场景指向 `res://ui/lobby/lobby_shell.tscn`。
+- `SaveSystem`、`RunState`、章节、HP、金币、商店、抽卡、营地和战令已经退出并从仓库删除。
 - `NetworkedBattleController` 只会一次性重放完整事件流；`LocalLoopbackServer` 是本地参考/回放桩（`PASS` no-op 占位），不是真实对战服务。
 - `TextAnalyzer` 只做中文关键词计数；`Momentum` 含五类属性和旧技能倍率骨架，Alpha 只保留五类 affinity 标签，旧倍率不得进入生产结算。
 - `CharacterPool` 有 12 名角色及对应能力，但名称、文案和部分立绘带有明确第三方 IP 指向，角色字段也混入 HP、金币、卡包和声望等肉鸽数据。
@@ -72,7 +72,7 @@
 2. **生产级原创大厅**：E1 不以纯线框或占位壳作为最终大厅验收；参考雀魂仅限信息层级和入口权重，背景、面板、角色、动效、文案和音频全部原创。
 3. **首发 BGM**：交付 1 首可听、可循环的二次元风格大厅 BGM；通过仓库既有 new-api 配置调用 Suno 模型生成，运行时客户端不调用生成 API。
 4. **全新角色美术**：12 名角色不沿用现有 4 张原创向立绘作为生产身份。先确认世界观、12 人身份/能力映射和美术 brief，再确认小批量样张；两道闸门通过后才批量生成并进入生产资源树。
-5. **生产注销肉鸽 Autoload**：从 `project.godot` 注销 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`；对应脚本可保留供 legacy 测试显式实例化。
+5. **删除肉鸽遗留**：`SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast` 及 Run UI 已物理删除，不保留 legacy 显式加载。
 6. **六巡嘴喷奖励**：每累计 24 次权威弃牌进入一次关闭边界；窗口开始公开 4 件道具。第 24 次弃牌后的 CLAIM 与最多 1500ms STT 宽限并行，荣和优先并立即取消窗口；无和牌才按四席 final 文本生成 4×4 分数矩阵并确定性一对一分配。任意和牌均不评分、不发奖；非终场流局仍提前结算并发四件；终场非和牌只评分展示、不产生 `ITEM_GRANTED`。同一玩家可持有同 `item_id` 的多个独立实例，affinity 只由实际发放的实例登记下一窗口角色武装；未来套装效果不进入 Alpha。
 
 E0 的 #222–#224 仍是 E1 业务代码的硬闸门；上述决策锁只消除歧义，不构成跳过 E0 的授权。

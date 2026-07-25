@@ -1,14 +1,12 @@
 extends Node
 
 # StatsManager - autoload 单例,记录终身游戏统计 + 成就解锁。
-# 与 SaveSystem(对应 Run 进度) / SettingsManager(对应偏好) 分离 —
-# stats 跨 run 永久累计,删档清 RunState 时不动 stats。
+# 与 SettingsManager（用户偏好）分离，专门持久化麻将对局统计。
 #
 # 存储:user://stats.json
 #
 # 调用流:
 #   - PlayableTable 在事件流上调 record_win / record_hand_end
-#   - RunFlow 在 run 开始/结束时调 record_run_*
 #   - UI 通过 stats[<key>] 读 + check_achievements() 取新解锁列表
 #
 # 成就 (AchievementId):字符串 id,定义于 ACHIEVEMENTS 字典。
@@ -28,9 +26,6 @@ var double_riichi_count: int = 0
 var ippatsu_count: int = 0           # 一発命中
 var haitei_count: int = 0            # 海底/河底捞月命中
 var rinshan_count: int = 0           # 岭上开花命中
-var runs_started: int = 0
-var runs_won: int = 0
-var runs_failed: int = 0
 var highest_single_hand_score: int = 0   # 单局最高得分
 var total_points_won: int = 0            # 终身累计胡得分
 
@@ -56,8 +51,6 @@ const ACHIEVEMENTS: Dictionary = {
 	"first_ippatsu": {"name": "一発命中", "desc": "首次立直一発内胡"},
 	"first_haitei": {"name": "海底渔人", "desc": "首次海底/河底捞月"},
 	"first_rinshan": {"name": "岭上开花", "desc": "首次岭上开花"},
-	"first_run_won": {"name": "通关一次", "desc": "首次完成 Run"},
-	"five_runs_won": {"name": "肉鸽常胜", "desc": "通关 5 次"},
 	"score_18000": {"name": "倍満收割", "desc": "单局得分 ≥ 18000"},
 	"score_32000": {"name": "役満收割", "desc": "单局得分 ≥ 32000"},
 }
@@ -67,7 +60,7 @@ func _ready() -> void:
 	_load_from_disk()
 
 
-# ---- 记录入口(由 PlayableTable / BattleNodeRunner 调) ----
+# ---- 记录入口（由 PlayableTable 调用）----
 
 # 一局结束时调一次。win_event 可为 null(流局)。is_player_winner = 玩家胡牌。
 # loser_was_player = 玩家放铳。
@@ -119,9 +112,7 @@ func record_riichi(is_double: bool = false) -> void:
 	_save_to_disk()
 
 
-# 返当前所有 count 字段的 snapshot dict。RunState 在 run 开始时记一份,
-# RunSummary 算 diff 显示"本 run 亮点":胡牌 / 立直 / 役満 等增量。
-# 字段保持稳定 key,新加字段时只需扩这里和 diff_from 的减法。
+# 返回当前所有计数字段的快照。
 func snapshot() -> Dictionary:
 	return {
 		"hands_played": hands_played,
@@ -138,38 +129,13 @@ func snapshot() -> Dictionary:
 	}
 
 
-# snapshot 跟 baseline 的 diff(每个 key 的当前 - baseline)。RunSummary 用。
+# snapshot 跟 baseline 的差值（每个 key 的当前值减基线值）。
 func diff_from(baseline: Dictionary) -> Dictionary:
 	var cur := snapshot()
 	var d: Dictionary = {}
 	for k in cur.keys():
 		d[k] = int(cur[k]) - int(baseline.get(k, 0))
 	return d
-
-
-func record_run_started() -> void:
-	runs_started += 1
-	_save_to_disk()
-
-
-func record_run_ended(won: bool) -> void:
-	if won:
-		runs_won += 1
-	else:
-		runs_failed += 1
-	_check_and_emit_achievements()
-	_save_to_disk()
-
-
-# 撤销最近一次 record_run_ended。RunFlow 复活时调:run_failed 已经计数,
-# 复活后实际"那场失败"被回滚,需要回滚计数避免刷 runs_failed/runs_won。
-# 成就解锁不撤回(达成是真发生过)。clamp ≥0 防御 partial save。
-func revert_run_ended(won_was: bool) -> void:
-	if won_was:
-		runs_won = max(0, runs_won - 1)
-	else:
-		runs_failed = max(0, runs_failed - 1)
-	_save_to_disk()
 
 
 # ---- 成就检测 ----
@@ -198,8 +164,6 @@ func _achievement_satisfied(id: String) -> bool:
 		"first_ippatsu": return ippatsu_count >= 1
 		"first_haitei": return haitei_count >= 1
 		"first_rinshan": return rinshan_count >= 1
-		"first_run_won": return runs_won >= 1
-		"five_runs_won": return runs_won >= 5
 		"score_18000": return highest_single_hand_score >= 18000
 		"score_32000": return highest_single_hand_score >= 32000
 	return false
@@ -230,9 +194,6 @@ func _load_from_disk() -> void:
 	ippatsu_count = int(parsed.get("ippatsu_count", 0))
 	haitei_count = int(parsed.get("haitei_count", 0))
 	rinshan_count = int(parsed.get("rinshan_count", 0))
-	runs_started = int(parsed.get("runs_started", 0))
-	runs_won = int(parsed.get("runs_won", 0))
-	runs_failed = int(parsed.get("runs_failed", 0))
 	highest_single_hand_score = int(parsed.get("highest_single_hand_score", 0))
 	total_points_won = int(parsed.get("total_points_won", 0))
 	var ach = parsed.get("unlocked_achievements", {})
@@ -254,9 +215,6 @@ func _save_to_disk() -> void:
 		"ippatsu_count": ippatsu_count,
 		"haitei_count": haitei_count,
 		"rinshan_count": rinshan_count,
-		"runs_started": runs_started,
-		"runs_won": runs_won,
-		"runs_failed": runs_failed,
 		"highest_single_hand_score": highest_single_hand_score,
 		"total_points_won": total_points_won,
 		"unlocked_achievements": unlocked_achievements,

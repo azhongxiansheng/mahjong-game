@@ -24,7 +24,7 @@ func resolved_icon_path() -> String:
 		return icon_path
 	return ""
 
-# ---- 序列化（M5 SaveSystem） ----
+# ---- 序列化 ----
 
 func to_dict() -> Dictionary:
 	return {

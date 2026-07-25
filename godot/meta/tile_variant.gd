@@ -41,7 +41,7 @@ func summary() -> String:
 	var rarity_str := Rarity.display_name(rarity)
 	return "[%s] %s" % [rarity_str, display_name if display_name != "" else String(id)]
 
-# ---- 序列化（M5 SaveSystem） ----
+# ---- 序列化 ----
 
 func to_dict() -> Dictionary:
 	return {

@@ -12,16 +12,15 @@ func test_consumable_item_creation():
 	assert_eq(c.id, &"test_item")
 	assert_eq(c.kind, ConsumableItem.Kind.BATTLE)
 	assert_true(c.is_battle())
-	assert_false(c.is_run())
 
 func test_consumable_item_serialization():
-	var c := ConsumableItem.new(&"test_item", ConsumableItem.Kind.RUN, Rarity.Kind.COMMON)
+	var c := ConsumableItem.new(&"test_item", ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON)
 	c.display_name = "测试道具"
 	c.description = "测试用"
 	var d := c.to_dict()
 	var restored := ConsumableItem.from_dict(d)
 	assert_eq(restored.id, &"test_item")
-	assert_eq(restored.kind, ConsumableItem.Kind.RUN)
+	assert_eq(restored.kind, ConsumableItem.Kind.BATTLE)
 	assert_eq(restored.display_name, "测试道具")
 
 
@@ -38,12 +37,6 @@ func test_card_pool_battle_consumables():
 	assert_gt(battle.size(), 0, "应有战斗消耗品")
 	for c in battle:
 		assert_true(c.is_battle())
-
-func test_card_pool_run_consumables():
-	var run := CardPool.consumables_by_kind(ConsumableItem.Kind.RUN)
-	assert_gt(run.size(), 0, "应有旅途消耗品")
-	for c in run:
-		assert_true(c.is_run())
 
 func test_each_battle_consumable_has_hook():
 	for c in CardPool.consumables_by_kind(ConsumableItem.Kind.BATTLE):
@@ -138,29 +131,3 @@ func test_dora_charm_adds_extra_dora():
 	ConsumableFactory.inject(reg, &"dora_charm_v1", 0)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(st.extra_dora_count[0], 3, "宝牌护符应 +3 dora")
-
-
-# ============================================================
-# 第 5 组：消耗品 + 正常技能共存完整战斗不崩
-# ============================================================
-
-func test_consumables_with_starter_pack_battle_completes():
-	var rs := RunState.new(42)
-	StarterPacks.apply_to(rs, &"starter_control")
-	var ability_ids: Array = []
-	for a in rs.player_deck.abilities:
-		ability_ids.append(a.id)
-	# 模拟玩家带了 2 个消耗品
-	var consumable_ids: Array = [&"iron_shield_v1", &"wall_peek_v1"]
-	var bc := BattleController.new(42)
-	BossAbilityFactory.inject_player_abilities(bc.registry, ability_ids, 0)
-	TileSkillFactory.inject_player_tile_variants(bc.registry, rs.player_deck.tile_variants, 0)
-	ConsumableFactory.inject_all(bc.registry, consumable_ids, 0)
-	var result: Dictionary = bc.run_to_end()
-	assert_true(result.has("events"), "带消耗品的战斗应正常完成")
-	var has_game_begin := false
-	for ev: BattleEvent in result.events:
-		if ev.type == &"GAME_BEGIN":
-			has_game_begin = true
-			break
-	assert_true(has_game_begin)

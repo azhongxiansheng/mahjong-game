@@ -53,15 +53,3 @@ func test_inject_random_ai_seat_abilities_different_seats():
 	for e in reg.get_all_entries():
 		var seat: int = e.anchor
 		assert_true(seat == 2 or seat == 3)
-
-# ---- BattleNodeRunner pass-through ----
-
-func test_runner_with_ai_seat_abilities_completes():
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", [], false, {}, 0, 100)
-	assert_not_null(r)
-	# 守恒（AI 也使用 transfer_points 时会改 state.scores）
-	var sum: int = 0
-	for s in r.final_scores:
-		sum += int(s)
-	# pool 转给 dealer（M7 BattleNodeRunner 末尾 house rule）→ sum 应 = 100000
-	assert_eq(sum, 100000, "AI ability inject 不破坏总分守恒")

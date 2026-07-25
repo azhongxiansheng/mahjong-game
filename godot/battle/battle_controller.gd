@@ -767,8 +767,7 @@ func _adapt_yaku_list(eval_list: YakuEntries, win_hand: Hand = null, win_melds: 
 		sc.dora_count = state.dora_indicators.visible.size()
 	# YakuEntry.yaku_id 是 int (YakuId 常量)，但 YakuList.is_pinfu / is_chiitoi
 	# 走 has_yaku(&"pinfu") / has_yaku(&"chiitoitsu") StringName 比较。
-	# 这里把 PINFU / CHIITOITSU 转 StringName 让 FuCalculator 特殊符识别正确（M4
-	# BattleNodeRunner 跑大量随机牌局触发了这个 M2 留下的类型不匹配 bug）。
+	# 这里把 PINFU / CHIITOITSU 转 StringName，让 FuCalculator 正确识别特殊符。
 	for entry in eval_list.entries:
 		sc.yaku.append({"id": _yaku_id_to_string_name(entry.yaku_id), "han": entry.han})
 	return sc
