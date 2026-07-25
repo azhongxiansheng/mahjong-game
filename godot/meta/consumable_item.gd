@@ -2,7 +2,6 @@ class_name ConsumableItem extends RefCounted
 
 enum Kind {
 	BATTLE,
-	RUN,
 }
 
 var id: StringName
@@ -21,13 +20,9 @@ func _init(p_id: StringName = &"", p_kind: int = Kind.BATTLE, p_rarity: int = Ra
 func is_battle() -> bool:
 	return kind == Kind.BATTLE
 
-func is_run() -> bool:
-	return kind == Kind.RUN
-
 func summary() -> String:
 	var rarity_str := Rarity.display_name(rarity)
-	var kind_str := "战斗" if kind == Kind.BATTLE else "旅途"
-	return "[%s %s道具] %s" % [rarity_str, kind_str, display_name if display_name != "" else String(id)]
+	return "[%s 战斗道具] %s" % [rarity_str, display_name if display_name != "" else String(id)]
 
 func resolved_icon_path() -> String:
 	if icon_path != "" and ResourceLoader.exists(icon_path):

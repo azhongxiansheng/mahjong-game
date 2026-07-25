@@ -28,8 +28,8 @@
 
 | 项 | 证据 | 生产处置建议 |
 |----|------|--------------|
-| 主场景 | `godot/project.godot`：`run/main_scene="res://ui/run/run_flow.tscn"` | **删除生产入口绑定**（E1-01 换成大厅壳；本 Issue 不改文件） |
-| Run 壳 | `godot/ui/run/run_flow.gd` + `run_flow.tscn` 编排角色选择 → 起始包 → 章节地图 → 节点 → 结算 | **退出生产主路径**；脚本可 **延后删除** 供 legacy GUT 显式实例化 |
+| 主场景 | `godot/project.godot`：`run/main_scene="res://ui/lobby/lobby_shell.tscn"` | 大厅壳是唯一生产入口；退役 `ui/run/` 已物理删除 |
+| Run 壳 | 原 `godot/ui/run/` 编排角色选择 → 起始包 → 章节地图 → 节点 → 结算 | **已删除**，不再提供 legacy GUT 显式实例化 |
 | 4 人桌 | `godot/ui/four_player_table/`（`PlayableTable` 等） | **保留**（E2 统一电脑对战复用） |
 | 日麻引擎 | `godot/core/`、`godot/battle/`（`BattleController` / `GameDriver` / `TurnEngine`） | **保留** |
 
@@ -39,11 +39,11 @@
 
 | Autoload 名 | 脚本路径 | 持久化路径 | 职责摘要 | 建议 |
 |-------------|----------|------------|----------|------|
-| `SaveSystem` | `meta/save_system.gd` | `user://savegame.json` | Run 中途档读写 / 清除 | **注销生产**；legacy 测试可显式 `new`/`load` |
-| `MetaProgress` | `meta/meta_progress.gd` | `user://meta_progress.json` | 跨 Run 声望 `renown` / 通关计数 | **注销生产** |
-| `BattlePass` | `meta/battle_pass.gd` | `user://battle_pass.json` | 本地赛季 XP / free+premium 奖励表 | **注销生产** |
-| `DailyQuest` | `meta/daily_quest.gd` | `user://daily_quest.json` | 每日 3 任务 → gold/renown/season_xp | **注销生产** |
-| `SaveToast` | `meta/save_toast.gd` | （无独立档） | 监听 SaveSystem 弹「已保存」 | **注销生产** |
+| `SaveSystem` | `meta/save_system.gd` | `user://savegame.json` | Run 中途档读写 / 清除 | **已删除** |
+| `MetaProgress` | `meta/meta_progress.gd` | `user://meta_progress.json` | 跨 Run 声望 `renown` / 通关计数 | **已删除** |
+| `BattlePass` | `meta/battle_pass.gd` | `user://battle_pass.json` | 本地赛季 XP / free+premium 奖励表 | **已删除** |
+| `DailyQuest` | `meta/daily_quest.gd` | `user://daily_quest.json` | 每日 3 任务 → gold/renown/season_xp | **已删除** |
+| `SaveToast` | `meta/save_toast.gd` | （无独立档） | 监听 SaveSystem 弹「已保存」 | **已删除** |
 
 `RunFlow._ready` **[已证实]** 连接 `DailyQuest.quest_claimed` 与 `BattlePass.level_up`，并把 quest gold 写回 `_run_state.gold`。
 

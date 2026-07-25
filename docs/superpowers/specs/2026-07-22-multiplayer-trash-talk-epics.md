@@ -60,7 +60,7 @@
 ### 行为约束
 
 - 生产启动、返回大厅、再来一局均不能进入 `ui/run/run_flow.tscn`。
-- 生产 `project.godot` 不注册 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`；旧存档无需迁移到新会话，对应脚本可保留供 legacy 测试显式实例化。
+- 生产 `project.godot` 不注册 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`；旧存档无需迁移，这些脚本与 Run UI 已物理删除。
 - 角色生产契约只保留原创身份、能力映射、立绘和 Momentum affinity；HP、金币、卡包、声望解锁退出生产契约。
 - 大厅参考雀魂的“左角色、右主入口、二级规则抽屉、顶底功能区”层级，但背景、视觉资产、角色、文案、动效和音频必须原创，并达到生产视觉而非线框占位。
 - `SessionIntent` 只属于大厅 UI；正式 `GameSessionConfig` 及其校验、序列化和 Intent 转换只属于 E2-01。

@@ -81,24 +81,3 @@ func test_sou8_wrong_discarder_no_effect():
 	TileSkillFactory.inject_one(reg, &"sou8_scapegoat_v1", 0)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1, null, {"discarder_seat": 2}))
 	assert_eq(st.scores, before, "非 owner 放铳时不触发")
-
-
-# ============================================================
-# 全套回归：升级后战斗仍然正常完成 + 守恒
-# ============================================================
-
-func test_upgraded_hooks_battle_conserves():
-	var rs := RunState.new(42)
-	StarterPacks.apply_to(rs, &"starter_control")
-	var ability_ids: Array = []
-	for a in rs.player_deck.abilities:
-		ability_ids.append(a.id)
-	for seed_val in [42, 99, 200]:
-		var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(
-			seed_val, &"", ability_ids, false, rs.player_deck.tile_variants
-		)
-		assert_not_null(result)
-		var sum := 0
-		for s in result.final_scores:
-			sum += int(s)
-		assert_eq(sum, 100000, "seed %d 守恒" % seed_val)

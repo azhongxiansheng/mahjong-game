@@ -80,13 +80,3 @@ func test_battle_controller_with_heuristic_ai_completes():
 	for s in bc.state.scores:
 		sum += s
 	assert_eq(sum + bc.state.riichi_sticks * 1000, 100000)
-
-# ---- BattleNodeRunner: heuristic_ai 参数 ----
-
-func test_run_battle_with_heuristic_ai_completes():
-	var r: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", [], true)
-	assert_not_null(r)
-	var sum: int = 0
-	for s in r.final_scores:
-		sum += int(s)
-	assert_eq(sum, 100000, "用 heuristic AI 跑完整节点 + 守恒")

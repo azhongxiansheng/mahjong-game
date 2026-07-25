@@ -2,7 +2,7 @@ class_name ConsumableFactory
 
 # 战斗消耗品 → SkillRegistry 注入工厂。
 # 把 ConsumableItem (BATTLE kind) 转为 one-shot SkillResource 并注册。
-# 旅途消耗品 (RUN kind) 不走此工厂——它们在 RunState 层直接生效。
+# 所有保留的消耗品都通过本工厂注册战斗效果。
 
 const _CONSUMABLE_TRIGGERS: Dictionary = {
 	&"iron_shield_v1": [&"RON_DECLARED"],

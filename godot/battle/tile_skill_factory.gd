@@ -108,11 +108,8 @@ static func inject_one(registry: SkillRegistry, variant_id: StringName, player_s
 	registry.register(sk, ti)
 	return true
 
-# 批量：把 player_deck.tile_variants Dictionary[TileId → variant_id 或 TileVariant]
-# 注入。返成功注册的张数。未知 / 无 hook / 普通占位牌静默跳过。
-# 兼容两种 input 形式：
-#   - {tile_id: variant_id (StringName)} — RunState.deck.tile_variants
-#   - {tile_id: TileVariant} — Deck.tile_variants（M5+ Deck 类）
+# 批量注入 Dictionary[TileId → variant_id 或 TileVariant]。
+# 返回成功注册数；未知、无 hook 或普通占位牌静默跳过。
 static func inject_player_tile_variants(registry: SkillRegistry, variants: Dictionary, player_seat: int = 0) -> int:
 	var count: int = 0
 	for tile_id in variants:

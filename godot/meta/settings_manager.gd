@@ -1,7 +1,7 @@
 extends Node
 
 # SettingsManager - autoload 单例,持久化用户设置(音量等)。
-# 与 SaveSystem(对应 Run 进度)分离 — 设置跨 Run 永久保留,不跟着删档清。
+# 用户偏好独立持久化。
 #
 # 存储格式:user://settings.json
 # 字段:sfx_volume (0..1), bgm_volume (0..1), reserved_for_future
@@ -16,9 +16,6 @@ const SETTINGS_PATH: String = "user://settings.json"
 
 var sfx_volume: float = 0.8
 var bgm_volume: float = 0.6
-# 新手引导首次启动后置 true,RunFlow._ready 不再弹 TutorialOverlay。
-# 玩家可在 SettingsOverlay 重置 → 重新看引导。
-var tutorial_seen: bool = false
 # 全屏模式:true = exclusive fullscreen,false = windowed。DisplayServer 应用。
 var fullscreen: bool = false
 # 帧率上限:0 = 不限制,>0 = 上限值。Engine.max_fps 直接应用。
@@ -54,12 +51,6 @@ func set_sfx_volume(v: float) -> void:
 func set_bgm_volume(v: float) -> void:
 	bgm_volume = clamp(v, 0.0, 1.0)
 	_apply_to_audio()
-	_save_to_disk()
-	settings_changed.emit()
-
-
-func set_tutorial_seen(b: bool) -> void:
-	tutorial_seen = b
 	_save_to_disk()
 	settings_changed.emit()
 
@@ -138,7 +129,6 @@ func _load_from_disk() -> void:
 		return
 	sfx_volume = clamp(float(parsed.get("sfx_volume", sfx_volume)), 0.0, 1.0)
 	bgm_volume = clamp(float(parsed.get("bgm_volume", bgm_volume)), 0.0, 1.0)
-	tutorial_seen = bool(parsed.get("tutorial_seen", false))
 	fullscreen = bool(parsed.get("fullscreen", false))
 	skip_deal_animation = bool(parsed.get("skip_deal_animation", false))
 	claim_timeout_sec = clampf(float(parsed.get("claim_timeout_sec", claim_timeout_sec)), 1.0, 30.0)
@@ -153,7 +143,6 @@ func _save_to_disk() -> void:
 	var d: Dictionary = {
 		"sfx_volume": sfx_volume,
 		"bgm_volume": bgm_volume,
-		"tutorial_seen": tutorial_seen,
 		"fullscreen": fullscreen,
 		"skip_deal_animation": skip_deal_animation,
 		"framerate_cap": framerate_cap,

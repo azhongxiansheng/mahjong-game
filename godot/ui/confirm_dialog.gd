@@ -42,7 +42,7 @@ func _init() -> void:
 	anchor_right = 1.0
 	anchor_bottom = 1.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	z_index = 250  # 高于 SettingsOverlay / TutorialOverlay
+	z_index = 250  # 高于 SettingsOverlay
 
 
 func _ready() -> void:

@@ -58,12 +58,6 @@ func test_awai_passive_clears_furiten_and_reveals():
 	assert_false(st.furiten_flags[0], "澄安应清振听")
 	assert_gt(st.revealed_tiles.size(), 0, "澄安应 reveal 下张牌")
 
-func test_battle_with_saki_characters():
-	for char_id in [&"char_saki_passive_v1", &"char_teru_passive_v1", &"char_awai_passive_v1"]:
-		var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(42, &"", [char_id])
-		assert_not_null(result, "%s 战斗应正常完成" % char_id)
-		assert_between(result.rank, 1, 4)
-
 func test_late_six_passives_inject_via_factory():
 	for ab_id in [
 		&"char_koromo_passive_v1", &"char_nodoka_passive_v1", &"char_toki_passive_v1",

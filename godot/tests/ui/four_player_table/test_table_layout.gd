@@ -284,15 +284,6 @@ func test_playable_table_scene_uses_reference_stage_size() -> void:
 	add_child_autofree(table)
 
 
-func test_run_hud_spans_reference_stage_width() -> void:
-	var hud := load("res://ui/run/run_hud.tscn").instantiate() as Control
-	add_child_autofree(hud)
-	assert_eq(hud.custom_minimum_size, Vector2(1600.0, 56.0))
-	var row := hud.get_node("HBox") as Control
-	assert_eq(row.offset_left, 16.0)
-	assert_eq(row.offset_right, 1584.0)
-
-
 func test_capture_tool_uses_reference_resolution() -> void:
 	var capture_script := load("res://tools/capture_screens.gd") as Script
 	assert_not_null(capture_script)

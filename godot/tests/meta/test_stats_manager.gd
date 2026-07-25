@@ -26,9 +26,6 @@ func before_each() -> void:
 	sm.ippatsu_count = 0
 	sm.haitei_count = 0
 	sm.rinshan_count = 0
-	sm.runs_started = 0
-	sm.runs_won = 0
-	sm.runs_failed = 0
 	sm.highest_single_hand_score = 0
 	sm.total_points_won = 0
 	sm.unlocked_achievements = {}
@@ -127,21 +124,6 @@ func test_record_riichi() -> void:
 	sm.record_riichi(true)
 	assert_eq(sm.riichi_count, 2)
 	assert_eq(sm.double_riichi_count, 1)
-
-
-# ---- record_run_* ----
-
-func test_record_run_lifecycle() -> void:
-	var sm = _sm()
-	sm.record_run_started()
-	assert_eq(sm.runs_started, 1)
-	sm.record_run_ended(true)
-	assert_eq(sm.runs_won, 1)
-	assert_eq(sm.runs_failed, 0)
-	sm.record_run_started()
-	sm.record_run_ended(false)
-	assert_eq(sm.runs_started, 2)
-	assert_eq(sm.runs_failed, 1)
 
 
 # ---- 成就解锁 ----

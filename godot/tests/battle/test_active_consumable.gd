@@ -24,7 +24,7 @@ func test_item_use_action_not_enabled_zero_domain_change() -> void:
 	var ctx: DecisionContext = bc.decision_context_for_seat(bc.state.current_seat)
 	assert_not_null(ctx)
 	var act: Action = Action.item_use(
-		bc.state.current_seat, "hp_potion_v1", "local",
+		bc.state.current_seat, "retired_item_v1", "local",
 		"550e8400-e29b-41d4-a716-000000000001",
 		ctx.decision_id, bc.state.hand_seq, 1
 	)

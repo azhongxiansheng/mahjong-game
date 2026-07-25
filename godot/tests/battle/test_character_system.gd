@@ -85,17 +85,3 @@ func test_washizu_passive_reveals_all_opponents():
 	BossAbilityFactory.inject(reg, &"char_washizu_passive_v1", 0)
 	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
 	assert_eq(st.revealed_tiles.size(), 6, "透璃应 reveal 3 对手各 2 张 = 6 张")
-
-func test_run_state_character_applied():
-	var rs := RunState.new(42)
-	rs.selected_character_id = &"lin_yeche"
-	var d := rs.to_dict()
-	var restored := RunState.from_dict(d)
-	assert_eq(restored.selected_character_id, &"lin_yeche")
-
-func test_battle_with_character_passive():
-	var result: NodeResult = BattleNodeRunner.run_battle_to_node_result(
-		42, &"", [&"char_akagi_passive_v1"]
-	)
-	assert_not_null(result)
-	assert_between(result.rank, 1, 4)

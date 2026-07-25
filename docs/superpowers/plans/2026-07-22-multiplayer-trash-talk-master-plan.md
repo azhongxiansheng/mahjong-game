@@ -55,7 +55,7 @@
 #### 实施顺序
 
 1. **#225 入口壳**：先写主场景/导航 Red，再建立可启动、可返回的大厅入口壳；可用默认练习烟测证明现有桌面可挂载，但不实现抽屉、`SessionIntent` 或正式配置。
-2. **#226 肉鸽依赖退出生产**：按 E0 清单逐项解除 RunState、经济/章节 UI 与新入口耦合；从生产 `project.godot` 注销 `SaveSystem`、`MetaProgress`、`BattlePass`、`DailyQuest`、`SaveToast`，对应脚本保留供 legacy 测试显式实例化。
+2. **#226 肉鸽依赖退出生产**：按 E0 清单解除 RunState、经济/章节 UI 与新入口耦合；后续清理已物理删除 Run UI、存档/抽卡/章节脚本及 legacy 测试。
 3. **#227 生产级大厅**：按 ASCII 搭 1600×900 布局和响应式锚点；先几何测试，再完成原创背景、角色展示、入口卡片和抽屉动效，不以线框占位作为完成态。
 4. **#228 规则抽屉与 `SessionIntent`**：建立选择状态并输出 UI 意图；覆盖键鼠焦点、取消和返回；禁止在本 Issue 定义正式 `GameSessionConfig`。
 5. **#229 图鉴/BGM/SFX**：图鉴过滤 HP、金币、卡包、声望、战令等 Run-only 内容；补齐真实 BGM 播放链路，并通过既有 new-api Suno 模型交付 1 首可循环二次元大厅 BGM；不加入语音设置。

@@ -51,13 +51,6 @@ func _ready() -> void:
 	z_index = 100
 
 
-# 生产战绩页不展示肉鸽 Run 相关成就（数据仍保留在 StatsManager 内）。
-const HIDDEN_ACHIEVEMENT_IDS: Array[String] = [
-	"first_run_won",
-	"five_runs_won",
-]
-
-
 func _build_stats_column(parent: Control, x: int, y: int, w: int) -> void:
 	var sm = _sm()
 	var lines: Array[String] = [
@@ -94,11 +87,7 @@ func _build_achievements_column(parent: Control, x: int, y: int, w: int) -> void
 	grid.size = Vector2(w, PANEL_H - 160)
 	parent.add_child(grid)
 
-	var visible_ids: Array = []
-	for id in ach.keys():
-		if String(id) in HIDDEN_ACHIEVEMENT_IDS:
-			continue
-		visible_ids.append(id)
+	var visible_ids: Array = ach.keys()
 
 	var unlocked_count: int = 0
 	for id in visible_ids:

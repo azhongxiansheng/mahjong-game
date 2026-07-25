@@ -118,9 +118,7 @@ func _refresh() -> void:
 	# Autoload 实例
 	lines.append("")
 	lines.append("--- Autoloads ---")
-	for n in ["AudioManager", "SettingsManager", "StatsManager",
-			"SaveSystem", "MetaProgress", "DebugOverlay", "Log",
-			"SaveToast"]:
+	for n in ["AudioManager", "SettingsManager", "StatsManager", "DebugOverlay", "Log"]:
 		var present: bool = tree and tree.root.get_node_or_null("/root/" + n) != null
 		lines.append("  %s: %s" % [n, "✓" if present else "✗"])
 	# 当前 PlayableBattleController(由 PlayableTable register)

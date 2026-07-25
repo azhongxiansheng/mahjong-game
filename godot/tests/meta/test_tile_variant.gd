@@ -1,6 +1,6 @@
 extends GutTest
 
-# 麻将王 — M5 第 1 步：TileVariant + AbilityCard + GachaResult 单测
+# 当前图鉴与牌桌技能共用的 TileVariant + AbilityCard 单测
 
 # ---- TileVariant ----
 
@@ -31,32 +31,3 @@ func test_ability_card_summary_marks_role_ability():
 	a.display_name = "海底狩人"
 	assert_true(a.summary().find("角色能力") >= 0, "summary 应显式标'角色能力'")
 	assert_true(a.summary().find("神话") >= 0)
-
-# ---- GachaResult ----
-
-func test_gacha_result_make_tile():
-	var v := TileVariant.new(&"v1", TileId.W5, Rarity.Kind.UNCOMMON)
-	var r := GachaResult.make_tile(v)
-	assert_eq(r.kind, GachaResult.KIND_TILE)
-	assert_eq(r.tile_variant, v)
-	assert_eq(r.rarity, Rarity.Kind.UNCOMMON)
-	assert_null(r.ability)
-
-func test_gacha_result_make_ability():
-	var a := AbilityCard.new(&"a1", Rarity.Kind.EPIC)
-	var r := GachaResult.make_ability(a)
-	assert_eq(r.kind, GachaResult.KIND_ABILITY)
-	assert_eq(r.ability, a)
-	assert_eq(r.rarity, Rarity.Kind.EPIC)
-	assert_null(r.tile_variant)
-
-func test_gacha_result_summary_for_tile():
-	var v := TileVariant.new(&"v1", TileId.W5, Rarity.Kind.COMMON)
-	v.display_name = "占位牌"
-	var r := GachaResult.make_tile(v)
-	assert_eq(r.summary(), v.summary())
-
-func test_gacha_result_summary_empty():
-	# 空 GachaResult.new() 不带 tile/ability
-	var r := GachaResult.new()
-	assert_true(r.summary().find("空") >= 0)

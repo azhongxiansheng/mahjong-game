@@ -83,13 +83,10 @@ func test_all_scenes_and_resources_load() -> void:
 func test_critical_scenes_instantiate() -> void:
 	var critical: Array[String] = [
 		"res://ui/lobby/lobby_shell.tscn",
-		"res://ui/run/run_flow.tscn",
 		"res://ui/four_player_table/playable_table.tscn",
 		"res://ui/four_player_table/four_player_table.tscn",
 		"res://ui/four_player_table/player_action_panel.tscn",
 		"res://ui/four_player_table/seat_panel.tscn",
-		"res://ui/run/run_hud.tscn",
-		"res://ui/run/run_summary.tscn",
 	]
 	var failures: Array[String] = []
 	for path in critical:

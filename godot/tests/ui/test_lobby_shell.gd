@@ -4,13 +4,11 @@ extends GutTest
 # 只断言入口壳 / main_scene / 稳定挂点；SessionIntent 与规则抽屉由 #228 单独覆盖。
 
 const LOBBY_SCENE := "res://ui/lobby/lobby_shell.tscn"
-const RUN_FLOW_SCENE := "res://ui/run/run_flow.tscn"
 
 
 func test_project_main_scene_points_to_lobby_shell() -> void:
 	var main_scene: String = str(ProjectSettings.get_setting("application/run/main_scene", ""))
 	assert_eq(main_scene, LOBBY_SCENE, "生产 main_scene 必须是大厅入口壳")
-	assert_ne(main_scene, RUN_FLOW_SCENE, "生产 main_scene 不得再是 Run Flow")
 
 
 func test_lobby_scene_exists_and_instantiates_as_lobby_shell() -> void:

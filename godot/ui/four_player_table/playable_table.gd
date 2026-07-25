@@ -124,23 +124,6 @@ func _build_top_bar() -> void:
 	logo.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(logo)
 
-	_run_hud_label = Label.new()
-	_run_hud_label.position = Vector2(200, 12)
-	_run_hud_label.size = Vector2(300, 28)
-	_run_hud_label.add_theme_font_size_override("font_size", 17)
-	_run_hud_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
-	_run_hud_label.add_theme_constant_override("shadow_offset_y", 1)
-	_run_hud_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	_run_hud_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_run_hud_label.visible = false
-	add_child(_run_hud_label)
-
-	_loadout_strip = BattleLoadoutStrip.new()
-	_loadout_strip.position = Vector2(500, 6)
-	_loadout_strip.custom_minimum_size = Vector2(420, 36)
-	_loadout_strip.size = Vector2(420, 36)
-	add_child(_loadout_strip)
-
 	var rules_btn := DT.make_button("规则", DT.BtnRole.SECONDARY, Vector2(88, 34))
 	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 7)
 	rules_btn.pressed.connect(_open_help_overlay)
@@ -1440,20 +1423,7 @@ var _toast_tween: Tween = null
 # T2:待标记的和牌张(rebind 后由 polling loop 应用,-1 = 无)
 var _pending_win_tile_id: int = -1
 var _dora_widget: DoraWidget = null
-var _run_hud_label: Label = null
-var _loadout_strip: BattleLoadoutStrip = null
-
-
-# RunFlow 战斗时注入 run 级 HUD(HP/金币/章),内联进顶栏。
-func set_run_hud(hp: int, max_hp: int, gold: int, chapter: int) -> void:
-	if _run_hud_label == null:
-		return
-	_run_hud_label.text = "♥ %d/%d    金 %d    第 %d 章" % [hp, max_hp, gold, chapter]
-	_run_hud_label.visible = true
-
-
-# RunFlow 在 PlayableTable 入树后注入已选角色；只复用仓库现有 portrait，
-# 不为缺素材的角色伪造头像。实验 3D 路径保持 no-op。
+# 截图与调试可注入玩家角色外观；实验 3D 路径保持 no-op。
 func set_player_persona(display_name: String, portrait_path: String) -> void:
 	if not _table is FourPlayerTable or _table.seat_panels.is_empty():
 		return
@@ -1461,12 +1431,6 @@ func set_player_persona(display_name: String, portrait_path: String) -> void:
 	if player != null:
 		player.set_ai_persona(display_name, "", portrait_path)
 
-
-# 注入当前 Run 的能力/遗物/消耗品 id，渲染顶栏芯片条。
-func set_loadout(ability_ids: Array, relic_ids: Array = [], consumable_ids: Array = []) -> void:
-	if _loadout_strip == null:
-		return
-	_loadout_strip.bind_ids(ability_ids, relic_ids, consumable_ids)
 
 func _attach_event_polling() -> void:
 	if _polling_active:

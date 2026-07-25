@@ -12,7 +12,6 @@ const IP_SCAN_FILES: Array = [
 	"res://tools/asset_gen/generate_misc.py",
 	"res://tools/asset_gen/generate_sheets.py",
 	"res://ui/run_theme.tres",
-	"res://ui/run/run_ui.gd",
 ]
 
 const BANNED_IP_FRAGMENTS: Array = [

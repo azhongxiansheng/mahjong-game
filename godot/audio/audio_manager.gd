@@ -131,8 +131,8 @@ func _get_stream(key: String) -> AudioStream:
 	return stream
 
 
-# BC 事件 → SFX key 映射。配合 PlayableTable 或 BattleNodeRunner 在事件流
-# 上 dispatch 时调。返空字符串表示该事件无对应 SFX。
+# BC 事件 → SFX key 映射。PlayableTable 在事件流上 dispatch 时调用。
+# 返回空字符串表示该事件无对应 SFX。
 static func sfx_key_for_event(event_type: StringName, extra: Dictionary = {}) -> String:
 	match event_type:
 		&"TILE_DRAWN":
