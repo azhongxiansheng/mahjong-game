@@ -4,6 +4,7 @@ extends Node
 # #240：Godot Headless Worker — 公共牌局唯一权威 WebSocket 入口。
 # TCPServer + WebSocketPeer.accept_stream；验 room_token；JOIN/READY/Action。
 # #241：连接代际、掉线 30s lease、重连快照、AI 接管/归还。
+# #244：同进程可选托管独立 VoiceRelayServer（第二 listener）；语音背压不进本通道。
 # 不依赖 Redis。网络端到端未验证。
 
 const JOIN_KEYS := ["protocol_version", "kind", "room_id", "seat", "room_token"]
@@ -14,6 +15,7 @@ signal client_message_handled(conn_id: int, kind: String)
 
 var bind_host: String = "127.0.0.1"
 var bind_port: int = 9000
+var voice_bind_port: int = -1  # <0 不启语音；0=动态端口
 var token_now_unix: int = -1  # 测试时钟；生产 -1
 ## #241：可注入单调时钟（毫秒）。>=0 时使用注入值；-1 用 Time.get_ticks_msec()。
 var clock_now_ms: int = -1
@@ -21,6 +23,8 @@ var clock_now_ms: int = -1
 var _tcp: TCPServer = TCPServer.new()
 var _verifier: RoomTokenVerifier = RoomTokenVerifier.new()
 var _listening: bool = false
+var _voice_relay: VoiceRelayServer = null
+var _token_secret: String = ""
 
 # conn_id -> connection state
 var _conns: Dictionary = {}
@@ -30,11 +34,18 @@ var _next_generation: int = 1
 var _rooms: Dictionary = {}
 
 
-func configure(secret: String, host: String = "127.0.0.1", port: int = 9000) -> bool:
+func configure(
+	secret: String,
+	host: String = "127.0.0.1",
+	port: int = 9000,
+	p_voice_port: int = -1
+) -> bool:
 	if not _verifier.set_secret(secret):
 		return false
+	_token_secret = secret
 	bind_host = host
 	bind_port = port
+	voice_bind_port = p_voice_port
 	return true
 
 
@@ -44,18 +55,99 @@ func start_listen() -> Error:
 	var err: Error = _tcp.listen(bind_port, bind_host)
 	if err != OK:
 		return err
+	if bind_port == 0:
+		bind_port = _tcp.get_local_port()
 	_listening = true
+	if voice_bind_port >= 0:
+		_voice_relay = VoiceRelayServer.new()
+		add_child(_voice_relay)
+		if not _voice_relay.configure(_token_secret, bind_host, voice_bind_port):
+			stop()
+			return ERR_INVALID_PARAMETER
+		_voice_relay.bind_authority_worker(self)
+		_voice_relay.token_now_unix = token_now_unix
+		var verr: Error = _voice_relay.start_listen()
+		if verr != OK:
+			stop()
+			return verr
+		voice_bind_port = _voice_relay.get_listen_port()
 	return OK
+
+
+func get_voice_relay() -> VoiceRelayServer:
+	return _voice_relay
+
+
+func get_listen_port() -> int:
+	if _listening and _tcp.is_listening():
+		return _tcp.get_local_port()
+	return bind_port
+
+
+func get_voice_listen_port() -> int:
+	if _voice_relay != null:
+		return _voice_relay.get_listen_port()
+	return voice_bind_port
+
+
+## #244：语音 JOIN 时确保权威房间存在（与牌局 JOIN bootstrap 同源 claims）。
+func ensure_room_from_claims(claims: Dictionary) -> Dictionary:
+	if claims.is_empty():
+		return {"ok": false, "message": "empty claims"}
+	var room_id: String = str(claims.get("room_id", ""))
+	if room_id.is_empty():
+		return {"ok": false, "message": "no room_id"}
+	if _rooms.has(room_id):
+		var existing: HeadlessRoomSession = _rooms[room_id] as HeadlessRoomSession
+		if existing.round_kind != str(claims.get("round_kind", "")) \
+				or existing.game_mode != str(claims.get("game_mode", "")) \
+				or not _participants_equal(existing.participants, claims.get("participants", [])):
+			return {"ok": false, "message": "bootstrap mismatch"}
+		return {"ok": true, "message": ""}
+	var session := HeadlessRoomSession.new()
+	if not session.bootstrap_from_claims(claims):
+		return {"ok": false, "message": "bootstrap failed"}
+	_rooms[room_id] = session
+	return {"ok": true, "message": ""}
+
+
+## #244：合法 PTT_END 权威序号（真实 LocalLoopbackServer._alloc_seq 路径）。
+func allocate_ptt_end_authority(
+	room_id: String,
+	seat: int,
+	session_id: String,
+	utterance_id: String
+) -> Dictionary:
+	var session: HeadlessRoomSession = get_room(room_id)
+	if session == null or session.server == null:
+		return {"ok": false, "code": "COMMAND_REJECTED", "message": "no room"}
+	if str(session.game_mode) != "TRASH_TALK":
+		return {"ok": false, "code": "UNAUTHORIZED", "message": "voice only TRASH_TALK"}
+	if not session.is_human_seat(seat):
+		return {"ok": false, "code": "UNAUTHORIZED", "message": "not human seat"}
+	if session_id.is_empty() or utterance_id.is_empty():
+		return {"ok": false, "code": "COMMAND_REJECTED", "message": "missing identity"}
+	return session.server.allocate_ptt_end_server_seq(seat, utterance_id)
 
 
 func stop() -> void:
 	_listening = false
+	if _voice_relay != null:
+		_voice_relay.stop()
+		if is_instance_valid(_voice_relay):
+			_voice_relay.queue_free()
+		_voice_relay = null
 	for cid in _conns.keys():
 		_close_conn(int(cid))
 	_conns.clear()
 	if _tcp.is_listening():
 		_tcp.stop()
 	_rooms.clear()
+
+
+func _exit_tree() -> void:
+	# 测试 autofree / 进程退出：确定性关闭两个 listener，避免 ObjectDB 泄漏
+	stop()
 
 
 func is_listening() -> bool:
@@ -89,6 +181,9 @@ func set_clock_ms_for_test(ms: int) -> void:
 func poll() -> void:
 	if not _listening:
 		return
+	if _voice_relay != null:
+		_voice_relay.token_now_unix = token_now_unix
+		_voice_relay.poll()
 	while _tcp.is_connection_available():
 		var stream: StreamPeerTCP = _tcp.take_connection()
 		if stream == null:

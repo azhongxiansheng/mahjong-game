@@ -52,9 +52,10 @@ func main() {
 	}
 
 	matcher, err := queue.NewMatcher(queue.MatcherOptions{
-		Service:        queueSvc,
-		TokenIssuer:    tokenSvc,
-		WorkerEndpoint: cfg.WorkerEndpoint,
+		Service:             queueSvc,
+		TokenIssuer:         tokenSvc,
+		WorkerEndpoint:      cfg.WorkerEndpoint,
+		VoiceWorkerEndpoint: cfg.VoiceWorkerEndpoint,
 		OnError: func(op string, safeDetail string) {
 			// 仅记录稳定操作类别与固定安全文案；不得输出原始 err/密钥/token。
 			log.Printf("matcher error op=%s detail=%s", op, safeDetail)

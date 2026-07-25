@@ -58,8 +58,9 @@ func TestRework3_P1_StaleHeadMustNotAIFillWhenFourthHumanExists(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.issuer,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -101,8 +102,9 @@ func TestRework3_P1_FullStaleWindowThenFourHumans(t *testing.T) {
 	tickets := enqueueN(t, f.svc, 4, RoundKindEast, GameModeStandard)
 
 	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.issuer,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -110,9 +112,10 @@ func TestRework3_P1_FullStaleWindowThenFourHumans(t *testing.T) {
 	if !res.Matched {
 		// 允许更严格有界：同一 MatchAll 扫描完成
 		m, err := NewMatcher(MatcherOptions{
-			Service:        f.svc,
-			TokenIssuer:    f.issuer,
-			WorkerEndpoint: f.worker,
+			Service:             f.svc,
+			TokenIssuer:         f.issuer,
+			WorkerEndpoint:      f.worker,
+			VoiceWorkerEndpoint: f.voiceWorker,
 		})
 		if err != nil {
 			t.Fatalf("NewMatcher: %v", err)
@@ -191,6 +194,7 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 
 	issuer := newRecordingIssuer(t, clk)
 	worker := "ws://worker.indep.test:9000"
+	voiceWorker := "ws://voice.indep.test:9001"
 	ctx := context.Background()
 
 	// stale + 4 humans via client 0
@@ -218,8 +222,9 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 		go func(i int) {
 			defer wg.Done()
 			results[i], errs[i] = svcs[i].MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint: worker,
-				TokenIssuer:    issuer,
+				WorkerEndpoint:      worker,
+				VoiceWorkerEndpoint: voiceWorker,
+				TokenIssuer:         issuer,
 			})
 		}(i)
 	}
@@ -284,10 +289,11 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 	var mu sync.Mutex
 
 	m, err := NewMatcher(MatcherOptions{
-		Service:        f.svc,
-		TokenIssuer:    leaky,
-		WorkerEndpoint: f.worker,
-		ScanInterval:   15 * time.Millisecond,
+		Service:             f.svc,
+		TokenIssuer:         leaky,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		ScanInterval:        15 * time.Millisecond,
 		OnError: func(op string, safeMsg string) {
 			reports.Add(1)
 			mu.Lock()
@@ -338,9 +344,10 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 
 	// 恢复后仍可分配
 	mOK, err := NewMatcher(MatcherOptions{
-		Service:        f.svc,
-		TokenIssuer:    f.issuer,
-		WorkerEndpoint: f.worker,
+		Service:             f.svc,
+		TokenIssuer:         f.issuer,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
 	})
 	if err != nil {
 		t.Fatalf("mOK: %v", err)

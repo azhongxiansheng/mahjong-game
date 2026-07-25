@@ -40,8 +40,9 @@ type RoomTokenIssuer interface {
 
 // MatchParams 单次池匹配参数。
 type MatchParams struct {
-	WorkerEndpoint string
-	TokenIssuer    RoomTokenIssuer
+	WorkerEndpoint      string
+	VoiceWorkerEndpoint string
+	TokenIssuer         RoomTokenIssuer
 }
 
 // MatchResult 单次池匹配结果。
@@ -62,14 +63,15 @@ type SeatOccupant struct {
 
 // Room 持久化在 Redis 的临时房间状态。
 type Room struct {
-	RoomID     string
-	Worker     string
-	RoundKind  RoundKind
-	GameMode   GameMode
-	HumanCount int
-	AICount    int
-	CreatedAt  int64 // Unix 毫秒
-	Seats      map[int]SeatOccupant
+	RoomID      string
+	Worker      string
+	VoiceWorker string
+	RoundKind   RoundKind
+	GameMode    GameMode
+	HumanCount  int
+	AICount     int
+	CreatedAt   int64 // Unix 毫秒
+	Seats       map[int]SeatOccupant
 }
 
 type matchCandidate struct {
@@ -88,6 +90,15 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 	worker := strings.TrimSpace(params.WorkerEndpoint)
 	if worker == "" {
 		return MatchResult{}, fmt.Errorf("worker endpoint required")
+	}
+	// 仅 TRASH_TALK 写入非空 voice_worker；STANDARD 硬隔离为空（不猜端口）。
+	voiceWorker := strings.TrimSpace(params.VoiceWorkerEndpoint)
+	if gm == GameModeTrashTalk {
+		if voiceWorker == "" {
+			return MatchResult{}, fmt.Errorf("voice worker endpoint required for TRASH_TALK")
+		}
+	} else {
+		voiceWorker = ""
 	}
 	if params.TokenIssuer == nil {
 		return MatchResult{}, fmt.Errorf("token issuer required")
@@ -130,12 +141,14 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 
 		nowMs := s.clock.Now().UTC().UnixMilli()
 		// ARGV 布局：固定前缀 + human_count + 每真人 (ticket_id, guest_id, seat, room_token)
-		args := make([]interface{}, 0, 10+len(cands)*4)
+		// 固定：now, wait, room, worker, voice_worker, ttl, ticket_prefix, guest_prefix, rk, gm, human_count
+		args := make([]interface{}, 0, 11+len(cands)*4)
 		args = append(args,
 			nowMs,
 			QueueWaitDeadline.Milliseconds(),
 			roomID,
 			worker,
+			voiceWorker,
 			int(roomTTL.Seconds()),
 			s.prefix+"ticket:",
 			s.prefix+"guest:",
@@ -282,14 +295,15 @@ func (s *Service) GetRoom(ctx context.Context, roomID string) (Room, error) {
 	aiCount, _ := strconv.Atoi(m["ai_count"])
 	createdAt, _ := strconv.ParseInt(m["created_at"], 10, 64)
 	room := Room{
-		RoomID:     m["room_id"],
-		Worker:     m["worker"],
-		RoundKind:  RoundKind(m["round_kind"]),
-		GameMode:   GameMode(m["game_mode"]),
-		HumanCount: humanCount,
-		AICount:    aiCount,
-		CreatedAt:  createdAt,
-		Seats:      make(map[int]SeatOccupant, 4),
+		RoomID:      m["room_id"],
+		Worker:      m["worker"],
+		VoiceWorker: m["voice_worker"],
+		RoundKind:   RoundKind(m["round_kind"]),
+		GameMode:    GameMode(m["game_mode"]),
+		HumanCount:  humanCount,
+		AICount:     aiCount,
+		CreatedAt:   createdAt,
+		Seats:       make(map[int]SeatOccupant, 4),
 	}
 	for seat := 0; seat < 4; seat++ {
 		kind := m[fmt.Sprintf("seat_%d_kind", seat)]
@@ -321,12 +335,13 @@ local now_ms = tonumber(ARGV[1])
 local wait_ms = tonumber(ARGV[2])
 local room_id = ARGV[3]
 local worker = ARGV[4]
-local ttl = tonumber(ARGV[5])
-local ticket_prefix = ARGV[6]
-local guest_prefix = ARGV[7]
-local round_kind = ARGV[8]
-local game_mode = ARGV[9]
-local human_count = tonumber(ARGV[10])
+local voice_worker = ARGV[5]
+local ttl = tonumber(ARGV[6])
+local ticket_prefix = ARGV[7]
+local guest_prefix = ARGV[8]
+local round_kind = ARGV[9]
+local game_mode = ARGV[10]
+local human_count = tonumber(ARGV[11])
 local max_clean = 64
 
 if human_count < 1 or human_count > 4 then
@@ -335,7 +350,7 @@ end
 
 local expect = {}
 for i = 0, human_count - 1 do
-  local base = 11 + i * 4
+  local base = 12 + i * 4
   expect[i + 1] = {
     tid = ARGV[base],
     guest = ARGV[base + 1],
@@ -422,6 +437,11 @@ redis.call('HSET', rkey,
   'human_count', tostring(human_count),
   'ai_count', tostring(4 - human_count),
   'created_at', tostring(now_ms))
+if voice_worker ~= nil and voice_worker ~= '' then
+  redis.call('HSET', rkey, 'voice_worker', voice_worker)
+else
+  redis.call('HDEL', rkey, 'voice_worker')
+end
 
 for seat = 0, 3 do
   if seat < human_count then
@@ -433,6 +453,11 @@ for seat = 0, 3 do
       'seat', tostring(seat),
       'worker', worker,
       'room_token', e.token)
+    if voice_worker ~= nil and voice_worker ~= '' then
+      redis.call('HSET', tkey, 'voice_worker', voice_worker)
+    else
+      redis.call('HDEL', tkey, 'voice_worker')
+    end
     redis.call('EXPIRE', tkey, ttl)
     redis.call('ZREM', pkey, e.tid)
     local gkey = guest_prefix .. e.guest .. ':' .. round_kind .. ':' .. game_mode
@@ -471,21 +496,23 @@ type MatcherErrorFunc func(op string, safeDetail string)
 
 // MatcherOptions 构造后台匹配器。
 type MatcherOptions struct {
-	Service        *Service
-	TokenIssuer    RoomTokenIssuer
-	WorkerEndpoint string
-	ScanInterval   time.Duration
+	Service             *Service
+	TokenIssuer         RoomTokenIssuer
+	WorkerEndpoint      string
+	VoiceWorkerEndpoint string
+	ScanInterval        time.Duration
 	// OnError 可选：后台 loop 中 MatchAll 失败时调用（载荷已去敏）。
 	OnError MatcherErrorFunc
 }
 
 // Matcher 在 Control Plane 运行期间自动推进匹配；可优雅启停。
 type Matcher struct {
-	svc      *Service
-	issuer   RoomTokenIssuer
-	worker   string
-	interval time.Duration
-	onError  MatcherErrorFunc
+	svc         *Service
+	issuer      RoomTokenIssuer
+	worker      string
+	voiceWorker string
+	interval    time.Duration
+	onError     MatcherErrorFunc
 
 	startOnce sync.Once
 	stopOnce  sync.Once
@@ -493,7 +520,7 @@ type Matcher struct {
 	doneCh    chan struct{}
 }
 
-// NewMatcher 创建匹配器；WORKER 端点不得为空。
+// NewMatcher 创建匹配器；WORKER / VOICE_WORKER 端点不得为空。
 func NewMatcher(opts MatcherOptions) (*Matcher, error) {
 	if opts.Service == nil {
 		return nil, fmt.Errorf("queue service required")
@@ -505,18 +532,23 @@ func NewMatcher(opts MatcherOptions) (*Matcher, error) {
 	if worker == "" {
 		return nil, fmt.Errorf("WORKER_ENDPOINT is required")
 	}
+	voiceWorker := strings.TrimSpace(opts.VoiceWorkerEndpoint)
+	if voiceWorker == "" {
+		return nil, fmt.Errorf("VOICE_WORKER_ENDPOINT is required")
+	}
 	interval := opts.ScanInterval
 	if interval <= 0 {
 		interval = defaultScanInterval
 	}
 	return &Matcher{
-		svc:      opts.Service,
-		issuer:   opts.TokenIssuer,
-		worker:   worker,
-		interval: interval,
-		onError:  opts.OnError,
-		stopCh:   make(chan struct{}),
-		doneCh:   make(chan struct{}),
+		svc:         opts.Service,
+		issuer:      opts.TokenIssuer,
+		worker:      worker,
+		voiceWorker: voiceWorker,
+		interval:    interval,
+		onError:     opts.OnError,
+		stopCh:      make(chan struct{}),
+		doneCh:      make(chan struct{}),
 	}, nil
 }
 
@@ -555,7 +587,11 @@ func (m *Matcher) MatchAll(ctx context.Context) error {
 		{RoundKindHanchan, GameModeStandard},
 		{RoundKindHanchan, GameModeTrashTalk},
 	}
-	params := MatchParams{WorkerEndpoint: m.worker, TokenIssuer: m.issuer}
+	params := MatchParams{
+		WorkerEndpoint:      m.worker,
+		VoiceWorkerEndpoint: m.voiceWorker,
+		TokenIssuer:         m.issuer,
+	}
 	for _, c := range combos {
 		for i := 0; i < maxRoomsPerPoolPerScan; i++ {
 			res, err := m.svc.MatchPool(ctx, c.rk, c.gm, params)

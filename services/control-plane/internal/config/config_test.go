@@ -14,6 +14,7 @@ func TestLoad_Defaults(t *testing.T) {
 	t.Setenv("REDIS_DB", "")
 	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 	t.Setenv("WORKER_ENDPOINT", "ws://127.0.0.1:9000")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "ws://127.0.0.1:9001")
 
 	cfg, err := Load()
 	if err != nil {
@@ -37,6 +38,9 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.WorkerEndpoint != "ws://127.0.0.1:9000" {
 		t.Fatalf("WorkerEndpoint = %q", cfg.WorkerEndpoint)
 	}
+	if cfg.VoiceWorkerEndpoint != "ws://127.0.0.1:9001" {
+		t.Fatalf("VoiceWorkerEndpoint = %q", cfg.VoiceWorkerEndpoint)
+	}
 }
 
 func TestLoad_FromEnv(t *testing.T) {
@@ -46,6 +50,7 @@ func TestLoad_FromEnv(t *testing.T) {
 	t.Setenv("REDIS_DB", "3")
 	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 	t.Setenv("WORKER_ENDPOINT", "  ws://worker.example:9000  ")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "  ws://voice.example:9001  ")
 
 	cfg, err := Load()
 	if err != nil {
@@ -69,11 +74,15 @@ func TestLoad_FromEnv(t *testing.T) {
 	if cfg.WorkerEndpoint != "ws://worker.example:9000" {
 		t.Fatalf("WorkerEndpoint = %q (should be trimmed)", cfg.WorkerEndpoint)
 	}
+	if cfg.VoiceWorkerEndpoint != "ws://voice.example:9001" {
+		t.Fatalf("VoiceWorkerEndpoint = %q (should be trimmed)", cfg.VoiceWorkerEndpoint)
+	}
 }
 
 func TestLoad_InvalidRedisDB(t *testing.T) {
 	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
 	t.Setenv("WORKER_ENDPOINT", "ws://127.0.0.1:9000")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "ws://127.0.0.1:9001")
 	t.Setenv("REDIS_DB", "not-a-number")
 
 	_, err := Load()
@@ -85,6 +94,7 @@ func TestLoad_InvalidRedisDB(t *testing.T) {
 func TestLoad_MissingTokenSigningSecret(t *testing.T) {
 	t.Setenv("TOKEN_SIGNING_SECRET", "")
 	t.Setenv("WORKER_ENDPOINT", "ws://127.0.0.1:9000")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "ws://127.0.0.1:9001")
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() expected error for missing TOKEN_SIGNING_SECRET")
@@ -101,6 +111,7 @@ func TestLoad_MissingTokenSigningSecret(t *testing.T) {
 func TestLoad_ShortTokenSigningSecret(t *testing.T) {
 	t.Setenv("TOKEN_SIGNING_SECRET", "too-short-secret-value!!") // 24 chars
 	t.Setenv("WORKER_ENDPOINT", "ws://127.0.0.1:9000")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "ws://127.0.0.1:9001")
 	_, err := Load()
 	if err == nil {
 		t.Fatal("Load() expected error for short TOKEN_SIGNING_SECRET")
@@ -134,6 +145,22 @@ func TestLoad_BlankWorkerEndpoint(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "WORKER_ENDPOINT") {
 		t.Fatalf("error should mention WORKER_ENDPOINT: %v", err)
+	}
+	if strings.Contains(err.Error(), validSigningSecret) {
+		t.Fatal("error must not contain signing secret")
+	}
+}
+
+func TestLoad_MissingVoiceWorkerEndpoint(t *testing.T) {
+	t.Setenv("TOKEN_SIGNING_SECRET", validSigningSecret)
+	t.Setenv("WORKER_ENDPOINT", "ws://127.0.0.1:9000")
+	t.Setenv("VOICE_WORKER_ENDPOINT", "")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() expected error for missing VOICE_WORKER_ENDPOINT")
+	}
+	if !strings.Contains(err.Error(), "VOICE_WORKER_ENDPOINT") {
+		t.Fatalf("error should mention VOICE_WORKER_ENDPOINT: %v", err)
 	}
 	if strings.Contains(err.Error(), validSigningSecret) {
 		t.Fatal("error must not contain signing secret")

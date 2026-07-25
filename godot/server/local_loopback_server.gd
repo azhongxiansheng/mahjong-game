@@ -198,6 +198,30 @@ func current_server_seq() -> int:
 	return _server_seq
 
 
+## E4-02（#244）：合法 PTT_END 权威序号 — 与牌局业务事件同一单调 _server_seq。
+## 不写入 NetworkedEvent journal（语音控制帧走独立 WebSocket）；不创建第二套序号。
+## 仅 TRASH_TALK；失败不推进序号。
+func allocate_ptt_end_server_seq(seat: int, utterance_id: String) -> Dictionary:
+	if _rollback_failed:
+		return {"ok": false, "code": "COMMAND_REJECTED", "message": "rollback failed"}
+	if mode_modules == null or not mode_modules.is_trash_talk():
+		return {"ok": false, "code": "UNAUTHORIZED", "message": "voice only TRASH_TALK"}
+	if seat < 0 or seat > 3:
+		return {"ok": false, "code": "UNAUTHORIZED", "message": "invalid seat"}
+	if utterance_id.is_empty():
+		return {"ok": false, "code": "COMMAND_REJECTED", "message": "empty utterance"}
+	var seq: int = _alloc_seq()
+	return {
+		"ok": true,
+		"code": "",
+		"message": "",
+		"server_seq": seq,
+		"room_id": _room_id,
+		"seat": seat,
+		"utterance_id": utterance_id,
+	}
+
+
 func event_journal(recipient_seat: int) -> Array:
 	if recipient_seat < 0 or recipient_seat > 3:
 		return []
