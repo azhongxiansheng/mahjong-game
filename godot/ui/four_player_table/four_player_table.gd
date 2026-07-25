@@ -20,6 +20,10 @@ const ABILITY_PANEL_WIDTH: float = 0.0
 const SEAT_PANEL_SCENE := preload("res://ui/four_player_table/seat_panel.tscn")
 const CENTER_INFO_SCENE := preload("res://ui/four_player_table/center_info_panel.tscn")
 const ABILITY_PANEL_SCENE := preload("res://ui/four_player_table/ability_panel.tscn")
+const SEAT_CAPTION_OVERLAY_SCR := preload("res://ui/four_player_table/seat_caption_overlay.gd")
+const REWARD_FEEDBACK_PROJECTOR_SCR := preload(
+	"res://ui/four_player_table/reward_feedback_projector.gd"
+)
 
 # 4 个 seat_panel 实例（索引 = seat_id）
 var seat_panels: Array[SeatPanel] = []
@@ -30,6 +34,11 @@ var discard_rivers: Array = []
 # 4 个 MeldArea（索引 = seat_id），每家副露日麻风格视觉化
 # spec docs/superpowers/specs/2026-05-08-meld-area-japanese-style-design.md
 var meld_areas: Array = []
+
+# E4-04 / #246：字幕覆盖层（自动创建；仅 UI 注入，不接语音/奖励权威）
+# 路径 preload，避免新增全局 class_name 触发全量门禁。
+var caption_overlay: Control = null
+var _reward_feedback_projector = null
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(TABLE_WIDTH, TABLE_HEIGHT)
@@ -213,6 +222,58 @@ func _build_layout() -> void:
 	ability_panel.visible = false
 	ability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ability_panel)
+
+	# E4-04：字幕覆盖层（鼠标穿透；不随 seat 旋转）
+	caption_overlay = SEAT_CAPTION_OVERLAY_SCR.new()
+	caption_overlay.name = "SeatCaptionOverlay"
+	caption_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(caption_overlay)
+	_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+
+
+# ---- E4-04 字幕 / 奖励反馈注入（仅 display；零权威副作用）----
+
+## 注入一条字幕 partial/final/AI 文本。成功更新覆盖层显示。
+func inject_caption_display(input: Dictionary) -> Dictionary:
+	if caption_overlay == null:
+		return {"ok": false, "reason": "NO_OVERLAY"}
+	return caption_overlay.ingest_caption(input)
+
+
+## 安全包装真实 AI selector 输出：强制 source=ai_text、kind=final，拒绝伪装麦克风。
+## ai_line 来自 TrashTalkAiLineSelector.select_ai_line；extras 可含 now_ms/display_revision。
+func inject_ai_caption_display(ai_line: Variant, extras: Dictionary = {}) -> Dictionary:
+	if typeof(ai_line) != TYPE_DICTIONARY or (ai_line as Dictionary).is_empty():
+		return {"ok": false, "reason": "EMPTY_AI_LINE"}
+	var payload: Dictionary = (ai_line as Dictionary).duplicate(true)
+	# 强制 AI 语义，不信任输入伪装
+	payload["source"] = "ai_text"
+	payload["kind"] = "final"
+	payload.erase("is_mic")
+	if extras.has("now_ms"):
+		payload["now_ms"] = extras["now_ms"]
+	if extras.has("display_revision"):
+		payload["display_revision"] = extras["display_revision"]
+	return inject_caption_display(payload)
+
+
+## 注入奖励权威事件的展示投影。仅接受 NetworkedEvent 或 schema-valid 六键 wire。
+## 不修改 RewardWindow/库存。
+func inject_reward_feedback(event: Variant) -> Dictionary:
+	if _reward_feedback_projector == null:
+		_reward_feedback_projector = REWARD_FEEDBACK_PROJECTOR_SCR.new()
+	var proj: Dictionary = _reward_feedback_projector.project(event)
+	if not bool(proj.get("ok", false)):
+		return proj
+	if caption_overlay != null:
+		caption_overlay.set_reward_banner_text(String(proj.get("message", "")))
+	return proj
+
+
+func reward_feedback_text() -> String:
+	if caption_overlay == null:
+		return ""
+	return caption_overlay.reward_feedback_text()
 
 
 # 直接翻译参考 `.board-frame` SVG：1 条闭合外框 + 4 条斜接线。

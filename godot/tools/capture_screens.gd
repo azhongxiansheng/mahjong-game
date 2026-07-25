@@ -61,6 +61,8 @@ func _run() -> void:
 	await _capture_battle_with_state()
 	# E4-01：欢乐场 PTT 空闲 / 按下态截图（不遮挡手牌与行动栏）。
 	await _capture_battle_ptt()
+	# E4-04 / #246：多语字幕 + partial + AI + 奖励 banner 同屏。
+	await _capture_battle_captions()
 	print("[capture] done")
 	quit()
 
@@ -218,5 +220,112 @@ func _capture_battle_ptt() -> void:
 	print("[capture] saved /tmp/shot_battle_ptt_pressed.png")
 	if btn != null:
 		btn.button_up.emit()
+	table.queue_free()
+	await process_frame
+
+
+func _capture_battle_captions() -> void:
+	# 与 _capture_battle_ptt 同构：PlayableTable + TRASH_TALK + fixture VoicePort，
+	# 保证右下 PTT 与手牌/操作栏同屏；字幕经内部真实 FourPlayerTable 公开注入入口。
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
+	root.add_child(table)
+	table.set_player_persona(
+		"林夜彻",
+		"res://assets/roguelike/characters/char_lin_yeche.png"
+	)
+	var intent := SessionIntent.new(&"PRACTICE", &"EAST", &"TRASH_TALK", &"lin_yeche")
+	var converted := GameSessionConfig.from_intent(
+		intent, 42, "capture-captions", "e4-04-v1", {}
+	)
+	if not converted.ok:
+		print("[capture] captions config failed")
+		table.queue_free()
+		return
+	var driver := PracticeSessionLauncher.new().launch(converted.config)
+	if driver == null:
+		print("[capture] captions launch failed")
+		table.queue_free()
+		return
+	var bc: PlayableBattleController = driver.bc_factory.call(
+		42, 0, false, TileId.E, 0
+	)
+	table._table.bind_battle_state(bc.state, 0, 4)
+	var vp: VoicePortModule = bc.mode_modules.voice_port
+	if vp != null:
+		vp.set_capture_backend(VoicePortModule.CaptureBackend.FIXTURE)
+	table.bind_voice_from_battle(bc)
+	for _i in range(30):
+		await process_frame
+
+	# 字幕走生产 FourPlayerTable 注入入口（非裸脚本旁路）
+	var fpt = table._table
+	if fpt == null or not fpt.has_method("inject_caption_display"):
+		print("[capture] captions: inner FourPlayerTable missing inject API")
+		table.queue_free()
+		return
+	fpt.inject_caption_display({
+		"seat": 0, "utterance_id": "cap_zh", "text": "听牌了吗",
+		"kind": "TRANSCRIPT_PARTIAL", "source": "local_mic", "lang": "zh",
+	})
+	fpt.inject_caption_display({
+		"seat": 1, "utterance_id": "cap_en", "text": "I am tenpai",
+		"kind": "TRANSCRIPT_FINAL", "source": "faster_whisper", "lang": "en",
+	})
+	var ai_line: Variant = TrashTalkAiLineSelector.select_ai_line({
+		"rule_version": "trash_talk_rules_v1",
+		"has_first_discard": true,
+		"seed": 99, "hand_seq": 4, "window_id": "hand_4_window_0",
+		"seat": 2, "discard_server_seq": 12,
+		"character_id": "hua_ling", "language": "ja",
+		"public_context_tags": ["CTX_DORA_REVEALED"],
+	})
+	if ai_line != null and fpt.has_method("inject_ai_caption_display"):
+		fpt.inject_ai_caption_display(ai_line)
+	else:
+		fpt.inject_caption_display({
+			"seat": 2, "utterance_id": "cap_ja_ai", "text": "リーチ！",
+			"kind": "final", "source": "ai_text", "lang": "ja",
+		})
+	fpt.inject_caption_display({
+		"seat": 3, "utterance_id": "cap_zh2", "text": "上家小心",
+		"kind": "TRANSCRIPT_FINAL", "source": "server_stt", "lang": "zh",
+	})
+	var settled := {
+		"protocol_version": 1,
+		"server_seq": 120,
+		"room_id": "room_x",
+		"kind": "REWARD_WINDOW_SETTLED",
+		"payload": {
+			"window_id": "hand_3_window_1",
+			"outcome": "FULL_GRANT",
+			"settle_reason": "FULL_24_NO_WIN",
+			"rule_version": "reward_v2",
+			"assignment_version": "assign_v1",
+			"prize_pool": ["item_a", "item_b", "item_c", "item_d"],
+			"matrix_summary": {"scores": [
+				[1000, 0, 0, 0], [0, 1000, 0, 0],
+				[0, 0, 1000, 0], [0, 0, 0, 1000],
+			]},
+			"assignment": {"0": "item_a", "1": "item_b", "2": "item_c", "3": "item_d"},
+			"closing_boundary_server_seq": 110,
+			"context_boundary_server_seq": 118,
+			"grace_deadline_at": "2026-07-22T12:00:01.500Z",
+			"grant_count": 4,
+			"hand_seq": 3,
+			"transcript_summary": {},
+		},
+		"view_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+	}
+	if fpt.has_method("inject_reward_feedback"):
+		fpt.inject_reward_feedback(settled)
+	for _i in range(30):
+		await process_frame
+	var ptt_btn = table.get_node_or_null("PttButton")
+	if ptt_btn == null:
+		print("[capture] captions WARNING: PttButton missing on PlayableTable")
+	var img := root.get_texture().get_image()
+	var out := "/tmp/shot_battle_captions.png"
+	img.save_png(out)
+	print("[capture] saved ", out)
 	table.queue_free()
 	await process_frame
