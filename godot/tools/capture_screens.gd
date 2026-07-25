@@ -53,6 +53,8 @@ func _run() -> void:
 	await _capture_battle_ptt()
 	# E4-04 / #246：多语字幕 + partial + AI + 奖励 banner 同屏。
 	await _capture_battle_captions()
+	# E5-06 / #254：奖池 HUD + 反馈条 + 库存抽屉 1600×900。
+	await _capture_reward_feedback_254()
 	print("[capture] done")
 	quit()
 
@@ -321,4 +323,94 @@ func _capture_battle_captions() -> void:
 	img.save_png(out)
 	print("[capture] saved ", out)
 	table.queue_free()
+	await process_frame
+
+
+func _capture_reward_feedback_254() -> void:
+	# 1600×900：真实 LocalLoopback 冻结 journal 经 PublicCasualNetworkSession + NBC 自动同步。
+	# 禁止直接 inject_reward_journal_event / apply_reward_views。公共 WS E2E 未验证。
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
+	root.add_child(table)
+	table.set_player_persona(
+		"林夜彻",
+		"res://assets/roguelike/characters/char_lin_yeche.png"
+	)
+	var Bal = load("res://meta/reward_feedback_balance_fixtures.gd")
+	# 本窗片段：到账 + 真实长 iid；不含下一 OPEN（会刷新奖池文案）
+	var events: Array = Bal.self_consistent_full_grant_window_events()
+	if events.is_empty():
+		print("[capture] #254 missing real full-grant window stream")
+		table.queue_free()
+		return
+	var room := String(Bal.ROOM_ID)
+	var iid0 := String(Bal.FULL_GRANT_INSTANCE_IDS["0"])
+	var nbc := NetworkedBattleController.new(room, 0)
+	nbc.configure_snapshot_registry_for_mode(str(GameSessionConfig.MODE_TRASH_TALK))
+	# session 必须入树，结束 release+free，避免 WebSocketPeer/Node 泄漏
+	var sess := PublicCasualNetworkSession.new()
+	root.add_child(sess)
+	sess.room_id = room
+	sess.seat = 0
+	sess.nbc = nbc
+	# 先挂 UI，再逐条真实 ingest，让 session/NBC 自动驱动展示
+	# （不依赖练习 local_authority；纯公共 session+NBC 路径）
+	sess.bind_playable_table(table)
+	for _i in range(8):
+		await process_frame
+
+	var fpt = table._table
+	if fpt == null:
+		print("[capture] #254 missing FourPlayerTable")
+		sess.release()
+		sess.queue_free()
+		table.queue_free()
+		return
+
+	for raw in events:
+		var d: Dictionary = raw
+		var ne: NetworkedEvent = NetworkedEvent.from_dict(d)
+		if ne == null:
+			print("[capture] #254 from_dict fail kind=", d.get("kind"))
+			continue
+		if not nbc.ingest_networked_event(ne):
+			print("[capture] #254 ingest fail kind=", d.get("kind"), " seq=", d.get("server_seq"))
+		await process_frame
+		if table.has_method("_sync_reward_feedback_if_advanced"):
+			table._sync_reward_feedback_if_advanced()
+	for _j in range(10):
+		await process_frame
+		if table.has_method("_sync_reward_feedback_if_advanced"):
+			table._sync_reward_feedback_if_advanced()
+
+	fpt.inject_caption_display({
+		"seat": 0, "utterance_id": "cap254_zh", "text": "燃烧起来热血立直",
+		"kind": "final", "source": "server_stt", "lang": "zh",
+		"character_id": "qiu_jue",
+	})
+	if fpt.has_method("open_inventory_drawer"):
+		fpt.open_inventory_drawer()
+	for _i in range(30):
+		await process_frame
+	var img2 := root.get_texture().get_image()
+	var out2 := "/tmp/shot_reward_feedback_254.png"
+	img2.save_png(out2)
+	print("[capture] saved ", out2, " size=", img2.get_width(), "x", img2.get_height(),
+		" inv=", fpt.inventory_count(), " feedback=", fpt.reward_feedback_text(), " iid=", iid0,
+		" path=PublicCasualNetworkSession+NBC real journal")
+	if fpt.has_method("close_inventory_drawer"):
+		fpt.close_inventory_drawer()
+	for _i in range(15):
+		await process_frame
+	var img3 := root.get_texture().get_image()
+	var out3 := "/tmp/shot_reward_feedback_254_hud.png"
+	img3.save_png(out3)
+	print("[capture] saved ", out3, " size=", img3.get_width(), "x", img3.get_height(),
+		" feedback=", fpt.reward_feedback_text())
+	# 断开引用链并释放 session（_exit_tree→release 会清 WebSocketPeer）
+	if table.has_method("_exit_tree"):
+		table._exit_tree()
+	table.queue_free()
+	sess.release()
+	sess.queue_free()
+	await process_frame
 	await process_frame

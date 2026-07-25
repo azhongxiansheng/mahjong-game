@@ -116,6 +116,17 @@ func apply_display(seat: int, data: Dictionary) -> void:
 	var raw_text := String(data.get("text", ""))
 	var partial: bool = bool(data.get("is_partial", false)) \
 		or String(data.get("kind", "")) == "partial"
+	# final/AI 属性徽标（display-only）
+	var badge_suffix := ""
+	var badges: Array = data.get("affinity_badges", [])
+	if typeof(badges) == TYPE_ARRAY and not badges.is_empty() and not partial:
+		var parts: PackedStringArray = PackedStringArray()
+		for b in badges:
+			var key := String(b)
+			var label := String(ModelScr.AFFINITY_LABELS.get(key, key))
+			parts.append("[%s]" % label)
+		if parts.size() > 0:
+			badge_suffix = " " + " ".join(parts)
 	# partial 展示层追加省略号；不污染模型原文
 	if partial:
 		body.text = _partial_display_text(raw_text)
@@ -123,10 +134,12 @@ func apply_display(seat: int, data: Dictionary) -> void:
 		src.modulate = Color(1, 1, 1, 0.72)
 		slot.modulate = Color(1, 1, 1, 0.85)
 	else:
-		body.text = raw_text
+		body.text = raw_text + badge_suffix
 		body.modulate = Color(1, 1, 1, 1)
 		src.modulate = Color(1, 1, 1, 1)
 		slot.modulate = Color(1, 1, 1, 1)
+		if bool(data.get("stt_failed", false)):
+			body.modulate = Color(1.0, 0.75, 0.45, 1.0)
 
 
 static func _partial_display_text(raw: String) -> String:
@@ -152,6 +165,24 @@ func ingest_caption(input: Dictionary) -> Dictionary:
 	_refresh_all()
 	_ensure_expiry_timer()
 	return res
+
+
+## 公开 character_id 补全徽标；不改 TTL、不重复 partial 动画。
+func ingest_caption_enrichment(input: Dictionary) -> Dictionary:
+	if _model == null:
+		_model = ModelScr.new()
+	# 优先 enrichment 路径
+	if input.has("character_id") and input.has("utterance_id") and input.has("seat"):
+		var en: Dictionary = _model.enrich_character(
+			int(input["seat"]),
+			String(input["utterance_id"]),
+			String(input["character_id"])
+		)
+		if bool(en.get("ok", false)):
+			_refresh_all()
+			return en
+	# 回落普通 ingest（含 stt_failed 首条）
+	return ingest_caption(input)
 
 
 func tick_display(now_ms: int) -> void:

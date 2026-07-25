@@ -100,7 +100,7 @@ func test_settled_display_only() -> void:
 	var p = ProjScr.new()
 	var r: Dictionary = p.project(_settled_display())
 	assert_true(bool(r.get("ok", false)), str(r))
-	assert_eq(String(r.get("message", "")), "仅展示，未发放")
+	assert_eq(String(r.get("message", "")), "仅本场统计，未发放")
 
 
 func test_cancelled_by_win_no_matrix_leak() -> void:

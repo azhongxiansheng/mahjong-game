@@ -1903,6 +1903,29 @@ func _next_action_command_id() -> String:
 	return "%s%012d" % [_ACTION_CMD_UUID_PREFIX, _action_cmd_seq]
 
 
+## E5-06 / #254：ITEM_USE 薄封装。复用 _next_action_command_id / apply_action → LocalLoopback。
+## 不扩权威语义；无 local_authority 时走既有 fail-closed 路径。
+func submit_item_use(item_instance_id: String, seat: int = 0) -> ActionResolution:
+	var iid := String(item_instance_id).strip_edges()
+	if iid.is_empty():
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if seat < 0 or seat > 3:
+		return ActionResolution.rejected(ActionResolution.WRONG_SEAT)
+	var ctx: DecisionContext = decision_context_for_seat(seat)
+	var decision_id := "00000000-0000-4000-8000-000000000001"
+	var hand_seq := 0
+	if state != null:
+		hand_seq = int(state.hand_seq)
+	if ctx != null:
+		decision_id = str(ctx.decision_id)
+		hand_seq = int(ctx.hand_seq)
+	var cmd: String = _next_action_command_id()
+	var action: Action = Action.item_use(
+		seat, iid, DEFAULT_ROOM_ID, cmd, decision_id, hand_seq, _action_cmd_seq
+	)
+	return apply_action(action, ActionSource.HUMAN)
+
+
 func _build_ai_discard_or_riichi_action(seat: Seat, actor: int) -> Action:
 	var to_discard: Tile = _get_discard_decision(seat, actor)
 	if to_discard == null:
