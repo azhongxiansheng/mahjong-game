@@ -198,6 +198,12 @@ godot --path godot -s tools/capture_screens.gd
 
 ---
 
+## 通用 Skill 路由
+
+- 多任务或外部 Agent 监工启用 `agent-task-supervisor`：默认只维护紧凑任务板与状态级等待，风险触发时才下钻，并由主 Agent 独立 Review 与复测；不得代替 worker 实现。
+- 通用 Skill 以 **Akasha Grimoire（阿卡夏秘典）** 合集为唯一事实源；本文件只保留麻将项目特有约束。游戏资产任务路由到 `game-asset-forge`，用户明确选择 Grok、Gemini、Claude Code 或 Codex CLI 时路由到对应 `*-cli-development` Skill。
+- 下述 Grok 单 Issue 闭环是本项目的强制细化规则；与通用 Skill 同时适用时取更具体、更严格者，不用通用说明覆盖或删减本节。
+
 ## Codex App + Grok CLI 单 Issue 闭环（强制）
 
 > 适用于用户明确选择由 Grok CLI 开发的任务。每个 GitHub Issue 使用一个 Codex App 任务；
