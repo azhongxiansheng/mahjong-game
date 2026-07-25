@@ -13,6 +13,7 @@ const REQUIRED_CONTROLS := [
 	"EnvironmentBackdrop",
 	"CharacterStage",
 	"ResidentPortrait",
+	"PlayerAvatar",
 	"TopResourceBar",
 	"ModeBannerRail",
 	"PracticeButton",
@@ -107,12 +108,15 @@ func test_layout_keeps_top_bottom_unclipped_on_larger_16_by_9_viewport() -> void
 	assert_lte(bottom.end.y, 1080.0, "放大窗口后底栏不得越过下边界")
 
 
-func test_stage_loads_only_approved_production_assets_and_real_atlas_regions() -> void:
+func test_stage_uses_existing_character_pool_portrait_and_real_atlas_regions() -> void:
+	var resident_cutout_path := ASSET_ROOT + "resident_lin_yeche_cutout.png"
+	var resident_avatar_path := ASSET_ROOT + "resident_lin_yeche_avatar.png"
 	for file_name in [
 		"lobby_environment_16x9.png",
-		"hero_male_transparent.png",
 		"mode_banner_sheet_transparent.png",
 		"side_omamori_icons_transparent.png",
+		"resident_lin_yeche_cutout.png",
+		"resident_lin_yeche_avatar.png",
 	]:
 		assert_true(ResourceLoader.exists(ASSET_ROOT + file_name), "批准资产必须进入生产加载路径：%s" % file_name)
 	assert_true(ResourceLoader.exists(STAGE_SCENE), "可见大厅必须来自独立 LobbyStage 场景")
@@ -120,8 +124,21 @@ func test_stage_loads_only_approved_production_assets_and_real_atlas_regions() -
 	await get_tree().process_frame
 	var backdrop := shell.get_node("%EnvironmentBackdrop") as TextureRect
 	var portrait := shell.get_node("%ResidentPortrait") as TextureRect
+	var avatar := shell.get_node("%PlayerAvatar") as TextureRect
+	var resident := CharacterPool.all()[0] as Character
 	assert_eq(backdrop.texture.resource_path, ASSET_ROOT + "lobby_environment_16x9.png")
-	assert_eq(portrait.texture.resource_path, ASSET_ROOT + "hero_male_transparent.png")
+	assert_not_null(resident)
+	assert_eq(resident.id, &"lin_yeche", "当前生产大厅默认角色身份必须来自 CharacterPool 首位")
+	assert_eq(portrait.get_meta("source_portrait_path", ""), resident.portrait_path,
+		"透明舞台立绘必须记录其真实 CharacterPool 来源")
+	assert_eq(avatar.get_meta("source_portrait_path", ""), resident.portrait_path,
+		"顶栏头像必须与舞台立绘来自同一生产角色图")
+	assert_eq(portrait.texture.resource_path, resident_cutout_path,
+		"大厅舞台必须消费现有角色图派生的透明 cutout")
+	assert_eq(avatar.texture.resource_path, resident_avatar_path,
+		"顶栏必须消费同源裁切头像")
+	assert_false(portrait.texture.resource_path.contains("hero_male_transparent"),
+		"被否决的漂移角色不得进入生产路径")
 	for button_name in ["PracticeButton", "MatchButton", "RulesBannerButton"]:
 		var banner := shell.get_node("%%%s" % button_name) as Button
 		var art := banner.find_child("BannerArt", true, false) as TextureRect

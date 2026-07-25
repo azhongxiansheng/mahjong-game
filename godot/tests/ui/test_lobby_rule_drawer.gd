@@ -334,6 +334,21 @@ func test_rule_drawer_consumes_real_lobby_material_assets() -> void:
 		"res://assets/ui/lobby_materials/lobby_choice_selected_9slice.png")
 
 
+func test_rule_drawer_groups_sections_and_footer_without_dead_center_space() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, ["DrawerContentGroup", "ModeSection", "DrawerFooter"]):
+		return
+	shell.request_practice()
+	await get_tree().create_timer(0.25).timeout
+	var group := shell.get_node("%DrawerContentGroup") as Control
+	var mode := shell.get_node("%ModeSection") as Control
+	var footer := shell.get_node("%DrawerFooter") as Control
+	assert_lt(footer.get_global_rect().position.y - mode.get_global_rect().end.y, 80.0,
+		"操作区必须跟随选择组，不能隔着无意义大空白")
+	assert_gt(group.get_global_rect().size.y, 360.0, "规则内容应形成完整纵向组")
+
+
 func test_capture_tool_has_expanded_rule_drawer_shot() -> void:
 	var script: GDScript = load("res://tools/capture_screens.gd")
 	assert_not_null(script)

@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3]
+[gd_scene load_steps=9 format=3]
 
 [ext_resource type="Script" path="res://ui/lobby/lobby_stage.gd" id="1_stage"]
 [ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/lobby_environment_16x9.png" id="2_environment"]
-[ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/hero_male_transparent.png" id="3_hero"]
+[ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/resident_lin_yeche_cutout.png" id="3_resident_cutout"]
 [ext_resource type="PackedScene" path="res://ui/lobby/lobby_mode_banner.tscn" id="4_banner"]
 [ext_resource type="PackedScene" path="res://ui/lobby/lobby_omamori_button.tscn" id="5_omamori"]
+[ext_resource type="Texture2D" path="res://assets/ui/lobby_stage/resident_lin_yeche_avatar.png" id="6_resident_avatar"]
 
 [sub_resource type="Gradient" id="Gradient_ground"]
 offsets = PackedFloat32Array(0, 0.65, 1)
@@ -51,11 +52,10 @@ color = Color(0.16, 0.025, 0.018, 0.12)
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
-anchor_right = 0.62
-anchor_bottom = 1.0
-offset_left = 22.0
-offset_top = 56.0
-offset_bottom = -46.0
+anchor_left = 0.015
+anchor_top = 0.075
+anchor_right = 0.535
+anchor_bottom = 0.96
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
@@ -66,14 +66,10 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -58.0
-offset_top = -10.0
-offset_right = 62.0
-offset_bottom = 74.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-texture = ExtResource("3_hero")
+texture = ExtResource("3_resident_cutout")
 expand_mode = 1
 stretch_mode = 5
 
@@ -105,6 +101,15 @@ grow_horizontal = 2
 [node name="ResourceRow" type="HBoxContainer" parent="TopResourceBar"]
 layout_mode = 2
 theme_override_constants/separation = 16
+
+[node name="PlayerAvatar" type="TextureRect" parent="TopResourceBar/ResourceRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(52, 52)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("6_resident_avatar")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="PlayerSeal" type="Label" parent="TopResourceBar/ResourceRow"]
 layout_mode = 2

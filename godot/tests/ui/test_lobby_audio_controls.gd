@@ -234,7 +234,10 @@ func test_audio_popup_tab_focus_stays_inside_popup() -> void:
 func test_audio_popup_consumes_omamori_case_and_slider_assets() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
-	if not _require_hooks(shell, ["BgmButton", "AudioPopupPanel", "BgmSlider", "SfxSlider"]):
+	if not _require_hooks(shell, [
+		"BgmButton", "AudioPopupPanel", "BgmSlider", "SfxSlider",
+		"RulesBannerButton", "BottomNav",
+	]):
 		return
 	_press(shell, "BgmButton")
 	await get_tree().process_frame
@@ -245,6 +248,13 @@ func test_audio_popup_consumes_omamori_case_and_slider_assets() -> void:
 	var panel_rect := (shell.get_node("%AudioPopupPanel") as Control).get_global_rect()
 	assert_true(Rect2(shell.global_position, DESIGN_SIZE).encloses(panel_rect),
 		"御守匣在 1600×900 下不得裁切")
+	assert_lte(panel_rect.size.x, 380.0, "音量御守匣必须保持紧凑")
+	assert_lte(panel_rect.size.y, 220.0, "音量御守匣不得退化成系统设置窗口")
+	var rules_rect := (shell.get_node("%RulesBannerButton") as Control).get_global_rect()
+	assert_false(panel_rect.intersects(rules_rect),
+		"音量御守匣不得遮住第三个主要玩法入口：popup=%s rules=%s" % [panel_rect, rules_rect])
+	assert_false(panel_rect.intersects((shell.get_node("%BottomNav") as Control).get_global_rect()),
+		"音量御守匣不得遮住底部导航")
 	for slider_name in ["BgmSlider", "SfxSlider"]:
 		var slider := shell.get_node("%%%s" % slider_name) as HSlider
 		assert_eq(slider.get_theme_icon("grabber").resource_path,

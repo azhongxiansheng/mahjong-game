@@ -11,6 +11,9 @@ const OPEN_SEC: float = 0.22
 
 var _room_kind: StringName = &"PRACTICE"
 var _panel: PanelContainer = null
+var _content_group: VBoxContainer = null
+var _mode_section: Control = null
+var _footer: Control = null
 var _title: Label = null
 var _back_btn: Button = null
 var _east_btn: Button = null
@@ -41,6 +44,9 @@ func get_hook_nodes() -> Array[Node]:
 	var nodes: Array[Node] = []
 	for n in [
 		_panel,
+		_content_group,
+		_mode_section,
+		_footer,
 		_back_btn,
 		_title,
 		_east_btn,
@@ -118,21 +124,24 @@ func _build_ui() -> void:
 
 	var root := VBoxContainer.new()
 	root.name = "DrawerRoot"
-	root.add_theme_constant_override("separation", DesignTokens.GAP_LOOSE)
+	root.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
 	root.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	root.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_panel.add_child(root)
 
 	root.add_child(_build_header())
-	root.add_child(_build_round_section())
-	root.add_child(_build_mode_section())
-
-	var spacer := Control.new()
-	spacer.name = "DrawerSpacer"
-	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	root.add_child(spacer)
-
-	root.add_child(_build_footer())
+	_content_group = VBoxContainer.new()
+	_content_group.name = "DrawerContentGroup"
+	_content_group.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_content_group.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_content_group.alignment = BoxContainer.ALIGNMENT_CENTER
+	_content_group.add_theme_constant_override("separation", 22)
+	root.add_child(_content_group)
+	_content_group.add_child(_build_round_section())
+	_mode_section = _build_mode_section()
+	_content_group.add_child(_mode_section)
+	_footer = _build_footer()
+	_content_group.add_child(_footer)
 	_apply_title()
 	_reset_selection()
 
@@ -170,6 +179,7 @@ func _build_header() -> Control:
 func _build_round_section() -> Control:
 	var col := VBoxContainer.new()
 	col.name = "RoundSection"
+	col.custom_minimum_size.y = 104
 	col.add_theme_constant_override("separation", DesignTokens.GAP_TIGHT)
 
 	var caption := Label.new()
@@ -197,6 +207,7 @@ func _build_round_section() -> Control:
 func _build_mode_section() -> Control:
 	var col := VBoxContainer.new()
 	col.name = "ModeSection"
+	col.custom_minimum_size.y = 244
 	col.add_theme_constant_override("separation", DesignTokens.GAP_TIGHT)
 
 	var caption := Label.new()

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://by8724scgctov"
-path="res://.godot/imported/hero_male_transparent.png-4f8611b2d03306e44b11543055f4f50f.ctex"
+uid="uid://b8j5nfr4eac51"
+path="res://.godot/imported/resident_lin_yeche_cutout.png-dd35e775c38f571b1175e13defa8ab26.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/lobby_stage/hero_male_transparent.png"
-dest_files=["res://.godot/imported/hero_male_transparent.png-4f8611b2d03306e44b11543055f4f50f.ctex"]
+source_file="res://assets/ui/lobby_stage/resident_lin_yeche_cutout.png"
+dest_files=["res://.godot/imported/resident_lin_yeche_cutout.png-dd35e775c38f571b1175e13defa8ab26.ctex"]
 
 [params]
 

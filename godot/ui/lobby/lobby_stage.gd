@@ -15,17 +15,41 @@ signal sfx_requested(source: Control)
 
 const HOOK_NAMES := [
 	"LobbyStage", "EnvironmentBackdrop", "CharacterStage", "ResidentPortrait",
-	"TopResourceBar", "ModeBannerRail", "PracticeButton", "MatchButton",
+	"PlayerAvatar", "TopResourceBar", "ModeBannerRail", "PracticeButton", "MatchButton",
 	"RulesBannerButton", "OmamoriRail", "BottomNav", "StatusLabel",
 	"NoticeButton", "HelpButton", "SettingsButton", "CharacterCodexButton",
 	"ItemCodexButton", "RulesButton", "BgmButton", "SfxButton",
 ]
 
+const DEFAULT_RESIDENT_ID := &"lin_yeche"
+const DEFAULT_RESIDENT_CUTOUT := "res://assets/ui/lobby_stage/resident_lin_yeche_cutout.png"
+const DEFAULT_RESIDENT_AVATAR := "res://assets/ui/lobby_stage/resident_lin_yeche_avatar.png"
+
 
 func _ready() -> void:
+	_apply_existing_resident()
 	_style_chrome()
 	_connect_actions()
 	_configure_focus_path()
+
+
+func _apply_existing_resident() -> void:
+	var characters := CharacterPool.all()
+	if characters.is_empty():
+		return
+	var resident := characters[0] as Character
+	if resident == null or resident.id != DEFAULT_RESIDENT_ID:
+		return
+	if resident.portrait_path == "" or not ResourceLoader.exists(resident.portrait_path):
+		return
+	if not ResourceLoader.exists(DEFAULT_RESIDENT_CUTOUT) or not ResourceLoader.exists(DEFAULT_RESIDENT_AVATAR):
+		return
+	var portrait := $CharacterStage/ResidentPortrait as TextureRect
+	var avatar := $TopResourceBar/ResourceRow/PlayerAvatar as TextureRect
+	portrait.texture = load(DEFAULT_RESIDENT_CUTOUT) as Texture2D
+	avatar.texture = load(DEFAULT_RESIDENT_AVATAR) as Texture2D
+	portrait.set_meta("source_portrait_path", resident.portrait_path)
+	avatar.set_meta("source_portrait_path", resident.portrait_path)
 
 
 func get_hook_nodes() -> Array[Node]:

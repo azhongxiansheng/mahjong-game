@@ -183,6 +183,28 @@ func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
 		assert_eq((shell.get_node("%CodexDetailTitle") as Label).text, expected)
 
 
+func test_codex_has_weighted_header_tabs_and_three_layer_body() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, [
+		"CharacterCodexButton", "CodexHeaderPlaque", "CodexTabs", "CodexStage",
+		"CodexRoster", "CodexDetailScroll",
+	]):
+		return
+	_press(shell, "CharacterCodexButton")
+	await get_tree().process_frame
+	var header := shell.get_node("%CodexHeaderPlaque") as Control
+	var tabs := shell.get_node("%CodexTabs") as Control
+	var stage := shell.get_node("%CodexStage") as Control
+	var roster := shell.get_node("%CodexRoster") as Control
+	var detail := shell.get_node("%CodexDetailScroll") as Control
+	assert_lt(header.get_global_rect().end.y, tabs.get_global_rect().position.y + 4.0)
+	assert_lt(tabs.get_global_rect().end.y, stage.get_global_rect().position.y + 4.0)
+	assert_gt(tabs.get_global_rect().size.y, 50.0, "资料馆页签必须具有一级导航权重")
+	assert_lt(stage.get_global_rect().position.x, roster.get_global_rect().position.x)
+	assert_lt(roster.get_global_rect().position.x, detail.get_global_rect().position.x)
+
+
 func test_codex_and_audio_are_mutually_exclusive_and_tab_stays_in_top_layer() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame

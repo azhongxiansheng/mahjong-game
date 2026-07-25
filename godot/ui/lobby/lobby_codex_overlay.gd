@@ -12,6 +12,8 @@ const PAGE_RULES := &"rules"
 var _current_page: StringName = PAGE_CHARACTERS
 var _catalog: LobbyCodexCatalog = LobbyCodexCatalog.new()
 var _panel: PanelContainer = null
+var _header_plaque: PanelContainer = null
+var _tabs: HBoxContainer = null
 var _stage: PanelContainer = null
 var _stage_body: VBoxContainer = null
 var _roster: VBoxContainer = null
@@ -49,6 +51,8 @@ func get_hook_nodes() -> Array[Node]:
 	for n in [
 		self,
 		_panel,
+		_header_plaque,
+		_tabs,
 		_stage,
 		_roster,
 		_detail_panel,
@@ -171,45 +175,55 @@ func _build_ui() -> void:
 
 
 func _build_header() -> Control:
+	_header_plaque = PanelContainer.new()
+	_header_plaque.name = "CodexHeaderPlaque"
+	_header_plaque.custom_minimum_size.y = 66
+	_header_plaque.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
+		DesignTokens.LOBBY_WOOD_NAMEPLATE, 54, 20, 54, 20, 30, 9
+	))
+
 	var header := HBoxContainer.new()
 	header.name = "CodexHeader"
 	header.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
+	_header_plaque.add_child(header)
 
 	var title := Label.new()
 	title.name = "CodexTitle"
 	title.text = "资料馆"
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", DesignTokens.FONT_TITLE)
-	title.add_theme_color_override("font_color", DesignTokens.LOBBY_WASHI_TEXT)
+	title.add_theme_font_size_override("font_size", 30)
+	title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
 	header.add_child(title)
 
-	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.PRIMARY, Vector2(120, DesignTokens.BUTTON_H))
+	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.PRIMARY, Vector2(140, 52))
 	_close_btn.name = "CodexCloseButton"
 	_close_btn.focus_mode = Control.FOCUS_ALL
 	DesignTokens.apply_lobby_material_button(_close_btn, true)
 	_close_btn.pressed.connect(_on_close_pressed)
 	header.add_child(_close_btn)
-	return header
+	return _header_plaque
 
 
 func _build_tabs() -> Control:
-	var row := HBoxContainer.new()
-	row.name = "CodexTabs"
-	row.add_theme_constant_override("separation", DesignTokens.GAP_TIGHT)
+	_tabs = HBoxContainer.new()
+	_tabs.name = "CodexTabs"
+	_tabs.custom_minimum_size.y = 56
+	_tabs.alignment = BoxContainer.ALIGNMENT_CENTER
+	_tabs.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
 	_tab_group = ButtonGroup.new()
 
 	_character_tab = _make_tab("CodexCharacterTab", "角色", PAGE_CHARACTERS)
 	_item_tab = _make_tab("CodexItemTab", "道具", PAGE_ITEMS)
 	_rules_tab = _make_tab("CodexRulesTab", "规则", PAGE_RULES)
-	row.add_child(_character_tab)
-	row.add_child(_item_tab)
-	row.add_child(_rules_tab)
-	return row
+	_tabs.add_child(_character_tab)
+	_tabs.add_child(_item_tab)
+	_tabs.add_child(_rules_tab)
+	return _tabs
 
 
 func _make_tab(btn_name: String, text: String, page: StringName) -> Button:
-	var btn := DesignTokens.make_button(text, DesignTokens.BtnRole.SECONDARY, Vector2(140, DesignTokens.BUTTON_H))
+	var btn := DesignTokens.make_button(text, DesignTokens.BtnRole.SECONDARY, Vector2(176, 54))
 	btn.name = btn_name
 	btn.focus_mode = Control.FOCUS_ALL
 	btn.toggle_mode = true
