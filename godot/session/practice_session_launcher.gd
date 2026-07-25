@@ -1,8 +1,9 @@
 class_name PracticeSessionLauncher extends RefCounted
 
-# E2-01（#231）：练习场启动器。
+# E2-01（#231）+ #253：练习场启动器。
 # 只消费已验证 GameSessionConfig；拒绝 PUBLIC_CASUAL 与非法配置。
-# 返回配置好的 GameDriver，不绑定 UI、不跑业务循环、不复用 Run 路径。
+# TRASH_TALK：每局 PBC 仅以 meta local_authority 持有对应 LocalLoopback（无 bundle 双权威）。
+# STANDARD：无道具/奖励权威，仅 PBC。
 
 const HANDS_PER_ROUND: int = 4
 const EAST_TOTAL_HANDS: int = 4
@@ -14,7 +15,6 @@ func launch(config: GameSessionConfig) -> GameDriver:
 		return null
 	if config.room_kind != GameSessionConfig.ROOM_PRACTICE:
 		return null
-	# 再过一遍正式校验，拒绝残缺/非法 Config
 	var verified := GameSessionConfig.create_validated(
 		config.room_kind,
 		config.round_kind,
@@ -34,15 +34,16 @@ func launch(config: GameSessionConfig) -> GameDriver:
 	elif verified.round_kind != GameSessionConfig.ROUND_EAST:
 		return null
 
-	# E2-04：构造边界按 game_mode 装配模块（STANDARD 四零 / TRASH_TALK 最小对象）
 	var modules: ModeModuleBundle = ModeModuleBundle.from_config(verified)
 	if modules == null:
 		return null
+	if modules.is_trash_talk() and modules.item_inventory != null:
+		modules.item_inventory.set_match_namespace(str(verified.session_id))
 
 	var driver := GameDriver.new(verified.seed, total_hands, HANDS_PER_ROUND)
 	driver.mode_modules = modules
-	# 练习玩家席语义：PlayableBattleController；不绑定 UI、不进入 run 循环。
-	# 签名对齐 GameDriver 开局工厂 5 参（含 hand_seq）。
+	var cfg_ref: GameSessionConfig = verified
+	var mods_ref: ModeModuleBundle = modules
 	driver.bc_factory = func(
 		hand_seed: int,
 		dealer: int,
@@ -53,7 +54,13 @@ func launch(config: GameSessionConfig) -> GameDriver:
 		var pbc := PlayableBattleController.new(
 			hand_seed, dealer, use_heuristic, round_wind, hand_seq
 		)
-		# E2-04：模式模块进入真实 PBC 行动入口与 Momentum 装配
-		pbc.bind_mode_modules(modules)
+		pbc.bind_mode_modules(mods_ref)
+		if mods_ref.is_trash_talk():
+			# 注入 PBC：LocalLoopback 弱引用持有；权威只挂本局 meta
+			var auth := LocalLoopbackServer.new(cfg_ref, dealer, pbc, mods_ref)
+			pbc.set_meta("local_authority", auth)
+			if not auth.start():
+				pbc.remove_meta("local_authority")
+				return null
 		return pbc
 	return driver

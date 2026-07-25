@@ -17,7 +17,18 @@ const REWARD_CLOCK_BASE_MS := 1_700_000_000_000
 
 var _config: GameSessionConfig = null
 var _dealer_seat: int = 0
-var _bc: BattleController = null
+## 自建 BC 强拥有；Practice 注入 BC 仅 WeakRef（不环引用 PBC）。
+var _bc_owned: BattleController = null
+var _bc_injected: WeakRef = null
+var _bc: BattleController:
+	get:
+		if _bc_injected != null:
+			var r = _bc_injected.get_ref()
+			return r as BattleController
+		return _bc_owned
+	set(value):
+		_bc_owned = value
+		_bc_injected = null
 var _room_id: String = ""
 var _server_seq: int = 0
 var _started: bool = false
@@ -51,9 +62,30 @@ var _reward_match_ended = null
 var _reward_claim_seen_open: bool = false
 ## 流局/终场 scoring close 因 grace 延迟：须先 SETTLED 再 HAND_SETTLED
 var _reward_hand_settled_deferred: bool = false
+## #253：权威内部 apply 中，禁止 PBC 再路由回 Loopback
+var _internal_apply: bool = false
 
 
-func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
+func is_processing_internal() -> bool:
+	return _internal_apply
+
+
+func _apply_on_bc(action: Action, source: StringName) -> ActionResolution:
+	if _bc == null:
+		return null
+	_internal_apply = true
+	var res: ActionResolution = _bc.apply_action(action, source)
+	_internal_apply = false
+	return res
+
+
+## inject_bc / inject_modules：练习场与 PBC 共享同一 BC+模块（#253 生产入口）。
+func _init(
+	config: GameSessionConfig = null,
+	dealer_seat: int = 0,
+	inject_bc: BattleController = null,
+	inject_modules: ModeModuleBundle = null
+) -> void:
 	_config = config
 	_dealer_seat = dealer_seat
 	_server_seq = 0
@@ -78,16 +110,28 @@ func _init(config: GameSessionConfig = null, dealer_seat: int = 0) -> void:
 		var parts: Array = config.participants
 		if parts.size() == 4:
 			_participants = parts.duplicate()
-		mode_modules = ModeModuleBundle.from_config(config)
+		if inject_modules != null:
+			mode_modules = inject_modules
+		else:
+			mode_modules = ModeModuleBundle.from_config(config)
 		# #252：仅 TRASH_TALK 注册 reward_window；STANDARD 严格仅 core_table
 		if mode_modules != null and mode_modules.is_trash_talk():
 			snapshot_registry = SnapshotModuleRegistry.make_trash_talk()
-		_bc = BattleController.new(config.seed, dealer_seat, false, TileId.E, 0)
+			# #253：实例 ID 公开 match 命名空间 = session_id（可回放、跨房间唯一）
+			if mode_modules.item_inventory != null:
+				mode_modules.item_inventory.set_match_namespace(str(config.session_id))
+		if inject_bc != null:
+			_bc_owned = null
+			_bc_injected = weakref(inject_bc)
+		else:
+			_bc_injected = null
+			_bc_owned = BattleController.new(config.seed, dealer_seat, false, TileId.E, 0)
 		if _bc != null:
 			_bc.bind_mode_modules(mode_modules)
 	else:
 		_room_id = ""
-		_bc = null
+		_bc_owned = null
+		_bc_injected = null
 
 
 func start() -> bool:
@@ -115,41 +159,106 @@ func start() -> bool:
 	var frozen_cache: Dictionary = _command_cache.duplicate(true)
 	var frozen_started: bool = _started
 	var frozen_hand_start: Array = _hand_start_scores.duplicate()
+	# #253 Round 8：prepare 与后续 mutation 同一事务；含 inv/slot/registry index
+	var frozen_rw: Dictionary = _reward_capture_state()
+	var frozen_rw_clock: int = _reward_authority_now_ms
+	var frozen_claim_seen: bool = _reward_claim_seen_open
+	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
+	var frozen_hand_settled: bool = _hand_settled_emitted
 
+	# #253：跨局库存实例 → 新 BC.registry 重绑（relic held / delayed armed）
+	if mode_modules != null and mode_modules.is_trash_talk() and _item_module() != null:
+		var prep: Dictionary = ItemAuthority.prepare_new_hand(
+			_bc, _item_module(), _ability_slots()
+		)
+		if not bool(prep.get("ok", false)):
+			# prepare 内部已回滚自身 mutation；再冻结合约保证与调用前一致
+			_reward_restore_state(frozen_rw)
+			return false
+	# 跨局：共享 RewardWindow 与新 BC.hand_seq 不一致时 hard_reset，由 _maybe_open 重开
+	var rw_boot: RewardWindowModule = _reward_module()
+	if rw_boot != null and _bc != null and _bc.state != null:
+		if int(rw_boot.hand_seq) != int(_bc.state.hand_seq) \
+				or rw_boot.phase == RewardWindowModule.PHASE_OPEN \
+				or rw_boot.phase == RewardWindowModule.PHASE_CLOSING:
+			rw_boot.hard_reset()
 	# DRAW → 摸牌；ROOM_SNAPSHOT(IDLE) → OPENED → ROOM_SNAPSHOT(OPEN) → TURN_PROMPT
 	# 开窗后补发新鲜 SNAP，供 prompt/重连持有 OPEN 投影（非仅 IDLE）
 	_ensure_drawn()
+	# #253：start 首摸可触发跨局 armed delayed；须在首 SNAP 前 finalize，避免库存仍显示 armed
+	if not _finalize_item_triggers():
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start
+		)
 	if not publish_snapshot():
-		_reward_hard_reset()
-		if _rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache):
-			_started = frozen_started
-			_hand_start_scores = frozen_hand_start
-		return false
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start
+		)
 	# E5-04 / #252：权威开局快照后、首条 TURN_PROMPT 前开窗
 	if not _maybe_open_reward_window():
-		_reward_hard_reset()
-		if _rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache):
-			_started = frozen_started
-			_hand_start_scores = frozen_hand_start
-		return false
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start
+		)
 	# 开窗后 OPEN 投影 SNAP（seq 连续；失败全回滚）
 	if _reward_module() != null:
 		if not publish_snapshot():
-			_reward_hard_reset()
-			if _rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache):
-				_started = frozen_started
-				_hand_start_scores = frozen_hand_start
-			return false
+			return _fail_start_rollback(
+				snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+				frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+				frozen_hand_settled, frozen_started, frozen_hand_start
+			)
+	# AI 庄：先推进到真人决策入口再发 TURN/CLAIM prompt（否则 AI TURN 会令 start 失败）
+	if not _auto_advance_ai():
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start
+		)
+	if bool(_bc.get("_settled")):
+		_hand_start_scores = start_scores_candidate
+		_hand_settled_emitted = false
+		_started = true
+		return true
 	if not _emit_private_prompt():
-		_reward_hard_reset()
-		if _rollback_transaction(snap, frozen_seq, frozen_journals, frozen_cache):
-			_started = frozen_started
-			_hand_start_scores = frozen_hand_start
-		return false
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start
+		)
 	_hand_start_scores = start_scores_candidate
 	_hand_settled_emitted = false
 	_started = true
 	return true
+
+
+## start 任一后续步骤失败：ARS + 服务端字段 + inv/slot/registry index 精确回调用前。
+func _fail_start_rollback(
+	snap: AuthorityReplaySnapshot,
+	frozen_seq: int,
+	frozen_journals: Array,
+	frozen_cache: Dictionary,
+	frozen_rw: Dictionary,
+	frozen_rw_clock: int,
+	frozen_claim_seen: bool,
+	frozen_hand_deferred: bool,
+	frozen_hand_settled: bool,
+	frozen_started: bool,
+	frozen_hand_start: Array
+) -> bool:
+	if _rollback_transaction(
+		snap, frozen_seq, frozen_journals, frozen_cache,
+		frozen_rw, frozen_rw_clock, frozen_claim_seen,
+		frozen_hand_deferred, frozen_hand_settled
+	):
+		_started = frozen_started
+		_hand_start_scores = frozen_hand_start
+	return false
 
 
 func fail_next_snapshot_for_test() -> void:
@@ -255,6 +364,9 @@ func try_publish_business_event(kind: String, payload: Dictionary) -> bool:
 
 
 ## 内部发布：不检查 _started（供 start 事务内 OPEN 等）。
+## view_hash 对齐该席最后已提交 ROOM_SNAPSHOT（与 TURN_PROMPT 同语义），
+## 使不改 core 的业务事件走 NBC same-hash 提交；模块投影由后续 SNAP 覆盖。
+## 改 core/库存的领域批请用 _publish_domain_events_with_matching_snapshot。
 func _publish_business_event_core(kind: String, payload: Dictionary) -> bool:
 	if _rollback_failed:
 		return false
@@ -267,7 +379,10 @@ func _publish_business_event_core(kind: String, payload: Dictionary) -> bool:
 	var pl: Dictionary = payload.duplicate(true) if typeof(payload) == TYPE_DICTIONARY else {}
 	var prepared: Array = []
 	for seat in range(4):
-		var vh: String = ProtocolViewCodec.compute_view_hash(pl)
+		var vh: String = _last_committed_snapshot_view_hash(seat)
+		if vh.is_empty() or vh.length() != 64:
+			# 尚无 SNAP（极早路径）：回退 payload hash
+			vh = ProtocolViewCodec.compute_view_hash(pl)
 		if vh.is_empty() or vh.length() != 64:
 			return false
 		var ne: NetworkedEvent = NetworkedEvent.make(kind, candidate, _room_id, pl, vh)
@@ -290,6 +405,47 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 		return _reject_result("", "INVALID_ACTION")
 	if _rollback_failed:
 		return _reject_result(action.command_id, ERROR_EVENT_PUBLISH_FAILED)
+	# 公网/真人提交：source 固定 HUMAN；bound_session_id 进入上游安全指纹。
+	return _process_action_core(
+		action, true, ActionSource.HUMAN, bound_session_id
+	)
+
+
+## #253：练习 PBC AI / REPLAY 内部路径；须传入原始 source；公网不得调用伪造 HUMAN。
+func process_internal_action(
+	action: Action, source: StringName = ActionSource.AI
+) -> ActionResolution:
+	if action == null:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if not ActionSource.is_valid(source):
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	# 内部路径不得伪装 HUMAN（真人必须 submit_action）
+	if source == ActionSource.HUMAN:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if _rollback_failed or not _started or _bc == null:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	var cr: CommandResult = _process_action_core(action, false, source, "")
+	if cr == null:
+		return ActionResolution.rejected(ActionResolution.INVALID_ACTION)
+	if cr.status == "ACCEPTED":
+		return ActionResolution.success([])
+	var code := StringName(cr.error_code)
+	var mapped: ActionResolution = ActionResolution.rejected(code)
+	if mapped == null:
+		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+	return mapped
+
+
+func _process_action_core(
+	action: Action,
+	require_human: bool,
+	source: StringName,
+	bound_session_id: String = ""
+) -> CommandResult:
+	if action == null:
+		return _reject_result("", "INVALID_ACTION")
+	if not ActionSource.is_valid(source):
+		return _reject_result(action.command_id, "INVALID_ACTION")
 
 	# 业务指纹：仅 Action v1 exact-schema + 可规范化 payload 后形成；失败 → 不缓存
 	var fp: String = _business_fingerprint(action, bound_session_id)
@@ -310,7 +466,7 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 		var cr_ns := _reject_result(cmd, ERROR_NOT_STARTED)
 		_cache_command(cmd, fp, cr_ns)
 		return _clone_cr(cr_ns)
-	if not _is_human(int(action.seat)):
+	if require_human and not _is_human(int(action.seat)):
 		var cr_un := _reject_result(cmd, ERROR_UNAUTHORIZED)
 		_cache_command(cmd, fp, cr_un)
 		return _clone_cr(cr_un)
@@ -332,7 +488,7 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 		_cache_command(cmd, fp, cr_mode)
 		return _clone_cr(cr_mode)
 
-	# apply 前捕获 ARS + RewardWindow；capture/hash 失败 → 非缓存 EVENT_PUBLISH_FAILED
+	# apply 前捕获 ARS + RewardWindow/库存；capture/hash 失败 → 非缓存 EVENT_PUBLISH_FAILED
 	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
 	if snap == null:
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
@@ -350,6 +506,14 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
 
+	# #253：ITEM_USE 仅命令——不发 ACTION_APPLIED / 无 ITEM_USE 回声
+	if action.kind == "ITEM_USE":
+		return _submit_item_use(
+			action, cmd, fp, snap, frozen_seq, frozen_journals, frozen_cache,
+			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled
+		)
+
 	# 捕获弃牌源（DISCARD/RIICHI）
 	var discard_source := "HAND"
 	var discarded_tile: Tile = null
@@ -362,7 +526,7 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 					and int(seat_obj.last_drawn_instance_id) == iid:
 				discard_source = "DRAWN"
 
-	var res: ActionResolution = _bc.apply_action(action, ActionSource.HUMAN)
+	var res: ActionResolution = _apply_on_bc(action, source)
 	if res == null or not res.accepted:
 		var code := "INVALID_ACTION"
 		if res != null:
@@ -455,6 +619,15 @@ func submit_action(action: Action, bound_session_id: String = "") -> CommandResu
 					)
 					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
+	# #253：领域事件后结算延迟消耗品触发
+	if not _finalize_item_triggers():
+		_rollback_transaction(
+			snap, frozen_seq, frozen_journals, frozen_cache,
+			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled
+		)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+
 	var cr_ok := CommandResult.from_dict({
 		"protocol_version": ProtocolConstants.PROTOCOL_VERSION,
 		"command_id": cmd,
@@ -489,11 +662,17 @@ func _rollback_transaction(
 	_server_seq = frozen_seq
 	_journals = frozen_journals
 	_command_cache = frozen_cache
+	var restored_inv_reg := false
 	if not frozen_rw.is_empty():
 		if not _reward_restore_state(frozen_rw):
 			_rollback_failed = true
 			_started = false
 			return false
+		restored_inv_reg = frozen_rw.has("_inv_reg")
+	# #253：有同进程 skill 冻结时已精确恢复；否则 ARS 后按 registry 重绑
+	var inv_rb: ItemInventoryModule = _item_module()
+	if inv_rb != null and _bc != null and not restored_inv_reg:
+		inv_rb.rebind_registered_from_registry(_bc.registry)
 	if frozen_rw_clock >= 0:
 		_reward_authority_now_ms = frozen_rw_clock
 	_reward_claim_seen_open = frozen_claim_seen
@@ -653,13 +832,16 @@ func _reject_result(cmd: String, code: String) -> CommandResult:
 
 func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 	# #241：经 registry 组合 modules；组合器不改写模块业务 payload
-	# #252：TRASH_TALK 时把真实 RewardWindowModule 传入 ctx（公开 DTO，无 seed/ARS）
+	# #252/#253：TRASH_TALK 传入 RewardWindow + ItemInventory（按席裁剪）
 	if snapshot_registry == null or _bc == null:
 		return {}
 	var ctx: Dictionary = {"state": _bc.state}
 	var rw: RewardWindowModule = _reward_module()
 	if rw != null:
 		ctx["reward_window"] = rw
+	var inv: ItemInventoryModule = _item_module()
+	if inv != null:
+		ctx["item_inventory"] = inv
 	var ser: Dictionary = snapshot_registry.serialize_modules(ctx, seat)
 	if not bool(ser.get("ok", false)):
 		return {}
@@ -909,7 +1091,7 @@ func step_ai_once() -> Dictionary:
 				disc_tile = so.hand.find_by_instance_id(iid)
 				if disc_tile != null and int(so.last_drawn_instance_id) == iid:
 					dsrc = "DRAWN"
-		var res: ActionResolution = _bc.apply_action(act, ActionSource.AI)
+		var res: ActionResolution = _apply_on_bc(act, ActionSource.AI)
 		if res == null or not res.accepted:
 			# 领域拒绝：不推进；回滚任何意外
 			_rollback_transaction(
@@ -964,7 +1146,7 @@ func step_ai_once() -> Dictionary:
 			var pass_act: Action = _build_ai_claim_action(si3)
 			if pass_act == null:
 				continue
-			var r2: ActionResolution = _bc.apply_action(pass_act, ActionSource.AI)
+			var r2: ActionResolution = _apply_on_bc(pass_act, ActionSource.AI)
 			if r2 == null or not r2.accepted:
 				continue
 			if _emit_action_applied(pass_act, null, "HAND") < 1:
@@ -1465,7 +1647,7 @@ func _auto_advance_ai() -> bool:
 					disc_tile = so.hand.find_by_instance_id(iid)
 					if disc_tile != null and int(so.last_drawn_instance_id) == iid:
 						dsrc = "DRAWN"
-			var res: ActionResolution = _bc.apply_action(act, ActionSource.AI)
+			var res: ActionResolution = _apply_on_bc(act, ActionSource.AI)
 			if res == null or not res.accepted:
 				return true
 			# AA+SNAP 内已 RW 预消费；禁止再 _reward_on_action_applied（防双计数/双 append）
@@ -1509,7 +1691,7 @@ func _auto_advance_claim_only() -> bool:
 		var pass_act: Action = _build_ai_claim_action(si3)
 		if pass_act == null:
 			continue
-		var r2: ActionResolution = _bc.apply_action(pass_act, ActionSource.AI)
+		var r2: ActionResolution = _apply_on_bc(pass_act, ActionSource.AI)
 		if r2 == null or not r2.accepted:
 			continue
 		# AA+SNAP 内已 RW 预消费
@@ -1706,6 +1888,10 @@ func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 		(_journals[seat2] as Array).append(prepared[seat2])
 	_hand_settled_emitted = true
 	_reward_hand_settled_deferred = false
+	# #253：终场和牌 / 终场后 MATCH_SETTLED 清库存
+	if _is_match_ended_now():
+		if not _emit_match_settled_and_clear_items():
+			return false
 	return true
 
 
@@ -1742,19 +1928,394 @@ func _reward_hard_reset() -> void:
 
 
 func _reward_capture_state() -> Dictionary:
+	# #253：同事务冻结 RewardWindow + 库存/武装 + registry skill 索引（回滚原子）。
+	var out := {
+		"_rw": {},
+		"_inv": {},
+		"_inv_reg": {},
+		"_slots": [],
+	}
 	var rw: RewardWindowModule = _reward_module()
-	if rw == null:
-		return {}
-	return rw.capture_state()
+	if rw != null:
+		out["_rw"] = rw.capture_state()
+	var inv: ItemInventoryModule = _item_module()
+	if inv != null:
+		out["_inv"] = inv.capture_state()
+		out["_inv_reg"] = inv.duplicate_registered_skills()
+	out["_slots"] = _capture_ability_slots_arm()
+	return out
 
 
 func _reward_restore_state(snap: Dictionary) -> bool:
-	var rw: RewardWindowModule = _reward_module()
-	if rw == null:
-		return snap.is_empty()
 	if snap.is_empty():
+		return true
+	# 兼容旧纯 RW 快照（无 _rw 包装）
+	var rw_snap: Dictionary = {}
+	var inv_snap: Dictionary = {}
+	var inv_reg: Dictionary = {}
+	var slots_snap: Array = []
+	var has_inv_reg := false
+	if snap.has("_rw") or snap.has("_inv") or snap.has("_slots") or snap.has("_inv_reg"):
+		if typeof(snap.get("_rw", null)) == TYPE_DICTIONARY:
+			rw_snap = snap["_rw"]
+		if typeof(snap.get("_inv", null)) == TYPE_DICTIONARY:
+			inv_snap = snap["_inv"]
+		if snap.has("_inv_reg") and typeof(snap.get("_inv_reg", null)) == TYPE_DICTIONARY:
+			inv_reg = snap["_inv_reg"]
+			has_inv_reg = true
+		if typeof(snap.get("_slots", null)) == TYPE_ARRAY:
+			slots_snap = snap["_slots"]
+	else:
+		rw_snap = snap
+	var rw: RewardWindowModule = _reward_module()
+	if rw != null:
+		if rw_snap.is_empty():
+			return false
+		if not rw.restore_state(rw_snap):
+			return false
+	elif not rw_snap.is_empty():
 		return false
-	return rw.restore_state(snap)
+	var inv: ItemInventoryModule = _item_module()
+	if inv != null:
+		if not inv_snap.is_empty() and not inv.restore_state(inv_snap):
+			return false
+		if has_inv_reg:
+			inv.restore_registered_skills(inv_reg)
+	if not _restore_ability_slots_arm(slots_snap):
+		return false
+	return true
+
+
+## #253：ITEM_USE 专用事务（幂等由 command cache；成功发 CONSUMED/APPLIED + 匹配 ROOM_SNAPSHOT）。
+func _submit_item_use(
+	action: Action,
+	cmd: String,
+	fp: String,
+	snap: AuthorityReplaySnapshot,
+	frozen_seq: int,
+	frozen_journals: Array,
+	frozen_cache: Dictionary,
+	frozen_rw: Dictionary,
+	frozen_rw_clock: int,
+	frozen_claim_seen: bool,
+	frozen_hand_deferred: bool,
+	frozen_hand_settled: bool
+) -> CommandResult:
+	# 阶段/decision：须有该席当前 decision 窗且 decision_id 对齐
+	if _bc == null or _bc.state == null:
+		var cr0 := _reject_result(cmd, "INVALID_ACTION")
+		_cache_command(cmd, fp, cr0)
+		return _clone_cr(cr0)
+	var seat: int = int(action.seat)
+	var ctx: DecisionContext = _bc.decision_context_for_seat(seat)
+	if ctx == null:
+		var cr1 := _reject_result(cmd, "WRONG_DECISION")
+		_cache_command(cmd, fp, cr1)
+		return _clone_cr(cr1)
+	if str(action.decision_id) != str(ctx.decision_id):
+		var cr2 := _reject_result(cmd, "WRONG_DECISION")
+		_cache_command(cmd, fp, cr2)
+		return _clone_cr(cr2)
+	if int(action.hand_seq) != int(_bc.state.hand_seq):
+		var cr3 := _reject_result(cmd, "WRONG_HAND")
+		_cache_command(cmd, fp, cr3)
+		return _clone_cr(cr3)
+	var item_instance_id := String(action.payload.get("item_instance_id", ""))
+	var use_r: Dictionary = ItemAuthority.use_item(
+		_bc, _item_module(), seat, item_instance_id, cmd
+	)
+	if not bool(use_r.get("accepted", false)):
+		var code := String(use_r.get("error_code", "INVALID_ACTION"))
+		var cr_rej := _reject_result(cmd, code)
+		_cache_command(cmd, fp, cr_rej)
+		return _clone_cr(cr_rej)
+	var domain_events: Array = []
+	for ev in use_r.get("events", []):
+		if typeof(ev) != TYPE_DICTIONARY:
+			_rollback_transaction(
+				snap, frozen_seq, frozen_journals, frozen_cache,
+				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+				frozen_hand_settled
+			)
+			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+		domain_events.append(ev)
+	# 延迟 skill 可能在同事务内已 consumed（罕见）；并入同一批终态 SNAP
+	var fin: Dictionary = ItemAuthority.finalize_triggered(_bc, _item_module())
+	if not bool(fin.get("ok", false)):
+		_rollback_transaction(
+			snap, frozen_seq, frozen_journals, frozen_cache,
+			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled
+		)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	for fev in fin.get("events", []):
+		if typeof(fev) == TYPE_DICTIONARY:
+			domain_events.append(fev)
+	# 即时效果改 core_table；延迟武装改 inventory 投影——均须匹配 ROOM_SNAPSHOT 闭合
+	if not _publish_domain_events_with_matching_snapshot(domain_events):
+		_rollback_transaction(
+			snap, frozen_seq, frozen_journals, frozen_cache,
+			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled
+		)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	var cr_ok := CommandResult.from_dict({
+		"protocol_version": ProtocolConstants.PROTOCOL_VERSION,
+		"command_id": cmd,
+		"status": "ACCEPTED",
+		"server_seq": _server_seq,
+		"error_code": "",
+	})
+	_cache_command(cmd, fp, cr_ok)
+	return _clone_cr(cr_ok)
+
+
+## #253：0..N 条业务事件 + 1 条 ROOM_SNAPSHOT 共用 post-state view_hash（对齐 AA+SNAP）。
+## 空 events 时仍发 SNAP（延迟武装仅改库存/registry 投影）。
+func _publish_domain_events_with_matching_snapshot(events: Array) -> bool:
+	if _rollback_failed or _bc == null:
+		return false
+	var n_ev: int = events.size()
+	var first_seq: int = _server_seq + 1
+	var snap_seq: int = _server_seq + n_ev + 1
+	# 阶段 1：逐席构造终态 SNAP + 共享 vh 的业务事件
+	var prepared_by_seat: Array = []  # seat -> {events: Array[NetworkedEvent], snap: NetworkedEvent}
+	for seat in range(4):
+		var sp: Dictionary = _build_room_snapshot_payload(seat, snap_seq)
+		if sp.is_empty():
+			return false
+		var vh: String = ProtocolViewCodec.compute_view_hash(sp)
+		if vh.is_empty() or vh.length() != 64:
+			return false
+		var seat_evs: Array = []
+		for i in range(n_ev):
+			var raw = events[i]
+			if typeof(raw) != TYPE_DICTIONARY:
+				return false
+			var kind := String((raw as Dictionary).get("kind", ""))
+			var pl: Variant = (raw as Dictionary).get("payload", {})
+			if kind.is_empty() or typeof(pl) != TYPE_DICTIONARY:
+				return false
+			if mode_modules != null and not mode_modules.accepts_event_kind(kind):
+				return false
+			var ev_seq: int = first_seq + i
+			var ne: NetworkedEvent = _build_recipient_event(
+				kind, seat, ev_seq, (pl as Dictionary).duplicate(true), vh
+			)
+			if ne == null:
+				return false
+			seat_evs.append(ne)
+		var snap_ev: NetworkedEvent = _build_recipient_event(
+			"ROOM_SNAPSHOT", seat, snap_seq, sp, vh
+		)
+		if snap_ev == null:
+			return false
+		prepared_by_seat.append({"events": seat_evs, "snap": snap_ev})
+	# 阶段 2：提交 journal
+	_server_seq = snap_seq
+	for seat2 in range(4):
+		var pack: Dictionary = prepared_by_seat[seat2] as Dictionary
+		for ne2 in pack["events"]:
+			(_journals[seat2] as Array).append(ne2)
+		(_journals[seat2] as Array).append(pack["snap"])
+	return true
+
+
+func _item_module() -> ItemInventoryModule:
+	if mode_modules == null or not mode_modules.is_trash_talk():
+		return null
+	return mode_modules.item_inventory
+
+
+func _ability_slots() -> Array:
+	if mode_modules == null or not mode_modules.is_trash_talk():
+		return []
+	return mode_modules.character_ability_slots
+
+
+func _capture_ability_slots_arm() -> Array:
+	var out: Array = []
+	for slot_v in _ability_slots():
+		if not (slot_v is CharacterAbilitySlot):
+			out.append({})
+			continue
+		var slot: CharacterAbilitySlot = slot_v as CharacterAbilitySlot
+		out.append({
+			"armed": slot.armed,
+			"active_window_id": slot.active_window_id,
+			"registry_registered": slot.registry_registered,
+		})
+	return out
+
+
+func _restore_ability_slots_arm(snap: Array) -> bool:
+	var slots: Array = _ability_slots()
+	if snap.is_empty():
+		return true
+	if snap.size() != slots.size():
+		return false
+	for i in range(slots.size()):
+		if not (slots[i] is CharacterAbilitySlot):
+			continue
+		if typeof(snap[i]) != TYPE_DICTIONARY:
+			return false
+		var slot: CharacterAbilitySlot = slots[i] as CharacterAbilitySlot
+		var d: Dictionary = snap[i]
+		var want_reg: bool = bool(d.get("registry_registered", false))
+		# 先对齐 registry
+		if slot.registry_registered and not want_reg and _bc != null and slot.skill != null:
+			_bc.registry.unregister(slot.skill, slot.seat)
+		if want_reg and not slot.registry_registered and _bc != null and slot.skill != null:
+			_bc.registry.register(slot.skill, slot.seat)
+		slot.armed = bool(d.get("armed", false))
+		slot.active_window_id = d.get("active_window_id", null)
+		slot.registry_registered = want_reg
+	return true
+
+
+## #253：SETTLED(FULL_GRANT) → 4×ITEM_GRANTED → 注册 relic；随后 DISARM active。
+## 业务事件与终态 ROOM_SNAPSHOT 共用 view_hash，供 NBC 原子提交。
+func _item_after_settled(settled_payload: Dictionary, matrix: Array) -> bool:
+	var inv: ItemInventoryModule = _item_module()
+	if inv == null:
+		return true
+	var outcome := String(settled_payload.get("outcome", ""))
+	var window_id := String(settled_payload.get("window_id", ""))
+	var domain: Array = []
+	if outcome == "FULL_GRANT":
+		var chars: Array = []
+		if _config != null:
+			for c in _config.character_ids:
+				chars.append(String(c))
+		var hand_ends := _bc != null and bool(_bc.get("_settled"))
+		var match_ns := ""
+		if _config != null:
+			match_ns = str(_config.session_id)
+		var gr: Dictionary = ItemAuthority.grant_full_from_settled(
+			inv, settled_payload, matrix, chars, "", hand_ends, match_ns
+		)
+		if not bool(gr.get("ok", false)):
+			return false
+		for g in gr.get("grants", []):
+			if typeof(g) != TYPE_DICTIONARY:
+				return false
+			var pl: Dictionary = g.get("payload", {})
+			if not ItemAuthority.register_relic_for_grant(_bc, inv, pl):
+				return false
+			domain.append({"kind": "ITEM_GRANTED", "payload": pl})
+	# 任何 SETTLED 出口后 DISARM active（保留 FULL_GRANT 刚写的 pending）
+	var dis: Dictionary = ItemAuthority.disarm_all_active(
+		_bc, inv, _ability_slots(), window_id
+	)
+	if not bool(dis.get("ok", false)):
+		return false
+	for ev in dis.get("events", []):
+		if typeof(ev) == TYPE_DICTIONARY:
+			domain.append(ev)
+	if not _publish_domain_events_with_matching_snapshot(domain):
+		return false
+	# 终场 DISPLAY_ONLY：不得在此发 MATCH_SETTLED。
+	# E5 冻结序为 HAND_SETTLED → MATCH_SETTLED；MATCH 仅由 _publish_hand_settled_payload 触发。
+	return true
+
+
+## #253：CANCELLED → DISARM；pending 必须为空。终场和牌随后 MATCH_SETTLED 清库存。
+func _item_after_cancelled(cancelled_payload: Dictionary) -> bool:
+	var inv: ItemInventoryModule = _item_module()
+	if inv == null:
+		return true
+	var window_id := String(cancelled_payload.get("window_id", ""))
+	var r: Dictionary = ItemAuthority.on_cancel_by_win(
+		_bc, inv, _ability_slots(), window_id
+	)
+	if not bool(r.get("ok", false)):
+		return false
+	var domain: Array = []
+	for ev in r.get("events", []):
+		if typeof(ev) == TYPE_DICTIONARY:
+			domain.append(ev)
+	if not _publish_domain_events_with_matching_snapshot(domain):
+		return false
+	return true
+
+
+func _is_match_ended_now() -> bool:
+	if typeof(_reward_match_ended) == TYPE_BOOL:
+		return bool(_reward_match_ended)
+	return false
+
+
+## HAND_SETTLED 后：若整场结束则 MATCH_SETTLED + 清库存/武装/registry + 匹配终态 SNAP。
+## 先清场再发事件，使 MATCH 与 SNAP 共用清场后 view_hash（NBC 不得 same-hash 半投影）。
+func _emit_match_settled_and_clear_items() -> bool:
+	if not _is_match_ended_now():
+		return true
+	# 已发过则幂等清场
+	for ne in event_journal(0):
+		if ne is NetworkedEvent and (ne as NetworkedEvent).kind == "MATCH_SETTLED":
+			ItemAuthority.clear_match(_bc, _item_module(), _ability_slots())
+			return true
+	var scores: Array = _capture_scores_array()
+	if scores.size() != 4:
+		return false
+	var order: Array = MatchSettlement.build_seat_order(scores)
+	var round_kind := "EAST"
+	if _config != null:
+		var rk := str(_config.round_kind)
+		if rk == str(GameSessionConfig.ROUND_HANCHAN) or rk == "HANCHAN":
+			round_kind = "HANCHAN"
+		else:
+			round_kind = "EAST"
+	var payload := {
+		"round_kind": round_kind,
+		"final_scores": scores,
+		"seat_order": order,
+	}
+	# 先清权威库存/slot/registry，再发 MATCH_SETTLED + 终态 SNAP（同 view_hash）
+	ItemAuthority.clear_match(_bc, _item_module(), _ability_slots())
+	if not _publish_domain_events_with_matching_snapshot([
+		{"kind": "MATCH_SETTLED", "payload": payload},
+	]):
+		return false
+	return true
+
+
+## 延迟消耗品触发后结算公开事件。
+func _finalize_item_triggers() -> bool:
+	var inv: ItemInventoryModule = _item_module()
+	if inv == null:
+		return true
+	var fin: Dictionary = ItemAuthority.finalize_triggered(_bc, inv)
+	if not bool(fin.get("ok", false)):
+		return false
+	var domain: Array = []
+	for ev in fin.get("events", []):
+		if typeof(ev) != TYPE_DICTIONARY:
+			return false
+		domain.append(ev)
+	if domain.is_empty():
+		return true
+	return _publish_domain_events_with_matching_snapshot(domain)
+
+
+## #253：OPEN 后、常规事件前 ARM。
+func _item_after_opened(opened_payload: Dictionary) -> bool:
+	var inv: ItemInventoryModule = _item_module()
+	if inv == null:
+		return true
+	var window_id := String(opened_payload.get("window_id", ""))
+	var r: Dictionary = ItemAuthority.arm_seats_on_open(
+		_bc, inv, _ability_slots(), window_id
+	)
+	if not bool(r.get("ok", false)):
+		return false
+	var domain: Array = []
+	for ev in r.get("events", []):
+		if typeof(ev) == TYPE_DICTIONARY:
+			domain.append(ev)
+	if domain.is_empty():
+		return true
+	return _publish_domain_events_with_matching_snapshot(domain)
 
 
 func _reward_now_ms() -> int:
@@ -1777,6 +2338,14 @@ func advance_reward_time(now_ms: int) -> bool:
 		return false
 	# 无副作用早返回：时钟未变且屏障不需要工作
 	if now_ms == _reward_authority_now_ms:
+		return true
+
+	# 非 CLOSING 且无延迟 HAND：仅推进权威时钟，无 RW/库存 mutation，无需 ARS 事务。
+	# （#253 FULL_GRANT 后 OPEN 的幂等 tick 走此路径；避免 arm/reveal 后 ARS 边界卡住时钟）
+	var rw_probe: RewardWindowModule = _reward_module()
+	if (rw_probe == null or rw_probe.phase != RewardWindowModule.PHASE_CLOSING) \
+			and not _reward_hand_settled_deferred:
+		_reward_authority_now_ms = now_ms
 		return true
 
 	var snap: AuthorityReplaySnapshot = null
@@ -1975,9 +2544,12 @@ func _maybe_open_reward_window() -> bool:
 	if bool(res.get("idempotent", false)):
 		return true
 	_reward_claim_seen_open = false
-	return _publish_business_event_core(
+	if not _publish_business_event_core(
 		"REWARD_WINDOW_OPENED", res["payload"] as Dictionary
-	)
+	):
+		return false
+	# #253：OPEN 后、常规牌局事件前 ARM
+	return _item_after_opened(res["payload"] as Dictionary)
 
 
 ## 在 AA+SNAP 提交前按 candidate aa_seq 预消费 RewardWindow。
@@ -2214,6 +2786,10 @@ func _reward_try_release_barrier() -> bool:
 		"REWARD_WINDOW_SETTLED", settled["payload"] as Dictionary
 	):
 		return false
+	# #253：同一事务内 ITEM_GRANTED + DISARM（#252 不发 grant）
+	var matrix: Array = settled.get("matrix", [])
+	if not _item_after_settled(settled["payload"] as Dictionary, matrix):
+		return false
 	# 仅同局满 24 FULL_GRANT 开下一窗；hand 已 settled（流局/终场）不得伪造 OPEN
 	if String(rw.window_exit) == RewardWindowModule.EXIT_FULL_GRANT \
 			and (_bc == null or not bool(_bc.get("_settled"))):
@@ -2236,9 +2812,11 @@ func _reward_on_hand_result(hand_payload: Dictionary) -> bool:
 			return false
 		if bool(can.get("idempotent", false)):
 			return true
-		return try_publish_business_event(
+		if not try_publish_business_event(
 			"REWARD_WINDOW_CANCELLED", can["payload"] as Dictionary
-		)
+		):
+			return false
+		return _item_after_cancelled(can["payload"] as Dictionary)
 	# 流局：出口仅接受显式权威 match_ended；默认 match 继续 → FULL_GRANT
 	# 不猜测 hand_seq 阈值（连庄/半庄未由 LocalLoopback 完整推进）
 	var is_match_end := false
@@ -2272,6 +2850,9 @@ func _reward_on_hand_result(hand_payload: Dictionary) -> bool:
 		return false
 	if bool(settled2.get("idempotent", false)):
 		return true
-	return try_publish_business_event(
+	if not try_publish_business_event(
 		"REWARD_WINDOW_SETTLED", settled2["payload"] as Dictionary
-	)
+	):
+		return false
+	var matrix2: Array = settled2.get("matrix", [])
+	return _item_after_settled(settled2["payload"] as Dictionary, matrix2)

@@ -358,9 +358,9 @@ func test_production_drive_to_24_closing_settle_order() -> void:
 			"barrier released 后 settle 须成功")
 	assert_ne(rw.phase, RewardWindowModule.PHASE_CLOSING,
 		"所有 CLAIM 席 PASS 后不得停留 CLOSING")
-	# 无条件硬断言：恰好 1 个 FULL_GRANT SETTLED + 其后恰好 1 个新 OPEN
+	# 无条件硬断言：恰好 1 个 FULL_GRANT SETTLED + 4×ITEM_GRANTED + 其后恰好 1 个新 OPEN
 	kinds = _kinds(server)
-	assert_eq(_count(kinds, "ITEM_GRANTED"), 0, "本 Issue 不得发 ITEM_GRANTED")
+	assert_eq(_count(kinds, "ITEM_GRANTED"), 4, "#253：FULL_GRANT 后 seat0..3 各一次 ITEM_GRANTED")
 	var settled_n := 0
 	var open_after := 0
 	var seen_settle := false
@@ -974,7 +974,7 @@ func test_full_24_default_practice_tick_ends_on_human_prompt() -> void:
 	var j_before: int = server.event_journal(0).size()
 	var dl: int = int(rw._grace_deadline_ms)
 	assert_true(server.advance_reward_time(dl), "deadline tick 须成功")
-	assert_eq(_count(_kinds(server), "ITEM_GRANTED"), 0)
+	assert_eq(_count(_kinds(server), "ITEM_GRANTED"), 4, "FULL_GRANT 须 4×ITEM_GRANTED")
 	assert_eq(_count(_kinds(server), "REWARD_WINDOW_SETTLED"), 1)
 	var seen_set := false
 	var open_after := 0
@@ -1137,10 +1137,10 @@ func test_exhaustive_draw_deferred_hand_settled_order() -> void:
 	var dl: int = int(rw._grace_deadline_ms)
 	assert_true(server.advance_reward_time(dl))
 	var kinds: Array = _kinds(server)
-	assert_eq(_count(kinds, "ITEM_GRANTED"), 0)
+	assert_eq(_count(kinds, "ITEM_GRANTED"), 4, "非终场流局 FULL_GRANT 须 4×ITEM_GRANTED")
 	assert_eq(_count(kinds, "REWARD_WINDOW_SETTLED"), 1)
 	assert_eq(_count(kinds, "HAND_SETTLED"), 1)
-	# 顺序：CLOSING → SETTLED → HAND_SETTLED；无下一 OPEN（hand 已 settled）
+	# 顺序：CLOSING → SETTLED → 4×GRANTED → HAND_SETTLED；无下一 OPEN（hand 已 settled）
 	var i_close := -1
 	var i_set := -1
 	var i_hand := -1
@@ -1272,7 +1272,7 @@ func test_full_24_pending_utt_tick_settles_and_resumes() -> void:
 	var dl: int = int(rw._grace_deadline_ms)
 	assert_true(server.advance_reward_time(dl), "deadline tick 须成功 settle+open+恢复")
 	var kinds: Array = _kinds(server)
-	assert_eq(_count(kinds, "ITEM_GRANTED"), 0)
+	assert_eq(_count(kinds, "ITEM_GRANTED"), 4, "满 24 FULL_GRANT 须 4×ITEM_GRANTED")
 	assert_eq(_count(kinds, "REWARD_WINDOW_SETTLED"), 1)
 	var seen_set := false
 	var open_after := 0

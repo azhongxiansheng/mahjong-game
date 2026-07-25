@@ -745,7 +745,9 @@ static func _validate_active_tile_list(
 
 
 ## revealed.tile：TileInstance 六键（tile_instance_id / tile_id / tile_owner_seat）
-## 或 Tile 四键（instance_id / id / owner_seat）。iid∈by_iid 且底层四字段与 wall 一致；占用 seen_active。
+## 或 Tile 四键（instance_id / id / owner_seat）。iid∈by_iid 且底层四字段与 wall 一致。
+## #253：揭示是可见性投影，可引用已在 hand/river 的活动牌；不得因「二次占用」失败。
+## 仅当 iid 尚未出现在活动区时才写入 seen_active（墙顶 peek 等独占引用）。
 static func _validate_revealed_tile_ref(
 	td: Dictionary, by_iid: Dictionary, seen_active: Dictionary
 ) -> bool:
@@ -796,9 +798,9 @@ static func _validate_revealed_tile_ref(
 		return false
 	if int(iid) != int(wall_t.instance_id):
 		return false
-	if seen_active.has(iid):
-		return false
-	seen_active[iid] = true
+	# 已在 hand/river 等活动区：允许 reveal 投影；不重复占用
+	if not seen_active.has(iid):
+		seen_active[iid] = true
 	return true
 
 

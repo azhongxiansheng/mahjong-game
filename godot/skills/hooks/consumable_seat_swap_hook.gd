@@ -1,3 +1,3 @@
 # 换座 — 战斗消耗品
-# 无运行时 hook — 效果由 PlayableBattleController 在开局时处理
+# 无运行时 hook — USE 路径拒绝直至产品语义确认。
 extends SkillHook

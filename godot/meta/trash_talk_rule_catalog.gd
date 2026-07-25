@@ -55,12 +55,33 @@ static func character_persona(character_id: StringName) -> Dictionary:
 		row["id"] = String(c.id)
 	return row
 
+## #253 Alpha：权威可发放白名单。图鉴可含更多条目；以下 ID 明确不进入奖池/GRANT。
+const _ALPHA_NON_GRANTABLE := {
+	"seat_swap_v1": true,
+	"tsubame_v1": true,
+	"relic_pity_breaker_v1": true,
+}
+
+
 static func grantable_item_ids() -> Array:
 	var out: Array = []
 	var codex := LobbyCodexCatalog.new()
 	for row in codex.items():
-		out.append(String(row.get("id", "")))
+		var id := String(row.get("id", ""))
+		if id.is_empty() or _ALPHA_NON_GRANTABLE.has(id):
+			continue
+		out.append(id)
 	return out
+
+
+static func is_alpha_grantable(item_id: String) -> bool:
+	var id := String(item_id).strip_edges()
+	if id.is_empty() or _ALPHA_NON_GRANTABLE.has(id):
+		return false
+	for gid in grantable_item_ids():
+		if String(gid) == id:
+			return true
+	return false
 
 static func item_def(item_id: StringName) -> Dictionary:
 	var table: Dictionary = _item_table()
@@ -210,6 +231,7 @@ static func validate_schema() -> Dictionary:
 	cat_sorted.sort()
 	if cat_sorted != pool_ids:
 		errors.append("character set drift vs CharacterPool")
+	# #253：grantable 是图鉴子集（剔除 Alpha 非发放 seat_swap/tsubame 等）
 	var codex_ids: Array = []
 	for row in LobbyCodexCatalog.new().items():
 		codex_ids.append(String(row.get("id", "")))
@@ -217,10 +239,18 @@ static func validate_schema() -> Dictionary:
 	var grant: Array = grantable_item_ids()
 	var grant_sorted: Array = grant.duplicate()
 	grant_sorted.sort()
-	if grant_sorted != codex_ids:
-		errors.append("grantable set drift vs LobbyCodexCatalog")
-	if grant_sorted.size() != 21:
-		errors.append("expected 21 grantable items")
+	var expected_grant: Array = []
+	for cid in codex_ids:
+		if not _ALPHA_NON_GRANTABLE.has(String(cid)):
+			expected_grant.append(String(cid))
+	expected_grant.sort()
+	if grant_sorted != expected_grant:
+		errors.append("grantable set drift vs LobbyCodexCatalog minus alpha non-grantable")
+	if grant_sorted.size() != expected_grant.size():
+		errors.append("grantable count mismatch")
+	for forbidden in _ALPHA_NON_GRANTABLE.keys():
+		if grant_sorted.has(String(forbidden)):
+			errors.append("non-grantable leaked: %s" % forbidden)
 	var allowed_ctx: Dictionary = {}
 	for t in PUBLIC_CONTEXT_TAGS:
 		allowed_ctx[t] = true

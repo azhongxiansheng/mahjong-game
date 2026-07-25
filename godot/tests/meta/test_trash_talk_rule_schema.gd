@@ -97,6 +97,7 @@ func test_true_source_sets_independent_of_validate_schema() -> void:
 	persona_ids.sort()
 	assert_eq(persona_ids, pool)
 
+	# #253：grantable ⊆ 图鉴，且不含 Alpha 非发放
 	var codex_ids: Array = []
 	for row in LobbyCodexCatalog.new().items():
 		codex_ids.append(String(row.get("id", "")))
@@ -104,8 +105,15 @@ func test_true_source_sets_independent_of_validate_schema() -> void:
 	var grant: Array = TrashTalkRuleCatalog.grantable_item_ids()
 	var grant_sorted: Array = grant.duplicate()
 	grant_sorted.sort()
-	assert_eq(grant_sorted, codex_ids)
-	assert_eq(grant_sorted.size(), 21)
+	var expected: Array = []
+	for cid in codex_ids:
+		if cid == "seat_swap_v1" or cid == "tsubame_v1" or cid == "relic_pity_breaker_v1":
+			continue
+		expected.append(cid)
+	expected.sort()
+	assert_eq(grant_sorted, expected)
+	assert_false(grant_sorted.has("seat_swap_v1"))
+	assert_false(grant_sorted.has("tsubame_v1"))
 
 	var catalog_ctx: Array = []
 	for t in TrashTalkRuleCatalog.PUBLIC_CONTEXT_TAGS:

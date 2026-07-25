@@ -391,8 +391,8 @@ func test_pbc_standard_item_use_mode_forbidden() -> void:
 	assert_ne(resp.error_code, ActionResolution.NOT_ENABLED)
 
 
-## P1-2：TRASH_TALK PBC 门控放行 ITEM_USE，E5 未实现仍 NOT_ENABLED
-func test_pbc_trash_talk_item_use_not_enabled_after_mode_gate() -> void:
+## P1-2：TRASH_TALK 放行 ITEM_USE；#253 对不存在实例稳定拒绝（非 MODE_FORBIDDEN）
+func test_pbc_trash_talk_item_use_rejects_missing_instance() -> void:
 	var launcher_script: GDScript = load(LAUNCHER_SCRIPT) as GDScript
 	assert_not_null(launcher_script)
 	if launcher_script == null:
@@ -406,7 +406,8 @@ func test_pbc_trash_talk_item_use_not_enabled_after_mode_gate() -> void:
 	assert_not_null(bc)
 	assert_not_null(bc.mode_modules)
 	assert_true(bc.mode_modules.accepts_command_kind("ITEM_USE"))
-	assert_true(bc.progress_server_draw())
+	# #253：TT 权威 start 可能已 ensure_drawn；允许 false
+	bc.progress_server_draw()
 	var ctx: DecisionContext = bc.decision_context_for_seat(bc.state.current_seat)
 	assert_not_null(ctx)
 	var inv_before: int = bc.mode_modules.item_inventory.instance_count()
@@ -419,11 +420,12 @@ func test_pbc_trash_talk_item_use_not_enabled_after_mode_gate() -> void:
 	var resp: ActionResolution = bc.apply_action(act, ActionSource.HUMAN)
 	assert_not_null(resp)
 	assert_false(resp.accepted)
+	# 空实例：ENTITY_NOT_FOUND；经 Loopback 时 error 可能为 StringName 同源
 	assert_eq(
-		resp.error_code, ActionResolution.NOT_ENABLED,
-		"TT 过模式门控后 E5 未实现 → NOT_ENABLED"
+		str(resp.error_code), str(ActionResolution.ENTITY_NOT_FOUND),
+		"TT 空库存 ITEM_USE → ENTITY_NOT_FOUND got=%s" % str(resp.error_code)
 	)
-	assert_ne(resp.error_code, ActionResolution.MODE_FORBIDDEN)
+	assert_ne(str(resp.error_code), str(ActionResolution.MODE_FORBIDDEN))
 	assert_eq(bc.mode_modules.item_inventory.instance_count(), inv_before)
 
 
@@ -511,7 +513,7 @@ func test_loopback_standard_rejects_item_use_and_exposes_zero_modules() -> void:
 	)
 
 
-func test_loopback_trash_talk_has_modules_but_item_use_still_no_e5_business() -> void:
+func test_loopback_trash_talk_has_modules_item_use_rejects_missing_without_side_effect() -> void:
 	var cfg: GameSessionConfig = _make_config(&"PRACTICE", &"EAST", &"TRASH_TALK", 42)
 	var server: LocalLoopbackServer = LocalLoopbackServer.new(cfg, 0)
 	assert_not_null(server.mode_modules)
@@ -523,7 +525,7 @@ func test_loopback_trash_talk_has_modules_but_item_use_still_no_e5_business() ->
 	assert_eq(server.mode_modules.character_ability_slots.size(), 4)
 
 	assert_true(server.start())
-	# E5 业务未实现：即便 TT 模块存在，ITEM_USE 仍不得产生库存副作用
+	# 空库存：拒绝且零副作用；非 MODE_FORBIDDEN
 	var inv_before: int = server.mode_modules.item_inventory.instance_count()
 	var act: Action = Action.item_use(
 		0, "item_inst_1", cfg.session_id,
@@ -533,7 +535,8 @@ func test_loopback_trash_talk_has_modules_but_item_use_still_no_e5_business() ->
 	)
 	var cr: CommandResult = server.submit_action(act)
 	assert_not_null(cr)
-	assert_eq(cr.status, "REJECTED", "E2-04 不实现 E5 ITEM_USE 业务")
+	assert_eq(cr.status, "REJECTED", "空库存 ITEM_USE 须拒绝")
+	assert_ne(cr.error_code, "MODE_FORBIDDEN")
 	assert_eq(server.mode_modules.item_inventory.instance_count(), inv_before)
 
 

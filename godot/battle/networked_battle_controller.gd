@@ -23,8 +23,9 @@ var _view_hash: String = ""
 var _journal: Array = []  # Array[NetworkedEvent] 深拷贝存储
 var _applied_modules: Dictionary = {}  # module_key -> payload
 
-# 非 committed：至多一条 pending；resync 标志
-var _pending_event = null  # NetworkedEvent | null
+# 非 committed：同 view_hash 的 pending 队列；匹配 ROOM_SNAPSHOT 一次提交；resync 标志
+# 兼容单事件：队列长度 1 即旧「至多一条 pending」语义；#253 允许多 ITEM_* 共享终态 hash。
+var _pending_events: Array = []  # Array[NetworkedEvent]
 var _resync_required: bool = false
 var _last_snapshot_error: String = ""
 
@@ -38,7 +39,7 @@ func _init(p_room_id: String = "", p_recipient_seat: int = 0) -> void:
 	_view_hash = ""
 	_journal = []
 	_applied_modules = {}
-	_pending_event = null
+	_pending_events = []
 	_resync_required = false
 	_last_snapshot_error = ""
 
@@ -64,7 +65,7 @@ func observe_side_channel_authority_seq(seq: int) -> Dictionary:
 
 ## Bridge 超时/溢出时强制进入既有 resync 语义（无 journal 污染）。
 func force_resync_for_authority_gap() -> void:
-	_pending_event = null
+	_pending_events.clear()
 	_resync_required = true
 
 
@@ -152,6 +153,28 @@ func get_reward_window_view() -> Dictionary:
 			continue
 		var md: Dictionary = m
 		if str(md.get("module_key", "")) == "reward_window":
+			var pay = md.get("payload", {})
+			if typeof(pay) == TYPE_DICTIONARY:
+				return (pay as Dictionary).duplicate(true)
+	return {}
+
+
+## #253：本席库存/武装公共投影。
+func get_item_inventory_view() -> Dictionary:
+	if _applied_modules.has("item_inventory"):
+		var ap = _applied_modules["item_inventory"]
+		if typeof(ap) == TYPE_DICTIONARY:
+			return (ap as Dictionary).duplicate(true)
+	if _public_view.is_empty():
+		return {}
+	var mods: Variant = _public_view.get("modules", [])
+	if typeof(mods) != TYPE_ARRAY:
+		return {}
+	for m in mods:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		var md: Dictionary = m
+		if str(md.get("module_key", "")) == "item_inventory":
 			var pay = md.get("payload", {})
 			if typeof(pay) == TYPE_DICTIONARY:
 				return (pay as Dictionary).duplicate(true)
@@ -267,30 +290,33 @@ func _ingest_room_snapshot(ne: NetworkedEvent) -> bool:
 			_last_snapshot_error = SnapshotModuleRegistry.ERR_REQUIRED_MISSING
 	var schema_ok: bool = seat_ok and hash_ok and modules_ok and core_ok
 
-	# 有 pending：唯一允许匹配的下一跳 snapshot
-	if _pending_event != null:
-		var pending_seq: int = int((_pending_event as NetworkedEvent).server_seq)
-		var pending_vh: String = (_pending_event as NetworkedEvent).view_hash
+	# 有 pending 队列：唯一允许匹配的下一跳 snapshot（与末条 pending 同 view_hash、seq+1）
+	if not _pending_events.is_empty():
+		var last_pending: NetworkedEvent = _pending_events[_pending_events.size() - 1] as NetworkedEvent
+		var pending_seq: int = int(last_pending.server_seq)
+		var pending_vh: String = last_pending.view_hash
 		var match_ok: bool = schema_ok \
 				and seq == pending_seq + 1 \
 				and ne.view_hash == pending_vh
 		if not match_ok:
-			_pending_event = null
+			_pending_events.clear()
 			_resync_required = true
 			if _last_snapshot_error.is_empty():
 				_last_snapshot_error = "SNAPSHOT_PENDING_MISMATCH"
 			return false
 		if not _atomic_registry_restore(payload):
-			_pending_event = null
+			_pending_events.clear()
 			_resync_required = true
 			return false
-		# 一次提交：pending 再 snapshot
-		_append_journal(_pending_event as NetworkedEvent)
+		# 一次提交：全部 pending 再 snapshot；库存/core 以 snapshot modules 为准（不半投影）
+		for pe in _pending_events:
+			if pe is NetworkedEvent:
+				_append_journal(pe as NetworkedEvent)
 		_public_view = payload.duplicate(true)
 		_view_hash = ne.view_hash
 		_current_seq = seq
 		_append_journal(ne)
-		_pending_event = null
+		_pending_events.clear()
 		_resync_required = false
 		_last_snapshot_error = ""
 		return true
@@ -333,39 +359,51 @@ func _ingest_non_snapshot(ne: NetworkedEvent) -> bool:
 	# room 已在入口校验
 	if _resync_required:
 		return false
-	if _pending_event != null:
-		# pending 时任何非 snapshot → mismatch
-		_pending_event = null
-		_resync_required = true
-		return false
 	if ne.view_hash.length() != 64:
 		return false
 	var seq: int = int(ne.server_seq)
 	# SNAP-03：仅从 next_server_seq（= current+1）消费；小于为重复/过期，大于为缺口
 	var expected_next: int = expected_next_server_seq()
+	if not _pending_events.is_empty():
+		# 已有 pending：仅允许同 view_hash 且严格 seq 连续的后续非 SNAP
+		var last_p: NetworkedEvent = _pending_events[_pending_events.size() - 1] as NetworkedEvent
+		if seq < int(last_p.server_seq) + 1:
+			return true  # 重复
+		if seq != int(last_p.server_seq) + 1 or ne.view_hash != last_p.view_hash:
+			_pending_events.clear()
+			_resync_required = true
+			return false
+		var cloned_p: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
+		if cloned_p == null:
+			_pending_events.clear()
+			_resync_required = true
+			return false
+		# 异 hash 队列：不得半投影库存
+		_pending_events.append(cloned_p)
+		return true
 	if seq < expected_next:
 		# 重复/过期：幂等忽略（不推进、不 resync）
 		return true
 	if seq > expected_next:
-		_pending_event = null
+		_pending_events.clear()
 		_resync_required = true
 		return false
 	if seq != _current_seq + 1:
-		_pending_event = null
+		_pending_events.clear()
 		_resync_required = true
 		return false
 	# 先深拷贝；失败不得半提交
 	var cloned: NetworkedEvent = NetworkedEvent.from_dict(ne.to_dict())
 	if cloned == null:
 		return false
-	# 与 committed view_hash 相同：事件不改变公共投影 → 直接 journal commit
+	# 与 committed view_hash 相同：仅 journal，不手工重建库存状态机。
+	# 库存投影只认 #241 snapshot provider/registry 的 ROOM_SNAPSHOT（STANDARD 无 item_inventory）。
 	if ne.view_hash == _view_hash:
 		_journal.append(cloned)
 		_current_seq = seq
-		# _public_view / _view_hash 不变；不设 pending；resync 保持 false
 		return true
-	# 异 hash：只进 pending，等待匹配 ROOM_SNAPSHOT
-	_pending_event = cloned
+	# 异 hash：只进 pending 队列，等待匹配 ROOM_SNAPSHOT；禁止半更新库存
+	_pending_events.append(cloned)
 	return true
 
 
@@ -380,15 +418,21 @@ func _capture_state() -> Dictionary:
 	for item in _journal:
 		if item is NetworkedEvent:
 			journal_dicts.append((item as NetworkedEvent).to_dict())
-	var pending_dict = null
-	if _pending_event != null and _pending_event is NetworkedEvent:
-		pending_dict = (_pending_event as NetworkedEvent).to_dict()
+	var pending_list: Array = []
+	for pe in _pending_events:
+		if pe is NetworkedEvent:
+			pending_list.append((pe as NetworkedEvent).to_dict())
+	# 兼容旧字段 pending：单事件时为 dict，多事件/空为 null + pending_list
+	var pending_legacy = null
+	if pending_list.size() == 1:
+		pending_legacy = pending_list[0]
 	return {
 		"current_seq": _current_seq,
 		"public_view": _public_view.duplicate(true),
 		"view_hash": _view_hash,
 		"journal": journal_dicts,
-		"pending": pending_dict,
+		"pending": pending_legacy,
+		"pending_list": pending_list,
 		"resync": _resync_required,
 		"applied_modules": _applied_modules.duplicate(true),
 		"last_snapshot_error": _last_snapshot_error,
@@ -406,10 +450,20 @@ func _restore_state(s: Dictionary) -> void:
 		var cloned: NetworkedEvent = NetworkedEvent.from_dict(d)
 		if cloned != null:
 			_journal.append(cloned)
-	_pending_event = null
-	var pending_raw = s.get("pending", null)
-	if pending_raw != null and typeof(pending_raw) == TYPE_DICTIONARY:
-		_pending_event = NetworkedEvent.from_dict(pending_raw)
+	_pending_events = []
+	if typeof(s.get("pending_list", null)) == TYPE_ARRAY:
+		for raw in s["pending_list"]:
+			if typeof(raw) != TYPE_DICTIONARY:
+				continue
+			var pe: NetworkedEvent = NetworkedEvent.from_dict(raw)
+			if pe != null:
+				_pending_events.append(pe)
+	else:
+		var pending_raw = s.get("pending", null)
+		if pending_raw != null and typeof(pending_raw) == TYPE_DICTIONARY:
+			var one: NetworkedEvent = NetworkedEvent.from_dict(pending_raw)
+			if one != null:
+				_pending_events.append(one)
 	_resync_required = bool(s["resync"])
 	_applied_modules = {}
 	var am: Variant = s.get("applied_modules", {})

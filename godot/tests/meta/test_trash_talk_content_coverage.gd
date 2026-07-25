@@ -79,17 +79,21 @@ func test_languages_keywords_templates_and_ai_context_coverage() -> void:
 
 
 func test_grantable_items_match_lobby_codex_catalog_exactly() -> void:
+	# #253：权威奖池 = 图鉴 items 去掉 Alpha 非发放（seat_swap / tsubame / pity）
 	var codex := LobbyCodexCatalog.new()
 	var expected: Array = []
 	for row in codex.items():
-		expected.append(String(row.get("id", "")))
+		var id := String(row.get("id", ""))
+		if id == "seat_swap_v1" or id == "tsubame_v1" or id == "relic_pity_breaker_v1":
+			continue
+		expected.append(id)
 	expected.sort()
 	var actual: Array = TrashTalkRuleCatalog.grantable_item_ids()
 	var sorted_actual: Array = actual.duplicate()
 	sorted_actual.sort()
-	assert_eq(sorted_actual.size(), 21)
 	assert_eq(sorted_actual, expected)
-	for forbidden in ["hp_potion_v1", "gold_doubler_v1", "relic_pity_breaker_v1"]:
+	assert_eq(sorted_actual.size(), expected.size())
+	for forbidden in ["hp_potion_v1", "gold_doubler_v1", "relic_pity_breaker_v1", "seat_swap_v1", "tsubame_v1"]:
 		assert_false(sorted_actual.has(forbidden))
 
 
