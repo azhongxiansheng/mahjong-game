@@ -16,7 +16,7 @@
 | `WORKER_ENDPOINT` | **必填** | 匹配分配返回的静态 Worker 地址（trim 后非空）；缺失/空白时进程拒绝启动。**不**做多 Worker 选择 |
 | `VOICE_WORKER_ENDPOINT` | **必填** | #244 独立语音 WebSocket 地址（trim 后非空）。Matcher 启动时强制配置；**仅** `TRASH_TALK` 的 room/ticket/HTTP assigned 写入并返回 `voice_worker`；`STANDARD` **不写** Redis 字段且 HTTP JSON 不出现该字段。**不得**从 `WORKER_ENDPOINT` 隐式猜端口 |
 
-## 一条命令启动本地 Redis
+## 一条命令启动本地 Redis（仅 Redis）
 
 前置：本机 Docker 可用（例如 `colima start` 或 Docker Desktop）。
 
@@ -41,6 +41,69 @@ docker compose -f docker-compose.yml exec -T redis redis-cli PING
 docker compose -f docker-compose.yml down -v
 # 或: docker-compose -f docker-compose.yml down -v
 ```
+
+## E7-01 四服务测试拓扑（#255）
+
+一条文档化命令启动**真实** Control Plane、Redis、faster-whisper STT、至少一个 Godot Headless Worker（Linux 容器）。宿主端口默认绑定 `127.0.0.1`；容器间经 Compose 网络互联。
+
+**本机主命令**（已确认部分环境无 `docker compose` 插件，可用独立 `docker-compose`）：
+
+```bash
+cd services/control-plane
+# 可选：cp .env.example .env 后编辑；勿提交真实密钥
+# 成功退出即四服务 healthy（Redis PING / CP readyz / STT PONG / Worker 协议探活）
+docker-compose -f docker-compose.e7.yml --env-file .env.example up -d --build --wait --wait-timeout 900
+# Compose V2 等价：
+# docker compose -f docker-compose.e7.yml --env-file .env.example up -d --build --wait --wait-timeout 900
+```
+
+| 服务 | 宿主端口 | 健康语义 |
+|---|---|---|
+| Redis | `127.0.0.1:6379` | `redis-cli PING` → `PONG` |
+| Control Plane | `127.0.0.1:8081` | `GET /healthz` + Redis-backed `GET /readyz` |
+| STT | `127.0.0.1:9100` | WebSocket `PING` → `PONG`（`primary.ok`；不含 token） |
+| Headless Worker | `127.0.0.1:9000`（牌局）、`9001`（语音） | 真实 WebSocket 握手 + 协议探活（非日志 grep） |
+
+静态 #239 过渡契约（**不**实现 #256 注册/租约/容量）：
+
+- `WORKER_ENDPOINT=ws://127.0.0.1:9000`
+- `VOICE_WORKER_ENDPOINT=ws://127.0.0.1:9001`
+- Worker 容器内 `STT_SERVICE_URL=ws://stt:9100`
+
+密钥与可选 new-api 备份**只经环境变量**注入（见 `.env.example`）。STT 模型二进制**不入 Git/镜像**，使用命名卷 `mahjong_e7_stt_model_cache`（`STT_MODEL_CACHE`）；默认仍为 multilingual `small` + CPU `int8`，可用 `STT_MODEL` / `STT_DEVICE` / `STT_COMPUTE_TYPE` 覆盖。
+
+STT 冷启动会从 Hugging Face 拉模型（体积较大、依赖外网）。若宿主已有缓存，可先预热卷（`scripts/e7_255_topology_smoke.sh` 会自动尝试）：
+
+```bash
+docker volume create mahjong_e7_stt_model_cache
+docker run --rm \
+  -v mahjong_e7_stt_model_cache:/dest \
+  -v "$HOME/.cache/huggingface/hub:/src:ro" \
+  debian:bookworm-slim \
+  bash -c 'cp -a /src/models--Systran--faster-whisper-small /dest/ && chmod -R a+rX /dest'
+```
+
+Godot 官方 Linux 发布物 zip 可放在 `godot/tools/godot_release_cache/`（已 gitignore `*.zip`）以离线构建 Worker 镜像；缺失时 Dockerfile 会从 GitHub Releases 下载。
+
+一键 smoke（构建 + 启动 + 宿主侧真实探针 + 默认 `down -v` 清理）：
+
+```bash
+# 仓库根目录
+scripts/e7_255_topology_smoke.sh
+# 契约（不启动重型服务）
+scripts/e7_255_topology_contract_test.sh
+```
+
+安全关闭 / 清理：
+
+```bash
+cd services/control-plane
+docker-compose -f docker-compose.e7.yml --env-file .env.example down -v --remove-orphans
+# Compose V2：docker compose -f docker-compose.e7.yml --env-file .env.example down -v --remove-orphans
+# -v 会删除 STT 模型缓存卷；若需保留缓存可去掉 -v
+```
+
+**网络端到端未验证**（无公网四客户端整场；本拓扑仅本地容器健康与协议探针）。
 
 ## 启动 Control Plane
 

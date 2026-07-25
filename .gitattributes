@@ -26,3 +26,6 @@
 *.exe binary
 *.dll binary
 *.so binary
+
+# 第三方 go mod vendor 原样保留上游空白；自有文件仍执行默认 whitespace 门禁。
+services/control-plane/vendor/** whitespace=-trailing-space

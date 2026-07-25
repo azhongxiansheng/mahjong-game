@@ -45,8 +45,8 @@ This repo contains **two unrelated trees** that share a directory but not a buil
    - `tools/asset_gen/` — 资产生成与导入管线
 2. **`main.go` + `Dockerfile` + `start.sh`** at the repo root — a **stub Go HTTP server** that only serves `/` and `/api/health` returning `{"status":"ok"}`. It exists solely to satisfy Railway's healthcheck. **There is no real backend in this repo.** The README's references to a `backend/` directory, JWT, ELO, etc. do not match the code on disk — treat the README as marketing copy, not architecture documentation.
 3. **`services/`** — 独立后端服务（非根 Go 桩）：
-   - `services/control-plane/` — 匹配控制面（Go）
-   - `services/stt/` — #247 公共场 faster-whisper STT（Python 3.11；内部 WebSocket；模型默认 multilingual `small` + CPU int8 + Silero VAD）。Worker 经 `SttBridge` / `STT_SERVICE_URL` 接线；**不**扩张根 Dockerfile / E7 compose。详见 `services/stt/README.md`。**网络端到端未验证。**
+   - `services/control-plane/` — 匹配控制面（Go）；#255 E7 测试拓扑见 `docker-compose.e7.yml`（Redis + CP + STT + Headless Worker；宿主端口默认 `127.0.0.1`）
+   - `services/stt/` — #247 公共场 faster-whisper STT（Python 3.11；内部 WebSocket；模型默认 multilingual `small` + CPU int8 + Silero VAD）。Worker 经 `SttBridge` / `STT_SERVICE_URL` 接线；容器镜像 `Dockerfile`，模型走外部缓存卷、不入镜像。详见 `services/stt/README.md`。**不**扩张根 `main.go` / 根 Dockerfile 业务职责。**网络端到端未验证。**
 
 设计文档与里程碑 plan 在 **`docs/superpowers/{specs,plans}/`**。新增计划放此目录，**不要**新增根目录 markdown。
 
@@ -96,6 +96,20 @@ python -m stt_service   # ws://127.0.0.1:9100；可用 STT_DEVICE / STT_COMPUTE_
 pytest -q tests          # 含真实中英日 fixture + VAD + #248 fallback（见 fixtures/SOURCES.md）
 ```
 原始 PCM 仅有界内存；**不**写磁盘。公共网络四客户端链路未端到端验证。
+
+### E7 容器测试拓扑（#255）
+```bash
+# 本机主命令可用独立 docker-compose；Compose V2 插件则改 docker compose
+# 成功退出即四服务 healthy
+cd services/control-plane
+docker-compose -f docker-compose.e7.yml --env-file .env.example up -d --build --wait --wait-timeout 900
+# 契约 / 真实健康 smoke（仓库根；smoke 复用同一 --wait 语义）
+scripts/e7_255_topology_contract_test.sh
+scripts/e7_255_topology_smoke.sh
+# 清理（-v 删除 STT 模型缓存卷）
+docker-compose -f docker-compose.e7.yml --env-file .env.example down -v --remove-orphans
+```
+端口：Redis `6379`、CP `8081`、Worker `9000`/`9001`、STT `9100`（均默认 `127.0.0.1`）。**网络端到端未验证。**
 
 #248 new-api 备份（可选）：专用 `STT_NEW_API_ENDPOINT` / `STT_NEW_API_MODEL` / `STT_NEW_API_TOKEN` /
 `STT_NEW_API_TIMEOUT_MS` + 主逻辑 `STT_PRIMARY_TIMEOUT_MS`。缺配置则备份禁用，主服务仍运行。

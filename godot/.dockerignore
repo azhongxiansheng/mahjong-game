@@ -1,0 +1,16 @@
+# #255 Headless Worker 镜像构建：减小上下文，避免本机缓存进镜像。
+.godot/
+**/.godot/
+**/*~
+**/*.tmp
+**/.DS_Store
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+# 测试与资产生成中间产物不进 Worker 运行时镜像。
+# 保留 addons/（Anima 等 autoload / 插件路径需可解析）。
+tests/
+tools/asset_gen/
+**/*_raw_*
+**/_staging*
+**/_samples/
