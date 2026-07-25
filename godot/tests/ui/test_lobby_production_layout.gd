@@ -4,16 +4,23 @@ extends GutTest
 # 规则选择态由 #228 接入；图鉴内容与音频业务归 #229。
 
 const LOBBY_SCENE := "res://ui/lobby/lobby_shell.tscn"
+const STAGE_SCENE := "res://ui/lobby/lobby_stage.tscn"
 const DESIGN_SIZE := Vector2(1600, 900)
+const ASSET_ROOT := "res://assets/ui/lobby_stage/"
 
 const REQUIRED_CONTROLS := [
-	"TopBar",
-	"ResidentStage",
+	"LobbyStage",
+	"EnvironmentBackdrop",
+	"CharacterStage",
 	"ResidentPortrait",
-	"EntryRail",
+	"PlayerAvatar",
+	"TopResourceBar",
+	"ModeBannerRail",
 	"PracticeButton",
 	"MatchButton",
-	"BottomBar",
+	"RulesBannerButton",
+	"OmamoriRail",
+	"BottomNav",
 	"NoticeButton",
 	"HelpButton",
 	"SettingsButton",
@@ -60,54 +67,83 @@ func test_production_lobby_exposes_all_stable_layout_hooks() -> void:
 		assert_true(node is Control, "%%%s 应为 UI Control" % node_name)
 
 
-func test_1600_by_900_regions_are_ordered_non_overlapping_and_in_bounds() -> void:
+func test_1600_by_900_is_a_full_stage_with_edge_chrome_and_three_mode_banners() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	await get_tree().process_frame
 
 	var bounds := Rect2(shell.global_position, DESIGN_SIZE)
-	var top := _global_rect(shell.get_node("%TopBar") as Control)
-	var resident := _global_rect(shell.get_node("%ResidentStage") as Control)
-	var entries := _global_rect(shell.get_node("%EntryRail") as Control)
-	var bottom := _global_rect(shell.get_node("%BottomBar") as Control)
+	var backdrop := _global_rect(shell.get_node("%EnvironmentBackdrop") as Control)
+	var top := _global_rect(shell.get_node("%TopResourceBar") as Control)
+	var character := _global_rect(shell.get_node("%CharacterStage") as Control)
+	var entries := _global_rect(shell.get_node("%ModeBannerRail") as Control)
+	var omamori := _global_rect(shell.get_node("%OmamoriRail") as Control)
+	var bottom := _global_rect(shell.get_node("%BottomNav") as Control)
 
-	for region in [top, resident, entries, bottom]:
+	assert_eq(backdrop, bounds, "批准的日式雀庄环境必须全幅覆盖 16:9 舞台")
+	for region in [top, character, entries, omamori, bottom]:
 		assert_true(bounds.encloses(region), "主要布局区域不得越出 1600×900 画布")
-	assert_lte(top.end.y, resident.position.y, "顶栏应位于主内容上方")
-	assert_lte(top.end.y, entries.position.y, "顶栏应位于入口区上方")
-	assert_lte(resident.end.x, entries.position.x, "角色常驻区与右侧入口不得重叠")
-	assert_lte(resident.end.y, bottom.position.y, "角色常驻区应位于底栏上方")
-	assert_lte(entries.end.y, bottom.position.y, "入口区应位于底栏上方")
-	assert_gt(resident.size.x, entries.size.x, "角色常驻区应是大厅视觉主体")
+	assert_lt(character.get_center().x, DESIGN_SIZE.x * 0.55, "角色必须占据左侧主舞台")
+	assert_gt(entries.position.x, DESIGN_SIZE.x * 0.54, "三条玩法入口必须位于右侧舞台")
+	assert_gt(omamori.position.x, entries.end.x, "御守功能列必须单侧贴边且不遮玩法入口")
+	assert_lte(top.position.y, 24.0, "资源/活动带必须贴近顶部")
+	assert_gte(bottom.end.y, DESIGN_SIZE.y - 24.0, "角色化导航必须贴近底部且不裁切")
+	assert_eq((shell.get_node("%ModeBannerRail") as Control).get_child_count(), 3,
+		"生产舞台必须提供三条横向玩法牌匾")
+	assert_null(shell.find_child("MainRow", true, false), "新骨架不得复用旧左右分栏")
+	assert_null(shell.find_child("RootVBox", true, false), "新骨架不得复用旧 SaaS 容器")
 
 
-func test_layout_keeps_relative_structure_on_larger_viewport() -> void:
+func test_layout_keeps_top_bottom_unclipped_on_larger_16_by_9_viewport() -> void:
 	var shell := _spawn_lobby(Vector2(1920, 1080))
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var resident := _global_rect(shell.get_node("%ResidentStage") as Control)
-	var entries := _global_rect(shell.get_node("%EntryRail") as Control)
-	var bottom := _global_rect(shell.get_node("%BottomBar") as Control)
-	assert_lte(resident.end.x, entries.position.x, "放大窗口后左右主区仍不得重叠")
-	assert_lte(entries.end.y, bottom.position.y, "放大窗口后入口区仍在底栏上方")
+	var top := _global_rect(shell.get_node("%TopResourceBar") as Control)
+	var entries := _global_rect(shell.get_node("%ModeBannerRail") as Control)
+	var bottom := _global_rect(shell.get_node("%BottomNav") as Control)
+	assert_lte(top.end.x, 1920.0, "放大窗口后顶栏不得裁切")
+	assert_lte(entries.end.x, 1920.0, "放大窗口后三入口不得裁切")
 	assert_lte(bottom.end.x, 1920.0, "放大窗口后底栏不得越过右边界")
 	assert_lte(bottom.end.y, 1080.0, "放大窗口后底栏不得越过下边界")
 
 
-func test_resident_portrait_loads_first_original_character_texture() -> void:
-	var characters: Array = CharacterPool.all()
-	assert_gt(characters.size(), 0, "角色池至少应有一名原创角色")
-	var resident: Character = characters[0] as Character
-	assert_true(ResourceLoader.exists(resident.portrait_path), "默认角色立绘必须走真实资源路径")
-
+func test_stage_uses_existing_character_pool_portrait_and_real_atlas_regions() -> void:
+	var resident_cutout_path := ASSET_ROOT + "resident_lin_yeche_cutout.png"
+	var resident_avatar_path := ASSET_ROOT + "resident_lin_yeche_avatar.png"
+	for file_name in [
+		"lobby_environment_16x9.png",
+		"mode_banner_sheet_transparent.png",
+		"side_omamori_icons_transparent.png",
+		"resident_lin_yeche_cutout.png",
+		"resident_lin_yeche_avatar.png",
+	]:
+		assert_true(ResourceLoader.exists(ASSET_ROOT + file_name), "批准资产必须进入生产加载路径：%s" % file_name)
+	assert_true(ResourceLoader.exists(STAGE_SCENE), "可见大厅必须来自独立 LobbyStage 场景")
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
+	var backdrop := shell.get_node("%EnvironmentBackdrop") as TextureRect
 	var portrait := shell.get_node("%ResidentPortrait") as TextureRect
-	assert_not_null(portrait.texture, "角色常驻区必须加载默认角色立绘")
-	assert_eq(portrait.texture.resource_path, resident.portrait_path, "大厅应展示角色池第一名角色")
-	assert_gt(portrait.texture.get_size().x, 0.0, "加载的角色纹理必须有效")
-	assert_gt(portrait.texture.get_size().y, 0.0, "加载的角色纹理必须有效")
+	var avatar := shell.get_node("%PlayerAvatar") as TextureRect
+	var resident := CharacterPool.all()[0] as Character
+	assert_eq(backdrop.texture.resource_path, ASSET_ROOT + "lobby_environment_16x9.png")
+	assert_not_null(resident)
+	assert_eq(resident.id, &"lin_yeche", "当前生产大厅默认角色身份必须来自 CharacterPool 首位")
+	assert_eq(portrait.get_meta("source_portrait_path", ""), resident.portrait_path,
+		"透明舞台立绘必须记录其真实 CharacterPool 来源")
+	assert_eq(avatar.get_meta("source_portrait_path", ""), resident.portrait_path,
+		"顶栏头像必须与舞台立绘来自同一生产角色图")
+	assert_eq(portrait.texture.resource_path, resident_cutout_path,
+		"大厅舞台必须消费现有角色图派生的透明 cutout")
+	assert_eq(avatar.texture.resource_path, resident_avatar_path,
+		"顶栏必须消费同源裁切头像")
+	assert_false(portrait.texture.resource_path.contains("hero_male_transparent"),
+		"被否决的漂移角色不得进入生产路径")
+	for button_name in ["PracticeButton", "MatchButton", "RulesBannerButton"]:
+		var banner := shell.get_node("%%%s" % button_name) as Button
+		var art := banner.find_child("BannerArt", true, false) as TextureRect
+		assert_true(art.texture is AtlasTexture, "%s 必须从批准素材表裁切真实区域" % button_name)
+		assert_gt((art.texture as AtlasTexture).region.size.x, 0.0)
 
 
 func test_entry_and_utility_buttons_emit_public_hook_signals() -> void:
@@ -119,6 +155,8 @@ func test_entry_and_utility_buttons_emit_public_hook_signals() -> void:
 	assert_signal_emitted(shell, "practice_pressed")
 	(shell.get_node("%MatchButton") as Button).pressed.emit()
 	assert_signal_emitted(shell, "match_pressed")
+	(shell.get_node("%RulesBannerButton") as Button).pressed.emit()
+	assert_signal_emitted(shell, "rules_pressed", "第三条牌匾必须映射既有规则入口")
 	for button_name in UTILITY_SIGNALS:
 		var signal_name: String = UTILITY_SIGNALS[button_name]
 		assert_true(shell.has_signal(signal_name), "大厅应声明 %s" % signal_name)
@@ -132,6 +170,7 @@ func test_keyboard_focus_reaches_primary_and_utility_actions() -> void:
 	var focusable_names := [
 		"PracticeButton",
 		"MatchButton",
+		"RulesBannerButton",
 		"NoticeButton",
 		"HelpButton",
 		"SettingsButton",
@@ -146,6 +185,7 @@ func test_keyboard_focus_reaches_primary_and_utility_actions() -> void:
 		assert_eq(button.focus_mode, Control.FOCUS_ALL, "%%%s 必须支持键盘焦点" % node_name)
 	var practice := shell.get_node("%PracticeButton") as Button
 	var match_button := shell.get_node("%MatchButton") as Button
+	var rules_banner := shell.get_node("%RulesBannerButton") as Button
 	assert_eq(
 		practice.focus_neighbor_bottom,
 		practice.get_path_to(match_button),
@@ -156,6 +196,22 @@ func test_keyboard_focus_reaches_primary_and_utility_actions() -> void:
 		match_button.get_path_to(practice),
 		"向上应从公共匹配返回电脑练习"
 	)
+	assert_eq(match_button.focus_neighbor_bottom, match_button.get_path_to(rules_banner))
+	assert_eq(rules_banner.focus_neighbor_top, rules_banner.get_path_to(match_button))
+
+
+func test_omamori_column_has_six_real_accessible_actions() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	var rail := shell.get_node("%OmamoriRail") as Control
+	var actions: Array[Button] = []
+	for child in rail.get_children():
+		if child is Button:
+			actions.append(child)
+	assert_eq(actions.size(), 6, "单侧御守列必须完整承载六个既有功能")
+	for button in actions:
+		assert_ne(button.text, "", "御守按钮必须保留真实 Button 文本/可访问性语义")
+		assert_eq(button.focus_mode, Control.FOCUS_ALL)
 
 
 func test_rule_drawer_host_is_hidden_and_non_interactive_on_cold_start() -> void:

@@ -34,6 +34,7 @@ func _run() -> void:
 		root.add_child(inst)
 		for _i in range(40):
 			await process_frame
+		await RenderingServer.frame_post_draw
 		var img := root.get_texture().get_image()
 		var out := "/tmp/shot_%s.png" % tag
 		img.save_png(out)
@@ -69,6 +70,7 @@ func _capture_lobby_rule_drawer() -> void:
 		shell.request_practice()
 	for _i in range(40):
 		await process_frame
+	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var out := "/tmp/shot_lobby_rule_drawer.png"
 	img.save_png(out)
@@ -91,6 +93,7 @@ func _capture_lobby_codex() -> void:
 		btn.pressed.emit()
 	for _i in range(40):
 		await process_frame
+	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var out := "/tmp/shot_lobby_codex.png"
 	img.save_png(out)
@@ -113,6 +116,7 @@ func _capture_lobby_audio_popup() -> void:
 		btn.pressed.emit()
 	for _i in range(40):
 		await process_frame
+	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
 	var out := "/tmp/shot_lobby_audio_popup.png"
 	img.save_png(out)

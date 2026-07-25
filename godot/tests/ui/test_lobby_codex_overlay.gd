@@ -156,6 +156,69 @@ func test_codex_is_full_screen_bounded_and_has_keyboard_focus_hooks() -> void:
 		assert_eq((shell.get_node("%%%s" % hook_name) as Control).focus_mode, Control.FOCUS_ALL)
 
 
+func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, [
+		"CharacterCodexButton", "CodexPanel", "CodexStage", "CodexRoster",
+		"CodexDetailScroll", "CodexDetailTitle",
+	]):
+		return
+	_press(shell, "CharacterCodexButton")
+	await get_tree().process_frame
+	var panel_style := (shell.get_node("%CodexPanel") as Control).get_theme_stylebox("panel")
+	var detail_style := (shell.get_node("%CodexDetailScroll") as Control).get_theme_stylebox("panel")
+	assert_true(panel_style is StyleBoxTexture)
+	assert_true(detail_style is StyleBoxTexture)
+	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png")
+	assert_eq((detail_style as StyleBoxTexture).texture.resource_path,
+		"res://assets/ui/lobby_materials/lobby_scroll_panel_9slice.png")
+	var entries := shell.get_node("%CodexRoster").find_children("CodexRosterEntry*", "Button", true, false)
+	assert_gte(entries.size(), 2, "木札名录必须来自真实 catalog")
+	if entries.size() >= 2:
+		var expected := String((entries[1] as Button).get_meta("entry_title"))
+		(entries[1] as Button).pressed.emit()
+		await get_tree().process_frame
+		assert_eq((shell.get_node("%CodexDetailTitle") as Label).text, expected)
+
+
+func test_codex_has_weighted_header_tabs_and_three_layer_body() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, [
+		"CharacterCodexButton", "CodexHeaderPlaque", "CodexTitle", "CodexCloseButton",
+		"CodexTabs", "CodexStage",
+		"CodexRoster", "CodexDetailScroll",
+	]):
+		return
+	_press(shell, "CharacterCodexButton")
+	await get_tree().process_frame
+	var header := shell.get_node("%CodexHeaderPlaque") as Control
+	var title := shell.get_node("%CodexTitle") as Control
+	var close_button := shell.get_node("%CodexCloseButton") as Control
+	var tabs := shell.get_node("%CodexTabs") as Control
+	var stage := shell.get_node("%CodexStage") as Control
+	var roster := shell.get_node("%CodexRoster") as Control
+	var detail := shell.get_node("%CodexDetailScroll") as Control
+	assert_lt(header.get_global_rect().end.y, tabs.get_global_rect().position.y + 4.0)
+	var header_rect := header.get_global_rect()
+	var title_rect := title.get_global_rect()
+	var close_rect := close_button.get_global_rect()
+	assert_true(header_rect.encloses(title_rect), "资料馆标题必须完整位于木札内")
+	assert_true(header_rect.encloses(close_rect), "关闭按钮必须完整位于木札内")
+	assert_gte(title_rect.position.x - header_rect.position.x, 180.0, "标题不得压住左端朱红端帽")
+	assert_gte(header_rect.end.x - close_rect.end.x, 180.0, "关闭按钮不得压住右端朱红端帽")
+	assert_gte(title_rect.position.y - header_rect.position.y, 10.0, "标题需保留顶部安全边距")
+	assert_gte(header_rect.end.y - title_rect.end.y, 10.0, "标题需保留底部安全边距")
+	assert_false(title_rect.intersects(close_rect), "标题与关闭按钮不得相交")
+	assert_gte(close_rect.position.x - title_rect.end.x, 24.0, "标题与关闭按钮需保留明确间隔")
+	assert_lt(tabs.get_global_rect().end.y, stage.get_global_rect().position.y + 4.0)
+	assert_gt(tabs.get_global_rect().size.y, 50.0, "资料馆页签必须具有一级导航权重")
+	assert_lt(stage.get_global_rect().position.x, roster.get_global_rect().position.x)
+	assert_lt(roster.get_global_rect().position.x, detail.get_global_rect().position.x)
+
+
 func test_codex_and_audio_are_mutually_exclusive_and_tab_stays_in_top_layer() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
