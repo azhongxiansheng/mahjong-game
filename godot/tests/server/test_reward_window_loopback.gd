@@ -168,6 +168,21 @@ func _drive_until_discard_count(server: LocalLoopbackServer, target: int, cmd_ba
 		return
 
 
+## 仅供第 24 弃分支测试：完整 0→24 生产链由
+## test_full_24_default_practice_tick_ends_on_human_prompt 覆盖。
+## 其余测试通过正式状态恢复契约跳过无关的前 23 次网络投影，再让第 24 弃
+## 继续走真实 submit_action / ACTION_APPLIED / snapshot / reward-window 路径。
+func _restore_before_24th_discard(server: LocalLoopbackServer) -> void:
+	var rw: RewardWindowModule = server.mode_modules.reward_window
+	assert_not_null(rw)
+	assert_eq(rw.phase, RewardWindowModule.PHASE_OPEN)
+	assert_eq(rw.discard_count, 0)
+	var state: Dictionary = rw.capture_state()
+	state["discard_count"] = RewardWindowModule.TARGET_DISCARDS - 1
+	assert_true(rw.restore_state(state), "第 24 弃 fixture 必须通过正式 restore 契约")
+	assert_eq(rw.discard_count, 23)
+
+
 # ---- live hand helpers（复用 LLS 真实墙实体语义）----
 
 func _prep_live(bc: BattleController) -> int:
@@ -263,12 +278,13 @@ func test_open_before_prompt_and_standard_zero() -> void:
 
 
 func test_production_drive_to_24_closing_settle_order() -> void:
-	# 全 HUMAN 可控驱动：真实 24 弃 + 所有 CLAIM 席 PASS → 无条件 FULL_GRANT + 下一 OPEN
+	# 全 HUMAN 第 24 弃 + 所有 CLAIM 席 PASS → 无条件 FULL_GRANT + 下一 OPEN
 	var server := LocalLoopbackServer.new(_cfg_tt_all_human(11), 0)
 	assert_true(server.start())
 	var rw: RewardWindowModule = server.mode_modules.reward_window
+	_restore_before_24th_discard(server)
 	_drive_until_discard_count(server, 24, 2000)
-	assert_eq(rw.discard_count, 24, "必须真实累计 24 次权威弃牌")
+	assert_eq(rw.discard_count, 24, "第 24 弃必须走真实权威动作")
 	var kinds: Array = _kinds(server)
 	assert_gte(_count(kinds, "REWARD_WINDOW_CLOSING"), 1)
 	assert_eq(_count(kinds, "ITEM_GRANTED"), 0)
@@ -378,8 +394,7 @@ func test_closing_ron_cancels_not_full_grant() -> void:
 	assert_not_null(bc)
 	var rw: RewardWindowModule = server.mode_modules.reward_window
 	assert_not_null(rw)
-	# 推进到 23 弃（真实 submit 驱动，全 HUMAN）
-	_drive_until_discard_count(server, 23, 3000)
+	_restore_before_24th_discard(server)
 	assert_eq(rw.discard_count, 23)
 	# 布置七对子听牌 + seat1 打 W9（与既有 LLS RON fixture 同结构）
 	var used: Dictionary = {}
@@ -1211,7 +1226,7 @@ func test_full_24_pending_utt_tick_settles_and_resumes() -> void:
 	var server := LocalLoopbackServer.new(_cfg_tt_all_human(13), 0)
 	assert_true(server.start())
 	var rw: RewardWindowModule = server.mode_modules.reward_window
-	_drive_until_discard_count(server, 23, 4000)
+	_restore_before_24th_discard(server)
 	assert_eq(rw.discard_count, 23)
 	# 在第 24 弃前注入 non-terminal，closing 后 ptt 仍合格并阻塞屏障
 	var ptt_pre: int = maxi(server.current_server_seq(), 1)
