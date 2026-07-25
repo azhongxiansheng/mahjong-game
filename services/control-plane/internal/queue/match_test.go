@@ -76,12 +76,13 @@ func (r *recordingIssuer) IssueGuestSession() (tokens.GuestSession, error) {
 }
 
 type matchFixture struct {
-	svc    *Service
-	rdb    *redis.Client
-	clk    *mutableClock
-	issuer *recordingIssuer
-	worker string
-	prefix string
+	svc         *Service
+	rdb         *redis.Client
+	clk         *mutableClock
+	issuer      *recordingIssuer
+	worker      string
+	voiceWorker string
+	prefix      string
 }
 
 func newMatchFixture(t *testing.T) *matchFixture {
@@ -112,20 +113,22 @@ func newMatchFixture(t *testing.T) *matchFixture {
 		}
 	})
 	return &matchFixture{
-		svc:    svc,
-		rdb:    rdb,
-		clk:    clk,
-		issuer: newRecordingIssuer(t, clk),
-		worker: "ws://worker.test:9000",
-		prefix: prefix,
+		svc:         svc,
+		rdb:         rdb,
+		clk:         clk,
+		issuer:      newRecordingIssuer(t, clk),
+		worker:      "ws://worker.test:9000",
+		voiceWorker: "ws://voice.worker.test:9001",
+		prefix:      prefix,
 	}
 }
 
 func (f *matchFixture) matchOnce(t *testing.T) MatchResult {
 	t.Helper()
 	res, err := f.svc.MatchPool(context.Background(), RoundKindEast, GameModeStandard, MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.issuer,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.issuer,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -179,6 +182,10 @@ func TestMatch_FourHumansImmediateUniqueRoom(t *testing.T) {
 		if tk.Worker != f.worker {
 			t.Fatalf("worker=%q want %q", tk.Worker, f.worker)
 		}
+		// STANDARD 硬隔离：不得分配 voice_worker
+		if tk.VoiceWorker != "" {
+			t.Fatalf("STANDARD voice_worker=%q want empty", tk.VoiceWorker)
+		}
 		if tk.RoomToken == "" {
 			t.Fatal("missing room_token")
 		}
@@ -223,6 +230,53 @@ func TestMatch_FourHumansImmediateUniqueRoom(t *testing.T) {
 	res2 := f.matchOnce(t)
 	if res2.Matched {
 		t.Fatal("second match must not create another room")
+	}
+}
+
+func TestMatch_TrashTalkAssignedHasExactVoiceWorker(t *testing.T) {
+	f := newMatchFixture(t)
+	ctx := context.Background()
+	tickets := enqueueN(t, f.svc, 4, RoundKindEast, GameModeTrashTalk)
+	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeTrashTalk, MatchParams{
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.issuer,
+	})
+	if err != nil || !res.Matched {
+		t.Fatalf("MatchPool TRASH_TALK: matched=%v err=%v", res.Matched, err)
+	}
+	for _, tk0 := range tickets {
+		tk, err := f.svc.Get(ctx, tk0.GuestID, tk0.TicketID)
+		if err != nil {
+			t.Fatalf("Get: %v", err)
+		}
+		if tk.VoiceWorker != f.voiceWorker {
+			t.Fatalf("TRASH_TALK voice_worker=%q want %q", tk.VoiceWorker, f.voiceWorker)
+		}
+	}
+	room, err := f.svc.GetRoom(ctx, res.RoomID)
+	if err != nil {
+		t.Fatalf("GetRoom: %v", err)
+	}
+	if room.VoiceWorker != f.voiceWorker {
+		t.Fatalf("room voice_worker=%q want %q", room.VoiceWorker, f.voiceWorker)
+	}
+}
+
+func TestMatch_StandardIgnoresEmptyVoiceEndpoint(t *testing.T) {
+	f := newMatchFixture(t)
+	ctx := context.Background()
+	_ = enqueueN(t, f.svc, 4, RoundKindEast, GameModeStandard)
+	res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: "", // STANDARD 单池可不带 voice
+		TokenIssuer:         f.issuer,
+	})
+	if err != nil {
+		t.Fatalf("STANDARD MatchPool with empty voice must succeed: %v", err)
+	}
+	if !res.Matched {
+		t.Fatal("expected match")
 	}
 }
 
@@ -382,8 +436,9 @@ func TestMatch_ConcurrentMatchersSingleRoom(t *testing.T) {
 				return
 			}
 			results[i], errs[i] = svc2.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint: f.worker,
-				TokenIssuer:    f.issuer,
+				WorkerEndpoint:      f.worker,
+				VoiceWorkerEndpoint: f.voiceWorker,
+				TokenIssuer:         f.issuer,
 			})
 		}(i)
 	}
@@ -450,8 +505,9 @@ func TestMatch_CancelVsConsumeRace(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			res, err := f.svc.MatchPool(ctx, RoundKindEast, GameModeStandard, MatchParams{
-				WorkerEndpoint: f.worker,
-				TokenIssuer:    f.issuer,
+				WorkerEndpoint:      f.worker,
+				VoiceWorkerEndpoint: f.voiceWorker,
+				TokenIssuer:         f.issuer,
 			})
 			if err != nil {
 				matchErr.Store(err)
@@ -528,8 +584,9 @@ func TestMatch_PoolsIsolated(t *testing.T) {
 	rooms := map[string]bool{}
 	for _, c := range combos {
 		res, err := f.svc.MatchPool(ctx, c.rk, c.gm, MatchParams{
-			WorkerEndpoint: f.worker,
-			TokenIssuer:    f.issuer,
+			WorkerEndpoint:      f.worker,
+			VoiceWorkerEndpoint: f.voiceWorker,
+			TokenIssuer:         f.issuer,
 		})
 		if err != nil {
 			t.Fatalf("match: %v", err)
@@ -583,10 +640,11 @@ func TestMatcher_StartStopLifecycle(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	m, err := NewMatcher(MatcherOptions{
-		Service:        f.svc,
-		TokenIssuer:    f.issuer,
-		WorkerEndpoint: f.worker,
-		ScanInterval:   15 * time.Millisecond,
+		Service:             f.svc,
+		TokenIssuer:         f.issuer,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		ScanInterval:        15 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)
@@ -616,9 +674,10 @@ func TestMatcher_StartStopLifecycle(t *testing.T) {
 func TestMatch_WorkerEndpointRequiredOnMatcher(t *testing.T) {
 	f := newMatchFixture(t)
 	_, err := NewMatcher(MatcherOptions{
-		Service:        f.svc,
-		TokenIssuer:    f.issuer,
-		WorkerEndpoint: "   ",
+		Service:             f.svc,
+		TokenIssuer:         f.issuer,
+		WorkerEndpoint:      "   ",
+		VoiceWorkerEndpoint: "ws://127.0.0.1:9001",
 	})
 	if err == nil {
 		t.Fatal("expected error for blank worker")

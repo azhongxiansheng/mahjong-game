@@ -34,13 +34,14 @@ func (c *httpMutableClock) Advance(d time.Duration) {
 }
 
 type matchHTTPFixture struct {
-	baseURL string
-	ts      *tokens.Service
-	q       *queue.Service
-	rdb     *redis.Client
-	clk     *httpMutableClock
-	worker  string
-	prefix  string
+	baseURL     string
+	ts          *tokens.Service
+	q           *queue.Service
+	rdb         *redis.Client
+	clk         *httpMutableClock
+	worker      string
+	voiceWorker string
+	prefix      string
 }
 
 func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
@@ -105,19 +106,27 @@ func newMatchHTTPFixture(t *testing.T) *matchHTTPFixture {
 	baseURL := startServer(t, srv)
 	t.Cleanup(func() { shutdownServer(t, srv) })
 	return &matchHTTPFixture{
-		baseURL: baseURL,
-		ts:      ts,
-		q:       q,
-		rdb:     c.Redis(),
-		clk:     clk,
-		worker:  worker,
-		prefix:  prefix,
+		baseURL:     baseURL,
+		ts:          ts,
+		q:           q,
+		rdb:         c.Redis(),
+		clk:         clk,
+		worker:      worker,
+		voiceWorker: "ws://voice.test:9001",
+		prefix:      prefix,
 	}
 }
 
 func (f *matchHTTPFixture) join(t *testing.T, token string) map[string]any {
 	t.Helper()
-	body := []byte(`{"round_kind":"EAST","game_mode":"STANDARD"}`)
+	// 既有 helper 行为不变：默认 STANDARD
+	return f.joinWithMode(t, token, "STANDARD")
+}
+
+// joinWithMode 真实 HTTP 入队；gameMode 为 ADR 稳定值（STANDARD | TRASH_TALK）。
+func (f *matchHTTPFixture) joinWithMode(t *testing.T, token, gameMode string) map[string]any {
+	t.Helper()
+	body := []byte(`{"round_kind":"EAST","game_mode":"` + gameMode + `"}`)
 	resp, raw := doJSON(t, http.MethodPost, f.baseURL+"/v1/queues/casual", token, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("join status=%d body=%s", resp.StatusCode, redactSecrets(raw))
@@ -163,8 +172,9 @@ func TestHTTP_MatchAssignedQuery_WaitingCancelledAssigned(t *testing.T) {
 	// 满 30s 匹配（服务层 MatchPool，模拟 matcher 自动推进）
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.ts,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.ts,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("MatchPool: matched=%v err=%v", res.Matched, err)
@@ -184,6 +194,10 @@ func TestHTTP_MatchAssignedQuery_WaitingCancelledAssigned(t *testing.T) {
 	}
 	if got["worker"] != f.worker {
 		t.Fatalf("worker=%v", got["worker"])
+	}
+	// STANDARD 不得泄漏 voice_worker
+	if _, ok := got["voice_worker"]; ok {
+		t.Fatalf("STANDARD assigned must omit voice_worker; got %v", got["voice_worker"])
 	}
 	if got["room_id"] != res.RoomID {
 		t.Fatalf("room_id=%v want %s", got["room_id"], res.RoomID)
@@ -234,6 +248,74 @@ func TestHTTP_MatchAssignedQuery_WaitingCancelledAssigned(t *testing.T) {
 	}
 }
 
+// TestHTTP_TrashTalkAssignedReturnsExactVoiceWorker
+// Review 补足：真实 Redis 入队 TRASH_TALK → MatchPool → HTTP GET ticket，
+// 证明客户端 assigned JSON 的 voice_worker 严格等于 fixture 配置的 VoiceWorkerEndpoint。
+// 不直接调用 ticketToResponse；不 mock Redis/HTTP。
+func TestHTTP_TrashTalkAssignedReturnsExactVoiceWorker(t *testing.T) {
+	f := newMatchHTTPFixture(t)
+	_, token := issueGuestToken(t, f.ts)
+
+	join := f.joinWithMode(t, token, "TRASH_TALK")
+	ticketID, _ := join["ticket_id"].(string)
+	if join["status"] != "waiting" {
+		t.Fatalf("join status=%v", join["status"])
+	}
+	if join["game_mode"] != "TRASH_TALK" {
+		t.Fatalf("join game_mode=%v want TRASH_TALK", join["game_mode"])
+	}
+
+	// 满 30s 匹配（服务层 MatchPool，模拟 matcher 自动推进）
+	f.clk.Advance(30 * time.Second)
+	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeTrashTalk, queue.MatchParams{
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.ts,
+	})
+	if err != nil || !res.Matched {
+		t.Fatalf("MatchPool TRASH_TALK: matched=%v err=%v", res.Matched, err)
+	}
+
+	code, got, raw := f.getTicket(t, token, ticketID)
+	if code != http.StatusOK {
+		t.Fatalf("assigned GET status=%d body=%s", code, redactSecrets(raw))
+	}
+	if got["status"] != "assigned" {
+		t.Fatalf("status=%v want assigned; body=%s", got["status"], redactSecrets(raw))
+	}
+	for _, k := range []string{"worker", "voice_worker", "room_id", "seat", "room_token"} {
+		if _, ok := got[k]; !ok {
+			t.Fatalf("missing %s in TRASH_TALK assigned body %s", k, redactSecrets(raw))
+		}
+	}
+	if got["worker"] != f.worker {
+		t.Fatalf("worker=%v want %s", got["worker"], f.worker)
+	}
+	// 精确等于 fixture 配置的 VoiceWorkerEndpoint（非推导、非空、非 worker 改写）
+	if got["voice_worker"] != f.voiceWorker {
+		t.Fatalf("voice_worker=%v want exact %q", got["voice_worker"], f.voiceWorker)
+	}
+	if got["room_id"] != res.RoomID {
+		t.Fatalf("room_id=%v want %s", got["room_id"], res.RoomID)
+	}
+	seatF, ok := got["seat"].(float64)
+	if !ok {
+		t.Fatalf("seat type %T", got["seat"])
+	}
+	seat := int(seatF)
+	roomToken, _ := got["room_token"].(string)
+	if roomToken == "" {
+		t.Fatal("empty room_token")
+	}
+	if strings.Contains(raw, httpTestSecret) {
+		t.Fatal("response contains signing secret")
+	}
+	if _, err := f.ts.VerifyRoomToken(roomToken, res.RoomID, seat); err != nil {
+		t.Fatalf("VerifyRoomToken: %v", err)
+	}
+	assertNoSecretLeak(t, raw, token)
+}
+
 func TestHTTP_MatchCancelledStable(t *testing.T) {
 	f := newMatchHTTPFixture(t)
 	_, token := issueGuestToken(t, f.ts)
@@ -256,8 +338,9 @@ func TestHTTP_MatchCancelledStable(t *testing.T) {
 	// 取消后满 30s 不得再被消费
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.ts,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.ts,
 	})
 	if err != nil {
 		t.Fatalf("MatchPool: %v", err)
@@ -280,8 +363,9 @@ func TestHTTP_MatchFourHumansAssigned(t *testing.T) {
 		players[i] = player{token: tok, ticketID: join["ticket_id"].(string)}
 	}
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.ts,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.ts,
 	})
 	if err != nil || !res.Matched || res.HumanCount != 4 {
 		t.Fatalf("match: %+v err=%v", res, err)
@@ -321,8 +405,9 @@ func TestHTTP_MatchCrossInstanceVisible(t *testing.T) {
 	ticketID := join["ticket_id"].(string)
 	f.clk.Advance(30 * time.Second)
 	res, err := f.q.MatchPool(context.Background(), queue.RoundKindEast, queue.GameModeStandard, queue.MatchParams{
-		WorkerEndpoint: f.worker,
-		TokenIssuer:    f.ts,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		TokenIssuer:         f.ts,
 	})
 	if err != nil || !res.Matched {
 		t.Fatalf("match: %+v %v", res, err)
@@ -373,10 +458,11 @@ func TestHTTP_MatcherAutoAssignWithoutClientGET(t *testing.T) {
 	f.clk.Advance(30 * time.Second)
 
 	m, err := queue.NewMatcher(queue.MatcherOptions{
-		Service:        f.q,
-		TokenIssuer:    f.ts,
-		WorkerEndpoint: f.worker,
-		ScanInterval:   15 * time.Millisecond,
+		Service:             f.q,
+		TokenIssuer:         f.ts,
+		WorkerEndpoint:      f.worker,
+		VoiceWorkerEndpoint: f.voiceWorker,
+		ScanInterval:        15 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatalf("NewMatcher: %v", err)

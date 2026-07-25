@@ -77,6 +77,17 @@ func bind_context(config: GameSessionConfig, seat: int = 0, p_room_id: String = 
 	_rebuild_remote_queues()
 
 
+## #244：公共场语音鉴权成功后覆盖 room/seat/session（不改 mode 模块生命周期）。
+func bind_public_identity(p_room_id: String, p_session_id: String, seat: int) -> void:
+	if p_room_id.is_empty() or p_session_id.is_empty():
+		return
+	_protocol_version = ProtocolConstants.PROTOCOL_VERSION
+	_room_id = p_room_id
+	_session_id = p_session_id
+	_local_seat = clampi(seat, 0, 3)
+	_rebuild_remote_queues()
+
+
 ## 本席之外的 0–3 各建有界远端队列（随 local_seat 动态变化）。
 func _rebuild_remote_queues() -> void:
 	_remote.clear()

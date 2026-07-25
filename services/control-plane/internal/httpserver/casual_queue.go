@@ -34,11 +34,12 @@ type ticketResponse struct {
 	Status     string `json:"status"`
 	QueuedAt   string `json:"queued_at"`
 	DeadlineAt string `json:"deadline_at"`
-	// assigned 时填充（ADR：Worker / room / seat / token）
-	Worker    string `json:"worker,omitempty"`
-	RoomID    string `json:"room_id,omitempty"`
-	Seat      *int   `json:"seat,omitempty"`
-	RoomToken string `json:"room_token,omitempty"`
+	// assigned 时填充（ADR：Worker / room / seat / token；#244 voice_worker 显式配置）
+	Worker      string `json:"worker,omitempty"`
+	VoiceWorker string `json:"voice_worker,omitempty"`
+	RoomID      string `json:"room_id,omitempty"`
+	Seat        *int   `json:"seat,omitempty"`
+	RoomToken   string `json:"room_token,omitempty"`
 }
 
 func formatAPITime(t time.Time) string {
@@ -60,6 +61,7 @@ func ticketToResponse(tk queue.Ticket) ticketResponse {
 	}
 	if tk.Status == queue.StatusAssigned {
 		resp.Worker = tk.Worker
+		resp.VoiceWorker = tk.VoiceWorker
 		resp.RoomID = tk.RoomID
 		resp.RoomToken = tk.RoomToken
 		if tk.HasSeat {

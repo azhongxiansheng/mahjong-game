@@ -19,11 +19,14 @@ type Config struct {
 	// WorkerEndpoint 为 #239 最小静态过渡契约（匹配结果中的 Worker 地址）。
 	// 不实现 Worker 注册/续租/容量（#256）。
 	WorkerEndpoint string
+	// VoiceWorkerEndpoint 为 #244 独立语音 WebSocket 地址（显式配置，不得从 worker URL 猜端口）。
+	VoiceWorkerEndpoint string
 }
 
 // Load 从环境变量读取配置；空值使用计划冻结的默认值。
 // TOKEN_SIGNING_SECRET 必填且长度 >= 32；缺失/空/过短时稳定失败。
 // WORKER_ENDPOINT 必填且 trim 后非空；缺失/空白时稳定失败。
+// VOICE_WORKER_ENDPOINT 必填且 trim 后非空；缺失/空白时稳定失败。
 // 错误文案不得回显密钥或 token。
 func Load() (Config, error) {
 	cfg := Config{
@@ -55,6 +58,12 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("WORKER_ENDPOINT is required")
 	}
 	cfg.WorkerEndpoint = worker
+
+	voiceWorker := strings.TrimSpace(os.Getenv("VOICE_WORKER_ENDPOINT"))
+	if voiceWorker == "" {
+		return Config{}, fmt.Errorf("VOICE_WORKER_ENDPOINT is required")
+	}
+	cfg.VoiceWorkerEndpoint = voiceWorker
 
 	return cfg, nil
 }

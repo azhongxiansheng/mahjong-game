@@ -99,11 +99,12 @@ type Ticket struct {
 	QueuedAt   TicketTime `json:"queued_at"`
 	DeadlineAt TicketTime `json:"deadline_at"`
 	// 以下字段仅 status=assigned 时有意义（跨 CP 实例 Redis 可读）。
-	RoomID    string `json:"room_id,omitempty"`
-	Seat      int    `json:"seat,omitempty"`
-	Worker    string `json:"worker,omitempty"`
-	RoomToken string `json:"room_token,omitempty"`
-	HasSeat   bool   `json:"-"` // 内部：区分 seat=0 与未分配
+	RoomID      string `json:"room_id,omitempty"`
+	Seat        int    `json:"seat,omitempty"`
+	Worker      string `json:"worker,omitempty"`
+	VoiceWorker string `json:"voice_worker,omitempty"`
+	RoomToken   string `json:"room_token,omitempty"`
+	HasSeat     bool   `json:"-"` // 内部：区分 seat=0 与未分配
 }
 
 // Options 构造队列服务。
@@ -393,16 +394,17 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (Ticket, erro
 		return Ticket{}, fmt.Errorf("corrupt deadline_at: %w", err)
 	}
 	tk := Ticket{
-		TicketID:   m["ticket_id"],
-		GuestID:    m["guest_id"],
-		RoundKind:  RoundKind(m["round_kind"]),
-		GameMode:   GameMode(m["game_mode"]),
-		Status:     m["status"],
-		QueuedAt:   TicketTime(queuedAt.UTC()),
-		DeadlineAt: TicketTime(deadlineAt.UTC()),
-		RoomID:     m["room_id"],
-		Worker:     m["worker"],
-		RoomToken:  m["room_token"],
+		TicketID:    m["ticket_id"],
+		GuestID:     m["guest_id"],
+		RoundKind:   RoundKind(m["round_kind"]),
+		GameMode:    GameMode(m["game_mode"]),
+		Status:      m["status"],
+		QueuedAt:    TicketTime(queuedAt.UTC()),
+		DeadlineAt:  TicketTime(deadlineAt.UTC()),
+		RoomID:      m["room_id"],
+		Worker:      m["worker"],
+		VoiceWorker: m["voice_worker"],
+		RoomToken:   m["room_token"],
 	}
 	if rawSeat, ok := m["seat"]; ok && rawSeat != "" {
 		seat, err := strconv.Atoi(rawSeat)

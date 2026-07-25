@@ -7,6 +7,9 @@ class_name NetworkedBattleController extends IBattleController
 # 非 snapshot 若 view_hash==committed 则直接 journal commit（投影不变），
 # 否则只进 pending，匹配 ROOM_SNAPSHOT 才一次提交；stream 整批原子回滚。
 # #241：snapshot_registry 预检后原子 restore；失败整份零应用。
+# #244：跨通道权威序号 — 语音 PTT_END 占用同一 server_seq 空间但不进 journal。
+# 未来 marker / 乱序事件由 AuthoritySeqBridge 唯一持有；NBC 只接受恰好 expected_next。
+# 未知业务缺口仍由 _ingest_non_snapshot 置 resync（本方法不放宽）。
 
 var room_id: String = ""
 var recipient_seat: int = 0
@@ -42,6 +45,27 @@ func _init(p_room_id: String = "", p_recipient_seat: int = 0) -> void:
 
 func resync_required() -> bool:
 	return _resync_required
+
+
+## #244：仅接受恰好 expected_next 的侧通道权威序号；未来项由 Bridge 持有。
+func observe_side_channel_authority_seq(seq: int) -> Dictionary:
+	if _resync_required:
+		return {"ok": false, "reason": "RESYNC_REQUIRED"}
+	if seq <= 0:
+		return {"ok": false, "reason": "INVALID_SEQ"}
+	if seq <= _current_seq:
+		return {"ok": true, "advanced": false, "reason": "ALREADY_PASSED"}
+	var expected: int = expected_next_server_seq()
+	if seq != expected:
+		return {"ok": false, "reason": "NOT_EXPECTED", "expected": expected}
+	_current_seq = seq
+	return {"ok": true, "advanced": true, "reason": ""}
+
+
+## Bridge 超时/溢出时强制进入既有 resync 语义（无 journal 污染）。
+func force_resync_for_authority_gap() -> void:
+	_pending_event = null
+	_resync_required = true
 
 
 # exact NetworkedEvent：is 接受子类；get_script()==NetworkedEvent 才是基类实例。
