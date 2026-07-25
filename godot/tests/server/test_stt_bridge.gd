@@ -428,6 +428,74 @@ func test_stt_closed_first_frames_never_resume() -> void:
 	assert_true(bool((bridge._streams[bridge._utt_key("room_init_closed", 0, "u_new")] as Dictionary).get("started", false)))
 
 
+func test_new_api_source_final_ingests_once() -> void:
+	# #248：source=new_api 必须被 bridge 接受并只入 RewardWindow 一次，不得改写为 faster_whisper。
+	var env: Dictionary = _make("room_napi")
+	var rw: RewardWindowModule = env["rw"]
+	var bridge: SttBridge = env["bridge"]
+	var wid: String = env["wid"]
+	var ptt := 48
+	assert_true(bool(rw.ingest_utterance({
+		"seat": 0, "utterance_id": "un", "text": "", "language": "zh",
+		"ptt_end_server_seq": ptt, "terminal": false,
+	}).get("accepted", false)))
+	bridge.inject_pending_for_test({
+		"room_id": "room_napi", "seat": 0, "utterance_id": "un", "hand_seq": 0,
+		"window_id": wid, "ptt_end_server_seq": ptt, "language": "zh", "grace_deadline_ms": 0,
+	})
+	var b0: int = bridge.finals_broadcast
+	var i0: int = bridge.finals_ingested
+	var saw_src := { "v": "" }
+	bridge.transcript_final_broadcast.connect(func(msg: Dictionary) -> void:
+		saw_src["v"] = str(msg.get("source", ""))
+	)
+	bridge.handle_stt_result_for_test({
+		"protocol_version": 1, "kind": "TRANSCRIPT_FINAL",
+		"room_id": "room_napi", "seat": 0, "hand_seq": 0, "window_id": wid,
+		"utterance_id": "un", "ptt_end_server_seq": ptt, "source": "new_api",
+		"lang": "zh", "text": "备源合格", "is_final": true,
+	})
+	assert_eq(bridge.finals_broadcast, b0 + 1, "new_api final 应广播")
+	assert_eq(bridge.finals_ingested, i0 + 1, "new_api final 应摄入一次")
+	assert_eq(str(saw_src["v"]), "new_api", "不得改写 source")
+	assert_eq(_scored(rw).size(), 1)
+	# 重复同一 final 不得二次摄入
+	bridge.handle_stt_result_for_test({
+		"protocol_version": 1, "kind": "TRANSCRIPT_FINAL",
+		"room_id": "room_napi", "seat": 0, "hand_seq": 0, "window_id": wid,
+		"utterance_id": "un", "ptt_end_server_seq": ptt, "source": "new_api",
+		"lang": "zh", "text": "备源合格", "is_final": true,
+	})
+	assert_eq(bridge.finals_ingested, i0 + 1, "重复 commit 不得二次摄入")
+	assert_eq(_scored(rw).size(), 1)
+
+
+func test_unknown_source_final_rejected() -> void:
+	var env: Dictionary = _make("room_bad_src")
+	var rw: RewardWindowModule = env["rw"]
+	var bridge: SttBridge = env["bridge"]
+	var wid: String = env["wid"]
+	var ptt := 49
+	assert_true(bool(rw.ingest_utterance({
+		"seat": 0, "utterance_id": "ub", "text": "", "language": "zh",
+		"ptt_end_server_seq": ptt, "terminal": false,
+	}).get("accepted", false)))
+	bridge.inject_pending_for_test({
+		"room_id": "room_bad_src", "seat": 0, "utterance_id": "ub", "hand_seq": 0,
+		"window_id": wid, "ptt_end_server_seq": ptt, "language": "zh", "grace_deadline_ms": 0,
+	})
+	var b0: int = bridge.finals_broadcast
+	bridge.handle_stt_result_for_test({
+		"protocol_version": 1, "kind": "TRANSCRIPT_FINAL",
+		"room_id": "room_bad_src", "seat": 0, "hand_seq": 0, "window_id": wid,
+		"utterance_id": "ub", "ptt_end_server_seq": ptt, "source": "evil_vendor",
+		"lang": "zh", "text": "拒绝", "is_final": true,
+	})
+	assert_eq(bridge.finals_broadcast, b0)
+	assert_eq(bridge.last_reject_reason, "SCHEMA")
+	assert_eq(_scored(rw).size(), 0)
+
+
 func test_leave_open_stops_stream_and_cancels() -> void:
 	# P1-5：OPEN 中 start → CLOSING 后后续帧 0 send，stream 清空
 	var env: Dictionary = _make("room_leave")

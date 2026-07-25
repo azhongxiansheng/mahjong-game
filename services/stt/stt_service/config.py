@@ -1,9 +1,13 @@
-"""Runtime config via credential-free environment variables only."""
+"""Runtime config via environment variables; secrets (token) are redacted from repr.
+
+New-api credentials use dedicated STT_NEW_API_* vars only — never silent
+reuse of asset-generation OPENAI_* env vars.
+"""
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def _env(name: str, default: str) -> str:
@@ -52,6 +56,31 @@ class SttConfig:
     vad_filter: bool = True
     # Allowed languages for authoritative finals (ISO 639-1).
     allowed_langs: tuple[str, ...] = ("zh", "en", "ja")
+    # Primary logical timeout (ms). STT owns this clock; not RewardWindow.
+    primary_timeout_ms: int = 30_000
+    # OpenAI-compatible / new-api backup (disabled unless all required set).
+    new_api_endpoint: str = ""
+    new_api_model: str = ""
+    new_api_token: str = field(default="", repr=False)
+    new_api_timeout_ms: int = 10_000
+    circuit_failure_threshold: int = 3
+    circuit_cooldown_ms: int = 30_000
+
+    @property
+    def new_api_enabled(self) -> bool:
+        return bool(self.new_api_endpoint and self.new_api_model and self.new_api_token)
+
+    def __repr__(self) -> str:
+        # Explicit: never leak token via default dataclass repr.
+        return (
+            "SttConfig("
+            f"host={self.host!r}, port={self.port}, model_size={self.model_size!r}, "
+            f"device={self.device!r}, primary_timeout_ms={self.primary_timeout_ms}, "
+            f"new_api_enabled={self.new_api_enabled}, "
+            f"new_api_timeout_ms={self.new_api_timeout_ms}, "
+            f"circuit_failure_threshold={self.circuit_failure_threshold}, "
+            f"circuit_cooldown_ms={self.circuit_cooldown_ms})"
+        )
 
     @classmethod
     def from_env(cls) -> "SttConfig":
@@ -68,4 +97,11 @@ class SttConfig:
             partial_interval_ms=_env_int("STT_PARTIAL_INTERVAL_MS", 800),
             beam_size=_env_int("STT_BEAM_SIZE", 1),
             vad_filter=_env("STT_VAD_FILTER", "1") not in ("0", "false", "False"),
+            primary_timeout_ms=_env_int("STT_PRIMARY_TIMEOUT_MS", 30_000),
+            new_api_endpoint=_env("STT_NEW_API_ENDPOINT", ""),
+            new_api_model=_env("STT_NEW_API_MODEL", ""),
+            new_api_token=_env("STT_NEW_API_TOKEN", ""),
+            new_api_timeout_ms=_env_int("STT_NEW_API_TIMEOUT_MS", 10_000),
+            circuit_failure_threshold=_env_int("STT_CIRCUIT_FAILURE_THRESHOLD", 3),
+            circuit_cooldown_ms=_env_int("STT_CIRCUIT_COOLDOWN_MS", 30_000),
         )

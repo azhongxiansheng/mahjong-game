@@ -86,16 +86,21 @@ docker build -t mahjong .
 ```
 `go test ./...` reports "no test files" unless you add some.
 
-### STT 服务（#247，`services/stt`）
+### STT 服务（#247/#248，`services/stt`）
 ```bash
 cd services/stt
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python -m stt_service   # ws://127.0.0.1:9100；可用 STT_DEVICE / STT_COMPUTE_TYPE / STT_MODEL_CACHE
 # Worker: STT_SERVICE_URL=ws://127.0.0.1:9100 ... headless_worker_main.gd --stt-url=...
-pytest -q tests          # 含真实中英日 fixture + VAD（见 fixtures/SOURCES.md）
+pytest -q tests          # 含真实中英日 fixture + VAD + #248 fallback（见 fixtures/SOURCES.md）
 ```
 原始 PCM 仅有界内存；**不**写磁盘。公共网络四客户端链路未端到端验证。
+
+#248 new-api 备份（可选）：专用 `STT_NEW_API_ENDPOINT` / `STT_NEW_API_MODEL` / `STT_NEW_API_TOKEN` /
+`STT_NEW_API_TIMEOUT_MS` + 主逻辑 `STT_PRIMARY_TIMEOUT_MS`。缺配置则备份禁用，主服务仍运行。
+仅 final 在主异常/逻辑超时后回退；partial 与正常空白终态不回退。熔断与 PONG 健康摘要不含 token。
+**勿**静默复用资产生成 `OPENAI_*`。真实供应商 smoke ≠ 公网/四客户端 e2e。
 
 ### 资产生成
 

@@ -1,7 +1,8 @@
-# Locked for #247 / E4-05. Python 3.11.
+# Locked for #247 / #248. Python 3.11.
 faster-whisper==1.2.1
 ctranslate2==4.7.1
 websockets==14.2
+httpx==0.28.1
 numpy>=1.24,<2.3
 onnxruntime>=1.16
 av>=11.0

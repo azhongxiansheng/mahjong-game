@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Any
 
 from .config import SttConfig
-from .protocol import make_failed, make_final, make_partial
+from .protocol import SOURCE_FASTER_WHISPER, make_failed, make_final, make_partial
 from .transcriber import WhisperTranscriber
 
 
@@ -401,9 +401,18 @@ class SessionManager:
         meta: dict[str, Any],
         token: int,
         result: Any,
+        *,
+        release_slot: bool = True,
     ) -> dict[str, Any]:
+        """Terminalize a commit.
+
+        When primary CPU work is still draining after a logical timeout,
+        pass release_slot=False so the original infer slot stays occupied
+        until abort_infer_slot() runs after the thread returns.
+        """
         with self._lock:
-            self._global_infer_inflight = max(0, self._global_infer_inflight - 1)
+            if release_slot:
+                self._global_infer_inflight = max(0, self._global_infer_inflight - 1)
             key = utt_key(meta["room_id"], int(meta["seat"]), meta["utterance_id"])
             s = self._active.get(key)
             if s is None:
@@ -438,6 +447,9 @@ class SessionManager:
                     ptt_end_server_seq=s.ptt_end_server_seq,
                     reason="CANCELLED",
                 )
+            # Already terminalized (e.g. backup finished while late primary drains).
+            if s.phase == Phase.TERMINAL and s.final_result is not None:
+                return s.final_result
             if result is None or getattr(result, "empty_reason", None) or not getattr(result, "text", "").strip():
                 out = make_failed(
                     room_id=s.room_id,
@@ -449,6 +461,7 @@ class SessionManager:
                     reason=getattr(result, "empty_reason", None) or "EMPTY",
                 )
             else:
+                src = getattr(result, "source", None) or SOURCE_FASTER_WHISPER
                 out = make_final(
                     room_id=s.room_id,
                     seat=s.seat,
@@ -461,6 +474,7 @@ class SessionManager:
                     duration_before_vad=result.duration_before_vad,
                     duration_after_vad=result.duration_after_vad,
                     wall_ms=result.wall_ms,
+                    source=str(src),
                 )
             s.phase = Phase.TERMINAL
             s.final_result = out
@@ -472,6 +486,10 @@ class SessionManager:
                 self._final_cache.pop(old, None)
             self._release_unlocked(key)
             return out
+
+    def infer_inflight(self) -> int:
+        with self._lock:
+            return self._global_infer_inflight
 
     def abort_infer_slot(self) -> None:
         """Ensure begin_* inflight is released after cancel/exception (exactly once per begin)."""

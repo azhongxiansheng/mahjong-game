@@ -1,4 +1,9 @@
-"""Async WebSocket STT server — strict JSON, concurrent cancel-safe commit."""
+"""Async WebSocket STT server — strict JSON, concurrent cancel-safe commit.
+
+#248: primary faster-whisper with logical timeout; eligible final-only
+new-api backup; circuit breaker; PONG health without secrets.
+Network e2e not verified.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +15,9 @@ from typing import Any
 from websockets.asyncio.server import ServerConnection, serve
 from websockets.exceptions import ConnectionClosed
 
+from .circuit_breaker import CircuitBreaker
 from .config import SttConfig
+from .new_api_client import NewApiClient, NewApiError
 from .protocol import (
     KIND_AUDIO_CHUNK,
     KIND_ERROR,
@@ -21,6 +28,8 @@ from .protocol import (
     KIND_UTTERANCE_START,
     KIND_WINDOW_CANCEL,
     PROTOCOL_VERSION,
+    SOURCE_FASTER_WHISPER,
+    SOURCE_NEW_API,
     validate_chunk,
     validate_commit,
     validate_start,
@@ -28,9 +37,10 @@ from .protocol import (
     validate_window_cancel,
 )
 from .session import SessionManager
-from .transcriber import WhisperTranscriber
+from .transcriber import TranscribeResult, WhisperTranscriber
 
 log = logging.getLogger("stt_service")
+
 
 
 class SttServer:
@@ -38,12 +48,32 @@ class SttServer:
         self,
         config: SttConfig | None = None,
         transcriber: WhisperTranscriber | None = None,
+        *,
+        new_api_client: NewApiClient | None = None,
+        circuit: CircuitBreaker | None = None,
     ) -> None:
         self.config = config or SttConfig.from_env()
         self.transcriber = transcriber or WhisperTranscriber(self.config)
         self.sessions = SessionManager(self.config, self.transcriber)
+        self.new_api = new_api_client or NewApiClient(self.config)
+        self.circuit = circuit or CircuitBreaker(
+            failure_threshold=self.config.circuit_failure_threshold,
+            cooldown_ms=self.config.circuit_cooldown_ms,
+        )
         self._server = None
         self._next_conn_id = 1
+        self._drain_tasks: set[asyncio.Task[Any]] = set()
+
+    def health_summary(self) -> dict[str, Any]:
+        """Backward-compatible PONG fields — no endpoint/model/token/raw errors."""
+        enabled = bool(self.config.new_api_enabled)
+        return {
+            "primary": {"ok": True},
+            "new_api": {
+                "enabled": enabled,
+                "circuit": self.circuit.state() if enabled else "DISABLED",
+            },
+        }
 
     async def handler(self, ws: ServerConnection) -> None:
         conn_id = self._next_conn_id
@@ -65,7 +95,7 @@ class SttServer:
                 try:
                     await self._handle_text(ws, str(raw), conn_id, tasks)
                 except Exception as e:  # isolate bad message
-                    log.exception("handler error conn=%s: %s", conn_id, e)
+                    log.exception("handler error conn=%s: %s", conn_id, type(e).__name__)
                     await self._send(
                         ws,
                         {
@@ -102,7 +132,9 @@ class SttServer:
             return
         kind = str(msg.get("kind", ""))
         if kind == KIND_PING:
-            await self._send(ws, {"protocol_version": PROTOCOL_VERSION, "kind": KIND_PONG})
+            pong = {"protocol_version": PROTOCOL_VERSION, "kind": KIND_PONG}
+            pong.update(self.health_summary())
+            await self._send(ws, pong)
             return
         if kind == KIND_UTTERANCE_START:
             meta, err = validate_start(msg)
@@ -148,7 +180,7 @@ class SttServer:
                         "hand_seq": meta["hand_seq"],
                         "window_id": meta["window_id"],
                         "utterance_id": meta["utterance_id"],
-                        "source": "faster_whisper",
+                        "source": SOURCE_FASTER_WHISPER,
                         "reason": "OVERFLOW",
                         "is_final": True,
                         "text": "",
@@ -170,7 +202,7 @@ class SttServer:
                 return
             if meta.get("want_partial"):
                 async def _partial_job() -> None:
-                    # P1-4：slot 仅在底层线程返回后由 end_partial 释放
+                    # Partial never calls new-api backup.
                     pcm, token, sess, perr = self.sessions.begin_partial(
                         meta["room_id"], meta["seat"], meta["utterance_id"]
                     )
@@ -225,56 +257,7 @@ class SttServer:
                 return
 
             async def _commit_job() -> None:
-                # P1-4：逻辑 cancel 可立即释放会话/PCM；infer slot 等 executor 线程返回后再 finish。
-                # shield 推迟 CancelledError 至底层 Future 完成，避免提前减 slot。
-                pcm, token, sess, early = self.sessions.begin_commit(meta, conn_id)
-                if early is not None:
-                    try:
-                        await self._send(ws, early)
-                    except ConnectionClosed:
-                        pass
-                    return
-                if pcm is None and sess is None and early is None:
-                    return  # idempotent ignore in-flight same ptt
-                if pcm is None or sess is None:
-                    return
-                if not pcm:
-                    out = self.sessions.finish_commit(meta, token, None)
-                    try:
-                        await self._send(ws, out)
-                    except ConnectionClosed:
-                        pass
-                    return
-                loop = asyncio.get_running_loop()
-                fut = loop.run_in_executor(
-                    None, lambda: self.transcriber.transcribe_pcm(pcm, is_final=True)
-                )
-                tr: Any = None
-                cancelled = False
-                try:
-                    tr = await asyncio.shield(fut)
-                except asyncio.CancelledError:
-                    cancelled = True
-                    if fut.done():
-                        try:
-                            tr = fut.result()
-                        except Exception:
-                            tr = None
-                    else:
-                        # 极少见：再等完成
-                        try:
-                            tr = await fut
-                        except Exception:
-                            tr = None
-                except Exception:
-                    tr = None
-                out = self.sessions.finish_commit(meta, token, tr)
-                if cancelled:
-                    raise asyncio.CancelledError
-                try:
-                    await self._send(ws, out)
-                except ConnectionClosed:
-                    pass
+                await self._run_commit(ws, meta, conn_id)
 
             t = asyncio.create_task(_commit_job())
             tasks.add(t)
@@ -301,6 +284,158 @@ class SttServer:
             return
         await self._send(ws, {"protocol_version": PROTOCOL_VERSION, "kind": KIND_ERROR, "code": "UNKNOWN_KIND"})
 
+    async def _run_commit(
+        self,
+        ws: ServerConnection,
+        meta: dict[str, Any],
+        conn_id: int,
+    ) -> None:
+        # P1-4：逻辑 cancel 可立即释放会话/PCM；infer slot 等 executor 线程返回后再 finish。
+        pcm, token, sess, early = self.sessions.begin_commit(meta, conn_id)
+        if early is not None:
+            try:
+                await self._send(ws, early)
+            except ConnectionClosed:
+                pass
+            return
+        if pcm is None and sess is None and early is None:
+            return  # idempotent ignore in-flight same ptt
+        if pcm is None or sess is None:
+            return
+        if not pcm:
+            out = self.sessions.finish_commit(meta, token, None)
+            try:
+                await self._send(ws, out)
+            except ConnectionClosed:
+                pass
+            return
+
+        loop = asyncio.get_running_loop()
+        fut = loop.run_in_executor(
+            None, lambda: self.transcriber.transcribe_pcm(pcm, is_final=True)
+        )
+        tr: TranscribeResult | None = None
+        cancelled = False
+        timed_out = False
+        primary_error = False
+        timeout_s = max(0.05, float(self.config.primary_timeout_ms) / 1000.0)
+
+        try:
+            tr = await asyncio.wait_for(asyncio.shield(fut), timeout=timeout_s)
+        except asyncio.TimeoutError:
+            timed_out = True
+            tr = None
+        except asyncio.CancelledError:
+            cancelled = True
+            if fut.done():
+                try:
+                    tr = fut.result()
+                except Exception:
+                    tr = None
+            else:
+                try:
+                    tr = await fut
+                except Exception:
+                    tr = None
+        except Exception:
+            primary_error = True
+            tr = None
+
+        if cancelled:
+            out = self.sessions.finish_commit(meta, token, tr)
+            raise asyncio.CancelledError
+
+        # Eligible fallback: primary exception or logical timeout only.
+        # Normal empty terminals are NOT supplier failures.
+        eligible = timed_out or primary_error
+        release_slot = True
+
+        if eligible:
+            fb = await self._run_new_api_fallback(pcm)
+            if fb is not None:
+                tr = fb
+            elif timed_out:
+                tr = TranscribeResult(
+                    "", "", 0.0, 0.0, 0, empty_reason="PRIMARY_TIMEOUT", source=SOURCE_FASTER_WHISPER
+                )
+            else:
+                tr = TranscribeResult(
+                    "", "", 0.0, 0.0, 0, empty_reason="PRIMARY_ERROR", source=SOURCE_FASTER_WHISPER
+                )
+            if timed_out and not fut.done():
+                release_slot = False
+
+        out = self.sessions.finish_commit(meta, token, tr, release_slot=release_slot)
+
+        if timed_out and not fut.done():
+            self._schedule_primary_drain(fut)
+        elif timed_out and fut.done() and not release_slot:
+            # Primary finished during fallback; release held slot once.
+            self.sessions.abort_infer_slot()
+
+        try:
+            await self._send(ws, out)
+        except ConnectionClosed:
+            pass
+
+    def _schedule_primary_drain(self, fut: asyncio.Future[Any]) -> None:
+        async def _drain() -> None:
+            try:
+                await fut
+            except Exception:
+                pass
+            finally:
+                # Late primary: release slot only — never re-finish / re-broadcast.
+                self.sessions.abort_infer_slot()
+
+        t = asyncio.create_task(_drain())
+        self._drain_tasks.add(t)
+        t.add_done_callback(lambda task: self._drain_tasks.discard(task))
+
+    async def _run_new_api_fallback(self, pcm: bytes) -> TranscribeResult | None:
+        """Attempt backup. None means disabled (caller keeps PRIMARY_* reason)."""
+        if not self.config.new_api_enabled:
+            return None
+        permit = self.circuit.try_acquire()
+        if permit is None:
+            return TranscribeResult(
+                "",
+                "",
+                0.0,
+                0.0,
+                0,
+                empty_reason="NEW_API_CIRCUIT_OPEN",
+                source=SOURCE_NEW_API,
+            )
+        try:
+            result = await self.new_api.transcribe_pcm(pcm)
+            # 2xx with parseable body (incl. empty text) is not a circuit failure.
+            self.circuit.record_success(permit)
+            return result
+        except NewApiError as e:
+            self.circuit.record_failure(permit)
+            return TranscribeResult(
+                "",
+                "",
+                0.0,
+                0.0,
+                0,
+                empty_reason=e.reason,
+                source=SOURCE_NEW_API,
+            )
+        except Exception:
+            self.circuit.record_failure(permit)
+            log.warning("new_api unexpected error type")
+            return TranscribeResult(
+                "",
+                "",
+                0.0,
+                0.0,
+                0,
+                empty_reason="NEW_API_TRANSPORT_ERROR",
+                source=SOURCE_NEW_API,
+            )
+
     async def _send(self, ws: ServerConnection, msg: dict[str, Any]) -> None:
         await ws.send(json.dumps(msg, ensure_ascii=False, separators=(",", ":")))
 
@@ -309,9 +444,10 @@ class SttServer:
         async with serve(self.handler, self.config.host, self.config.port) as server:
             self._server = server
             log.info(
-                "stt listening ws://%s:%d (network e2e not verified)",
+                "stt listening ws://%s:%d new_api_enabled=%s (network e2e not verified)",
                 self.config.host,
                 self.config.port,
+                self.config.new_api_enabled,
             )
             await server.serve_forever()
 
