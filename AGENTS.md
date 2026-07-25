@@ -395,6 +395,6 @@ git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
 7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
 8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；`ui/run/run_flow` 已退出生产入口。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` / `legacy/` **勿接生产**。
 9. **网络改动**须显式声明未端到端验证。
-10. **资产生成**：`godot/tools/asset_gen/`；用户选择 Grok CLI 时，生图、UI mockup、游戏资产、动效概念和视频统一交给同一个可见 Grok TUI 的内置生成能力；先 smoke 锁能力与风格，仓库外 staging QA 和选稿后再 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。仍遵守文件名、尺寸、版权/IP 与 import 纪律。
+10. **资产生成**：`godot/tools/asset_gen/`；用户选择 Grok CLI 时，生图、UI mockup、游戏资产、动效概念和视频统一交给同一个可见 Grok TUI 的内置生成能力；先 smoke 锁能力与风格，仓库外 staging QA 和选稿后再 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。仍遵守文件名、尺寸、版权/IP 与 import 纪律。用户明确选择 Codex 内置生图且会话暴露 `image_gen` 时，可通过活动 OpenAI-compatible provider 指向 `https://llmapi.lovbrowser.com/v1` 使用 `gpt-image-2`；Key 只从 `OPENAI_API_KEY` 环境变量读取，禁止写入 prompt、仓库或日志。该 new-api 路径已实测 `/v1/images/generations` 在省略 `response_format` 时返回非空 `data[].b64_json`，可被 Codex 内置工具直接解析；`/v1/images/edits` 虽共享响应路径，但未经本任务生产端到端实测，使用前须单独 smoke。
 11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。
 12. **Autoload / 纹理隐式契约** —— 改 `TextureExtractor`、牌尺寸、调制规则前先查最近相关 commit。
