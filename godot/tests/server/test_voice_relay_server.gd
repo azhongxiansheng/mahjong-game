@@ -9,11 +9,14 @@ const SECRET := "0123456789abcdef0123456789abcdef"
 ## 本用例创建的真实 peers / workers，after_each 确定性关闭，避免 orphan / ObjectDB 泄漏
 var _tracked_peers: Array = []
 var _tracked_workers: Array = []
+## JOIN 后待 OPEN 的 RewardWindow（生产门控仅 OPEN 允许 PTT）
+var _pending_rw_open: Dictionary = {}
 
 
 func before_each() -> void:
 	_tracked_peers.clear()
 	_tracked_workers.clear()
+	_pending_rw_open.clear()
 
 
 func after_each() -> void:
@@ -110,6 +113,7 @@ func _pump(w: HeadlessWorker, peers: Array, frames: int = 30) -> void:
 			if p is WebSocketPeer:
 				(p as WebSocketPeer).poll()
 		await wait_process_frames(1)
+	_ensure_reward_windows_open(w)
 
 
 func _wait_open(w: HeadlessWorker, peers: Array, max_frames: int = 60) -> bool:
@@ -155,6 +159,41 @@ func _voice_join(peer: WebSocketPeer, claims: Dictionary) -> void:
 		"seat": int(claims["seat"]),
 		"room_token": token,
 	}))
+	# TRASH_TALK：JOIN 后打开真实 RewardWindow（生产仅 OPEN 允许新 PTT）
+	if str(claims.get("game_mode", "TRASH_TALK")) == "TRASH_TALK":
+		_pending_rw_open[str(claims["room_id"])] = claims.duplicate(true)
+
+
+func _ensure_reward_windows_open(w: HeadlessWorker) -> void:
+	if _pending_rw_open.is_empty():
+		return
+	for rid in _pending_rw_open.keys():
+		var claims: Dictionary = _pending_rw_open[rid] as Dictionary
+		var session: HeadlessRoomSession = w.get_room(str(rid))
+		if session == null or session.server == null or session.server.mode_modules == null:
+			continue
+		var rw: RewardWindowModule = session.server.mode_modules.reward_window
+		if rw == null:
+			continue
+		if rw.phase == RewardWindowModule.PHASE_OPEN:
+			continue
+		if rw.phase != RewardWindowModule.PHASE_IDLE and rw.phase != RewardWindowModule.PHASE_SETTLED:
+			continue
+		if rw.phase == RewardWindowModule.PHASE_SETTLED:
+			rw.hard_reset()
+		var res: Dictionary = rw.open({
+			"room_id": str(rid),
+			"hand_seq": 0,
+			"window_index": 0,
+			"seed": int(session.authority_seed),
+			"rule_version": "trash_talk_rules_v1",
+			"character_ids": session.character_ids,
+			"language": "zh",
+			"participants": claims.get("participants", ["HUMAN", "HUMAN", "HUMAN", "HUMAN"]),
+			"now_ms": 1_700_000_000_000,
+		})
+		assert_true(bool(res.get("ok", false)), "voice 测试须打开真实 RW: %s" % str(res))
+	_pending_rw_open.clear()
 
 
 func _ptt_ctrl(claims: Dictionary, kind: String, utt: String, extra: Dictionary = {}) -> Dictionary:
@@ -473,7 +512,31 @@ func test_forged_ptt_end_no_stt_no_seq() -> void:
 	var room: HeadlessRoomSession = w.get_room("room-fg")
 	assert_not_null(room)
 	var seq_before: int = room.current_server_seq()
-	var stt_before: int = w.get_voice_relay().stt_ptt_end_hook_count()
+	var stt_end_before: int = w.get_voice_relay().stt_ptt_end_hook_count()
+	var stt_frame_before: int = w.get_voice_relay().stt_frame_hook_count()
+
+	# 有音频后伪造 END：仍不得权威 seq / STT END
+	c0.send_text(JSON.stringify(_ptt_ctrl(cl, "PTT_START", "utt-forge-audio")))
+	await _pump(w, [c0], 8)
+	var frame_raw: PackedByteArray = VoiceBinaryCodec.encode_frame({
+		"protocol_version": 1, "seat": 0, "utterance_id": "utt-forge-audio",
+		"frame_seq": 0, "sample_format_code": 1, "channels": 1,
+		"sample_rate": 16000, "frame_duration_ms": 20,
+	}, _pcm640(0x55))
+	assert_false(frame_raw.is_empty())
+	c0.put_packet(frame_raw)
+	await _pump(w, [c0], 10)
+	assert_gt(w.get_voice_relay().stt_frame_hook_count(), stt_frame_before, "合法帧可进 hook")
+	var ends_after_frames: int = w.get_voice_relay().stt_ptt_end_hook_count()
+	c0.send_text(JSON.stringify(_ptt_ctrl(cl, "PTT_END", "utt-forge-audio", {"server_seq": 99})))
+	await _pump(w, [c0], 20)
+	var saw_forgery_audio := false
+	for m in _recv_jsons(c0):
+		if str(m.get("kind", "")) == "ERROR" and str(m.get("code", "")) == "FORGERY_REJECTED":
+			saw_forgery_audio = true
+	assert_true(saw_forgery_audio, "有帧后伪造 END 仍拒")
+	assert_eq(w.get_voice_relay().stt_ptt_end_hook_count(), ends_after_frames, "伪造 END 不得进 STT END")
+	assert_eq(room.current_server_seq(), seq_before, "伪造不得分配序号")
 
 	c0.send_text(JSON.stringify(_ptt_ctrl(cl, "PTT_END", "utt-forge", {"server_seq": 99})))
 	await _pump(w, [c0], 20)
@@ -485,7 +548,18 @@ func test_forged_ptt_end_no_stt_no_seq() -> void:
 			assert_false(m.has("view_hash"))
 	assert_true(saw_forgery)
 	assert_eq(room.current_server_seq(), seq_before, "伪造不得分配序号")
-	assert_eq(w.get_voice_relay().stt_ptt_end_hook_count(), stt_before, "伪造不得送 STT")
+	assert_eq(w.get_voice_relay().stt_ptt_end_hook_count(), ends_after_frames, "伪造不得送 STT END")
+	# #247：伪造 utterance 不得进入 RewardWindow 累计
+	if room.server != null and room.server.mode_modules != null:
+		var rw: RewardWindowModule = room.server.mode_modules.reward_window
+		if rw != null:
+			var snap: Dictionary = rw.capture_state()
+			var by_seat: Dictionary = snap.get("_utterances_by_seat", {}) as Dictionary
+			for sk in by_seat.keys():
+				for u in by_seat[sk]:
+					if typeof(u) == TYPE_DICTIONARY:
+						assert_ne(str(u.get("utterance_id", "")), "utt-forge")
+						assert_ne(str(u.get("utterance_id", "")), "utt-forge-audio")
 
 	c0.send_text(JSON.stringify(_ptt_ctrl(cl, "PTT_END", "utt-forge2", {"server_seq_ref": 1})))
 	await _pump(w, [c0], 15)
@@ -599,6 +673,11 @@ func test_voice_relay_client_and_port_production_chain() -> void:
 	assert_true(cli1.is_joined())
 	assert_eq(vp0.room_id(), "room-prod")
 	assert_eq(vp0.local_seat(), 0)
+
+	# 生产路径经 VoiceRelayClient JOIN，不走 _voice_join；仍须显式打开真实 RW（OPEN-only 门控）
+	_pending_rw_open["room-prod"] = _claims("room-prod", 0, "sess-0")
+	_ensure_reward_windows_open(w)
+	assert_true(w.voice_accepts_new_utterance("room-prod"), "room-prod 须 PHASE_OPEN")
 
 	assert_true(vp0.press_ptt())
 	var stereo := PackedVector2Array()

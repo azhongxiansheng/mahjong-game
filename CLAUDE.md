@@ -44,6 +44,9 @@ This repo contains **two unrelated trees** that share a directory but not a buil
    - `scenes/` — 遗留场景（`wechat_login_final.tscn`、`game_ui.tscn` 等，**非** main_scene）
    - `tools/asset_gen/` — 资产生成与导入管线
 2. **`main.go` + `Dockerfile` + `start.sh`** at the repo root — a **stub Go HTTP server** that only serves `/` and `/api/health` returning `{"status":"ok"}`. It exists solely to satisfy Railway's healthcheck. **There is no real backend in this repo.** The README's references to a `backend/` directory, JWT, ELO, etc. do not match the code on disk — treat the README as marketing copy, not architecture documentation.
+3. **`services/`** — 独立后端服务（非根 Go 桩）：
+   - `services/control-plane/` — 匹配控制面（Go）
+   - `services/stt/` — #247 公共场 faster-whisper STT（Python 3.11；内部 WebSocket；模型默认 multilingual `small` + CPU int8 + Silero VAD）。Worker 经 `SttBridge` / `STT_SERVICE_URL` 接线；**不**扩张根 Dockerfile / E7 compose。详见 `services/stt/README.md`。**网络端到端未验证。**
 
 设计文档与里程碑 plan 在 **`docs/superpowers/{specs,plans}/`**。新增计划放此目录，**不要**新增根目录 markdown。
 
@@ -82,6 +85,17 @@ go build -o app main.go
 docker build -t mahjong .
 ```
 `go test ./...` reports "no test files" unless you add some.
+
+### STT 服务（#247，`services/stt`）
+```bash
+cd services/stt
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m stt_service   # ws://127.0.0.1:9100；可用 STT_DEVICE / STT_COMPUTE_TYPE / STT_MODEL_CACHE
+# Worker: STT_SERVICE_URL=ws://127.0.0.1:9100 ... headless_worker_main.gd --stt-url=...
+pytest -q tests          # 含真实中英日 fixture + VAD（见 fixtures/SOURCES.md）
+```
+原始 PCM 仅有界内存；**不**写磁盘。公共网络四客户端链路未端到端验证。
 
 ### 资产生成
 

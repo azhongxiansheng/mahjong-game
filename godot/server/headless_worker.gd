@@ -5,6 +5,7 @@ extends Node
 # TCPServer + WebSocketPeer.accept_stream；验 room_token；JOIN/READY/Action。
 # #241：连接代际、掉线 30s lease、重连快照、AI 接管/归还。
 # #244：同进程可选托管独立 VoiceRelayServer（第二 listener）；语音背压不进本通道。
+# #247：可选 SttBridge → 内部 faster-whisper 服务；Worker 唯一 ingest 入口。
 # 不依赖 Redis。网络端到端未验证。
 
 const JOIN_KEYS := ["protocol_version", "kind", "room_id", "seat", "room_token"]
@@ -16,6 +17,7 @@ signal client_message_handled(conn_id: int, kind: String)
 var bind_host: String = "127.0.0.1"
 var bind_port: int = 9000
 var voice_bind_port: int = -1  # <0 不启语音；0=动态端口
+var stt_service_url: String = ""  # 空则不启 STT bridge
 var token_now_unix: int = -1  # 测试时钟；生产 -1
 ## #241：可注入单调时钟（毫秒）。>=0 时使用注入值；-1 用 Time.get_ticks_msec()。
 var clock_now_ms: int = -1
@@ -24,6 +26,7 @@ var _tcp: TCPServer = TCPServer.new()
 var _verifier: RoomTokenVerifier = RoomTokenVerifier.new()
 var _listening: bool = false
 var _voice_relay: VoiceRelayServer = null
+var _stt_bridge: SttBridge = null
 var _token_secret: String = ""
 
 # conn_id -> connection state
@@ -38,7 +41,8 @@ func configure(
 	secret: String,
 	host: String = "127.0.0.1",
 	port: int = 9000,
-	p_voice_port: int = -1
+	p_voice_port: int = -1,
+	p_stt_url: String = ""
 ) -> bool:
 	if not _verifier.set_secret(secret):
 		return false
@@ -46,6 +50,7 @@ func configure(
 	bind_host = host
 	bind_port = port
 	voice_bind_port = p_voice_port
+	stt_service_url = p_stt_url.strip_edges()
 	return true
 
 
@@ -71,11 +76,22 @@ func start_listen() -> Error:
 			stop()
 			return verr
 		voice_bind_port = _voice_relay.get_listen_port()
+		_ensure_stt_bridge()
 	return OK
 
 
 func get_voice_relay() -> VoiceRelayServer:
 	return _voice_relay
+
+
+func get_stt_bridge() -> SttBridge:
+	return _stt_bridge
+
+
+## 测试/本机：在 voice relay 已启动后绑定 STT URL。
+func bind_stt_service_url(url: String) -> void:
+	stt_service_url = url.strip_edges()
+	_ensure_stt_bridge()
 
 
 func get_listen_port() -> int:
@@ -132,6 +148,13 @@ func allocate_ptt_end_authority(
 
 func stop() -> void:
 	_listening = false
+	if _stt_bridge != null:
+		if _voice_relay != null:
+			_stt_bridge.unbind_voice_relay(_voice_relay)
+		_stt_bridge.stop()
+		if is_instance_valid(_stt_bridge):
+			_stt_bridge.queue_free()
+		_stt_bridge = null
 	if _voice_relay != null:
 		_voice_relay.stop()
 		if is_instance_valid(_voice_relay):
@@ -184,6 +207,9 @@ func poll() -> void:
 	if _voice_relay != null:
 		_voice_relay.token_now_unix = token_now_unix
 		_voice_relay.poll()
+	if _stt_bridge != null:
+		_stt_bridge.poll()
+		_sync_stt_window_cancels()
 	while _tcp.is_connection_available():
 		var stream: StreamPeerTCP = _tcp.take_connection()
 		if stream == null:
@@ -214,6 +240,52 @@ func poll() -> void:
 		_close_conn(int(id))
 	# #241：掉线 lease / AI 接管（真实生产路径）
 	_tick_all_leases()
+
+
+func _ensure_stt_bridge() -> void:
+	if stt_service_url.is_empty():
+		return
+	if _voice_relay == null:
+		return
+	if _stt_bridge == null:
+		_stt_bridge = SttBridge.new()
+		add_child(_stt_bridge)
+		_stt_bridge.configure(self, stt_service_url)
+		_stt_bridge.bind_voice_relay(_voice_relay)
+	else:
+		_stt_bridge.configure(self, stt_service_url)
+		_stt_bridge.bind_voice_relay(_voice_relay)
+
+
+## #247：仅 RewardWindow PHASE_OPEN 允许新 PTT_START。
+## 缺 room/server/module/RW 或 IDLE/CLOSING/SETTLED/CANCELLED 一律 fail-closed。
+func voice_accepts_new_utterance(room_id: String) -> bool:
+	var session: HeadlessRoomSession = get_room(room_id)
+	if session == null or session.server == null or session.server.mode_modules == null:
+		return false
+	var rw: RewardWindowModule = session.server.mode_modules.reward_window
+	if rw == null:
+		return false
+	return rw.phase == RewardWindowModule.PHASE_OPEN
+
+
+## 荣和取消 / 窗口 SETTLED：代际 room+hand+window 立即失效（幂等；不新建 deadline）。
+## CLOSING 不走 tombstone（仍允许边界内 PTT_END）；stream 续传由 Bridge live phase 门控。
+func _sync_stt_window_cancels() -> void:
+	if _stt_bridge == null:
+		return
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null or session.server == null or session.server.mode_modules == null:
+			continue
+		var rw: RewardWindowModule = session.server.mode_modules.reward_window
+		if rw == null:
+			continue
+		if str(rw.window_id).is_empty():
+			continue
+		if rw.phase == RewardWindowModule.PHASE_CANCELLED \
+				or rw.phase == RewardWindowModule.PHASE_SETTLED:
+			_stt_bridge.cancel_window_generation(str(rid), int(rw.hand_seq), str(rw.window_id))
 
 
 func _poll_conn(cid: int) -> bool:

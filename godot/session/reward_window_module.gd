@@ -481,17 +481,27 @@ func ingest_utterance(input: Dictionary) -> Dictionary:
 		var existing: Dictionary = _find_utterance(seat, utt_id)
 		if existing.is_empty():
 			return _err("UTTERANCE_INDEX_CORRUPT")
-		# 不可变字段必须一致
-		if int(existing.get("ptt_end_server_seq", -1)) != ptt \
-				or String(existing.get("text", "")) != text \
-				or String(existing.get("language", "")) != lang:
+		# 幂等键内 ptt_end 不可变
+		if int(existing.get("ptt_end_server_seq", -1)) != ptt:
 			return _err("UTTERANCE_CONFLICT")
 		var was_term: bool = bool(existing.get("terminal", true))
-		if was_term == terminal:
-			return {"ok": true, "accepted": true, "idempotent": true, "reason": "DUPLICATE"}
-		if was_term and not terminal:
+		if was_term:
+			# final 后文本/语言亦不可变
+			if String(existing.get("text", "")) != text \
+					or String(existing.get("language", "")) != lang:
+				return _err("UTTERANCE_CONFLICT")
+			if terminal:
+				return {"ok": true, "accepted": true, "idempotent": true, "reason": "DUPLICATE"}
 			return _err("UTTERANCE_CANNOT_UNTERMINALIZE")
-		# pending → final
+		# pending
+		if not terminal:
+			if String(existing.get("text", "")) != text \
+					or String(existing.get("language", "")) != lang:
+				return _err("UTTERANCE_CONFLICT")
+			return {"ok": true, "accepted": true, "idempotent": true, "reason": "DUPLICATE"}
+		# pending → final：允许填充/替换 STT 权威文本（#247）
+		existing["text"] = text
+		existing["language"] = lang
 		existing["terminal"] = true
 		return {
 			"ok": true,
@@ -687,6 +697,16 @@ func cancel_by_win(_input: Dictionary = {}) -> Dictionary:
 
 ## #241 模块包络：{module_key, schema_version:int, payload:Dictionary}。
 ## #252 RewardWindowSnapshotProvider 权威 serialize 复用本公开 DTO。
+## #247：只读 grace 权威截止（ms，与 #252 同一时钟域）；0 表示无 CLOSING deadline。
+func get_grace_deadline_ms() -> int:
+	return _grace_deadline_ms
+
+
+## 窗口语言（zh/en/ja），供 STT 冻结上下文使用。
+func get_window_language() -> String:
+	return _language
+
+
 func to_snapshot_dto() -> Dictionary:
 	return {
 		"module_key": MODULE_KEY,
@@ -1434,9 +1454,13 @@ func _build_scorer_input(window_exit_str: String) -> Dictionary:
 		for u in arr:
 			if typeof(u) != TYPE_DICTIONARY:
 				continue
+			# #247：空白/终态占位不进评分文本累计
+			var t := String(u.get("text", "")).strip_edges()
+			if t.is_empty():
+				continue
 			cleaned.append({
 				"utterance_id": String(u.get("utterance_id", "")),
-				"text": String(u.get("text", "")),
+				"text": t,
 				"language": String(u.get("language", _language)),
 				"ptt_end_server_seq": int(u.get("ptt_end_server_seq", 0)),
 			})
@@ -1474,7 +1498,9 @@ func _build_transcript_summary() -> Dictionary:
 		var texts: Array = []
 		for u in _utterances_by_seat.get(str(seat), []):
 			if typeof(u) == TYPE_DICTIONARY:
-				texts.append(String(u.get("text", "")))
+				var t := String(u.get("text", "")).strip_edges()
+				if not t.is_empty():
+					texts.append(t)
 		by_seat[str(seat)] = texts
 	return {"by_seat": by_seat}
 
