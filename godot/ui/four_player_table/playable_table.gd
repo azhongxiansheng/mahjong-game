@@ -36,10 +36,16 @@ var _use_3d: bool = false
 
 # E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
 # E4-03（#245）：挂接 WhisperModelManager 按需 ensure；失败不阻断牌局。
+# E7-03（#257）：右下角内联麦克风用途说明 + 模型状态/进度（无弹窗）。
 var _voice_port: VoicePortModule = null
 var _whisper_model_manager: WhisperModelManager = null
 var _ptt_button: Button = null
 var _ptt_status: Label = null
+var _mic_permission_label: Label = null
+var _model_status_label: Label = null
+var _model_received_bytes: int = 0
+var _model_total_bytes: int = 0
+var _ptt_ui_state: StringName = &"idle"
 var _voice_capture: VoiceCapturePipeline = null
 var _voice_playback: VoicePlaybackRouter = null
 
@@ -2114,6 +2120,7 @@ func bind_voice_from_battle(bc: PlayableBattleController) -> void:
 		_voice_port.microphone_unavailable.connect(_on_microphone_unavailable)
 	# E4-03：首次欢乐场绑定按需准备模型；未就绪不阻断 PTT/牌局。
 	_bind_whisper_model_manager(port)
+	_refresh_voice_inline_status()
 
 
 func has_voice_runtime() -> bool:
@@ -2142,6 +2149,15 @@ func release_voice_runtime() -> void:
 	if _ptt_status != null and is_instance_valid(_ptt_status):
 		_ptt_status.queue_free()
 	_ptt_status = null
+	if _mic_permission_label != null and is_instance_valid(_mic_permission_label):
+		_mic_permission_label.queue_free()
+	_mic_permission_label = null
+	if _model_status_label != null and is_instance_valid(_model_status_label):
+		_model_status_label.queue_free()
+	_model_status_label = null
+	_model_received_bytes = 0
+	_model_total_bytes = 0
+	_ptt_ui_state = &"idle"
 	_voice_port = null
 
 
@@ -2162,6 +2178,16 @@ func _bind_whisper_model_manager(port: VoicePortModule) -> void:
 		mgr.name = "WhisperModelManager"
 		add_child(mgr)
 	_whisper_model_manager = mgr
+	if not mgr.state_changed.is_connected(_on_whisper_state_changed):
+		mgr.state_changed.connect(_on_whisper_state_changed)
+	if not mgr.progress_changed.is_connected(_on_whisper_progress_changed):
+		mgr.progress_changed.connect(_on_whisper_progress_changed)
+	if not mgr.error_changed.is_connected(_on_whisper_error_changed):
+		mgr.error_changed.connect(_on_whisper_error_changed)
+	var m: Dictionary = mgr.get_manifest()
+	_model_total_bytes = int(m.get("size_bytes", 0))
+	_model_received_bytes = mgr.get_received_bytes()
+	_refresh_voice_inline_status()
 	mgr.ensure_ready()
 
 
@@ -2174,44 +2200,179 @@ func _release_whisper_model_manager() -> void:
 		if _voice_port != null:
 			_voice_port.attach_whisper_model_manager(null)
 		return
+	# 先断 UI 信号，避免 release/状态回调再进牌桌
+	if mgr.state_changed.is_connected(_on_whisper_state_changed):
+		mgr.state_changed.disconnect(_on_whisper_state_changed)
+	if mgr.progress_changed.is_connected(_on_whisper_progress_changed):
+		mgr.progress_changed.disconnect(_on_whisper_progress_changed)
+	if mgr.error_changed.is_connected(_on_whisper_error_changed):
+		mgr.error_changed.disconnect(_on_whisper_error_changed)
+	# release：取消在途 HTTP/解析 token；保留磁盘合法 partial
 	mgr.release()
-	if mgr.get_parent() == self:
-		remove_child(mgr)
 	if _voice_port != null:
 		_voice_port.attach_whisper_model_manager(null)
-	# 立即 free，避免 queue_free 延迟导致 GUT orphan / 无主 Node
-	mgr.free()
+	# 禁止在信号/回调锁内同步 free()；queue_free 最迟下帧回收。
+	# manager 销毁路径只 kill 活跃 resolve 子进程，绝不 wait_to_finish 阻塞主线程。
+	mgr.queue_free()
 
 
 func _ensure_ptt_ui() -> void:
 	if _ptt_button != null and is_instance_valid(_ptt_button):
 		return
-	# 右下角，避开居中行动栏（Y=700,W=720）与 seat0 手牌。
+	# 右下角内联说明 + PTT：
+	# ┌ 麦克风仅在按住说话时启用 ┐
+	# │ 模型：下载中 37% …       │
+	# └────── [🎙 按住说话] ─────┘
+	# 避开居中行动栏（Y=700,W=720）与 seat0 手牌。
+	var panel_w := 240.0
+	var panel_x := TableLayout.TABLE_W - panel_w - 16.0
+
+	_mic_permission_label = Label.new()
+	_mic_permission_label.name = "MicPermissionLabel"
+	_mic_permission_label.text = "麦克风仅在按住说话时启用"
+	_mic_permission_label.position = Vector2(panel_x, 764.0)
+	_mic_permission_label.size = Vector2(panel_w, 22.0)
+	_mic_permission_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_mic_permission_label.add_theme_font_size_override("font_size", 13)
+	_mic_permission_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	_mic_permission_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_mic_permission_label)
+
+	_model_status_label = Label.new()
+	_model_status_label.name = "ModelStatusLabel"
+	_model_status_label.text = "模型：检查中…"
+	_model_status_label.position = Vector2(panel_x, 786.0)
+	_model_status_label.size = Vector2(panel_w, 22.0)
+	_model_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_model_status_label.add_theme_font_size_override("font_size", 13)
+	_model_status_label.add_theme_color_override("font_color", Color(0.92, 0.95, 1.0, 0.95))
+	# 失败/取消时可点击重试
+	_model_status_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	_model_status_label.gui_input.connect(_on_model_status_gui_input)
+	add_child(_model_status_label)
+
+	_ptt_status = Label.new()
+	_ptt_status.name = "PttStatusLabel"
+	_ptt_status.text = ""
+	_ptt_status.position = Vector2(panel_x, 808.0)
+	_ptt_status.size = Vector2(panel_w, 20.0)
+	_ptt_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ptt_status.add_theme_font_size_override("font_size", 13)
+	_ptt_status.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	_ptt_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_ptt_status)
+
 	_ptt_button = Button.new()
 	_ptt_button.name = "PttButton"
 	_ptt_button.text = "🎙 按住说话"
-	_ptt_button.position = Vector2(TableLayout.TABLE_W - 176.0, 820.0)
+	_ptt_button.position = Vector2(panel_x + (panel_w - 160.0) * 0.5, 832.0)
 	_ptt_button.size = Vector2(160.0, 40.0)
 	_ptt_button.focus_mode = Control.FOCUS_NONE
 	_ptt_button.button_down.connect(_on_ptt_button_down)
 	_ptt_button.button_up.connect(_on_ptt_button_up)
 	add_child(_ptt_button)
 
-	_ptt_status = Label.new()
-	_ptt_status.name = "PttStatusLabel"
-	_ptt_status.text = ""
-	_ptt_status.position = Vector2(TableLayout.TABLE_W - 176.0, 792.0)
-	_ptt_status.size = Vector2(160.0, 24.0)
-	_ptt_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_ptt_status.add_theme_font_size_override("font_size", 14)
-	_ptt_status.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
-	_ptt_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_ptt_status)
+
+## 供测试与 UI 复用：把 lifecycle + 字节进度格式化为稳定中文文案。
+func format_model_status_text(
+	state: StringName, received_bytes: int, total_bytes: int, _error_code: String
+) -> String:
+	match state:
+		&"idle":
+			return "模型：待命"
+		&"checking":
+			return "模型：检查中…"
+		&"downloading":
+			var pct := _stable_download_percent(received_bytes, total_bytes)
+			return "模型：下载中 %d%%" % pct
+		&"verifying":
+			return "模型：校验中…"
+		&"ready":
+			return "模型：就绪"
+		&"failed":
+			return "模型：失败，点此重试"
+		&"cancelled":
+			return "模型：已取消，点此重试"
+		_:
+			return "模型：%s" % String(state)
+
+
+func _stable_download_percent(received_bytes: int, total_bytes: int) -> int:
+	if total_bytes <= 0:
+		return 0
+	if received_bytes <= 0:
+		return 0
+	if received_bytes >= total_bytes:
+		return 100
+	# 稳定向下取整，避免 99.9→100 误导
+	return int((float(received_bytes) * 100.0) / float(total_bytes))
+
+
+func _refresh_voice_inline_status() -> void:
+	if _model_status_label != null and is_instance_valid(_model_status_label):
+		var st: StringName = &"idle"
+		var err := ""
+		if _whisper_model_manager != null and is_instance_valid(_whisper_model_manager):
+			st = _whisper_model_manager.get_lifecycle_state()
+			err = _whisper_model_manager.get_error_code()
+			_model_received_bytes = _whisper_model_manager.get_received_bytes()
+			var m: Dictionary = _whisper_model_manager.get_manifest()
+			var total := int(m.get("size_bytes", 0))
+			if total > 0:
+				_model_total_bytes = total
+		_model_status_label.text = format_model_status_text(
+			st, _model_received_bytes, _model_total_bytes, err
+		)
+		_model_status_label.visible = true
+
+	if _ptt_status == null or not is_instance_valid(_ptt_status):
+		return
+	if _ptt_ui_state == &"speaking":
+		_ptt_status.text = "正在说话…"
+		_ptt_status.visible = true
+	elif _ptt_ui_state == &"unavailable":
+		_ptt_status.text = "麦克风不可用"
+		_ptt_status.visible = true
+	else:
+		_ptt_status.text = ""
+		_ptt_status.visible = false
+
+
+func _on_whisper_state_changed(_state: StringName) -> void:
+	_refresh_voice_inline_status()
+
+
+func _on_whisper_progress_changed(received_bytes: int, total_bytes: int) -> void:
+	_model_received_bytes = received_bytes
+	if total_bytes > 0:
+		_model_total_bytes = total_bytes
+	_refresh_voice_inline_status()
+
+
+func _on_whisper_error_changed(_error_code: String) -> void:
+	_refresh_voice_inline_status()
+
+
+func _on_model_status_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_retry_whisper_model_if_needed()
+
+
+func _retry_whisper_model_if_needed() -> void:
+	if _whisper_model_manager == null or not is_instance_valid(_whisper_model_manager):
+		return
+	var st: StringName = _whisper_model_manager.get_lifecycle_state()
+	if st == &"failed" or st == &"cancelled":
+		_whisper_model_manager.ensure_ready()
 
 
 func _on_ptt_button_down() -> void:
 	if _voice_port == null:
 		return
+	# 失败态不阻断 PTT；顺带尝试重新 ensure（可重试语义）
+	_retry_whisper_model_if_needed()
 	_voice_port.press_ptt()
 
 
@@ -2222,29 +2383,19 @@ func _on_ptt_button_up() -> void:
 
 
 func _on_ptt_state_changed(state: StringName) -> void:
-	if _ptt_status == null or not is_instance_valid(_ptt_status):
-		return
-	if state == &"speaking":
-		_ptt_status.text = "正在说话…"
-		_ptt_status.visible = true
-	elif state == &"unavailable":
-		_ptt_status.text = "麦克风不可用"
-		_ptt_status.visible = true
-	else:
-		_ptt_status.text = ""
+	_ptt_ui_state = state
+	_refresh_voice_inline_status()
 
 
 func _on_microphone_unavailable() -> void:
-	if _ptt_status == null or not is_instance_valid(_ptt_status):
-		return
-	_ptt_status.text = "麦克风不可用"
-	_ptt_status.visible = true
-	# 短暂提示后恢复
+	_ptt_ui_state = &"unavailable"
+	_refresh_voice_inline_status()
+	# 短暂提示后恢复 idle 文案（模型状态行仍保留）
 	if get_tree() != null:
 		get_tree().create_timer(1.2).timeout.connect(func():
-			if _ptt_status != null and is_instance_valid(_ptt_status) \
-					and _ptt_status.text == "麦克风不可用":
-				_ptt_status.text = ""
+			if _ptt_ui_state == &"unavailable":
+				_ptt_ui_state = &"idle"
+				_refresh_voice_inline_status()
 		)
 
 func _on_player_tile_clicked(tile_instance_id: int) -> void:

@@ -116,11 +116,12 @@ func test_playable_table_bind_creates_ensures_and_release_frees() -> void:
 	assert_ne(mgr.get_lifecycle_state(), &"ready")
 
 	table.release_voice_runtime()
-	await get_tree().process_frame
-	await get_tree().process_frame
+	# queue_free 后需数帧完成销毁
+	for _i in range(5):
+		await get_tree().process_frame
 	assert_null(vp.whisper_model_manager(), "release 后 port 不得再持有 manager")
 	assert_null(table.get_node_or_null("WhisperModelManager"))
-	assert_false(is_instance_valid(mgr) and mgr.is_inside_tree())
+	assert_false(is_instance_valid(mgr), "manager 须在数帧后无效（queue_free）")
 	_rm_rf(root)
 
 
@@ -146,9 +147,11 @@ func test_playable_table_creates_production_manager_when_not_injected() -> void:
 		assert_false(mgr.is_public_network_allowed())
 
 	table.release_voice_runtime()
-	await get_tree().process_frame
+	for _i in range(5):
+		await get_tree().process_frame
 	assert_null(vp.whisper_model_manager())
 	assert_null(table.get_node_or_null("WhisperModelManager"))
+	assert_false(is_instance_valid(mgr), "production manager 须 queue_free 完成")
 
 
 func test_voice_port_release_all_frees_detached_manager() -> void:
@@ -160,7 +163,9 @@ func test_voice_port_release_all_frees_detached_manager() -> void:
 	assert_false(mgr.is_inside_tree())
 	vp.release_all()
 	assert_null(vp.whisper_model_manager())
-	assert_false(is_instance_valid(mgr), "脱树 manager 须被 free")
+	for _i in range(5):
+		await get_tree().process_frame
+	assert_false(is_instance_valid(mgr), "脱树 manager 须 queue_free 完成")
 
 
 func test_headless_blocks_public_hf_download() -> void:

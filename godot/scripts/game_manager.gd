@@ -8,6 +8,17 @@ var is_logged_in: bool = false
 
 func _ready() -> void:
 	print("🎮 GameManager 已初始化")
+	# #257：导出 release app 不支持 --script；仅精确 download/check 门闩触发 smoke。
+	var e7_mode := OS.get_environment("E7_257_MODE")
+	if e7_mode == "download" or e7_mode == "check":
+		var root_env := OS.get_environment("E7_257_MODELS_ROOT")
+		if root_env.is_empty() or not root_env.begins_with("/tmp/mahjong-e7-257-"):
+			push_error("E7_257_MODE set but E7_257_MODELS_ROOT invalid; skip smoke gate")
+			return
+		var runner: Node = load("res://tools/e7_257_model_smoke_runner.gd").new()
+		runner.name = "E7257ModelSmokeRunner"
+		get_tree().root.call_deferred("add_child", runner)
+
 
 ## 设置用户数据
 func set_user_data(data: Dictionary) -> void:
