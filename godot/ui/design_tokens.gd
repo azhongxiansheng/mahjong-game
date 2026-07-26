@@ -54,6 +54,20 @@ const BORDER_GOLD_SOFT: Color = Color(0.85, 0.71, 0.36, 0.40)
 const CARD_RADIUS: int = 10
 const CARD_BORDER: int = 2
 
+# ---- 基础按钮：黑曜符札（#324）----
+
+const BUTTON_OBSIDIAN: Color = Color("11131c")
+const BUTTON_OBSIDIAN_HOVER: Color = Color("191c29")
+const BUTTON_OBSIDIAN_PRESSED: Color = Color("23151b")
+const BUTTON_OBSIDIAN_DISABLED: Color = Color("0d0e12")
+const BUTTON_PRIMARY: Color = Color("8b5cf6")
+const BUTTON_SECONDARY: Color = Color("3ca9d6")
+const BUTTON_DANGER: Color = Color("e04b55")
+const BUTTON_GHOST: Color = Color("7f8797")
+const BUTTON_FOCUS: Color = Color("52d3ff")
+const BUTTON_TEXT: Color = Color("f3f1ff")
+const BUTTON_PRESSED_MARK: Color = Color("c74742")
+
 # ---- 大厅实体材质（#302，真实生产 PNG；不扩散到牌桌/Run Theme）----
 
 const LOBBY_LACQUER_PANEL := "res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png"
@@ -279,26 +293,13 @@ static func make_lobby_texture_style(
 	return style
 
 
-static func apply_lobby_material_button(btn: Button, wood: bool = false) -> void:
+static func apply_lobby_material_button(btn: Button, _wood: bool = false) -> void:
 	if btn == null:
 		return
-	var normal_path := LOBBY_WOOD_NAMEPLATE if wood else LOBBY_WASHI_CHOICE
-	var margin_h := 42.0 if wood else 36.0
-	var margin_v := 16.0 if wood else 18.0
-	var normal := make_lobby_texture_style(normal_path, margin_h, margin_v, margin_h, margin_v, 14, 7)
-	var active := make_lobby_texture_style(LOBBY_CHOICE_SELECTED, 36, 18, 36, 18, 14, 7)
-	var disabled := make_lobby_texture_style(normal_path, margin_h, margin_v, margin_h, margin_v, 14, 7)
-	disabled.modulate_color = Color(0.52, 0.48, 0.44, 0.72)
-	btn.add_theme_stylebox_override("normal", normal)
-	btn.add_theme_stylebox_override("hover", active)
-	btn.add_theme_stylebox_override("pressed", active)
-	btn.add_theme_stylebox_override("focus", active)
-	btn.add_theme_stylebox_override("disabled", disabled)
-	btn.add_theme_color_override("font_color", LOBBY_INK)
-	btn.add_theme_color_override("font_hover_color", LOBBY_CINNABAR)
-	btn.add_theme_color_override("font_pressed_color", LOBBY_CINNABAR)
-	btn.add_theme_color_override("font_focus_color", LOBBY_CINNABAR)
-	btn.add_theme_color_override("font_disabled_color", Color("756b5f"))
+	# #303 调用点保留不动；兼容入口只转接共享按钮契约，不再恢复厚重材质框。
+	var role := int(btn.get_meta("dt_button_role", BtnRole.SECONDARY))
+	var high_value := bool(btn.get_meta("dt_button_high_value", false))
+	apply_button_role(btn, role, high_value)
 
 
 static func style_lobby_material_slider(slider: HSlider) -> void:
@@ -317,56 +318,110 @@ static func style_lobby_material_slider(slider: HSlider) -> void:
 	slider.custom_minimum_size.y = 34
 
 
-# 给已有 Button 套角色外观（不改 text / 信号）
-static func apply_button_role(btn: Button, role: int = BtnRole.PRIMARY) -> void:
+# 给已有 Button 套角色外观（不改 text / 信号 / 父容器几何）
+static func apply_button_role(
+		btn: Button,
+		role: int = BtnRole.PRIMARY,
+		high_value: bool = false,
+) -> void:
 	if btn == null:
 		return
-	var bg_n: Color
-	var bg_h: Color
-	var bg_p: Color
-	var bg_d: Color
-	var border: Color
-	var font_c: Color = TEXT_PRIMARY
-	match role:
-		BtnRole.DANGER:
-			bg_n = Color(0.42, 0.12, 0.12, 0.96)
-			bg_h = Color(0.55, 0.16, 0.16, 0.98)
-			bg_p = Color(0.32, 0.08, 0.08, 0.98)
-			bg_d = Color(0.18, 0.10, 0.10, 0.85)
-			border = TEXT_DANGER
-			font_c = Color(1.0, 0.88, 0.88)
-		BtnRole.SECONDARY:
-			bg_n = Color(0.12, 0.13, 0.17, 0.96)
-			bg_h = Color(0.18, 0.17, 0.22, 0.98)
-			bg_p = Color(0.10, 0.10, 0.14, 0.98)
-			bg_d = Color(0.08, 0.08, 0.09, 0.85)
-			border = BORDER_GOLD_SOFT
-		BtnRole.GHOST:
-			bg_n = Color(0, 0, 0, 0)
-			bg_h = Color(1, 1, 1, 0.06)
-			bg_p = Color(1, 1, 1, 0.10)
-			bg_d = Color(0, 0, 0, 0)
-			border = Color(0, 0, 0, 0)
-			font_c = TEXT_MUTED
-		_:  # PRIMARY — 金边暗底
-			bg_n = Color(0.16, 0.13, 0.10, 0.97)
-			bg_h = Color(0.24, 0.18, 0.10, 0.98)
-			bg_p = Color(0.12, 0.10, 0.08, 0.98)
-			bg_d = Color(0.10, 0.09, 0.08, 0.85)
-			border = BORDER_GOLD
-			font_c = TEXT_TITLE
-	btn.add_theme_stylebox_override("normal", _flat_sb(bg_n, border))
-	btn.add_theme_stylebox_override("hover", _flat_sb(bg_h, border.lightened(0.15)))
-	btn.add_theme_stylebox_override("pressed", _flat_sb(bg_p, border.darkened(0.1)))
-	btn.add_theme_stylebox_override("focus", _flat_sb(bg_h, border.lightened(0.2)))
-	btn.add_theme_stylebox_override("disabled", _flat_sb(bg_d, Color(0.3, 0.3, 0.32, 0.5)))
+	btn.set_meta("dt_button_role", role)
+	btn.set_meta("dt_button_high_value", high_value)
+	var accent := _button_role_color(role)
+	if high_value:
+		accent = TEXT_TITLE
+	for state in ["normal", "hover", "focus", "pressed", "disabled"]:
+		btn.add_theme_stylebox_override(state, _button_stylebox(role, accent, state))
+	var font_c := BUTTON_GHOST if role == BtnRole.GHOST else BUTTON_TEXT
+	if high_value:
+		font_c = TEXT_TITLE
 	btn.add_theme_color_override("font_color", font_c)
-	btn.add_theme_color_override("font_hover_color", font_c.lightened(0.1))
-	btn.add_theme_color_override("font_pressed_color", font_c)
+	btn.add_theme_color_override("font_hover_color", BUTTON_TEXT)
+	btn.add_theme_color_override("font_focus_color", BUTTON_TEXT)
+	btn.add_theme_color_override("font_pressed_color", Color("fff0e8"))
 	btn.add_theme_color_override("font_disabled_color", TEXT_MUTED)
 	btn.add_theme_font_size_override("font_size", FONT_BODY)
-	if btn.custom_minimum_size.y < BUTTON_H:
+	btn.clip_text = true
+	btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	if btn.tooltip_text.is_empty() and not btn.text.is_empty():
+		btn.tooltip_text = btn.text
+	if btn.custom_minimum_size.y <= 0.0:
 		btn.custom_minimum_size.y = BUTTON_H
+
+
+static func _button_role_color(role: int) -> Color:
+	match role:
+		BtnRole.SECONDARY:
+			return BUTTON_SECONDARY
+		BtnRole.DANGER:
+			return BUTTON_DANGER
+		BtnRole.GHOST:
+			return BUTTON_GHOST
+		_:
+			return BUTTON_PRIMARY
+
+
+static func _button_stylebox(role: int, accent: Color, state: String) -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.corner_radius_top_left = 2
+	sb.corner_radius_top_right = 7
+	sb.corner_radius_bottom_right = 2
+	sb.corner_radius_bottom_left = 7
+	sb.content_margin_left = 18
+	sb.content_margin_right = 18
+	sb.content_margin_top = 10
+	sb.content_margin_bottom = 10
+	match state:
+		"hover":
+			sb.bg_color = Color(1, 1, 1, 0.06) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_HOVER
+			sb.border_color = accent
+			sb.border_width_left = 3
+			sb.border_width_top = 2
+			sb.border_width_right = 2
+			sb.border_width_bottom = 1
+			sb.shadow_color = Color(0, 0, 0, 0.38)
+			sb.shadow_size = 4
+			sb.shadow_offset = Vector2(0, 2)
+		"focus":
+			sb.bg_color = Color.TRANSPARENT
+			sb.border_color = BUTTON_FOCUS
+			sb.border_width_left = 4
+			sb.border_width_top = 2
+			sb.border_width_right = 2
+			sb.border_width_bottom = 2
+			sb.content_margin_left = 0
+			sb.content_margin_right = 0
+			sb.content_margin_top = 0
+			sb.content_margin_bottom = 0
+		"pressed":
+			sb.bg_color = Color(1, 1, 1, 0.10) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_PRESSED
+			sb.border_color = BUTTON_PRESSED_MARK
+			sb.border_width_left = 1
+			sb.border_width_top = 0
+			sb.border_width_right = 3
+			sb.border_width_bottom = 3
+			sb.content_margin_top = 12
+			sb.content_margin_bottom = 8
+		"disabled":
+			sb.bg_color = Color.TRANSPARENT if role == BtnRole.GHOST else BUTTON_OBSIDIAN_DISABLED
+			sb.border_color = Color(BUTTON_GHOST, 0.55)
+			sb.border_width_left = 1
+			sb.border_width_top = 0
+			sb.border_width_right = 1
+			sb.border_width_bottom = 0
+		_:
+			sb.bg_color = Color.TRANSPARENT if role == BtnRole.GHOST else BUTTON_OBSIDIAN
+			sb.border_color = accent
+			sb.border_width_left = 0 if role == BtnRole.GHOST else 3
+			sb.border_width_top = 0 if role == BtnRole.GHOST else 1
+			sb.border_width_right = 0 if role == BtnRole.GHOST else 1
+			sb.border_width_bottom = 0 if role == BtnRole.GHOST else 1
+			if role != BtnRole.GHOST:
+				sb.shadow_color = Color(0, 0, 0, 0.28)
+				sb.shadow_size = 2
+				sb.shadow_offset = Vector2(0, 1)
+	return sb
 
 
 static func make_button(text: String, role: int = BtnRole.PRIMARY,

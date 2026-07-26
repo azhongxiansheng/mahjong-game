@@ -314,7 +314,7 @@ func test_open_drawer_stays_on_right_and_inside_1600_by_900() -> void:
 	assert_almost_eq(rect.end.x, bounds.end.x, 1.0, "展开态右边缘必须贴齐 1600 设计边界")
 
 
-func test_rule_drawer_consumes_real_lobby_material_assets() -> void:
+func test_rule_drawer_keeps_panel_material_but_buttons_use_shared_foundation() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	if not _require_hooks(shell, ["RuleDrawerPanel", "EastButton", "DrawerStartButton"]):
@@ -324,14 +324,16 @@ func test_rule_drawer_consumes_real_lobby_material_assets() -> void:
 	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
 		"res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png")
 	var choice := shell.get_node("%EastButton") as Button
-	var normal := choice.get_theme_stylebox("normal") as StyleBoxTexture
-	var pressed := choice.get_theme_stylebox("pressed") as StyleBoxTexture
+	var normal := choice.get_theme_stylebox("normal") as StyleBoxFlat
+	var pressed := choice.get_theme_stylebox("pressed") as StyleBoxFlat
 	assert_not_null(normal)
 	assert_not_null(pressed)
-	assert_eq(normal.texture.resource_path,
-		"res://assets/ui/lobby_materials/lobby_washi_choice_9slice.png")
-	assert_eq(pressed.texture.resource_path,
-		"res://assets/ui/lobby_materials/lobby_choice_selected_9slice.png")
+	if normal != null:
+		assert_eq(normal.border_color, DT.BUTTON_SECONDARY,
+			"规则选项是共享 SECONDARY 黑曜符札，不再恢复旧和纸按钮框")
+	assert_true(choice.clip_text)
+	assert_eq(choice.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS)
+	assert_eq(choice.tooltip_text, choice.text)
 
 
 func test_rule_drawer_groups_sections_and_footer_without_dead_space_at_either_end() -> void:

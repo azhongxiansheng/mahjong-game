@@ -164,20 +164,20 @@ func _build_ui() -> void:
 	_countdown_bar.add_theme_stylebox_override("background", bg_sb)
 	add_child(_countdown_bar)
 
-	# 蓝=立直 / 金=自摸荣和 / 红=鸣牌 / 紫=九种 / 橙=杠道具 / 灰=跳过
-	_btn_riichi = _make_btn("立直", Color(0.30, 0.55, 0.85))
-	_btn_tsumo = _make_btn("自摸", DT.TEXT_TITLE)
-	_btn_ron = _make_btn("荣和", DT.TEXT_TITLE)
-	_btn_chi = _make_btn("吃", DT.TEXT_DANGER)
-	_btn_pon = _make_btn("碰", DT.TEXT_DANGER)
-	_btn_minkan = _make_btn("杠", DT.TEXT_DANGER)
-	_btn_kyuusyu = _make_btn("九種九牌", Color(0.78, 0.42, 0.95))
+	# 金色只保留自摸/荣和；其余动作复用四种共享按钮语义。
+	_btn_riichi = _make_btn("立直", DT.BtnRole.SECONDARY)
+	_btn_tsumo = _make_btn("自摸", DT.BtnRole.PRIMARY, true)
+	_btn_ron = _make_btn("荣和", DT.BtnRole.PRIMARY, true)
+	_btn_chi = _make_btn("吃", DT.BtnRole.DANGER)
+	_btn_pon = _make_btn("碰", DT.BtnRole.DANGER)
+	_btn_minkan = _make_btn("杠", DT.BtnRole.DANGER)
+	_btn_kyuusyu = _make_btn("九種九牌", DT.BtnRole.DANGER)
 	_btn_kyuusyu.custom_minimum_size = Vector2(132, BTN_H)
 	_btn_kyuusyu.pivot_offset = Vector2(66, BTN_H / 2.0)
-	_btn_ankan = _make_btn("暗杠", Color(0.85, 0.50, 0.15))
-	_btn_added_kan = _make_btn("加杠", Color(0.85, 0.50, 0.15))
-	_btn_consumable = _make_btn("道具", Color(0.95, 0.60, 0.15))
-	_btn_skip = _make_btn("跳过", DT.TEXT_MUTED)
+	_btn_ankan = _make_btn("暗杠", DT.BtnRole.SECONDARY)
+	_btn_added_kan = _make_btn("加杠", DT.BtnRole.SECONDARY)
+	_btn_consumable = _make_btn("道具", DT.BtnRole.SECONDARY)
+	_btn_skip = _make_btn("跳过", DT.BtnRole.GHOST)
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -191,35 +191,15 @@ func _build_ui() -> void:
 	_btn_consumable.pressed.connect(_on_btn_consumable)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
-func _make_btn(text: String, accent: Color = Color(0.55, 0.55, 0.55)) -> Button:
+func _make_btn(text: String, role: int, high_value: bool = false) -> Button:
 	var btn := Button.new()
 	btn.text = text
 	btn.custom_minimum_size = Vector2(BTN_W, BTN_H)
+	DT.apply_button_role(btn, role, high_value)
 	btn.add_theme_font_size_override("font_size", 22)
 	btn.disabled = true
 	btn.visible = false
 	btn.pivot_offset = Vector2(BTN_W / 2.0, BTN_H / 2.0)
-	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
-		var sb := StyleBoxFlat.new()
-		match state:
-			"hover":
-				sb.bg_color = Color(0.18, 0.16, 0.20, 0.97)
-			"pressed":
-				sb.bg_color = Color(0.24, 0.14, 0.16, 0.97)
-			"disabled":
-				sb.bg_color = Color(0.10, 0.10, 0.11, 0.85)
-			_:
-				sb.bg_color = Color(0.12, 0.11, 0.14, 0.97)
-		sb.border_color = accent
-		sb.border_width_left = 3
-		sb.border_width_right = 3
-		sb.border_width_top = 3
-		sb.border_width_bottom = 3
-		sb.corner_radius_top_left = 8
-		sb.corner_radius_top_right = 8
-		sb.corner_radius_bottom_left = 8
-		sb.corner_radius_bottom_right = 8
-		btn.add_theme_stylebox_override(state, sb)
 	_btn_bar.add_child(btn)
 	return btn
 
