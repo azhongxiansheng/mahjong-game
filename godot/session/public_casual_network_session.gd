@@ -5,14 +5,19 @@ extends Node
 # 消费 CP assigned（worker / voice_worker / room / seat / token / game_mode / session）。
 # 绑定调用方提供的 ModeModuleBundle.voice_port（仅 TRASH_TALK）；生产不强制 fixture。
 # 协议：JOIN → READY → 消费业务事件；语音独立 WS + AuthoritySeqBridge。
-# 尚未由大厅 UI bootstrap 自动调用（诚实声明）；测试可显式注入。
+# #323：由 PublicMatchCoordinator 在 CP assigned 后接入生产大厅与牌桌。
 # 网络端到端未验证。
+
+const JsonTransportDecoder := preload("res://protocol/json_transport_decoder.gd")
 
 signal game_joined()
 signal game_ready_sent()
 signal voice_joined()
 signal room_started_hint()
 signal session_failed(code: String, message: String)
+signal reconnecting(code: String, message: String)
+signal recovered()
+signal terminal_error(code: String, message: String)
 signal authority_ptt_end(msg: Dictionary)
 ## #247：服务端字幕 → 调用方可接 PlayableTable.inject_caption_display
 signal transcript_caption(msg: Dictionary)
@@ -38,6 +43,10 @@ var _game_ready_sent: bool = false
 var _want_open: bool = false
 var _released: bool = false
 var _owns_voice_port: bool = false
+var _recovering: bool = false
+var _closed_notified: bool = false
+var _has_committed_snapshot: bool = false
+var _terminal_notified: bool = false
 
 
 ## E5-06：可选只读 UI 绑定。不改 schema/权威；展示侧消费 nbc committed journal。
@@ -123,6 +132,10 @@ func start() -> Error:
 		return ERR_INVALID_PARAMETER
 
 	_want_open = true
+	_recovering = false
+	_closed_notified = false
+	_has_committed_snapshot = false
+	_terminal_notified = false
 	nbc = NetworkedBattleController.new(room_id, seat)
 	if game_mode == "TRASH_TALK":
 		nbc.configure_snapshot_registry_for_mode("TRASH_TALK")
@@ -199,8 +212,10 @@ func _poll_game() -> void:
 				continue
 			_on_game_text(pkt.get_string_from_utf8())
 	elif st == WebSocketPeer.STATE_CLOSED:
-		if _want_open and not _released:
-			session_failed.emit("ROOM_FAILED", "game ws closed")
+		if _want_open and not _released and not _closed_notified:
+			_closed_notified = true
+			_recovering = true
+			reconnecting.emit("WS_CLOSED", "game ws closed")
 
 
 func _on_game_text(text: String) -> void:
@@ -211,7 +226,7 @@ func _on_game_text(text: String) -> void:
 	var kind: String = str(d.get("kind", ""))
 	if kind == "ERROR":
 		if not _game_joined:
-			session_failed.emit(str(d.get("code", "ERROR")), str(d.get("message", "")))
+			_emit_terminal(str(d.get("code", "ERROR")), str(d.get("message", "")))
 		return
 	if kind == "COMMAND_RESULT" or str(d.get("status", "")) in ["ACCEPTED", "REJECTED"]:
 		return
@@ -221,13 +236,63 @@ func _on_game_text(text: String) -> void:
 		pass
 	# NetworkedEvent
 	if d.has("server_seq") and d.has("view_hash") and d.has("payload"):
+		var event: NetworkedEvent = JsonTransportDecoder.decode_event(text)
+		if event == null:
+			_emit_terminal("BAD_EVENT", "authority event rejected")
+			return
 		if not _game_joined:
 			_game_joined = true
 			game_joined.emit()
-		seq_bridge.on_game_networked_event(d)
+		var ingested: Dictionary = seq_bridge.on_game_networked_event(event)
+		if not bool(ingested.get("ok", false)):
+			var ingest_code := str(ingested.get("error", ""))
+			if ingest_code.is_empty():
+				ingest_code = str(ingested.get("reason", "EVENT_REJECTED"))
+			_emit_terminal(ingest_code, "authority event rejected")
+			return
 		if str(d.get("kind", "")) == "ROOM_SNAPSHOT":
+			_has_committed_snapshot = true
 			room_started_hint.emit()
+			if _recovering:
+				_recovering = false
+				recovered.emit()
 		return
+
+
+func retry_reconnect() -> Error:
+	if _released or not _recovering or worker_url.is_empty():
+		return ERR_INVALID_PARAMETER
+	if _game_peer != null and _game_peer.get_ready_state() != WebSocketPeer.STATE_CLOSED:
+		return ERR_BUSY
+	_game_peer = WebSocketPeer.new()
+	_game_joined = false
+	_game_join_sent = false
+	_game_ready_sent = false
+	_closed_notified = false
+	_terminal_notified = false
+	var err := _game_peer.connect_to_url(worker_url)
+	if err != OK:
+		_closed_notified = true
+		_emit_terminal("RECONNECT_FAILED", error_string(err))
+	return err
+
+
+func has_committed_snapshot() -> bool:
+	return _has_committed_snapshot
+
+
+func close_connection_for_test() -> void:
+	if _game_peer != null:
+		_game_peer.close()
+
+
+func _emit_terminal(code: String, message: String) -> void:
+	if _terminal_notified:
+		return
+	_terminal_notified = true
+	_want_open = false
+	session_failed.emit(code, message)
+	terminal_error.emit(code, message)
 
 
 func _send_ready_if_needed() -> void:
@@ -248,7 +313,6 @@ func _send_ready_if_needed() -> void:
 ## 若 JOIN 后长时间无事件（未开局），仍发送 READY 以推进权威 start。
 func ensure_ready_sent() -> void:
 	if _game_join_sent and not _game_ready_sent:
-		_game_joined = true
 		_send_ready_if_needed()
 
 
@@ -320,6 +384,10 @@ func release() -> void:
 	_game_joined = false
 	_game_join_sent = false
 	_game_ready_sent = false
+	_recovering = false
+	_closed_notified = false
+	_has_committed_snapshot = false
+	_terminal_notified = false
 
 
 func _exit_tree() -> void:

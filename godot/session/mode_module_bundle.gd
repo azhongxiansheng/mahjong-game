@@ -54,6 +54,19 @@ static func from_config(config: GameSessionConfig) -> ModeModuleBundle:
 	return bundle
 
 
+## #323：assigned 阶段只有 CP 权威 mode/transport 字段，尚无完整牌局 Config。
+## 仅构造连接所需模块；不伪造 participants/seed/character_ids 等权威字段。
+static func for_public_transport(mode: StringName) -> ModeModuleBundle:
+	if mode != GameSessionConfig.MODE_STANDARD and mode != GameSessionConfig.MODE_TRASH_TALK:
+		return null
+	var bundle := ModeModuleBundle.new()
+	bundle._game_mode = mode
+	if mode == GameSessionConfig.MODE_TRASH_TALK:
+		bundle.voice_port = VoicePortModule.new()
+	bundle._frozen = true
+	return bundle
+
+
 func is_standard() -> bool:
 	return game_mode == GameSessionConfig.MODE_STANDARD
 

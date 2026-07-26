@@ -28,7 +28,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This repo contains **two unrelated trees** that share a directory but not a build:
 
 1. **`godot/`** — a Godot 4.6 client (verified on 4.6.1) written in GDScript. **Main scene: `ui/lobby/lobby_shell.tscn`** (set in `godot/project.godot`; E1-01). Tree layout:
-   - `ui/lobby/` — 生产大厅入口壳（练习/匹配挂点；选择态与正式配置分属后续 Issue）
+   - `ui/lobby/` — 生产大厅入口壳；`PracticeMatchCoordinator` 消费练习 intent，`PublicMatchCoordinator` 消费公共匹配 intent 并发布无 token 的只读 UI state/view
    - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
    - `core/` — pure-logic 日麻 engine：
      - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall`（含 dead wall API）
@@ -50,7 +50,7 @@ This repo contains **two unrelated trees** that share a directory but not a buil
 
 设计文档与里程碑 plan 在 **`docs/superpowers/{specs,plans}/`**。新增计划放此目录，**不要**新增根目录 markdown。
 
-Networking: client may expect WebSocket at `ws://localhost:8080`; **no matching server in this repo**. Network work cannot be fully e2e-tested here — declare that explicitly.
+Networking: 本仓已有 `services/control-plane/` 与 Godot Headless Worker 的本地真实 HTTP/WS 路径；公共客户端默认 CP 为 `http://127.0.0.1:8081`，可用 `CONTROL_PLANE_URL` 覆盖。仓库仍不提供公网部署端点，网络改动须声明未完成公网四客户端端到端验证。
 
 The 200+ root-level markdown files (`PHASE*.md`, `RAILWAY_*.md`, `*_FINAL_*.md`, etc.) are historical and **not authoritative**. Read code before trusting them.
 
