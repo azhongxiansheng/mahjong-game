@@ -24,17 +24,20 @@ var _message: String = ""
 var _confirm_text: String = "确认"
 var _cancel_text: String = "取消"
 var _destructive: bool = false  # 确认按钮显猩红(强调不可逆)
+var _panel_h: int = PANEL_H
 
 
 static func show_dialog(title: String, message: String,
 		confirm_text: String = "确认", cancel_text: String = "取消",
-		destructive: bool = true) -> ConfirmDialog:
+		destructive: bool = true, panel_height: int = 0) -> ConfirmDialog:
 	var d := ConfirmDialog.new()
 	d._title = title
 	d._message = message
 	d._confirm_text = confirm_text
 	d._cancel_text = cancel_text
 	d._destructive = destructive
+	if panel_height > PANEL_H:
+		d._panel_h = panel_height
 	return d
 
 
@@ -53,9 +56,12 @@ func _ready() -> void:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(bg)
 
-	var panel := DT.make_centered_panel(PANEL_W, PANEL_H)
+	var panel_h: int = maxi(PANEL_H, _panel_h)
+	var panel := DT.make_centered_panel(PANEL_W, panel_h)
 	add_child(panel)
-	DT.popin(panel)
+	# headless/GUT：跳过 Anima（DisplayServer=headless；OS.has_feature 在本机可能不可靠）
+	if DisplayServer.get_name() != "headless":
+		DT.popin(panel)
 
 	var title_lbl := Label.new()
 	title_lbl.text = _title
@@ -70,7 +76,7 @@ func _ready() -> void:
 	var msg_lbl := Label.new()
 	msg_lbl.text = _message
 	msg_lbl.position = Vector2(30, 72)
-	msg_lbl.size = Vector2(PANEL_W - 60, 70)
+	msg_lbl.size = Vector2(PANEL_W - 60, maxi(70, panel_h - 150))
 	msg_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	msg_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -80,13 +86,13 @@ func _ready() -> void:
 
 	# Cancel 在左,Confirm 在右 — Windows/macOS 通用习惯
 	var cancel_btn := DT.make_button(_cancel_text, DT.BtnRole.SECONDARY, Vector2(140, 40))
-	cancel_btn.position = Vector2(40, PANEL_H - 60)
+	cancel_btn.position = Vector2(40, panel_h - 60)
 	cancel_btn.pressed.connect(_on_cancel)
 	panel.add_child(cancel_btn)
 
 	var conf_role: int = DT.BtnRole.DANGER if _destructive else DT.BtnRole.PRIMARY
 	var confirm_btn := DT.make_button(_confirm_text, conf_role, Vector2(140, 40))
-	confirm_btn.position = Vector2(PANEL_W - 40 - 140, PANEL_H - 60)
+	confirm_btn.position = Vector2(PANEL_W - 40 - 140, panel_h - 60)
 	confirm_btn.pressed.connect(_on_confirm)
 	panel.add_child(confirm_btn)
 

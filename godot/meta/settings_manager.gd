@@ -29,6 +29,10 @@ var skip_deal_animation: bool = false
 var claim_timeout_sec: float = 5.0
 var riichi_timeout_sec: float = 6.0
 
+# #258 Windows Alpha 专属：应用内首次说明持久化（与 #257 macOS 权限流程隔离）
+var windows_first_public_connect_notice_acked: bool = false
+var windows_first_ptt_notice_acked: bool = false
+
 # Settings 变化时 emit;AudioManager 可以 connect 在线响应
 signal settings_changed
 
@@ -89,6 +93,28 @@ func set_framerate_cap(fps: int) -> void:
 	settings_changed.emit()
 
 
+func needs_windows_first_public_connect_notice() -> bool:
+	return not windows_first_public_connect_notice_acked
+
+
+func needs_windows_first_ptt_notice() -> bool:
+	return not windows_first_ptt_notice_acked
+
+
+func ack_windows_first_public_connect_notice() -> void:
+	if windows_first_public_connect_notice_acked:
+		return
+	windows_first_public_connect_notice_acked = true
+	_save_to_disk()
+
+
+func ack_windows_first_ptt_notice() -> void:
+	if windows_first_ptt_notice_acked:
+		return
+	windows_first_ptt_notice_acked = true
+	_save_to_disk()
+
+
 # ---- internal ----
 
 func _apply_to_audio() -> void:
@@ -137,6 +163,15 @@ func _load_from_disk() -> void:
 	if fps_v != 0:
 		fps_v = clamp(fps_v, 30, 300)
 	framerate_cap = fps_v
+	windows_first_public_connect_notice_acked = bool(
+		parsed.get(
+			"windows_first_public_connect_notice_acked",
+			windows_first_public_connect_notice_acked
+		)
+	)
+	windows_first_ptt_notice_acked = bool(
+		parsed.get("windows_first_ptt_notice_acked", windows_first_ptt_notice_acked)
+	)
 
 
 func _save_to_disk() -> void:
@@ -148,6 +183,8 @@ func _save_to_disk() -> void:
 		"framerate_cap": framerate_cap,
 		"claim_timeout_sec": claim_timeout_sec,
 		"riichi_timeout_sec": riichi_timeout_sec,
+		"windows_first_public_connect_notice_acked": windows_first_public_connect_notice_acked,
+		"windows_first_ptt_notice_acked": windows_first_ptt_notice_acked,
 	}
 	var file := FileAccess.open(SETTINGS_PATH, FileAccess.WRITE)
 	if file == null:

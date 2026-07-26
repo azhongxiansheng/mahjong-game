@@ -9,6 +9,7 @@ class_name PlayableTable extends Control
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
+const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
 
 # 公开 bundle `.moment-band`：固定舞台 30% 高度、128px，1.3s 后卸载。
 const MOMENT_BAND_Y: float = 270.0
@@ -2371,6 +2372,10 @@ func _retry_whisper_model_if_needed() -> void:
 func _on_ptt_button_down() -> void:
 	if _voice_port == null:
 		return
+	# #258：Windows 首次 PTT 应用内说明；确认前不 press_ptt（非 Windows 跳过）
+	if FirstUseNotices.needs_ptt_notice():
+		_begin_first_ptt_notice()
+		return
 	# 失败态不阻断 PTT；顺带尝试重新 ensure（可重试语义）
 	_retry_whisper_model_if_needed()
 	_voice_port.press_ptt()
@@ -2380,6 +2385,34 @@ func _on_ptt_button_up() -> void:
 	if _voice_port == null:
 		return
 	_voice_port.release_ptt()
+
+
+func _begin_first_ptt_notice() -> void:
+	if get_node_or_null("FirstPttNotice") != null:
+		return
+	var copy: Dictionary = FirstUseNotices.ptt_copy()
+	var dlg := ConfirmDialog.show_dialog(
+		String(copy.get("title", "")),
+		String(copy.get("body", "")),
+		String(copy.get("confirm", "我知道了")),
+		String(copy.get("cancel", "取消")),
+		false,
+		300
+	)
+	dlg.name = "FirstPttNotice"
+	dlg.confirmed.connect(_on_first_ptt_notice_confirmed)
+	dlg.cancelled.connect(_on_first_ptt_notice_cancelled)
+	add_child(dlg)
+
+
+func _on_first_ptt_notice_confirmed() -> void:
+	FirstUseNotices.ack_ptt_notice()
+	# 不自动 press_ptt：用户需再次按住说话（避免对话框期间误采集）
+
+
+func _on_first_ptt_notice_cancelled() -> void:
+	# 不 ack：再次按下仍提示
+	pass
 
 
 func _on_ptt_state_changed(state: StringName) -> void:
