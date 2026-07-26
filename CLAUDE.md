@@ -136,6 +136,17 @@ scripts/e7_257_whisper_model_download_smoke.sh
 仅 final 在主异常/逻辑超时后回退；partial 与正常空白终态不回退。熔断与 PONG 健康摘要不含 token。
 **勿**静默复用资产生成 `OPENAI_*`。真实供应商 smoke ≠ 公网/四客户端 e2e。
 
+### Windows Alpha 包（#258 / E7-04）
+
+- 预设：`godot/export_presets.cfg` → **Windows Desktop** / **x86_64** / **`codesign/enable=false`** / **`export_filter=exclude` + denylist**（排除 tests/gut/legacy/`main.tscn`；不用 scenes-only，因 preload 依赖登记不全）
+- 打包：`scripts/package_windows_alpha.sh` → 日志扫描 SCRIPT/Parse 错误 + `Storing File` 清单 → `dist/windows-alpha/MahjongGame-windows-x86_64-alpha.zip`
+- 契约：`scripts/windows_alpha_contract_test.sh`
+- **真机规范入口**：`scripts/windows_clean_smoke.ps1`（PowerShell；证据不足非 0）。`scripts/windows_clean_smoke.sh` 仅非 Windows NOT_RUN / 转发
+- 规格：`docs/superpowers/specs/2026-07-26-windows-alpha-packaging.md`
+- 模型仍走 **`user://models/whisper/<version>`**（#245），**不**随包内置（生产 small ≈ 487601967 字节）
+- 首次说明：仅 **Windows 运行时**；`platform/platform_first_use_notices.gd`（无 class_name，preload）+ Settings 键 `windows_first_*_notice_acked`
+- **网络端到端未验证**；真实 Windows clean smoke / 麦克风 / 公网整场待真机
+
 ### 资产生成
 
 管线在 **`godot/tools/asset_gen/`**。当前牌面主力来源：**FluffyStuff CC0**（`import_fluffystuff.py` → 272×389）；gpt-image-2 管线仍可用作风格实验。

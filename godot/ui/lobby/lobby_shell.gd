@@ -6,6 +6,7 @@ class_name LobbyShell extends Control
 const SCENE_PATH := "res://ui/lobby/lobby_shell.tscn"
 const STAGE_SCENE := preload("res://ui/lobby/lobby_stage.tscn")
 const LOBBY_BGM_PATH := "res://assets/bgm/lobby_xuxiguan.ogg"
+const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
 
 signal practice_pressed
 signal match_pressed
@@ -30,6 +31,9 @@ var _codex_source: Control = null
 var _audio_host: Control = null
 var _audio_popup: LobbyAudioPopup = null
 var _audio_source: Control = null
+# #258：首次公共连接说明进行中时暂存 Intent，避免重复弹窗
+var _pending_public_intent: SessionIntent = null
+var _public_connect_notice: ConfirmDialog = null
 
 
 func _ready() -> void:
@@ -210,8 +214,50 @@ func _close_rule_drawer(restore_focus: bool = true) -> void:
 
 
 func _on_rule_drawer_confirmed(intent: SessionIntent) -> void:
+	# #258：Windows 首次公共连接应用内说明（仅 Windows 运行时；系统防火墙弹窗不保证）
+	if intent != null and intent.room_kind == &"PUBLIC_CASUAL":
+		if FirstUseNotices.needs_public_connect_notice():
+			_begin_public_connect_notice(intent)
+			return
 	session_intent_confirmed.emit(intent)
 	_close_rule_drawer()
+
+
+func _begin_public_connect_notice(intent: SessionIntent) -> void:
+	if _public_connect_notice != null and is_instance_valid(_public_connect_notice):
+		return
+	_pending_public_intent = intent
+	var copy: Dictionary = FirstUseNotices.public_connect_copy()
+	var dlg := ConfirmDialog.show_dialog(
+		String(copy.get("title", "")),
+		String(copy.get("body", "")),
+		String(copy.get("confirm", "我知道了")),
+		String(copy.get("cancel", "取消")),
+		false,
+		300
+	)
+	dlg.name = "FirstPublicConnectNotice"
+	_public_connect_notice = dlg
+	dlg.confirmed.connect(_on_public_connect_notice_confirmed)
+	dlg.cancelled.connect(_on_public_connect_notice_cancelled)
+	add_child(dlg)
+
+
+func _on_public_connect_notice_confirmed() -> void:
+	_public_connect_notice = null
+	FirstUseNotices.ack_public_connect_notice()
+	var intent: SessionIntent = _pending_public_intent
+	_pending_public_intent = null
+	if intent == null:
+		return
+	session_intent_confirmed.emit(intent)
+	_close_rule_drawer()
+
+
+func _on_public_connect_notice_cancelled() -> void:
+	_public_connect_notice = null
+	_pending_public_intent = null
+	# 不 ack：再次进入公共匹配仍提示
 
 
 func _open_codex(page: StringName, source: Control) -> void:

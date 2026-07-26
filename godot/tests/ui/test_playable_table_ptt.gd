@@ -3,6 +3,12 @@ extends GutTest
 # E4-01（#243）：PlayableTable 从真实 bc.mode_modules.voice_port 绑定 PTT UI / 采集 / 播放。
 
 
+func after_each() -> void:
+	var notices = load("res://platform/platform_first_use_notices.gd")
+	if notices != null and notices.has_method("clear_windows_runtime_override"):
+		notices.clear_windows_runtime_override()
+
+
 func _make_config(mode: StringName, session_id: String) -> GameSessionConfig:
 	var intent := SessionIntent.new(&"PRACTICE", &"EAST", mode, &"lin_yeche")
 	var converted := GameSessionConfig.from_intent(
@@ -54,6 +60,10 @@ func test_trash_talk_creates_ptt_button_and_wires_press_release() -> void:
 	assert_true(btn.visible)
 	assert_true(String(btn.text).contains("按住说话") or String(btn.text).contains("🎙"))
 
+	# #258：非 Windows 不弹首次 PTT 说明；强制 false 保证本用例不碰 Windows flag
+	var Notices = load("res://platform/platform_first_use_notices.gd")
+	Notices.set_windows_runtime_override(false)
+
 	var controls: Array = []
 	vp.outbound_control.connect(func(m: Dictionary): controls.append(m.duplicate(true)))
 
@@ -62,6 +72,7 @@ func test_trash_talk_creates_ptt_button_and_wires_press_release() -> void:
 	assert_true(vp.is_ptt_pressed())
 	assert_eq(controls.size(), 1)
 	assert_eq(String(controls[0].get("kind", "")), "PTT_START")
+	Notices.clear_windows_runtime_override()
 
 	var status := table.get_node_or_null("PttStatusLabel") as Label
 	assert_not_null(status)
