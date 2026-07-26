@@ -1,10 +1,7 @@
 class_name CallAnnounce extends Control
 
-# 牌桌体验重做 T1(spec 2026-06-11 G1):动作宣告演出。
-#
-# 公开 bundle 直接翻译：普通宣告 call-announce 与和牌 win-announce 是两套结构。
-# 普通宣告横排（头像 200 + 4px + 96 字），和牌竖排（头像 220 / 8px / 108 字）；
-# 每套各自使用单层 halo、文字中心 shock 与独立时序。
+# 原创结界舞台的动作宣告演出。普通鸣牌贴近动作席位短促出现；
+# 立直、荣和与自摸可使用高冲击窄带，但始终避开牌河、手牌与操作区。
 #
 # 纯 overlay(MOUSE_FILTER_IGNORE),不阻塞对局;LIFETIME 后自毁。
 # 用法:CallAnnounce.play(overlay_parent, &"pon", seat_id, avatar_texture)
@@ -23,6 +20,8 @@ const WIN_HALO_TIME: float = 1.4
 const CALL_SHOCK_TIME: float = 0.75
 const WIN_SHOCK_TIME: float = 1.0
 const EFFECT_DELAY: float = 0.05
+const CALL_MARK_SIZE := Vector2(120.0, 120.0)
+const WIN_SAFE_RECT := Rect2(240.0, 84.0, 300.0, 52.0)
 
 const CALL_HALO_KEYFRAMES: Array = [
 	[0.0, 0.0, 32.0, 0.5],
@@ -34,28 +33,17 @@ const WIN_HALO_KEYFRAMES: Array = [
 	[0.35, 1.0, 36.0, 1.5],
 	[1.0, 0.6, 34.0, 1.1],
 ]
-const CALL_SHOCK_KEYFRAMES: Array = [
-	[0.0, 0.0, 8.0, 40.0],
-	[0.2, 1.0, 0.0, 0.0],
-	[1.0, 0.0, 1.0, 460.0],
-]
-const WIN_SHOCK_KEYFRAMES: Array = [
-	[0.0, 0.0, 10.0, 60.0],
-	[0.2, 1.0, 0.0, 0.0],
-	[1.0, 0.0, 1.0, 640.0],
-]
-
 # kind → [文案, 描边色, 字号]
 const KIND_STYLE: Dictionary = {
-	&"chi": ["吃", Color("2eb872"), 96],
-	&"pon": ["碰", Color("2e8fd9"), 96],
-	&"minkan": ["杠", Color("e8731f"), 96],
-	&"ankan": ["杠", Color("e8731f"), 96],
-	&"added_kan": ["杠", Color("e8731f"), 96],
-	&"riichi": ["听", Color("e8c45a"), 96],
-	&"tsumo": ["自摸", Color("e63a28"), 108],
-	&"ron": ["荣和", Color("e63a28"), 108],
-	&"chankan": ["抢杠", Color("ef8528"), 108],
+	&"chi": ["吃", Color("2eb872"), 46],
+	&"pon": ["碰", Color("2e8fd9"), 46],
+	&"minkan": ["杠", Color("e8731f"), 46],
+	&"ankan": ["杠", Color("e8731f"), 46],
+	&"added_kan": ["杠", Color("e8731f"), 46],
+	&"riichi": ["听", Color("e8c45a"), 46],
+	&"tsumo": ["自摸", Color("e63a28"), 52],
+	&"ron": ["荣和", Color("e63a28"), 52],
+	&"chankan": ["抢杠", Color("ef8528"), 52],
 }
 
 const CALL_EFFECT_STYLE: Dictionary = {
@@ -72,12 +60,13 @@ const WIN_EFFECT_STYLE: Dictionary = {
 	&"chankan": {"halo": Color("ffaa5ad9"), "shock": Color("ffd78cf2")},
 }
 
-# seat → [参考站 1600×900 锚点, 滑入方向单位向量]
+# seat → [1600×900 原创舞台安全锚点, 滑入方向单位向量]
+# 锚点避开四席最大牌河/副露区、HUD、手牌与固定操作带。
 const SEAT_LAYOUT: Dictionary = {
-	0: [Vector2(800, 650), Vector2(0, 1)],
-	1: [Vector2(1120, 396), Vector2(1, 0)],
-	2: [Vector2(800, 200), Vector2(0, -1)],
-	3: [Vector2(480, 396), Vector2(-1, 0)],
+	0: [Vector2(1300, 650), Vector2(0, 1)],
+	1: [Vector2(1300, 540), Vector2(1, 0)],
+	2: [Vector2(800, 78), Vector2(0, -1)],
+	3: [Vector2(300, 540), Vector2(-1, 0)],
 }
 
 static var _circle_avatar_shader: Shader = null
@@ -115,17 +104,21 @@ func _build(kind: StringName, seat_id: int, avatar: Texture2D) -> void:
 	var style: Array = KIND_STYLE[kind]
 	var text: String = style[0]
 	var color: Color = style[1]
-	var font_size: int = style[2]
-	var anchor: Vector2 = SEAT_LAYOUT[seat_id][0]
+	var font_size: int = int(style[2])
+	var anchor: Vector2 = WIN_SAFE_RECT.get_center() if WIN_EFFECT_STYLE.has(kind) \
+		else SEAT_LAYOUT[seat_id][0]
 	position = anchor
 	_is_win_announce = WIN_EFFECT_STYLE.has(kind)
-	set_meta("layout_direction", "column" if _is_win_announce else "row")
+	set_meta("is_win_announce", _is_win_announce)
+	set_meta("layout_direction", "row")
+	set_meta("seat_direction", SEAT_LAYOUT[seat_id][1])
 	var effect: Dictionary = WIN_EFFECT_STYLE[kind] if _is_win_announce \
 		else CALL_EFFECT_STYLE.get(kind, {
 			"halo": Color("fff0c8b3"), "shock": Color("fff0c8e6")})
 	_ring_color = effect["shock"]
-	_ring_start_diameter = 60.0 if _is_win_announce else 40.0
-	_ring_end_diameter = 640.0 if _is_win_announce else 460.0
+	_ring_start_diameter = 60.0 if _is_win_announce else 28.0
+	_ring_end_diameter = WIN_SAFE_RECT.size.y if _is_win_announce \
+		else CALL_MARK_SIZE.x
 	_ring_start_width = 10.0 if _is_win_announce else 8.0
 	_halo_keyframes = WIN_HALO_KEYFRAMES if _is_win_announce else CALL_HALO_KEYFRAMES
 
@@ -134,37 +127,31 @@ func _build(kind: StringName, seat_id: int, avatar: Texture2D) -> void:
 	var letter_spacing := 0.12 if _is_win_announce else 0.1
 	var text_w: float = font_size * (text.length() + letter_spacing)
 	var text_size := Vector2(text_w, font_size)
-	var avatar_size := Vector2(220, 220) if _is_win_announce else Vector2(200, 200)
+	var avatar_size := Vector2(48, 48)
 	var text_position: Vector2
 	var avatar_position := Vector2.ZERO
-	if _is_win_announce:
-		var total_h := text_size.y + (avatar_size.y + 8.0 if avatar != null else 0.0)
-		var top := -total_h / 2.0
-		avatar_position = Vector2(-avatar_size.x / 2.0, top)
-		text_position = Vector2(-text_size.x / 2.0,
-			top + (avatar_size.y + 8.0 if avatar != null else 0.0))
-	else:
-		var total_w := text_size.x + (avatar_size.x + 4.0 if avatar != null else 0.0)
-		var left := -total_w / 2.0
-		avatar_position = Vector2(left, -avatar_size.y / 2.0)
-		text_position = Vector2(left + (avatar_size.x + 4.0 if avatar != null else 0.0),
-			-text_size.y / 2.0)
+	var gap := 10.0 if _is_win_announce else 6.0
+	var total_w := text_size.x + (avatar_size.x + gap if avatar != null else 0.0)
+	var left := -total_w / 2.0
+	avatar_position = Vector2(left, -avatar_size.y / 2.0)
+	text_position = Vector2(left + (avatar_size.x + gap if avatar != null else 0.0),
+		-text_size.y / 2.0)
 
 	if avatar != null:
 		var av := TextureRect.new()
 		av.name = "Avatar"
-		av.texture = avatar
-		av.custom_minimum_size = avatar_size
-		av.size = avatar_size
-		av.position = avatar_position
 		av.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		av.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		av.texture = avatar
+		av.custom_minimum_size = avatar_size
 		av.clip_contents = true
 		av.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		av.material = _make_circle_avatar_material()
 		add_child(av)
+		av.position = avatar_position
+		av.size = avatar_size
 
-	# CSS ::before 的单层文字 halo；shadow_size 直接承载 blur px。
+	# 单层文字 halo；shadow_size 承载光晕宽度。
 	_halo = _make_label(text, font_size, effect["halo"], 0,
 		Color.TRANSPARENT, false, label_font)
 	_halo.name = "Halo"
@@ -177,7 +164,7 @@ func _build(kind: StringName, seat_id: int, avatar: Texture2D) -> void:
 	_halo.scale = Vector2.ONE * float(_halo_keyframes[0][3])
 	add_child(_halo)
 
-	# 主字：普通 9px；和牌 10px。阴影偏移/尺寸直接来自 CSS drop-shadow。
+	# 主字：普通 9px；和牌 10px，用阴影与桌面分层。
 	var main := _make_label(text, font_size, Color.WHITE,
 		10 if _is_win_announce else 9, color, true, label_font)
 	main.position = text_position
@@ -243,7 +230,7 @@ func _animate(seat_id: int) -> void:
 	modulate = Color(1, 1, 1, 0)
 
 	var tw := create_tween().set_parallel(true)
-	# CSS 的位移与透明度共享同一 cubic-bezier(.16,1,.3,1)。
+	# 位移与透明度共享同一减速曲线。
 	tw.tween_property(self, "position", target, slide_time) \
 		.set_custom_interpolator(_slide_ease)
 	tw.tween_property(self, "modulate:a", 1.0, slide_time) \
@@ -256,7 +243,7 @@ func _animate(seat_id: int) -> void:
 	var rtw := create_tween()
 	rtw.tween_interval(EFFECT_DELAY)
 	rtw.tween_method(_set_ring, 0.0, 1.0, shock_time)
-	# React 组件没有自定义退场；状态结束时直接卸载。
+	# 状态结束时直接卸载，不延长输入窗口。
 	var out := create_tween()
 	out.tween_interval(lifetime)
 	out.tween_callback(queue_free)
@@ -283,7 +270,7 @@ func _set_halo_progress(t: float) -> void:
 		to_key = third
 	var span := float(to_key[0]) - float(from_key[0])
 	var local := clampf((t - float(from_key[0])) / span, 0.0, 1.0)
-	# CSS ease-out = cubic-bezier(0,0,.58,1)，每段 keyframe 独立应用。
+	# 每段 keyframe 独立应用 ease-out。
 	local = sample_cubic_bezier(local, 0.0, 0.0, 0.58, 1.0)
 	_halo.modulate.a = lerpf(float(from_key[1]), float(to_key[1]), local)
 	_halo.label_settings.shadow_size = roundi(lerpf(
@@ -295,7 +282,7 @@ func _slide_ease(t: float) -> float:
 	return sample_cubic_bezier(t, 0.16, 1.0, 0.3, 1.0)
 
 
-# CSS cubic-bezier：先以 Newton-Raphson 求 x(t)=progress，再回代 y(t)。
+# cubic-bezier：先以 Newton-Raphson 求 x(t)=progress，再回代 y(t)。
 static func sample_cubic_bezier(progress: float, x1: float, y1: float,
 		x2: float, y2: float) -> float:
 	var target := clampf(progress, 0.0, 1.0)

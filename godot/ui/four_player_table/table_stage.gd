@@ -1,10 +1,7 @@
 class_name TableStage
 
-# 本地视觉校准时可放入参考站 1600×900 使用的 felt.jpg（1672×941）；
-# 仓库不携带未授权第三方美术，文件不存在时继续使用仓库自有背景。
-# 两者都直接铺满桌面，不再重复叠自创光晕、硬暗角或内框。
-
-const FELT_PATH := "res://assets/que_wang_felt.jpg"
+# 牌桌只消费仓库自有毛毡；结界线与氛围均由 Godot 节点实时绘制。
+const FELT_PATH := "res://assets/table_felt.png"
 const FELT_FALLBACK := "res://assets/mahjong_table_bg.png"
 const RAIL_RAW_SIZE := Vector2(120.0, 1040.0)
 const RAIL_CAP_RAW_SIZE := Vector2(14.0, 1040.0)
@@ -72,12 +69,42 @@ static func build(parent: Control, w: float, h: float) -> Control:
 		felt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		root.add_child(felt)
 
+	root.add_child(_build_barrier_field(w, h))
+
 	root.add_child(_build_table_rails(w, h))
 	return root
 
 
-# 直接翻译参考 `.table-rail`：透视几何沿用同一个 table-plane 投影，
-# 基础木色、噪声、内收边与高光按 CSS 层级叠放。
+static func _build_barrier_field(w: float, h: float) -> Node2D:
+	var field := Node2D.new()
+	field.name = "BarrierField"
+	var center := Vector2(w * 0.5, 402.0)
+	var diamond := Line2D.new()
+	diamond.name = "SealDiamond"
+	diamond.points = PackedVector2Array([
+		center + Vector2(0, -250), center + Vector2(420, 0),
+		center + Vector2(0, 250), center + Vector2(-420, 0),
+	])
+	diamond.closed = true
+	diamond.width = 2.0
+	diamond.default_color = Color(0.18, 0.72, 0.72, 0.20)
+	diamond.antialiased = true
+	field.add_child(diamond)
+	for index in range(4):
+		var ray := Line2D.new()
+		ray.name = "SealRay%d" % index
+		var end_points := [Vector2(800, 76), Vector2(1460, 402),
+			Vector2(800, 660), Vector2(140, 402)]
+		ray.points = PackedVector2Array([center, end_points[index]])
+		ray.width = 1.0
+		ray.default_color = Color(0.42, 0.92, 0.88, 0.12)
+		ray.antialiased = true
+		field.add_child(ray)
+	return field
+
+
+# 桌边木轨与 table-plane 使用同一透视投影，
+# 基础木色、噪声、内收边与高光分层叠放。
 static func _build_table_rails(w: float, h: float) -> Node2D:
 	var rails := Node2D.new()
 	rails.name = "TableRails"
@@ -163,7 +190,7 @@ static func _textured_quad(node_name: String, points: PackedVector2Array,
 
 
 static func _rail_base_texture() -> GradientTexture2D:
-	# CSS 在 11px / 109px 处使用同位色标制造硬木棱；用相邻的
+	# 在 11px / 109px 处使用同位色标制造硬木棱；用相邻的
 	# 0.1px 色标保留突变，同时满足 Gradient 的严格升序约束。
 	return _gradient_texture(PackedColorArray([
 		Color("050201"), Color("050201"), Color("1d0805"),
@@ -247,7 +274,7 @@ static func _rail_glow(node_name: String, raw_x: float) -> Polygon2D:
 
 
 # Line2D.gradient 在当前 Godot 4.6.1 Metal 渲染器中资源采样正确、实际却
-# 不出图；用同几何的窄 Polygon2D + GradientTexture2D 翻译 CSS 伪元素。
+# 不出图；用同几何的窄 Polygon2D + GradientTexture2D 生成高光。
 static func _rail_light_quad(node_name: String, raw_x: float,
 		raw_width: float, colors: PackedColorArray, z: int) -> Polygon2D:
 	var half_width := raw_width * 0.5

@@ -29,6 +29,7 @@ var _state: State = State.IDLE
 var _claim_discarder_seat: int = -1
 
 var _bg: ColorRect = null  # 仅在有按钮 visible 时才显示，避免遮挡桌面
+var _ritual_band: Panel = null
 var _label_status: Label = null
 # 文本以 "…" 结尾时奏动画(. / .. / ...)循环让玩家感知 AI 在思考。
 # Tween 在 enter_idle 设新文本时启停。
@@ -46,16 +47,16 @@ var _btn_ankan: Button = null      # WAITING_DISCARD 用 — "暗杠"
 var _btn_added_kan: Button = null  # WAITING_DISCARD 用 — "加杠"
 var _btn_consumable: Button = null # WAITING_DISCARD 用 — "道具"（主动消耗品）
 
-# 合法动作气泡栏：仅显示当前可点按钮，HBox 居中（对标雀魂/参考作）。
+# 合法动作仪式带：仅显示当前可点按钮，HBox 居中。
 # PlayableTable 定位在手牌正上方。
 const PANEL_W: float = 720.0
-const PANEL_H: float = 96.0
+const PANEL_H: float = 78.0
 const BTN_W: float = 108.0
 const BTN_H: float = 52.0
 
 var _btn_bar: HBoxContainer = null
 
-# 雀魂式响应倒计时（秒，可测试时改短）
+# 响应倒计时（秒，可测试时改短）
 var CLAIM_TIMEOUT_SEC: float = 5.0
 var RIICHI_TIMEOUT_SEC: float = 6.0
 var KYUUSYU_TIMEOUT_SEC: float = 5.0
@@ -89,6 +90,21 @@ func _sync_timeouts_from_settings() -> void:
 		RIICHI_TIMEOUT_SEC = float(sm.riichi_timeout_sec)
 
 func _build_ui() -> void:
+	_ritual_band = Panel.new()
+	_ritual_band.name = "RitualBand"
+	_ritual_band.size = Vector2(PANEL_W, PANEL_H)
+	_ritual_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ritual_band.visible = false
+	var ritual_style := StyleBoxFlat.new()
+	ritual_style.bg_color = Color(0.025, 0.045, 0.07, 0.86)
+	ritual_style.border_color = Color(0.38, 0.82, 0.92, 0.72)
+	ritual_style.set_border_width_all(1)
+	ritual_style.set_corner_radius_all(12)
+	ritual_style.shadow_color = Color(0.10, 0.72, 0.82, 0.22)
+	ritual_style.shadow_size = 12
+	_ritual_band.add_theme_stylebox_override("panel", ritual_style)
+	add_child(_ritual_band)
+
 	# 居中胶囊底：只在有合法按钮时显示
 	_bg = ColorRect.new()
 	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.88)
@@ -115,14 +131,14 @@ func _build_ui() -> void:
 	_btn_bar = HBoxContainer.new()
 	_btn_bar.alignment = BoxContainer.ALIGNMENT_CENTER
 	_btn_bar.add_theme_constant_override("separation", 12)
-	_btn_bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_btn_bar.offset_top = -BTN_H - 8
-	_btn_bar.offset_bottom = -8
+	_btn_bar.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_btn_bar.offset_top = 18
+	_btn_bar.offset_bottom = -2
 	_btn_bar.offset_left = 8
 	_btn_bar.offset_right = -8
 	add_child(_btn_bar)
 
-	# 雀魂式倒计时条（胶囊底下方细条）
+	# 倒计时条（仪式带底部细条）
 	_countdown_bar = ProgressBar.new()
 	_countdown_bar.min_value = 0.0
 	_countdown_bar.max_value = 1.0
@@ -227,6 +243,8 @@ func _refresh_bg() -> void:
 		if btn != null and btn.visible:
 			n_vis += 1
 	_bg.visible = n_vis > 0
+	if _ritual_band != null:
+		_ritual_band.visible = n_vis > 0
 	if n_vis <= 0:
 		return
 	# 胶囊包住按钮区：status 行 + 按钮行
@@ -268,7 +286,7 @@ func _on_countdown_tick(remain: float) -> void:
 	_countdown_remaining = remain
 	if _countdown_bar and _countdown_total > 0.0:
 		_countdown_bar.value = remain / _countdown_total
-		# 最后 1.5s 变红催促（雀魂紧迫感）
+		# 最后 1.5s 变红催促。
 		if remain <= 1.5:
 			var fill: StyleBoxFlat = _countdown_bar.get_theme_stylebox("fill") as StyleBoxFlat
 			if fill:
@@ -312,6 +330,7 @@ func _stop_countdown(_user_cancel: bool = true) -> void:
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
 # 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
 func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false, _has_consumable: bool = false) -> void:
+	_stop_dots_animation()
 	_stop_countdown()
 	_state = State.WAITING_DISCARD
 	_label_status.text = "轮到你出牌（点手牌切）"
@@ -319,7 +338,7 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 	if can_tsumo:
 		_show_btn(_btn_tsumo)
 		# 自摸是最高价值决策,pulse 一次防玩家漏看
-		DT.attention(_btn_tsumo, "pulse", 0.45)
+		_pulse_attention(_btn_tsumo, 0.45)
 	else:
 		_hide_btn(_btn_tsumo)
 	_hide_btn(_btn_ron)
@@ -346,6 +365,7 @@ func set_status_text(text: String) -> void:
 
 # 进入"立直确认"状态：玩家刚切完牌，BC 算出可立直，弹按钮。
 func enter_waiting_riichi_confirm() -> void:
+	_stop_dots_animation()
 	_state = State.WAITING_RIICHI_CONFIRM
 	_label_status.text = "可立直 — 选择"
 	_show_btn(_btn_riichi)
@@ -364,6 +384,7 @@ func enter_waiting_riichi_confirm() -> void:
 # 进入"鸣牌响应"状态：别家切了一张牌，玩家可荣和/吃/碰/杠或见逃。
 # 4 个 can_* 标志由战斗层算出，经 TableDecisionAdapter 传入。
 func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan: bool, discarder_seat: int) -> void:
+	_stop_dots_animation()
 	_state = State.WAITING_CLAIM
 	_claim_discarder_seat = discarder_seat
 	var hints: Array[String] = []
@@ -381,13 +402,13 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 		_label_status.text = "等待响应窗口…"
 	# 鸣牌窗口 = 全局停下等玩家,整栏脉冲一次确保被看到
 	pivot_offset = Vector2(PANEL_W / 2.0, PANEL_H / 2.0)
-	DT.attention(self, "pulse", 0.45)
+	_pulse_attention(self, 0.45)
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
 	if can_ron:
 		_show_btn(_btn_ron)
 		# 荣和窗口稍纵即逝,pulse 提示
-		DT.attention(_btn_ron, "pulse", 0.45)
+		_pulse_attention(_btn_ron, 0.45)
 	else:
 		_hide_btn(_btn_ron)
 	if can_chi:
@@ -411,6 +432,7 @@ func enter_waiting_claim(can_ron: bool, can_chi: bool, can_pon: bool, can_minkan
 
 # 进入"吃/碰实体选择"：手牌可点 claim_tile_pick；仅保留跳过，重启 claim 倒计时。
 func enter_waiting_claim_pick() -> void:
+	_stop_dots_animation()
 	_state = State.WAITING_CLAIM
 	_hide_btn(_btn_riichi)
 	_hide_btn(_btn_tsumo)
@@ -427,6 +449,7 @@ func enter_waiting_claim_pick() -> void:
 
 # 进入"九種九牌"宣告状态:第一巡摸完后 14 张含 ≥ 9 种幺九,玩家可选途中流局。
 func enter_waiting_kyuusyu() -> void:
+	_stop_dots_animation()
 	_state = State.WAITING_KYUUSYU
 	_label_status.text = "九種九牌 — 宣告途中流局？"
 	_hide_btn(_btn_riichi)
@@ -440,13 +463,14 @@ func enter_waiting_kyuusyu() -> void:
 	_hide_btn(_btn_consumable)
 	_show_btn(_btn_kyuusyu)
 	_show_btn(_btn_skip)
-	# 雀魂式：紫色大按钮脉冲，避免和普通鸣牌抢注意力
+	# 立直按钮使用本地脉冲，避免和普通鸣牌抢注意力。
 	if _btn_kyuusyu:
-		DT.attention(_btn_kyuusyu, "pulse", 0.5)
+		_pulse_attention(_btn_kyuusyu, 0.5)
 	_start_countdown(KYUUSYU_TIMEOUT_SEC, &"kyuusyu")
 
 
 func enter_idle(status_text: String = "等待 AI…") -> void:
+	_stop_dots_animation()
 	_stop_countdown()
 	_state = State.IDLE
 	_label_status.text = status_text
@@ -467,8 +491,7 @@ func enter_idle(status_text: String = "等待 AI…") -> void:
 # 若 status 以 "…" 或 "..." 结尾,周期性切换 "X" / "X." / "X.." / "X..." 让
 # AI 思考状态有"活的"感觉。文本变化或离开 IDLE 时停。
 func _start_dots_animation_if_applicable(text: String) -> void:
-	if _dots_tween and _dots_tween.is_valid():
-		_dots_tween.kill()
+	_stop_dots_animation()
 	# 检测尾部是否含省略符
 	var base: String = text
 	if text.ends_with("…"):
@@ -484,6 +507,25 @@ func _start_dots_animation_if_applicable(text: String) -> void:
 	_dots_tween.tween_callback(_set_dots.bind(2)).set_delay(0.4)
 	_dots_tween.tween_callback(_set_dots.bind(3)).set_delay(0.4)
 	_dots_tween.tween_callback(_set_dots.bind(0)).set_delay(0.4)
+
+
+func _stop_dots_animation() -> void:
+	if _dots_tween and _dots_tween.is_valid():
+		_dots_tween.kill()
+	_dots_tween = null
+
+
+# 操作窗口的短促呼吸只使用节点自身 Tween，不依赖全局动画插件；
+# Tween 与输入/决策信号并行，绝不成为业务门控。
+func _pulse_attention(target: Control, duration: float) -> void:
+	if target == null or not is_instance_valid(target):
+		return
+	var base := target.scale
+	var tween := target.create_tween()
+	tween.tween_property(target, "scale", base * 1.035, duration * 0.45) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	tween.tween_property(target, "scale", base, duration * 0.55) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 
 
 func _set_dots(n: int) -> void:

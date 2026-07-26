@@ -11,14 +11,16 @@ const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
 
-# 公开 bundle `.moment-band`：固定舞台 30% 高度、128px，1.3s 后卸载。
-const MOMENT_BAND_Y: float = 270.0
-const MOMENT_BAND_H: float = 128.0
+# 高冲击 MomentBand：固定在牌河与操作带之间，1.3s 后卸载。
+const MOMENT_BAND_Y: float = 94.0
+const MOMENT_BAND_H: float = 32.0
 const MOMENT_BAND_ENTER_TIME: float = 0.34
 const MOMENT_BAND_EXIT_DELAY: float = 0.98
 const MOMENT_BAND_EXIT_TIME: float = 0.32
-const MOMENT_BAND_TRAVEL: float = 1760.0
-const REFERENCE_MOMENT_VARIANTS: Dictionary = {
+const MOMENT_BAND_X: float = 550.0
+const MOMENT_BAND_W: float = 500.0
+const MOMENT_BAND_TRAVEL: float = MOMENT_BAND_W * 1.1
+const MOMENT_VARIANTS: Dictionary = {
 	"海底捞月": &"haitei",
 	"河底捞鱼": &"houtei",
 	"岭上开花": &"rinshan",
@@ -32,7 +34,7 @@ var _bc: PlayableBattleController = null
 var _decision_adapter: TableDecisionAdapter = null
 
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
-# 雀魂式真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
+# 真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
 var _use_3d: bool = false
 
 # E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
@@ -70,7 +72,7 @@ func _on_achievement_unlocked(_id: String, meta: Dictionary) -> void:
 	get_tree().create_timer(0.7).timeout.connect(func():
 		_show_toast_text("🏆 成就解锁:%s" % captured))
 
-# P0：平面桌（关闭 3D 倾桌）。整桌可点、布局可预测，对标雀魂构图。
+# P0：平面桌（关闭 3D 倾桌）。整桌可点、布局可预测。
 
 var _vp_table: SubViewport = null  # 保留字段兼容旧引用；P0 不建倾桌
 
@@ -92,9 +94,8 @@ func _build_layout() -> void:
 		_build_flat_table()
 
 	_action_panel = PLAYER_ACTION_PANEL.instantiate()
-	_action_panel.position = Vector2(
-		(TableLayout.TABLE_W - PlayerActionPanel.PANEL_W) / 2.0,
-		TableLayout.ACTION_BAR_Y)
+	_action_panel.position = TableLayout.ACTION_BAR_RECT.position
+	_action_panel.size = TableLayout.ACTION_BAR_RECT.size
 	add_child(_action_panel)
 
 	_build_top_bar()
@@ -107,7 +108,7 @@ func _build_layout() -> void:
 	move_child(_action_panel, get_child_count() - 1)
 
 
-# 顶栏：参考 stage-header 透明容器 + logo + HUD + loadout + 规则/设置
+# 顶栏：stage-header 透明容器 + logo + HUD + loadout + 规则/设置。
 func _build_top_bar() -> void:
 	var bar := Panel.new()
 	bar.name = "TopBar"
@@ -269,7 +270,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	var draw_snapshots: Array = []
 	if win_event == null and last_event == "EXHAUSTIVE_DRAW":
 		draw_snapshots = _build_exhaustive_draw_snapshots()
-	# 胡牌先翻手牌。公开 bundle 的重役演出使用 totalFan，本仓只有日麻
+	# 胡牌先翻手牌。演出分级不能混用其他规则的番数量纲，本仓只有日麻
 	# han / yakuman_multiplier，量纲不等价；确认宣告由事件轮询单独播放，
 	# 这里不得自行猜分级并追加白闪、方块粒子或整桌震动。
 	if win_event != null:
@@ -347,7 +348,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		tier.text = "本局结束"
 		subtitle.text = ""
 
-	# Step 1：番种结算。参考为单列役；滚分不得在本步骤提前启动。
+	# Step 1：番种结算。使用单列役；滚分不得在本步骤提前启动。
 	_result_anim_tweens.clear()
 	var yaku_list: Control = null
 	var bonus_list: Control = null
@@ -355,7 +356,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	if win_event != null:
 		var result_yaku: Array = win_event.extra.get("yaku_names", [])
 		yaku_list = _build_yaku_rows(panel, result_yaku)
-		# 参考 bundle 将所有 bonus 同时揭示为一个 phase。本仓事件只保留总番，
+		# 所有 bonus 同时揭示为一个 phase。本仓事件只保留总番，
 		# 因此只把「总番 - 已命中役番」的可证明差额聚合为一行，不猜来源。
 		var named_han := 0
 		for item in result_yaku:
@@ -475,7 +476,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		overlay.queue_free())
 	panel.add_child(btn)
 
-	# 参考 modal backdrop 不负责关闭；只允许显式按钮推进两步状态机。
+	# modal backdrop 不负责关闭；只允许显式按钮推进两步状态机。
 	while is_instance_valid(overlay):
 		await get_tree().process_frame
 
@@ -486,7 +487,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 var _result_anim_tweens: Array = []
 const RESULT_MODAL_SIZE := Vector2(620, 560)
 const RESULT_MODAL_PADDING := Vector4(36, 28, 36, 24)
-const RESULT_BACKDROP_COLOR := Color("000000a8")
+const RESULT_BACKDROP_COLOR := Color("00000055")
 const RESULT_PHASE_INTERVAL := 0.7
 const RESULT_YAKU_LIGHT_DURATION := 0.26
 const RESULT_YAKU_HEAVY_DURATION := 0.28
@@ -501,7 +502,7 @@ const RESULT_WIN_TILE_SM_SIZE := Vector2(34, 45)
 static var _result_felt_shader: Shader = null
 
 
-# 公开 bundle：ended win 固定 3000ms，其余普通/途中流局固定 500ms。
+# ended win 固定 3000ms，其余普通/途中流局固定 500ms。
 static func _result_modal_gate_seconds(has_win: bool, _last_event: String) -> float:
 	if has_win:
 		return RESULT_WIN_MODAL_GATE
@@ -537,12 +538,12 @@ func _await_result_modal_gate(seconds: float, started_usec: int) -> bool:
 	return not bool(gate_state["cancelled"]) and is_inside_tree()
 
 
-# React 参考在 result modal 状态挂载前卸载 win-announce。事件 polling 可能比
+# result modal 状态挂载前卸载 win-announce。事件 polling 可能比
 # gate 晚一帧创建节点，因此这里按结构状态卸载，避免两个同为 3s 的组件重叠一帧。
 func _unmount_win_announces_before_result() -> void:
 	for child in get_children():
 		if child is CallAnnounce \
-				and String(child.get_meta("layout_direction", "")) == "column":
+				and bool(child.get_meta("is_win_announce", false)):
 			remove_child(child)
 			child.queue_free()
 
@@ -858,7 +859,7 @@ func _make_result_tile_back(tile_size: Vector2) -> Panel:
 	return back
 
 
-# 公开 CSS `.modal-backdrop` / `.modal` 的 Godot 等价壳；内容按两步状态机装入。
+# 结算 backdrop / modal 的 Godot 壳；内容按两步状态机装入。
 func _create_result_modal_shell() -> Dictionary:
 	var overlay := Control.new()
 	overlay.name = "ResultOverlay"
@@ -873,9 +874,7 @@ func _create_result_modal_shell() -> Dictionary:
 	overlay.add_child(backdrop)
 	var panel := Panel.new()
 	panel.name = "ResultModal"
-	panel.position = Vector2(
-		(DT.VIEW_W - RESULT_MODAL_SIZE.x) / 2.0,
-		(DT.VIEW_H - RESULT_MODAL_SIZE.y) / 2.0)
+	panel.position = TableLayout.RESULT_PANEL_RECT.position
 	panel.custom_minimum_size = RESULT_MODAL_SIZE
 	panel.size = RESULT_MODAL_SIZE
 	panel.clip_contents = false
@@ -951,7 +950,7 @@ func _animate_reference_result_modal(backdrop: ColorRect, panel: Panel) -> void:
 	pop.tween_method(update, 0.0, 1.0, 0.25)
 
 
-# CSS cubic-bezier(.34,1.56,.64,1) 的数值解，保留原始 overshoot。
+# cubic-bezier(.34,1.56,.64,1) 的数值解，保留 overshoot。
 static func _result_pop_ease(progress: float) -> float:
 	var x := clampf(progress, 0.0, 1.0)
 	var t := x
@@ -974,7 +973,7 @@ static func _result_bezier_slope(t: float, p1: float, p2: float) -> float:
 	return 3.0 * u * u * p1 + 6.0 * u * t * (p2 - p1) \
 		+ 3.0 * t * t * (1.0 - p2)
 
-# 役种单列逐条入场。严格对齐参考 bundle:首项等待 700ms,后续每项再等
+# 役种单列逐条入场：首项等待 700ms，后续每项再等
 # 700ms；普通役 260ms，8 番起重役 280ms。
 func _build_yaku_rows(panel: Control, yaku_names: Array) -> VBoxContainer:
 	var grid := VBoxContainer.new()
@@ -1055,7 +1054,7 @@ static func _make_yaku_row_label(nm: String, suffix: String) -> Control:
 	return box
 
 
-# 参考 bundle 的 bonus（庄家/宝牌/报听/自摸）共用一次 phase；这里接收已适配的
+# bonus（庄家/宝牌/报听/自摸）共用一次 phase；这里接收已适配的
 # bonus 行，所有行在同一 260ms tween 内同时揭示。
 func _build_result_bonus_rows(panel: Control, bonus_rows: Array,
 		reveal_delay: float) -> VBoxContainer:
@@ -1316,7 +1315,7 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	return strip
 
 
-# 参考 modal__win-hand 单张 34×45；winning=true 给金色描边包装突出。
+# modal__win-hand 单张 34×45；winning=true 给金色描边包装突出。
 func _make_overlay_tile(tile_id: int, is_winning: bool, is_red_dora: bool = false) -> Control:
 	return _make_result_tile(tile_id, is_winning, is_red_dora,
 		RESULT_WIN_TILE_SM_SIZE)
@@ -1417,7 +1416,7 @@ static func _score_tier_label(han: int, _fu: int, yakuman_mul: int) -> String:
 	return "%d 飜 胡牌" % han
 
 
-# 公开 bundle 仅在确认后的和牌状态挂载 win-announce；显式字段优先级固定。
+# 仅在确认后的和牌状态挂载 win-announce；显式字段优先级固定。
 static func _confirmed_win_announce_kind(extra: Dictionary) -> StringName:
 	if bool(extra.get("is_tsumo", false)):
 		return &"tsumo"
@@ -1466,7 +1465,7 @@ func _polling_loop() -> void:
 			_last_event_count = n
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
-				# 雀魂式：玩家切牌后飞入河（rebind 后河末位已落地）
+				# 玩家切牌后飞入河（rebind 后河末位已落地）。
 				if player_discarded and not _pending_discard_fly.is_empty():
 					_play_discard_fly_to_river()
 				# T2:rebind 重建完手牌行后应用和牌张脉冲标记
@@ -1501,7 +1500,7 @@ func _show_hand_start_splash(state) -> void:
 	await splash.finished
 
 
-# 公开 bundle 的事件演出：鸣牌/立直走局部 CallAnnounce；特殊役只在
+# 事件演出：鸣牌/立直走局部 CallAnnounce；特殊役只在
 # WIN_DECLARED 确认后从 yaku_names 挂 MomentBand。候选态不闪屏、不震桌。
 func _handle_event_dramatic(ev: BattleEvent) -> void:
 	if ev == null:
@@ -1548,7 +1547,7 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 					_table.seat_panels[s].clear_hand_reveal()
 
 
-# 雀魂式：结算前把胜者手牌翻成正面（对手从牌背 → face-up 错峰入场）
+# 结算前把胜者手牌翻成正面（对手从牌背 → face-up 错峰入场）。
 func _reveal_winner_hand(win_event: BattleEvent) -> void:
 	if win_event == null or _table == null or _bc == null or _bc.state == null:
 		return
@@ -1584,18 +1583,18 @@ func _play_call_announce(kind: StringName, seat_id: int) -> void:
 	CallAnnounce.play(self, kind, seat_id, avatar)
 
 
-static func _reference_moment_from_yaku(yaku_names: Array) -> Dictionary:
+static func _moment_from_yaku(yaku_names: Array) -> Dictionary:
 	for item in yaku_names:
 		if not item is Dictionary:
 			continue
 		var text: String = String(item.get("name", ""))
-		if REFERENCE_MOMENT_VARIANTS.has(text):
-			return {"text": text, "variant": REFERENCE_MOMENT_VARIANTS[text]}
+		if MOMENT_VARIANTS.has(text):
+			return {"text": text, "variant": MOMENT_VARIANTS[text]}
 	return {}
 
 
 func _play_confirmed_moment_band(yaku_names: Array) -> void:
-	var moment := _reference_moment_from_yaku(yaku_names)
+	var moment := _moment_from_yaku(yaku_names)
 	if moment.is_empty():
 		return
 	var previous := get_node_or_null("MomentBand")
@@ -1606,8 +1605,8 @@ func _play_confirmed_moment_band(yaku_names: Array) -> void:
 	var variant := StringName(moment["variant"])
 	var band := Control.new()
 	band.name = "MomentBand"
-	band.position = Vector2(0, MOMENT_BAND_Y)
-	band.size = Vector2(TableLayout.VIEW_W, MOMENT_BAND_H)
+	band.position = Vector2(MOMENT_BAND_X, MOMENT_BAND_Y)
+	band.size = Vector2(MOMENT_BAND_W, MOMENT_BAND_H)
 	band.clip_contents = true
 	band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	band.z_index = 200
@@ -1627,14 +1626,14 @@ func _play_confirmed_moment_band(yaku_names: Array) -> void:
 	var top_line := ColorRect.new()
 	top_line.name = "TopLine"
 	top_line.color = Color("ffffff1f")
-	top_line.size = Vector2(TableLayout.VIEW_W, 1)
+	top_line.size = Vector2(MOMENT_BAND_W, 1)
 	top_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stripe.add_child(top_line)
 	var bottom_line := ColorRect.new()
 	bottom_line.name = "BottomLine"
 	bottom_line.color = Color("0000004d")
 	bottom_line.position = Vector2(0, MOMENT_BAND_H - 1)
-	bottom_line.size = Vector2(TableLayout.VIEW_W, 1)
+	bottom_line.size = Vector2(MOMENT_BAND_W, 1)
 	bottom_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	stripe.add_child(bottom_line)
 
@@ -1652,13 +1651,13 @@ func _play_confirmed_moment_band(yaku_names: Array) -> void:
 		"Source Han Sans SC", "Noto Sans SC"])
 	system_font.font_weight = 900
 	label_settings.font = system_font
-	label_settings.font_size = 92
+	label_settings.font_size = 26
 	label_settings.font_color = Color("ffd34d")
 	label_settings.outline_size = 2
 	label_settings.outline_color = Color("6e370080")
 	label_settings.shadow_color = Color("00000080")
-	label_settings.shadow_size = 8
-	label_settings.shadow_offset = Vector2(0, 3)
+	label_settings.shadow_size = 4
+	label_settings.shadow_offset = Vector2(0, 2)
 	label.label_settings = label_settings
 	stripe.add_child(label)
 
@@ -2460,7 +2459,7 @@ func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
 		_table.clear_tile_highlight()
 
 
-# 雀魂式切牌飞行：手牌全局坐标 → 河末位（经 SubViewport 缩放映射到平面贴图）
+# 切牌飞行：手牌全局坐标 → 河末位（经 SubViewport 缩放映射到平面贴图）。
 func _play_discard_fly_to_river() -> void:
 	var info: Dictionary = _pending_discard_fly
 	_pending_discard_fly = {}
@@ -2498,7 +2497,7 @@ func _play_discard_fly_to_river() -> void:
 	fly.position = start_p
 	var tw := create_tween()
 	tw.set_parallel(true)
-	# 路径：手牌 → 弧顶 → 河末位（雀魂式抛物）
+	# 路径：手牌 → 弧顶 → 河末位。
 	var path_tw := create_tween()
 	path_tw.tween_property(fly, "position", mid_p, 0.11)\
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)

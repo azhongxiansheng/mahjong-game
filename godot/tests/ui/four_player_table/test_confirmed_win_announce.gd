@@ -64,11 +64,11 @@ func test_riichi_keeps_local_announce_without_full_table_flash_or_shake() -> voi
 	var color_rects_before := _direct_color_rect_count(table)
 	var position_before := table.position
 	table._handle_event_dramatic(BattleEvent.make(&"RIICHI_DECLARED", 1))
-	assert_eq(_announces(table).size(), 1, "立直仍使用参考 call-announce")
+	assert_eq(_announces(table).size(), 1, "立直使用局部 call-announce")
 	assert_eq(_direct_color_rect_count(table), color_rects_before,
-		"参考没有全屏白闪")
+		"立直不得全屏白闪")
 	await wait_seconds(0.04)
-	assert_eq(table.position, position_before, "参考没有整桌 ScreenShake")
+	assert_eq(table.position, position_before, "立直不得整桌 ScreenShake")
 
 
 func test_raw_haitei_houtei_events_do_not_mount_unconfirmed_effects() -> void:
@@ -89,7 +89,7 @@ func test_raw_haitei_houtei_events_do_not_mount_unconfirmed_effects() -> void:
 		await get_tree().process_frame
 
 
-func test_confirmed_special_yaku_mounts_reference_moment_band() -> void:
+func test_confirmed_special_yaku_mounts_safe_narrow_moment_band() -> void:
 	var table := PLAYABLE_TABLE.new()
 	add_child_autofree(table)
 	table._handle_event_dramatic(BattleEvent.make(&"WIN_DECLARED", 0, null, {
@@ -100,19 +100,27 @@ func test_confirmed_special_yaku_mounts_reference_moment_band() -> void:
 	assert_not_null(band)
 	if band == null:
 		return
-	assert_eq(band.position, Vector2(0, 270))
-	assert_eq(band.size, Vector2(1600, 128))
+	assert_eq(band.position, Vector2(PlayableTable.MOMENT_BAND_X,
+		PlayableTable.MOMENT_BAND_Y))
+	assert_eq(band.size, Vector2(PlayableTable.MOMENT_BAND_W,
+		PlayableTable.MOMENT_BAND_H))
+	assert_lte(band.get_rect().end.y, TableLayout.ACTION_BAR_RECT.position.y)
+	for public_zone in TableLayout.crowded_state_rects():
+		assert_false(band.get_rect().intersects(public_zone, false),
+			"特殊役窄带不得遮住最大牌河/副露")
 	assert_eq(StringName(band.get_meta("variant")), &"haitei")
 	var stripe := band.get_node_or_null("Stripe") as Control
 	assert_not_null(stripe)
 	if stripe != null:
-		assert_eq(stripe.position.x, -1760.0, "CSS 初态 translateX(-110%)")
+		assert_eq(stripe.position.x, -PlayableTable.MOMENT_BAND_TRAVEL)
+		assert_gte(PlayableTable.MOMENT_BAND_TRAVEL, band.size.x,
+			"窄带须从自身边界外入场")
 	var text := band.get_node_or_null("Stripe/Text") as Label
 	assert_not_null(text)
 	if text != null:
 		assert_eq(text.text, "海底捞月")
 		var font := text.label_settings.font as SystemFont
-		assert_not_null(font, "moment-band 复用参考 CSS 的系统无衬线字体栈")
+		assert_not_null(font, "moment-band 使用中文系统无衬线字体栈")
 		if font != null:
 			assert_eq(font.font_names, PackedStringArray([
 				"PingFang SC", "Microsoft YaHei", "Hiragino Sans GB",
@@ -120,7 +128,7 @@ func test_confirmed_special_yaku_mounts_reference_moment_band() -> void:
 			assert_eq(font.font_weight, 900)
 
 
-func test_abortive_draw_has_no_non_reference_flash_or_announce() -> void:
+func test_abortive_draw_has_no_uncontracted_flash_or_announce() -> void:
 	var table := PLAYABLE_TABLE.new()
 	add_child_autofree(table)
 	var color_rects_before := table.get_children().filter(
@@ -146,4 +154,4 @@ func test_yakuman_does_not_append_second_call_announce() -> void:
 	assert_eq(_announces(table).size(), 1, "确认态只播基础荣和")
 	await wait_seconds(0.6)
 	assert_eq(_announces(table).size(), 1,
-		"公开 bundle 没有 500ms 后追加的役满 CallAnnounce")
+		"确认态不得在 500ms 后追加第二个役满 CallAnnounce")
