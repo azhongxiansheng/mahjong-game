@@ -73,6 +73,38 @@ texture = ExtResource("3_resident_cutout")
 expand_mode = 1
 stretch_mode = 5
 
+[node name="ResidentNameplate" type="PanelContainer" parent="CharacterStage"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 0
+anchor_left = 0.03
+anchor_top = 0.84
+anchor_right = 0.60
+anchor_bottom = 0.93
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="NameplateCopy" type="VBoxContainer" parent="CharacterStage/ResidentNameplate"]
+layout_mode = 2
+theme_override_constants/separation = 1
+
+[node name="ResidentName" type="Label" parent="CharacterStage/ResidentNameplate/NameplateCopy"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.9)
+theme_override_constants/shadow_offset_x = 1
+theme_override_constants/shadow_offset_y = 1
+theme_override_font_sizes/font_size = 28
+text = "林夜彻"
+
+[node name="ResidentRole" type="Label" parent="CharacterStage/ResidentNameplate/NameplateCopy"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.839216, 0.14902, 0.0901961, 1)
+theme_override_font_sizes/font_size = 15
+text = "虚席馆「读脊」席 · 常驻雀士"
+
 [node name="GroundAtmosphere" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 12
@@ -87,7 +119,7 @@ texture = SubResource("GradientTexture_ground")
 expand_mode = 1
 stretch_mode = 6
 
-[node name="TopResourceBar" type="PanelContainer" parent="."]
+[node name="TopResourceBar" type="Control" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 10
@@ -98,11 +130,19 @@ offset_right = -10.0
 offset_bottom = 88.0
 grow_horizontal = 2
 
-[node name="ResourceRow" type="HBoxContainer" parent="TopResourceBar"]
-layout_mode = 2
-theme_override_constants/separation = 16
+[node name="IdentityPlaque" type="PanelContainer" parent="TopResourceBar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_right = 0.0
+anchor_bottom = 1.0
+offset_right = 390.0
+grow_vertical = 2
 
-[node name="PlayerAvatar" type="TextureRect" parent="TopResourceBar/ResourceRow"]
+[node name="IdentityRow" type="HBoxContainer" parent="TopResourceBar/IdentityPlaque"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PlayerAvatar" type="TextureRect" parent="TopResourceBar/IdentityPlaque/IdentityRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(52, 52)
 layout_mode = 2
@@ -111,33 +151,44 @@ texture = ExtResource("6_resident_avatar")
 expand_mode = 1
 stretch_mode = 5
 
-[node name="PlayerSeal" type="Label" parent="TopResourceBar/ResourceRow"]
+[node name="PlayerSeal" type="Label" parent="TopResourceBar/IdentityPlaque/IdentityRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
 theme_override_font_sizes/font_size = 20
 text = "雀士印｜游客"
 vertical_alignment = 1
 
-[node name="Spacer" type="Control" parent="TopResourceBar/ResourceRow"]
-layout_mode = 2
-size_flags_horizontal = 3
+[node name="ResourcePlaque" type="PanelContainer" parent="TopResourceBar"]
+unique_name_in_owner = true
+layout_mode = 1
+anchor_left = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -460.0
+grow_horizontal = 0
+grow_vertical = 2
 
-[node name="RankChip" type="Label" parent="TopResourceBar/ResourceRow"]
+[node name="ResourceRow" type="HBoxContainer" parent="TopResourceBar/ResourcePlaque"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 2
+
+[node name="RankChip" type="Label" parent="TopResourceBar/ResourcePlaque/ResourceRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
 theme_override_font_sizes/font_size = 16
 text = "段位　初心"
 vertical_alignment = 1
 
-[node name="ResourceChip" type="Label" parent="TopResourceBar/ResourceRow"]
+[node name="ResourceChip" type="Label" parent="TopResourceBar/ResourcePlaque/ResourceRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
 theme_override_font_sizes/font_size = 16
 text = "雀晶　—"
 vertical_alignment = 1
 
-[node name="ActivityButton" type="Button" parent="TopResourceBar/ResourceRow"]
-custom_minimum_size = Vector2(190, 46)
+[node name="ActivityButton" type="Button" parent="TopResourceBar/ResourcePlaque/ResourceRow"]
+custom_minimum_size = Vector2(176, 46)
 layout_mode = 2
 focus_mode = 2
 text = "活动｜雨夜雀庄"
@@ -147,19 +198,20 @@ unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 anchor_left = 0.545
-anchor_top = 0.19
+anchor_top = 0.18
 anchor_right = 0.9
-anchor_bottom = 0.76
+anchor_bottom = 0.75
 offset_left = 0.0
 offset_right = -8.0
 grow_horizontal = 2
 grow_vertical = 2
-theme_override_constants/separation = 8
+theme_override_constants/separation = 14
 alignment = 1
 
 [node name="PracticeButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(440, 148)
 banner_index = 0
 title = "电脑练习"
 subtitle = "一人即可 · 三位 AI 陪练"
@@ -167,6 +219,7 @@ subtitle = "一人即可 · 三位 AI 陪练"
 [node name="MatchButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(440, 148)
 banner_index = 1
 title = "公共匹配"
 subtitle = "真人优先 · 空位自动补全"
@@ -174,18 +227,20 @@ subtitle = "真人优先 · 空位自动补全"
 [node name="RulesBannerButton" parent="ModeBannerRail" instance=ExtResource("4_banner")]
 unique_name_in_owner = true
 layout_mode = 2
+custom_minimum_size = Vector2(440, 82)
 banner_index = 2
+compact = true
 title = "规则研习"
-subtitle = "查看役种、牌型与对局规则"
+subtitle = ""
 
 [node name="StatusLabel" type="Label" parent="."]
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 0
 anchor_left = 0.58
-anchor_top = 0.77
+anchor_top = 0.755
 anchor_right = 0.87
-anchor_bottom = 0.82
+anchor_bottom = 0.805
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 0.9)
@@ -250,60 +305,50 @@ action_text = "规则"
 unique_name_in_owner = true
 layout_mode = 1
 anchors_preset = 12
+anchor_left = 0.61
 anchor_top = 1.0
-anchor_right = 1.0
+anchor_right = 0.985
 anchor_bottom = 1.0
-offset_left = 24.0
+offset_left = 0.0
 offset_top = -82.0
-offset_right = -24.0
+offset_right = 0.0
 offset_bottom = -14.0
 grow_horizontal = 2
 grow_vertical = 0
 
 [node name="NavRow" type="HBoxContainer" parent="BottomNav"]
 layout_mode = 2
-theme_override_constants/separation = 10
-
-[node name="VenueMark" type="Label" parent="BottomNav/NavRow"]
-custom_minimum_size = Vector2(280, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.839216, 0.14902, 0.0901961, 1)
-theme_override_font_sizes/font_size = 24
-text = "虚席馆 · 异能雀庄"
-vertical_alignment = 1
-
-[node name="NavSpacer" type="Control" parent="BottomNav/NavRow"]
-layout_mode = 2
-size_flags_horizontal = 3
+theme_override_constants/separation = 8
+alignment = 2
 
 [node name="CharacterNavButton" type="Button" parent="BottomNav/NavRow"]
-custom_minimum_size = Vector2(150, 48)
+custom_minimum_size = Vector2(118, 48)
 layout_mode = 2
 focus_mode = 2
 text = "雀士名录"
 
 [node name="ItemNavButton" type="Button" parent="BottomNav/NavRow"]
-custom_minimum_size = Vector2(150, 48)
+custom_minimum_size = Vector2(118, 48)
 layout_mode = 2
 focus_mode = 2
 text = "异能道具"
 
 [node name="RulesNavButton" type="Button" parent="BottomNav/NavRow"]
-custom_minimum_size = Vector2(150, 48)
+custom_minimum_size = Vector2(118, 48)
 layout_mode = 2
 focus_mode = 2
 text = "规则卷轴"
 
 [node name="BgmButton" type="Button" parent="BottomNav/NavRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 48)
+custom_minimum_size = Vector2(72, 48)
 layout_mode = 2
 focus_mode = 2
 text = "BGM"
 
 [node name="SfxButton" type="Button" parent="BottomNav/NavRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(96, 48)
+custom_minimum_size = Vector2(72, 48)
 layout_mode = 2
 focus_mode = 2
 text = "SFX"
