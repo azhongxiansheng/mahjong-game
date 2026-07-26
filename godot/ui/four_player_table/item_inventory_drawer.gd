@@ -1,18 +1,19 @@
 extends Control
 
+const ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
+
 # E5-06 / #254：本席库存右侧按需抽屉（可滚动，无容量上限）。
-# 几何：x=1160..1584, y=96..786。默认关闭。
+# 几何：x=1384..1584, y=456..768。默认关闭。
 # 无全局 class_name。使用精确 item_instance_id 发起 ITEM_USE。
 
 signal use_item_requested(item_instance_id: String)
 signal close_requested()
 
-# 约 x=1160..1584、y=96..776：底边停在自家手牌带（y≈778）之上，
-# 右侧可压 seat1 字幕槽（按需抽屉打开时）；不挡行动栏/PTT。
-const DRAWER_X := 1160.0
-const DRAWER_Y := 96.0
-const DRAWER_W := 424.0
-const DRAWER_H := 680.0
+# 批准窄轨 x=1384..1584、y=456..768：避开右席手牌/字幕与底部操作带。
+const DRAWER_X := 1384.0
+const DRAWER_Y := 456.0
+const DRAWER_W := 200.0
+const DRAWER_H := 312.0
 
 var _scroll: ScrollContainer = null
 var _list: VBoxContainer = null
@@ -127,10 +128,10 @@ func _build() -> void:
 	style.border_color = DT.BORDER_GOLD
 	style.set_border_width_all(2)
 	style.set_corner_radius_all(10)
-	style.content_margin_left = 10
-	style.content_margin_right = 10
-	style.content_margin_top = 8
-	style.content_margin_bottom = 8
+	style.content_margin_left = 6
+	style.content_margin_right = 6
+	style.content_margin_top = 6
+	style.content_margin_bottom = 6
 
 	var root := PanelContainer.new()
 	root.name = "DrawerPanel"
@@ -143,7 +144,7 @@ func _build() -> void:
 	root.add_child(vbox)
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 8)
+	header.add_theme_constant_override("separation", 4)
 	vbox.add_child(header)
 
 	_title = Label.new()
@@ -156,9 +157,9 @@ func _build() -> void:
 
 	var close_btn := Button.new()
 	close_btn.name = "CloseButton"
-	close_btn.text = "关闭"
+	close_btn.text = "收起"
 	close_btn.focus_mode = Control.FOCUS_NONE
-	close_btn.custom_minimum_size = Vector2(64, 28)
+	close_btn.custom_minimum_size = Vector2(52, 26)
 	close_btn.pressed.connect(func():
 		close_drawer()
 		close_requested.emit()
@@ -203,66 +204,67 @@ func _make_row(row: Dictionary) -> PanelContainer:
 	ss.border_color = DT.BORDER_GOLD_SOFT
 	ss.set_border_width_all(1)
 	ss.set_corner_radius_all(6)
-	ss.content_margin_left = 8
-	ss.content_margin_right = 8
-	ss.content_margin_top = 6
-	ss.content_margin_bottom = 6
+	ss.content_margin_left = 4
+	ss.content_margin_right = 4
+	ss.content_margin_top = 4
+	ss.content_margin_bottom = 4
 	panel.add_theme_stylebox_override("panel", ss)
 
+	var row_box := HBoxContainer.new()
+	row_box.add_theme_constant_override("separation", 4)
+	panel.add_child(row_box)
+	var icon := TextureRect.new()
+	icon.name = "ItemIcon"
+	icon.texture = ICON_RESOLVER.texture(String(row.get(
+		"icon_path", ICON_RESOLVER.item_icon_path(item_id))))
+	icon.custom_minimum_size = Vector2(40, 40)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row_box.add_child(icon)
+
 	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 2)
-	panel.add_child(v)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_theme_constant_override("separation", 0)
+	row_box.add_child(v)
 
 	var name_l := Label.new()
 	name_l.text = display_name
-	name_l.add_theme_font_size_override("font_size", 14)
+	name_l.add_theme_font_size_override("font_size", 12)
 	name_l.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	name_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(name_l)
-
-	var id_l := Label.new()
-	id_l.text = "id: %s" % item_id
-	id_l.add_theme_font_size_override("font_size", 11)
-	id_l.add_theme_color_override("font_color", DT.TEXT_MUTED)
-	id_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	v.add_child(id_l)
 
 	var inst_l := Label.new()
 	inst_l.name = "InstanceIdLabel"
-	inst_l.text = "instance: %s" % iid
+	inst_l.text = "实例 %s" % iid
 	inst_l.tooltip_text = iid  # 完整 item_instance_id 可悬停查看
-	inst_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	inst_l.add_theme_font_size_override("font_size", 10)
+	inst_l.add_theme_font_size_override("font_size", 9)
 	inst_l.add_theme_color_override("font_color", DT.TEXT_MUTED)
-	# 不使用 TRIM_ELLIPSIS 截断权威 identity
-	inst_l.text_overrun_behavior = TextServer.OVERRUN_NO_TRIMMING
+	inst_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(inst_l)
 
-	if not effect.is_empty():
-		var eff_l := Label.new()
-		eff_l.text = effect
-		eff_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		eff_l.add_theme_font_size_override("font_size", 11)
-		eff_l.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
-		v.add_child(eff_l)
-
 	var status_parts: PackedStringArray = PackedStringArray()
-	status_parts.append(status)
+	status_parts.append(_state_label(status))
 	if affinity:
-		status_parts.append("affinity")
+		status_parts.append("倾向匹配")
 	if armed_for != null and String(armed_for) != "":
-		status_parts.append("armed→%s" % String(armed_for))
+		status_parts.append("窗口 %s" % String(armed_for))
 	var st_l := Label.new()
+	st_l.name = "StateLabel"
 	st_l.text = " · ".join(status_parts)
-	st_l.add_theme_font_size_override("font_size", 11)
+	st_l.add_theme_font_size_override("font_size", 9)
 	st_l.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	st_l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(st_l)
 
 	var use_btn := Button.new()
 	use_btn.name = "UseButton"
-	use_btn.text = "使用"
+	use_btn.text = "使用" if can_request_use(row) else "不可用"
 	use_btn.focus_mode = Control.FOCUS_NONE
 	use_btn.disabled = not can_request_use(row)
-	use_btn.custom_minimum_size = Vector2(72, 28)
+	use_btn.custom_minimum_size = Vector2(48, 24)
+	use_btn.tooltip_text = effect
 	var captured := iid
 	use_btn.pressed.connect(func():
 		if can_request_use(row):
@@ -271,3 +273,14 @@ func _make_row(row: Dictionary) -> PanelContainer:
 	v.add_child(use_btn)
 
 	return panel
+
+
+static func _state_label(status: String) -> String:
+	match status:
+		ItemInstance.STATUS_HELD:
+			return "可持有"
+		ItemInstance.STATUS_ARMED:
+			return "已武装"
+		"consumed":
+			return "已消耗"
+	return "已禁用"

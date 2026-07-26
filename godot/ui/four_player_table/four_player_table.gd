@@ -28,6 +28,8 @@ const REWARD_POOL_HUD_SCR := preload("res://ui/four_player_table/reward_pool_hud
 const ITEM_INVENTORY_DRAWER_SCR := preload(
 	"res://ui/four_player_table/item_inventory_drawer.gd"
 )
+const ABILITY_BADGE_SCR := preload("res://ui/four_player_table/ability_badge.gd")
+const TABLE_ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
 
 signal inventory_use_requested(item_instance_id: String)
 
@@ -48,6 +50,7 @@ var caption_overlay: Control = null
 var _reward_feedback_projector = null
 var reward_pool_hud: Control = null
 var item_inventory_drawer: Control = null
+var ability_badge: Control = null
 var _inventory_btn: Button = null
 var _local_seat: int = 0
 
@@ -253,6 +256,11 @@ func _build_layout() -> void:
 	item_inventory_drawer.use_item_requested.connect(_on_inventory_use_requested)
 	add_child(item_inventory_drawer)
 
+	# #326：真实角色视图驱动的紧凑技能徽章；不接线隐藏 AbilityPanel。
+	ability_badge = ABILITY_BADGE_SCR.new()
+	ability_badge.name = "AbilityBadge"
+	add_child(ability_badge)
+
 	# 顶栏「库存 N」入口（不改牌桌尺寸）
 	_inventory_btn = Button.new()
 	_inventory_btn.name = "InventoryButton"
@@ -260,6 +268,8 @@ func _build_layout() -> void:
 	_inventory_btn.focus_mode = Control.FOCUS_NONE
 	_inventory_btn.position = Vector2(1040.0, 8.0)
 	_inventory_btn.size = Vector2(100.0, 32.0)
+	_inventory_btn.icon = TABLE_ICON_RESOLVER.texture(TABLE_ICON_RESOLVER.INVENTORY_ICON)
+	_inventory_btn.add_theme_constant_override("icon_max_width", 24)
 	_inventory_btn.pressed.connect(_on_inventory_btn_pressed)
 	add_child(_inventory_btn)
 	_refresh_reward_ui()
@@ -505,6 +515,8 @@ func _refresh_reward_ui() -> void:
 			)
 	if _inventory_btn != null:
 		_inventory_btn.text = "库存 %d" % inventory_count()
+	if ability_badge != null and ability_badge.has_method("set_view"):
+		ability_badge.set_view(_reward_feedback_projector.local_ability_view())
 	if is_inventory_drawer_open():
 		_sync_drawer_rows()
 

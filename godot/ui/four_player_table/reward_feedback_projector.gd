@@ -1,5 +1,7 @@
 extends RefCounted
 
+const TABLE_ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
+
 # E5-06 / #254：奖励反馈 display-only 投影 store。
 # 无全局 class_name。只接受 schema-valid NetworkedEvent 或 #253 快照 DTO。
 # 库存新增只认 ITEM_GRANTED；移除只认 ITEM_CONSUMED / MATCH_SETTLED；
@@ -202,6 +204,53 @@ func local_inventory_instances() -> Array:
 	for k in keys:
 		out.append((_instances[k] as Dictionary).duplicate(true))
 	return out
+
+
+## 仅从奖励视图中的真实 character_ids 投影本席角色技能，不猜测默认角色。
+func local_ability_view() -> Dictionary:
+	if _local_seat < 0 or _local_seat >= _character_ids.size():
+		return {
+			"state": "disabled",
+			"state_label": "未配置",
+			"icon_path": TABLE_ICON_RESOLVER.UNKNOWN_ICON,
+		}
+	var character_id := String(_character_ids[_local_seat])
+	var character: Character = CharacterPool.find(StringName(character_id))
+	if character == null:
+		return {
+			"character_id": character_id,
+			"state": "disabled",
+			"state_label": "未知角色",
+			"icon_path": TABLE_ICON_RESOLVER.UNKNOWN_ICON,
+		}
+	var ability_id := String(character.ability_id)
+	var display_name := ability_id
+	var description := ""
+	for ability_v in CardPool.all_abilities():
+		var ability: AbilityCard = ability_v
+		if String(ability.id) == ability_id:
+			display_name = String(ability.display_name)
+			description = String(ability.description)
+			break
+	var armed := false
+	for row_v in _instances.values():
+		var row: Dictionary = row_v
+		if String(row.get("status", "")) == ItemInstance.STATUS_ARMED:
+			armed = true
+			break
+	return {
+		"character_id": character_id,
+		"ability_id": ability_id,
+		"display_name": display_name,
+		"description": description,
+		"state": "armed" if armed else "passive",
+		"state_label": "已武装" if armed else "常驻",
+		"icon_path": TABLE_ICON_RESOLVER.ability_icon_path(ability_id),
+		"affinity_icon_paths": [
+			TABLE_ICON_RESOLVER.affinity_icon_path(String(character.affinity_primary)),
+			TABLE_ICON_RESOLVER.affinity_icon_path(String(character.affinity_secondary)),
+		],
+	}
 
 
 func has_instance(item_instance_id: String) -> bool:
@@ -577,6 +626,7 @@ static func _item_public_meta(item_id: String) -> Dictionary:
 		"effect_summary": description,
 		"tags": tags,
 		"tag_labels": tag_labels,
+		"icon_path": TABLE_ICON_RESOLVER.item_icon_path(item_id),
 	}
 
 
