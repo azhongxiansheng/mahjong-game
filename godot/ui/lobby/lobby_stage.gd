@@ -15,7 +15,9 @@ signal sfx_requested(source: Control)
 
 const HOOK_NAMES := [
 	"LobbyStage", "EnvironmentBackdrop", "CharacterStage", "ResidentPortrait",
-	"PlayerAvatar", "TopResourceBar", "ModeBannerRail", "PracticeButton", "MatchButton",
+	"PlayerAvatar", "TopResourceBar", "IdentityPlaque", "ResourcePlaque",
+	"ResidentNameplate", "ResidentName", "ResidentRole",
+	"ModeBannerRail", "PracticeButton", "MatchButton",
 	"RulesBannerButton", "OmamoriRail", "BottomNav", "StatusLabel",
 	"NoticeButton", "HelpButton", "SettingsButton", "CharacterCodexButton",
 	"ItemCodexButton", "RulesButton", "BgmButton", "SfxButton",
@@ -45,9 +47,12 @@ func _apply_existing_resident() -> void:
 	if not ResourceLoader.exists(DEFAULT_RESIDENT_CUTOUT) or not ResourceLoader.exists(DEFAULT_RESIDENT_AVATAR):
 		return
 	var portrait := $CharacterStage/ResidentPortrait as TextureRect
-	var avatar := $TopResourceBar/ResourceRow/PlayerAvatar as TextureRect
+	var avatar := $TopResourceBar/IdentityPlaque/IdentityRow/PlayerAvatar as TextureRect
 	portrait.texture = load(DEFAULT_RESIDENT_CUTOUT) as Texture2D
 	avatar.texture = load(DEFAULT_RESIDENT_AVATAR) as Texture2D
+	$CharacterStage/ResidentNameplate/NameplateCopy/ResidentName.text = resident.display_name
+	var seat_name := resident.description.get_slice("。", 0)
+	$CharacterStage/ResidentNameplate/NameplateCopy/ResidentRole.text = "%s · 常驻雀士" % seat_name
 	portrait.set_meta("source_portrait_path", resident.portrait_path)
 	avatar.set_meta("source_portrait_path", resident.portrait_path)
 
@@ -89,7 +94,8 @@ func _connect_actions() -> void:
 		func() -> void: bgm_requested.emit($BottomNav/NavRow/BgmButton))
 	$BottomNav/NavRow/SfxButton.pressed.connect(
 		func() -> void: sfx_requested.emit($BottomNav/NavRow/SfxButton))
-	$TopResourceBar/ResourceRow/ActivityButton.pressed.connect(func() -> void: notice_requested.emit())
+	$TopResourceBar/ResourcePlaque/ResourceRow/ActivityButton.pressed.connect(
+		func() -> void: notice_requested.emit())
 
 
 func _configure_focus_path() -> void:
@@ -103,7 +109,12 @@ func _configure_focus_path() -> void:
 
 
 func _style_chrome() -> void:
-	for panel in [$TopResourceBar, $BottomNav]:
+	for panel in [
+		$TopResourceBar/IdentityPlaque,
+		$TopResourceBar/ResourcePlaque,
+		$CharacterStage/ResidentNameplate,
+		$BottomNav,
+	]:
 		var style := StyleBoxFlat.new()
 		style.bg_color = Color(0.035, 0.025, 0.025, 0.88)
 		style.border_color = Color(0.68, 0.12, 0.07, 0.82)
@@ -115,5 +126,5 @@ func _style_chrome() -> void:
 	for button in $BottomNav/NavRow.get_children():
 		if button is Button:
 			DesignTokens.apply_button_role(button as Button, DesignTokens.BtnRole.GHOST)
-	var activity := $TopResourceBar/ResourceRow/ActivityButton as Button
+	var activity := $TopResourceBar/ResourcePlaque/ResourceRow/ActivityButton as Button
 	DesignTokens.apply_button_role(activity, DesignTokens.BtnRole.GHOST)

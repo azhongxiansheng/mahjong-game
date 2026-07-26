@@ -15,6 +15,11 @@ const REQUIRED_CONTROLS := [
 	"ResidentPortrait",
 	"PlayerAvatar",
 	"TopResourceBar",
+	"IdentityPlaque",
+	"ResourcePlaque",
+	"ResidentNameplate",
+	"ResidentName",
+	"ResidentRole",
 	"ModeBannerRail",
 	"PracticeButton",
 	"MatchButton",
@@ -67,7 +72,7 @@ func test_production_lobby_exposes_all_stable_layout_hooks() -> void:
 		assert_true(node is Control, "%%%s 应为 UI Control" % node_name)
 
 
-func test_1600_by_900_is_a_full_stage_with_edge_chrome_and_three_mode_banners() -> void:
+func test_1600_by_900_is_a_full_stage_with_two_primary_entries_and_light_edge_chrome() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -75,23 +80,68 @@ func test_1600_by_900_is_a_full_stage_with_edge_chrome_and_three_mode_banners() 
 	var bounds := Rect2(shell.global_position, DESIGN_SIZE)
 	var backdrop := _global_rect(shell.get_node("%EnvironmentBackdrop") as Control)
 	var top := _global_rect(shell.get_node("%TopResourceBar") as Control)
+	var identity := _global_rect(shell.get_node("%IdentityPlaque") as Control)
+	var resources := _global_rect(shell.get_node("%ResourcePlaque") as Control)
 	var character := _global_rect(shell.get_node("%CharacterStage") as Control)
+	var nameplate := _global_rect(shell.get_node("%ResidentNameplate") as Control)
 	var entries := _global_rect(shell.get_node("%ModeBannerRail") as Control)
 	var omamori := _global_rect(shell.get_node("%OmamoriRail") as Control)
 	var bottom := _global_rect(shell.get_node("%BottomNav") as Control)
 
 	assert_eq(backdrop, bounds, "批准的日式雀庄环境必须全幅覆盖 16:9 舞台")
-	for region in [top, character, entries, omamori, bottom]:
+	for region in [top, identity, resources, character, nameplate, entries, omamori, bottom]:
 		assert_true(bounds.encloses(region), "主要布局区域不得越出 1600×900 画布")
 	assert_lt(character.get_center().x, DESIGN_SIZE.x * 0.55, "角色必须占据左侧主舞台")
-	assert_gt(entries.position.x, DESIGN_SIZE.x * 0.54, "三条玩法入口必须位于右侧舞台")
+	assert_gt(entries.position.x, DESIGN_SIZE.x * 0.52, "双主入口必须位于右侧舞台")
 	assert_gt(omamori.position.x, entries.end.x, "御守功能列必须单侧贴边且不遮玩法入口")
 	assert_lte(top.position.y, 24.0, "资源/活动带必须贴近顶部")
 	assert_gte(bottom.end.y, DESIGN_SIZE.y - 24.0, "角色化导航必须贴近底部且不裁切")
+	assert_lt(identity.end.x, DESIGN_SIZE.x * 0.38, "身份短札不得形成整宽顶部黑栏")
+	assert_gt(resources.position.x, DESIGN_SIZE.x * 0.60, "资源短札应贴右并让出环境中段")
+	assert_false(identity.intersects(resources), "左右顶部短札不得相连成整宽黑栏")
+	assert_lt(bottom.size.x, 650.0, "底部功能层应贴合真实按钮宽度，不保留大片空黑区")
+	assert_lt(nameplate.size.y, 100.0, "角色名札应保持短促，不得遮挡角色下半身")
+	assert_lte(nameplate.end.x, entries.position.x, "角色名札不得侵入玩法入口")
 	assert_eq((shell.get_node("%ModeBannerRail") as Control).get_child_count(), 3,
-		"生产舞台必须提供三条横向玩法牌匾")
+		"规则次级木札仍须保留第三个稳定入口")
+	var practice := shell.get_node("%PracticeButton") as Control
+	var match_button := shell.get_node("%MatchButton") as Control
+	var rules := shell.get_node("%RulesBannerButton") as Control
+	assert_almost_eq(practice.size.y, match_button.size.y, 1.0, "两项一级入口应保持等权")
+	assert_gt(practice.size.y, rules.size.y * 1.35, "练习入口必须显著高于规则次级木札")
+	assert_gt(match_button.size.y, rules.size.y * 1.35, "匹配入口必须显著高于规则次级木札")
 	assert_null(shell.find_child("MainRow", true, false), "新骨架不得复用旧左右分栏")
 	assert_null(shell.find_child("RootVBox", true, false), "新骨架不得复用旧 SaaS 容器")
+
+
+func test_1280_by_720_degradation_keeps_stage_regions_separate_and_inside_bounds() -> void:
+	var compact_size := Vector2(1280, 720)
+	var shell := _spawn_lobby(compact_size)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_eq(shell.size, DESIGN_SIZE,
+		"1280×720 窗口应按项目 stretch 契约缩放 1600×900 逻辑舞台，不重排业务控件")
+	var bounds := Rect2(shell.global_position, shell.size)
+	var regions: Array[Control] = [
+		shell.get_node("%IdentityPlaque") as Control,
+		shell.get_node("%ResourcePlaque") as Control,
+		shell.get_node("%CharacterStage") as Control,
+		shell.get_node("%ResidentNameplate") as Control,
+		shell.get_node("%ModeBannerRail") as Control,
+		shell.get_node("%OmamoriRail") as Control,
+		shell.get_node("%BottomNav") as Control,
+	]
+	for region in regions:
+		var rect := _global_rect(region)
+		assert_true(bounds.encloses(rect), "%s 不得在 1280×720 缩放舞台越界：%s / %s" % [
+			region.name, rect, bounds,
+		])
+	var entries := _global_rect(shell.get_node("%ModeBannerRail") as Control)
+	var omamori := _global_rect(shell.get_node("%OmamoriRail") as Control)
+	var nameplate := _global_rect(shell.get_node("%ResidentNameplate") as Control)
+	var bottom := _global_rect(shell.get_node("%BottomNav") as Control)
+	assert_false(entries.intersects(omamori), "降级尺寸下御守不得遮挡主入口")
+	assert_false(nameplate.intersects(bottom), "降级尺寸下角色名札不得遮挡底部导航")
 
 
 func test_layout_keeps_top_bottom_unclipped_on_larger_16_by_9_viewport() -> void:
@@ -137,6 +187,10 @@ func test_stage_uses_existing_character_pool_portrait_and_real_atlas_regions() -
 		"大厅舞台必须消费现有角色图派生的透明 cutout")
 	assert_eq(avatar.texture.resource_path, resident_avatar_path,
 		"顶栏必须消费同源裁切头像")
+	assert_eq((shell.get_node("%ResidentName") as Label).text, resident.display_name,
+		"角色名札必须绑定当前真实常驻角色")
+	assert_true((shell.get_node("%ResidentRole") as Label).text.contains("读脊"),
+		"角色名札应显示角色既有原创席位语义")
 	assert_false(portrait.texture.resource_path.contains("hero_male_transparent"),
 		"被否决的漂移角色不得进入生产路径")
 	for button_name in ["PracticeButton", "MatchButton", "RulesBannerButton"]:

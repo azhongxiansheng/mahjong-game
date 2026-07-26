@@ -12,6 +12,7 @@ const BANNER_REGIONS := [
 @export_range(0, 2) var banner_index: int = 0
 @export var title: String = ""
 @export var subtitle: String = ""
+@export var compact := false
 
 var _visual_tween: Tween = null
 var _visual_state: StringName = &"idle"
@@ -33,6 +34,11 @@ func _ready() -> void:
 	$BannerArt.texture = atlas
 	$Copy/Title.text = title
 	$Copy/Subtitle.text = subtitle
+	if compact:
+		$Copy.offset_top = 14.0
+		$Copy.offset_bottom = -10.0
+		$Copy/Title.add_theme_font_size_override("font_size", 22)
+		$Copy/Subtitle.visible = false
 	for child in find_children("*", "Control", true, false):
 		(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
@@ -91,27 +97,36 @@ func _on_focus_exited() -> void:
 
 func _refresh_highlight_state() -> void:
 	if disabled:
-		_transition_to(&"disabled", Vector2.ONE, Color(0.55, 0.55, 0.55, 0.75))
+		_transition_to(&"disabled", Vector2.ONE, Color(0.55, 0.55, 0.55, 0.55),
+			Color(0.46, 0.43, 0.4, 0.85))
 	elif _focused:
-		_transition_to(&"focused", Vector2(1.025, 1.025), Color(1.08, 1.04, 1.0, 1.0))
+		_transition_to(&"focused", Vector2.ONE, Color(1.04, 1.01, 1.06, 1.0),
+			Color(0.55, 0.2, 0.93, 0.95))
 	elif _hovered:
-		_transition_to(&"hovered", Vector2(1.025, 1.025), Color(1.08, 1.04, 1.0, 1.0))
+		_transition_to(&"hovered", Vector2.ONE, Color(1.04, 1.01, 1.06, 1.0),
+			Color(0.55, 0.2, 0.93, 0.9))
 	else:
-		_transition_to(&"idle", Vector2.ONE, Color.WHITE)
+		_transition_to(&"idle", Vector2.ONE, Color.WHITE, Color.TRANSPARENT)
 
 
 func _set_pressed_visual() -> void:
 	if not disabled:
-		_transition_to(&"pressed", Vector2(0.985, 0.985), Color(1.0, 0.92, 0.88, 1.0), 0.06)
+		_transition_to(&"pressed", Vector2(0.985, 0.985), Color(1.0, 0.92, 0.88, 1.0),
+			Color(0.84, 0.15, 0.09, 0.98), 0.06)
 
 
 func _transition_to(state: StringName, target_scale: Vector2,
-		target_modulate: Color, duration: float = 0.12) -> void:
+		target_modulate: Color, accent_color: Color, duration: float = 0.12) -> void:
 	if _visual_tween != null and _visual_tween.is_valid():
 		_visual_tween.kill()
 	_visual_state = state
 	_target_scale = target_scale
 	_target_art_modulate = target_modulate
+	$EnergyAccent.visible = accent_color.a > 0.0
+	$EnergyAccent.color = accent_color
+	$FocusMark.visible = state == &"focused"
+	$PressedSeal.visible = state == &"pressed"
+	$DisabledHint.visible = state == &"disabled"
 	pivot_offset = size * 0.5
 	_visual_tween = create_tween().set_parallel(true)
 	_visual_tween.tween_property(self, "scale", target_scale, duration)

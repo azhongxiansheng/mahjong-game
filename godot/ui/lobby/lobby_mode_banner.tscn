@@ -3,9 +3,23 @@
 [ext_resource type="Script" path="res://ui/lobby/lobby_mode_banner.gd" id="1_script"]
 
 [node name="LobbyModeBanner" type="Button"]
-custom_minimum_size = Vector2(540, 132)
+custom_minimum_size = Vector2(440, 148)
 focus_mode = 2
 script = ExtResource("1_script")
+
+[node name="EnergyAccent" type="ColorRect" parent="."]
+visible = false
+z_index = 1
+layout_mode = 1
+anchors_preset = 9
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 19.0
+offset_bottom = -14.0
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.552941, 0.196078, 0.929412, 0.9)
 
 [node name="BannerArt" type="TextureRect" parent="."]
 layout_mode = 1
@@ -47,4 +61,60 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.337255, 0.0901961, 0.0627451, 1)
 theme_override_font_sizes/font_size = 15
 text = "说明"
+mouse_filter = 2
+
+[node name="FocusMark" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -58.0
+offset_top = 14.0
+offset_right = -22.0
+offset_bottom = 50.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.690196, 0.352941, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "◇"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="PressedSeal" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -62.0
+offset_top = 12.0
+offset_right = -20.0
+offset_bottom = 54.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.839216, 0.14902, 0.0901961, 1)
+theme_override_font_sizes/font_size = 22
+text = "印"
+horizontal_alignment = 1
+vertical_alignment = 1
+mouse_filter = 2
+
+[node name="DisabledHint" type="Label" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -126.0
+offset_top = 16.0
+offset_right = -20.0
+offset_bottom = 48.0
+grow_horizontal = 0
+theme_override_colors/font_color = Color(0.968627, 0.898039, 0.737255, 1)
+theme_override_colors/font_outline_color = Color(0.1, 0.07, 0.05, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 14
+text = "暂不可用"
+horizontal_alignment = 2
+vertical_alignment = 1
 mouse_filter = 2

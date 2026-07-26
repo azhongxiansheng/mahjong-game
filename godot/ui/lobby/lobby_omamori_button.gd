@@ -29,9 +29,22 @@ func _ready() -> void:
 		(child as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for state in ["normal", "hover", "pressed", "focus", "disabled"]:
 		var style := StyleBoxFlat.new()
-		style.bg_color = Color(0.05, 0.035, 0.03, 0.72 if state == "normal" else 0.9)
-		style.border_color = Color(0.76, 0.12, 0.08, 0.45 if state == "normal" else 0.95)
-		style.set_border_width_all(1 if state == "normal" else 2)
+		if state == "normal":
+			style.bg_color = Color(0.05, 0.035, 0.03, 0.42)
+			style.border_color = Color(0.76, 0.12, 0.08, 0.3)
+			style.set_border_width_all(1)
+		elif state == "hover" or state == "focus":
+			style.bg_color = Color(0.05, 0.035, 0.06, 0.78)
+			style.border_color = Color(0.55, 0.2, 0.93, 0.92)
+			style.set_border_width_all(2)
+		elif state == "pressed":
+			style.bg_color = Color(0.08, 0.025, 0.02, 0.88)
+			style.border_color = Color(0.84, 0.15, 0.09, 0.98)
+			style.set_border_width_all(2)
+		else:
+			style.bg_color = Color(0.04, 0.035, 0.035, 0.34)
+			style.border_color = Color(0.4, 0.38, 0.36, 0.45)
+			style.set_border_width_all(1)
 		style.set_corner_radius_all(8)
 		add_theme_stylebox_override(state, style)
 	for color_name in ["font_color", "font_hover_color", "font_pressed_color",
