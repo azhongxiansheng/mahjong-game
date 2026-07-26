@@ -162,8 +162,15 @@ func _collect_production_samples(host: Control) -> Array[Dictionary]:
 	var settlement: Variant = (load("res://ui/four_player_table/match_settlement_panel.gd") as Script).new()
 	host.add_child(settlement)
 	await process_frame
+	settlement._rematch_btn.text = "ConfirmSupernaturalPowerWithoutOverflow"
+	settlement._rematch_btn.tooltip_text = ""
+	_dt_script.call(
+		"apply_button_role",
+		settlement._rematch_btn,
+		int(settlement._rematch_btn.get_meta("dt_button_role")),
+	)
 	samples.append({
-		"label": "结算｜再来一局",
+		"label": "结算｜超长英文",
 		"button": settlement._rematch_btn.duplicate(),
 	})
 	return samples

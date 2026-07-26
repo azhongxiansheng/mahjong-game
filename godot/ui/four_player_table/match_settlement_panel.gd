@@ -111,6 +111,7 @@ func _ensure_built() -> void:
 	_rematch_btn = Button.new()
 	_rematch_btn.name = "RematchButton"
 	_rematch_btn.text = "再来一局"
+	DT.apply_button_role(_rematch_btn, DT.BtnRole.PRIMARY)
 	_rematch_btn.custom_minimum_size = Vector2(160, 44)
 	_rematch_btn.position = Vector2(70, PANEL_H - 72)
 	_rematch_btn.size = Vector2(160, 44)
@@ -120,6 +121,7 @@ func _ensure_built() -> void:
 	_return_btn = Button.new()
 	_return_btn.name = "ReturnLobbyButton"
 	_return_btn.text = "返回大厅"
+	DT.apply_button_role(_return_btn, DT.BtnRole.GHOST)
 	_return_btn.custom_minimum_size = Vector2(160, 44)
 	_return_btn.position = Vector2(PANEL_W - 70 - 160, PANEL_H - 72)
 	_return_btn.size = Vector2(160, 44)

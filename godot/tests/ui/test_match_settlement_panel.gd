@@ -44,6 +44,50 @@ func test_panel_shows_title_ranks_and_buttons() -> void:
 	assert_not_null(return_btn)
 	assert_eq(rematch_btn.text, "再来一局")
 	assert_eq(return_btn.text, "返回大厅")
+	assert_true(rematch_btn.clip_text)
+	assert_true(return_btn.clip_text)
+	assert_eq(rematch_btn.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS)
+	assert_eq(return_btn.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS)
+	assert_eq(rematch_btn.tooltip_text, rematch_btn.text)
+	assert_eq(return_btn.tooltip_text, return_btn.text)
+	assert_eq(rematch_btn.get_meta("dt_button_role"), DT.BtnRole.PRIMARY)
+	assert_eq(return_btn.get_meta("dt_button_role"), DT.BtnRole.GHOST)
+
+
+func test_extreme_button_text_keeps_fixed_settlement_geometry() -> void:
+	var panel := MatchSettlementPanel.new()
+	add_child_autofree(panel)
+	await get_tree().process_frame
+
+	var modal := panel.find_child("SettlementModal", true, false) as Panel
+	var rematch_btn := panel.find_child("RematchButton", true, false) as Button
+	var return_btn := panel.find_child("ReturnLobbyButton", true, false) as Button
+	var long_english := "ConfirmSupernaturalPowerWithoutOverflow"
+	var long_chinese := "确认以超长异能结算说明返回大厅且绝不撑大固定按钮槽位"
+	rematch_btn.text = long_english
+	rematch_btn.tooltip_text = ""
+	DT.apply_button_role(rematch_btn, DT.BtnRole.PRIMARY)
+	return_btn.text = long_chinese
+	return_btn.tooltip_text = ""
+	DT.apply_button_role(return_btn, DT.BtnRole.GHOST)
+	await get_tree().process_frame
+
+	assert_eq(modal.custom_minimum_size, Vector2(520, 400))
+	assert_eq(modal.size, Vector2(520, 400))
+	assert_eq(rematch_btn.position, Vector2(70, 328))
+	assert_eq(return_btn.position, Vector2(290, 328))
+	assert_eq(rematch_btn.custom_minimum_size, Vector2(160, 44))
+	assert_eq(return_btn.custom_minimum_size, Vector2(160, 44))
+	assert_eq(rematch_btn.size, Vector2(160, 44))
+	assert_eq(return_btn.size, Vector2(160, 44))
+	assert_eq(rematch_btn.get_combined_minimum_size(), Vector2(160, 44))
+	assert_eq(return_btn.get_combined_minimum_size(), Vector2(160, 44))
+	assert_true(rematch_btn.clip_text)
+	assert_true(return_btn.clip_text)
+	assert_eq(rematch_btn.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS)
+	assert_eq(return_btn.text_overrun_behavior, TextServer.OVERRUN_TRIM_ELLIPSIS)
+	assert_eq(rematch_btn.tooltip_text, long_english)
+	assert_eq(return_btn.tooltip_text, long_chinese)
 
 
 func test_buttons_emit_once_then_disable() -> void:
