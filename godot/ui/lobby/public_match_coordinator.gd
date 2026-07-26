@@ -11,6 +11,7 @@ const POLL_INTERVAL_MS := 500
 var _queue: CasualQueueClient = null
 var _session: PublicCasualNetworkSession = null
 var _table: PlayableTable = null
+var _queue_configured := false
 var _view: Dictionary = {
 	"state": "idle", "round_kind": "", "game_mode": "", "queued_at": "", "deadline_at": "",
 	"room_id": "", "seat": -1, "error_code": "", "message": "",
@@ -29,9 +30,11 @@ func _ready() -> void:
 	var base_url := OS.get_environment("CONTROL_PLANE_URL").strip_edges()
 	if base_url.is_empty():
 		base_url = DEFAULT_CONTROL_PLANE_URL
-	_queue.configure(base_url)
+	_queue_configured = _queue.configure(base_url)
 	_queue.ticket_updated.connect(_on_ticket_updated)
 	_queue.request_failed.connect(_on_queue_failed)
+	if not _queue_configured:
+		_set_configuration_terminal(null)
 
 
 func _process(_delta: float) -> void:
@@ -46,6 +49,10 @@ func _on_session_intent(intent: SessionIntent) -> void:
 	if intent == null or intent.room_kind != &"PUBLIC_CASUAL" or _queue == null:
 		return
 	if str(_view.get("state", "idle")) not in ["idle", "cancelled", "terminal_error"]:
+		return
+	_clear_network_runtime()
+	if not _queue_configured:
+		_set_configuration_terminal(intent)
 		return
 	_set_view({
 		"state": "joining", "round_kind": String(intent.round_kind),
@@ -118,24 +125,28 @@ func _consume_ticket(ticket: Dictionary, start_network: bool) -> void:
 
 
 func _start_network(assigned: Dictionary) -> void:
+	_clear_network_runtime()
 	_session = PublicCasualNetworkSession.new()
 	_session.name = "PublicCasualNetworkSession"
 	add_child(_session)
 	if not _session.configure_from_assigned(assigned, _queue.get_session_id()):
-		_set_terminal("INVALID_ASSIGNMENT", "房间分配无效")
+		_fail_network_start("INVALID_ASSIGNMENT", "房间分配无效")
 		return
 	var bundle := ModeModuleBundle.for_public_transport(StringName(_session.game_mode))
 	if bundle == null or not _session.bind_mode_modules(bundle):
-		_set_terminal("INVALID_MODE", "玩法模块不可用")
+		_fail_network_start("INVALID_MODE", "玩法模块不可用")
 		return
 	_session.reconnecting.connect(_on_reconnecting)
 	_session.recovered.connect(_on_recovered)
 	_session.terminal_error.connect(_on_terminal_error)
 	_mount_table()
+	if _table == null:
+		_fail_network_start("TABLE_MOUNT_FAILED", "牌桌挂载失败")
+		return
 	_session.bind_playable_table(_table)
 	var err := _session.start()
 	if err != OK:
-		_set_terminal("CONNECT_FAILED", error_string(err))
+		_fail_network_start("CONNECT_FAILED", error_string(err))
 
 
 func _mount_table() -> void:
@@ -178,6 +189,49 @@ func consume_connection_fact_for_test(fact: StringName, code: String = "", messa
 
 func _on_queue_failed(code: String, message: String) -> void:
 	_set_terminal(code, message)
+
+
+func _set_configuration_terminal(intent: SessionIntent) -> void:
+	_set_view({
+		"state": "terminal_error",
+		"round_kind": String(intent.round_kind) if intent != null else "",
+		"game_mode": String(intent.game_mode) if intent != null else "",
+		"error_code": "INVALID_CONTROL_PLANE_URL",
+		"message": "控制面地址无效",
+	})
+
+
+func _fail_network_start(code: String, message: String) -> void:
+	_clear_network_runtime()
+	_set_terminal(code, message)
+
+
+func _clear_network_runtime(discard_nodes := true) -> void:
+	if _table != null and is_instance_valid(_table):
+		var old_table := _table
+		_table = null
+		if old_table.has_method("release_voice_runtime"):
+			old_table.release_voice_runtime()
+		if discard_nodes:
+			_discard_node(old_table)
+	else:
+		_table = null
+	if _session != null and is_instance_valid(_session):
+		var old_session := _session
+		_session = null
+		old_session.release()
+		if discard_nodes:
+			_discard_node(old_session)
+	else:
+		_session = null
+
+
+func _discard_node(node: Node) -> void:
+	if node == null or not is_instance_valid(node):
+		return
+	if node.get_parent() != null:
+		node.get_parent().remove_child(node)
+	node.queue_free()
 
 
 func _set_terminal(code: String, message: String) -> void:
@@ -228,5 +282,4 @@ func _set_view(next: Dictionary) -> void:
 
 
 func _exit_tree() -> void:
-	if _session != null:
-		_session.release()
+	_clear_network_runtime(false)
