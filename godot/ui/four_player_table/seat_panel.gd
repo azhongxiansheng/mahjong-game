@@ -4,7 +4,7 @@ class_name SeatPanel extends Node2D
 # 其它 seat 永不 emit（手牌色块本身不 clickable）。
 # E2-02 / #232：参数 = tile_instance_id（entity identity）
 signal player_card_clicked(tile_instance_id: int)
-# 雀魂式：悬停手牌时通知桌面做全桌同名高亮（仍用 tile_id）
+# 悬停手牌时通知桌面做全桌同名高亮（仍用 tile_id）。
 signal hand_tile_hover(tile_id: int, entered: bool)
 
 # 麻将王 — 里程碑 3 第 2 步：单 seat 面板（plan-3 D4）
@@ -29,10 +29,10 @@ const SEAT_ROTATION_DEGREES := [0.0, -90.0, 180.0, 90.0]
 
 # 手牌色块行：M3 收尾 — 13 个 (或 ≤13) 小 ColorRect 显示 owner_seat 着色，
 # 实现 plan-3 D2/D5 归属可视化（看一家手牌区的"色块拼盘"知道牌从哪 4 家来）。
-# 公开参考 CSS 的对手牌尺寸：上家是正向立牌背，左右家是窄侧视牌背。
+# 对手牌尺寸：上家是正向立牌背，左右家是窄侧视牌背。
 const TOP_HAND_TILE_W: float = 38.0
 const TOP_HAND_TILE_H: float = 55.0
-# bundle Q3():axisA[0,-30],axisB[27.5,0],axisC[-15.21,32.63] 的外包围盒。
+# 侧视牌 axisA[0,-30],axisB[27.5,0],axisC[-15.21,32.63] 的外包围盒。
 const SIDE_HAND_TILE_W: float = 46.71
 const SIDE_HAND_TILE_H: float = 66.63
 const SIDE_HAND_STACK_STEP: float = 32.0
@@ -46,7 +46,7 @@ const SIDE_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 34.0)
 const TOP_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 31.0)
 const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
-# 自家手牌直接对应参考 .tile--xl；13 张宽 882px，以 seat anchor 居中。
+# 自家手牌使用 66×92 大牌；13 张宽 882px，以 seat anchor 居中。
 const PLAYER_HAND_TILE_W: float = 66.0
 const PLAYER_HAND_TILE_H: float = 92.0
 const PLAYER_HAND_ROW_OFFSET_X: float = -498.0
@@ -130,6 +130,7 @@ var _wait_ids: Array = []  # Array[int]
 
 
 func _ready() -> void:
+	_ensure_seat_hud()
 	_apply_bottom_seat_label_layout()
 	_apply_side_seat_label_layout()
 	_apply_top_seat_label_layout()
@@ -146,7 +147,72 @@ func _ready() -> void:
 	_refresh_labels()
 
 
-# 参考 .hand--top / .hand--left / .hand--right 的可观察尺寸。
+func _ensure_seat_hud() -> void:
+	if get_node_or_null("SeatHUD") != null:
+		return
+	var rect: Rect2 = TableLayout.SEAT_HUD_RECTS[_seat_id]
+	var hud := Panel.new()
+	hud.name = "SeatHUD"
+	hud.size = rect.size
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.025, 0.045, 0.065, 0.72)
+	style.border_color = Color(0.28, 0.72, 0.78, 0.48)
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(8)
+	style.shadow_color = Color(0, 0, 0, 0.45)
+	style.shadow_size = 8
+	hud.add_theme_stylebox_override("panel", style)
+	add_child(hud)
+	_pin_info_node(hud, rect.position)
+	move_child(hud, 0)
+	var status_row := HBoxContainer.new()
+	status_row.name = "StatusRow"
+	status_row.position = Vector2(8, rect.size.y - 28)
+	status_row.size = Vector2(rect.size.x - 16, 22)
+	status_row.add_theme_constant_override("separation", 6)
+	status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(status_row)
+	_sync_hud_status_badges()
+
+
+func _hud_status_badge(node_name: String, text: String, accent: Color) -> Panel:
+	var badge := Panel.new()
+	badge.name = node_name
+	badge.custom_minimum_size = Vector2(72, 22)
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(accent.r * 0.18, accent.g * 0.18, accent.b * 0.18, 0.94)
+	style.border_color = accent
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(4)
+	badge.add_theme_stylebox_override("panel", style)
+	var label := Label.new()
+	label.name = "Label"
+	label.text = text
+	label.size = Vector2(72, 22)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 12)
+	label.add_theme_color_override("font_color", Color.WHITE)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	badge.add_child(label)
+	return badge
+
+
+func _sync_hud_status_badges() -> void:
+	var row := get_node_or_null("SeatHUD/StatusRow") as HBoxContainer
+	if row == null:
+		return
+	for child in row.get_children():
+		row.remove_child(child)
+		child.free()
+	if _furiten:
+		row.add_child(_hud_status_badge("FuritenBadge", "◇ 振听", DT.TEXT_DANGER))
+	if _riichi:
+		row.add_child(_hud_status_badge("RiichiBadge", "◆ 立直", DT.TEXT_TITLE))
+
+
+# 上/左/右三家手牌的可观察尺寸。
 static func opponent_hand_tile_size(seat_id: int) -> Vector2:
 	if seat_id == 2:
 		return Vector2(TOP_HAND_TILE_W, TOP_HAND_TILE_H)
@@ -193,7 +259,7 @@ func set_seat_id(id: int) -> void:
 	var bg := get_node_or_null("Bg") as ColorRect
 	if bg:
 		bg.visible = false
-	# 对手仍沿用桌外信息列；自家在 _ready 后拆成参考 avatar-col + main。
+	# 对手仍沿用桌外信息列；自家在 _ready 后拆成 avatar-col + main。
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
 		if id == 1 or id == 3:
@@ -205,7 +271,7 @@ func set_seat_id(id: int) -> void:
 		_apply_top_seat_label_layout()
 		_refresh_labels()
 
-# 参考 bottom seat-label：avatar-col 内头像下方 3px 放分数，main 在右侧
+# bottom seat-label：avatar-col 内头像下方 3px 放分数，main 在右侧
 # 5px；头像和手牌锚点保持 (322,644) / (302,778) 不变。
 func _apply_bottom_seat_label_layout() -> void:
 	if _seat_id != 0 or _label_score == null or _label_seat_info == null:
@@ -226,7 +292,7 @@ func _apply_bottom_seat_label_layout() -> void:
 	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
 
 
-# 参考左右 seat-label：名字朝桌内、与头像相隔 5px；分数属于 avatar-col，
+# 左右 seat-label：名字朝桌内、与头像相隔 5px；分数属于 avatar-col，
 # 固定在头像下方 3px。头像与手牌锚点保持不变。
 func _apply_side_seat_label_layout() -> void:
 	if _seat_id != 1 and _seat_id != 3:
@@ -250,7 +316,7 @@ func _apply_side_seat_label_layout() -> void:
 	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
 
 
-# 参考 top seat-label：短名字位于头像右侧 5px，分数固定在头像下方 3px。
+# top seat-label：短名字位于头像右侧 5px，分数固定在头像下方 3px。
 func _apply_top_seat_label_layout() -> void:
 	if _seat_id != 2:
 		return
@@ -280,9 +346,9 @@ func _counter_rotate_info_node(node: Node) -> void:
 	ctrl.pivot_offset = ctrl.size / 2.0
 	ctrl.rotation_degrees = -SEAT_ROTATION_DEGREES[_seat_id]
 
-# ---- 头像卡群锚位(布局完全对齐参考截图) ----
+# ---- 头像卡群屏幕锚位 ----
 #
-# 每家的「头像卡 + 名字条 + 分数」按参考截图比例钉在**屏幕坐标**:
+# 每家的「头像卡 + 名字条 + 分数」钉在**屏幕坐标**:
 #   对面 = 其手牌右侧;左右家 = 手牌旁中部;自家 = 手牌左侧。
 # SeatPanel 整体被旋转,信息件又反向旋转 — _pin_info_node 做坐标换算:
 # 给定屏幕 top-left,反推出旋转空间里的 local position。
@@ -405,7 +471,7 @@ func get_portrait_texture() -> Texture2D:
 	return null
 
 
-# 立绘节点懒创建。参考 seat-avatar 固定 78×78、cover 裁切、金软边。
+# 立绘节点懒创建。seat-avatar 固定 78×78、cover 裁切、金软边。
 # seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
 func _ensure_portrait() -> void:
 	if _portrait_path == "":
@@ -586,7 +652,7 @@ func set_ippatsu(b: bool) -> void:
 
 
 func _apply_status_badges() -> void:
-	# 自家按参考 name-row 横排在名字列尾；对手保留头像右侧竖排。
+	# 自家按 name-row 横排在名字列尾；对手保留头像右侧竖排。
 	var anchor: Vector2 = cluster_anchor()
 	var bottom_origin := Vector2(
 		83.0 + BOTTOM_NAME_COLUMN_SIZE.x + 5.0,
@@ -658,14 +724,16 @@ func set_riichi(b: bool) -> void:
 	_riichi = b
 	if is_inside_tree():
 		_refresh_labels()
+		_sync_hud_status_badges()
 
 func set_furiten(b: bool) -> void:
 	_furiten = b
 	if is_inside_tree():
 		_refresh_labels()
+		_sync_hud_status_badges()
 
 
-# 当前回合高亮：只增强参考 78×78 头像自身边框与名字颜色。
+# 当前回合高亮：只增强 78×78 头像自身边框与名字颜色。
 func set_active(b: bool) -> void:
 	if _active == b:
 		return
@@ -701,7 +769,7 @@ func set_hand_tile_owners(owners: Array) -> void:
 		_rebuild_hand_tile_row(owners)
 		_refresh_labels()
 
-# 胡牌结算前：强制显示该 seat 手牌正面（雀魂翻牌）
+# 胡牌结算前：强制显示该 seat 手牌正面。
 var _force_reveal_hand: bool = false
 var _revealed_hand: Hand = null
 
@@ -733,7 +801,7 @@ func bind_seat(seat: Seat) -> void:
 		_refresh_labels()
 
 
-# 雀魂式：结算前翻开对手手牌（face-up 小牌横排 + 错峰入场）
+# 结算前翻开对手手牌（face-up 小牌横排 + 错峰入场）。
 func reveal_hand_face_up(hand: Hand, animate: bool = true) -> void:
 	_force_reveal_hand = true
 	_revealed_hand = hand
@@ -762,7 +830,7 @@ func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
 	var opponent_size := opponent_hand_tile_size(_seat_id)
 	var tw: float = PLAYER_HAND_TILE_W if _seat_id == 0 else opponent_size.x
 	var th: float = PLAYER_HAND_TILE_H if _seat_id == 0 else opponent_size.y
-	# 结算翻牌沿用既有对手 2px 间距；HAND_TILE_GAP 是自家参考行的 4px。
+	# 结算翻牌沿用既有对手 2px 间距；HAND_TILE_GAP 是自家行的 4px。
 	var gap: float = 4.0 if _seat_id == 0 else 2.0
 	var scale_x: float = tw / float(CardTileBack.TILE_WIDTH)
 	var scale_y: float = th / float(CardTileBack.TILE_HEIGHT)
@@ -827,7 +895,7 @@ static func wind_name(wind_id: int) -> String:
 func _refresh_labels() -> void:
 	if _label_seat_info == null:
 		return
-	# 雀魂式简洁:名字·风(·庄 if dealer)·立直状态。
+	# 简洁信息层：名字·风(·庄 if dealer)·立直状态。
 	# 振听 / 听牌 走单独彩色徽章(_apply_status_badges),不挤进 seat_info 文本。
 	var status: String = ""
 	if _seat_wind == TileId.E:
@@ -839,7 +907,7 @@ func _refresh_labels() -> void:
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
 	_label_seat_info.text = who if _seat_id != 0 \
 		else "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
-	# 布局对齐:分数回到头像卡下(参考截图「50 分」位),金色
+	# 布局对齐：分数回到头像卡下，金色。
 	_label_score.text = "%d 分" % _score
 	_label_score.visible = true
 	_label_score.add_theme_color_override("font_color", Color(0.94, 0.84, 0.42))
@@ -857,7 +925,7 @@ func _refresh_labels() -> void:
 	_apply_side_seat_label_layout()
 	_apply_top_seat_label_layout()
 
-# 对家手牌行：直接翻译参考 .hand--top / .hand--left / .hand--right 的尺寸。
+# 对家手牌行：使用 .hand--top / .hand--left / .hand--right 的尺寸。
 func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:
 	if _hand_tile_row == null:
 		return
@@ -928,7 +996,7 @@ func _rebuild_hand_tile_row(owners: Array, has_drawn: bool = false) -> void:
 		x += layout_size.x + gap
 
 
-# 正常左右家直接翻译 bundle q0 → aw 的 SVG 立方体堆叠。SeatPanel 自身仍按
+# 左右家使用三轴投影的立方体牌背堆叠。SeatPanel 自身仍按
 # 方位旋转，单个 CubeVisual 反向旋转保持屏幕正立；左家再做 scaleX(-1)。
 func _rebuild_side_cube_hand(owners: Array, has_drawn: bool) -> void:
 	var has_visual_drawn := has_drawn and not owners.is_empty()
@@ -938,7 +1006,7 @@ func _rebuild_side_cube_hand(owners: Array, has_drawn: bool) -> void:
 	var host_height := SIDE_HAND_TILE_H \
 		+ (slot_count - 1) * SIDE_HAND_STACK_STEP + 12.0
 	_hand_tile_row.set_meta("r3d_host_size", Vector2(SIDE_HAND_TILE_W, host_height))
-	# q0 host 在 seat body 中居中；左右 CSS 都另向桌内 translateX(15px)。
+	# 牌背 host 在 seat body 中居中；左右都向桌内偏移 15px。
 	_hand_tile_row.position = Vector2(
 		host_height / 2.0 if _seat_id == 1 else -host_height / 2.0,
 		13.0)
@@ -993,7 +1061,7 @@ static func make_reference_side_cube(mirror_x: bool = false,
 	cube.scale.x = -1.0 if mirror_x else 1.0
 	cube.set_meta("is_top", is_top)
 	cube.set_meta("is_bottom", is_bottom)
-	# aw() 将所有 axis 点平移到 Q3() 的 2px 外边距内。
+	# 将所有 axis 点平移到 2px 外边距内。
 	var o := Vector2(17.21, 32.0)
 	var a := Vector2(17.21, 2.0)
 	var ab := Vector2(44.71, 2.0)
@@ -1008,7 +1076,7 @@ static func make_reference_side_cube(mirror_x: bool = false,
 		[0.0, 6.0, 0.0, 0.0])
 	var side_points := _rounded_cube_polygon([b, bc, c, o],
 		[0.0, 6.0, corner_radius, 0.0])
-	# aw(): 接触影允许越过 46.71×66.63 viewBox，等价 SVG overflow:visible。
+	# 接触影允许越过 46.71×66.63 viewBox。
 	_add_cube_gradient_face(cube, "ContactLeft",
 		[ac, ac + Vector2(-6, 0), c + Vector2(-6, 0), c],
 		[Color(0, 0, 0, 0.45), Color(0, 0, 0, 0.0)], [0.0, 1.0],
@@ -1044,9 +1112,9 @@ static func _add_cube_face(parent: Control, node_name: String,
 	parent.add_child(face)
 
 
-# 参考 SVG 的 49.9/50.1 渐变是视觉硬分色。Polygon2D 在逐点透视后若继续
+# 49.9/50.1 渐变是视觉硬分色。Polygon2D 在逐点透视后若继续
 # 依赖 UV，会按三角形分别插值，分界就会折成梯形；这里改为共享 50% 边的
-# 绿底 + 白色裁切面，等价保留 bundle 的硬分色语义。
+# 绿底 + 白色裁切面，保留牌背的硬分色语义。
 static func _add_cube_hard_split_face(parent: Control, node_name: String,
 		points: Array, fill_from: Vector2, fill_to: Vector2) -> void:
 	_add_cube_face(parent, node_name, points, Color("2c5e3f"))
@@ -1085,7 +1153,7 @@ static func _append_unique_polygon_point(points: Array, point: Vector2) -> void:
 		points.append(point)
 
 
-# bundle 的 rounded polygon helper：每个顶点按相邻边各退/进 radius，再以顶点作
+# rounded polygon helper：每个顶点按相邻边各退/进 radius，再以顶点作
 # quadratic control point。SVG 用连续 Q；Godot Polygon2D 用 4 段采样同一曲线。
 static func _rounded_cube_polygon(points: Array, radii: Array) -> Array:
 	var corners: Array = []
@@ -1261,7 +1329,7 @@ static func _opponent_shadow_offset(seat_id: int) -> Vector2:
 # T3d:对手手牌优先用「站立牌」贴图(bake_standing_back.py),视角语义正确;
 # 缺图 fallback 到平面 back.png。
 # 对面(seat 2)看到的是牌背(绿背+白棱);左右家(seat 1/3)看到的是
-# 牌的侧面体块(白厚身+绿顶,绿顶朝桌心)— 参考截图确认的真实立牌视角。
+# 牌的侧面体块（白厚身+绿顶，绿顶朝桌心）。
 const STANDING_BACK_PATH := "res://assets/tile_back_standing.png"
 
 func _resolve_back_texture() -> Texture2D:
@@ -1578,7 +1646,7 @@ func _make_hand_slot(tile_id: int, is_red: bool, instance_id: int,
 	tile.position = Vector2.ZERO
 	tile.scale = Vector2(scale_x, scale_y)
 	slot.add_child(tile)
-	# hover / lifted 变换整张 DOM 等价物（含 before/after 棱），不只移动牌面。
+	# hover / lifted 变换整张牌块（含上下棱），不只移动牌面。
 	tile.set_motion_target(slot)
 	tile.set_face_up(tile_id, is_red)
 	# set_face_up 清空 identity；手牌动作牌须再写入 instance_id
@@ -1693,7 +1761,7 @@ func set_hand_row_visible(b: bool) -> void:
 		_hand_tile_row.visible = b
 
 
-# 把已生成的真实 hand slot 套到公开 bundle 的 1600×900 flex/perspective
+# 把已生成的真实 hand slot 套到 1600×900 flex/perspective
 # 几何。上下家可由一个仿射变换表达；左右家必须逐槽投影，禁止整列统一缩放。
 func apply_reference_hand_layout(meld_main_extent: float = 0.0) -> void:
 	if _hand_tile_row == null:

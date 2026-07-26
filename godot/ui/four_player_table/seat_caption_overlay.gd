@@ -14,7 +14,7 @@ const EXPIRY_POLL_SEC: float = 0.25
 # seat → 固定屏幕矩形（不旋转）。避开四席手牌 / 操作栏 / PTT。
 # seat 2 顶、seat 0 底、seat 3 左、seat 1 右。
 const SLOT_RECTS := {
-	0: Rect2(640.0, 640.0, SLOT_W_H, SLOT_H),
+	0: Rect2(640.0, 610.0, SLOT_W_H, SLOT_H),
 	1: Rect2(1360.0, 380.0, SLOT_W_SIDE, SLOT_H),
 	2: Rect2(640.0, 72.0, SLOT_W_H, SLOT_H),
 	3: Rect2(16.0, 380.0, SLOT_W_SIDE, SLOT_H),

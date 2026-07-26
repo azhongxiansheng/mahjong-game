@@ -24,7 +24,7 @@ func test_yaku_rows_built_and_staggered():
 	for child in _panel.get_children():
 		if child is VBoxContainer:
 			grid = child
-	assert_not_null(grid, "参考役列表必须是单列 VBox")
+	assert_not_null(grid, "役列表必须是单列 VBox")
 	assert_eq(grid.get_child_count(), 3, "3 役 3 行")
 	# 错峰入场:初始全透明(动画起点)；行是带金条的 HBox
 	for row in grid.get_children():
@@ -37,7 +37,7 @@ func test_yaku_rows_built_and_staggered():
 	assert_eq(_pt._result_anim_tweens.size(), 3, "每行一条动画登记")
 
 
-func test_reference_yaku_reveal_waits_700ms_per_row():
+func test_yaku_reveal_waits_700ms_per_row():
 	_pt._build_yaku_rows(_panel, [
 		{"name": "立直", "han": 1},
 		{"name": "门前清自摸和", "han": 1},
@@ -55,10 +55,10 @@ func test_reference_yaku_reveal_waits_700ms_per_row():
 	assert_gt(first.modulate.a, 0.95, "首个役 700ms 后用 260ms 完成入场")
 	assert_eq(second.modulate.a, 0.0, "第二个役必须再等 700ms")
 	await wait_seconds(0.70)
-	assert_gt(second.modulate.a, 0.95, "第二个役按参考节奏出现")
+	assert_gt(second.modulate.a, 0.95, "第二个役按既定节奏出现")
 
 
-func test_reference_yaku_light_and_heavy_use_260_and_280ms() -> void:
+func test_yaku_light_and_heavy_use_260_and_280ms() -> void:
 	_pt._build_yaku_rows(_panel, [
 		{"name": "七番役", "han": 7},
 		{"name": "八番役", "han": 8},
@@ -67,14 +67,14 @@ func test_reference_yaku_light_and_heavy_use_260_and_280ms() -> void:
 	var light := grid.get_child(0) as Control
 	var heavy := grid.get_child(1) as Control
 	assert_eq(light.get_meta("reference_reveal_duration_ms", -1), 260,
-		"低于 8 番必须翻译 bundle 的轻役 260ms")
+		"低于 8 番的轻役入场时长为 260ms")
 	assert_eq(heavy.get_meta("reference_reveal_duration_ms", -1), 280,
-		"8 番起必须翻译 bundle 的重役 280ms")
+		"8 番起的重役入场时长为 280ms")
 	assert_false(bool(light.get_meta("reference_heavy", true)))
 	assert_true(bool(heavy.get_meta("reference_heavy", false)))
 
 
-func test_reference_bonus_rows_share_one_reveal_phase() -> void:
+func test_bonus_rows_share_one_reveal_phase() -> void:
 	assert_true(_pt.has_method("_build_result_bonus_rows"),
 		"bonus 必须有独立且可验证的单一 phase")
 	if not _pt.has_method("_build_result_bonus_rows"):
@@ -92,7 +92,7 @@ func test_reference_bonus_rows_share_one_reveal_phase() -> void:
 		assert_eq(row.get_meta("reference_reveal_duration_ms", -1), 260)
 
 
-func test_reference_total_waits_extra_1000ms_and_enters_in_420ms() -> void:
+func test_total_waits_extra_1000ms_and_enters_in_420ms() -> void:
 	assert_true(_pt.has_method("_result_total_reveal_delay"))
 	assert_true(_pt.has_method("_build_result_total_bar"))
 	if not _pt.has_method("_result_total_reveal_delay") \
@@ -110,7 +110,7 @@ func test_reference_total_waits_extra_1000ms_and_enters_in_420ms() -> void:
 	assert_eq(total_bar.get_meta("reference_reveal_duration_ms", -1), 420)
 	assert_eq(total_bar.modulate.a, 0.0)
 
-func test_reference_yaku_rows_do_not_cap_phase_count():
+func test_yaku_rows_do_not_cap_phase_count():
 	var many: Array = []
 	for i in range(11):
 		many.append({"name": "役%d" % i, "han": 1})
@@ -120,14 +120,14 @@ func test_reference_yaku_rows_do_not_cap_phase_count():
 		if child is VBoxContainer:
 			grid = child
 	assert_eq(grid.get_child_count(), 11,
-		"bundle 的 phase_count 直接使用 yaku.length，不得自创 8 条上限")
+		"phase_count 直接使用 yaku.length，不得截断为 8 条")
 	assert_eq(_pt._result_anim_tweens.size(), 11)
 	if grid.get_child_count() >= 11:
 		assert_eq(grid.get_child(10).get_meta("reference_reveal_delay_ms"), 7700)
 
-func test_reference_four_score_rows_order_and_before_formula() -> void:
+func test_four_score_rows_order_and_before_formula() -> void:
 	assert_true(_pt.has_method("_build_score_delta_list"),
-		"Step 2 必须使用参考四家分数列表")
+		"Step 2 必须使用四家分数列表")
 	if not _pt.has_method("_build_score_delta_list"):
 		return
 	var final_scores := [23000, 29000, 24000, 24000]
@@ -170,16 +170,17 @@ func test_skip_jumps_to_final_state():
 	assert_false(_pt._skip_result_animations())
 
 
-func test_reference_modal_shell_is_centered_green_felt() -> void:
+func test_original_result_shell_keeps_final_hand_visible() -> void:
 	assert_true(_pt.has_method("_create_result_modal_shell"),
-		"结算必须有公开可测的参考 modal shell")
+		"结算必须有可测的生产 modal shell")
 	if not _pt.has_method("_create_result_modal_shell"):
 		return
 	var shell: Dictionary = _pt._create_result_modal_shell()
 	var bg := shell["backdrop"] as ColorRect
 	var panel := shell["panel"] as Panel
-	assert_eq(bg.color, Color("000000a8"), "backdrop 精确 #000000a8")
-	assert_eq(panel.position, Vector2(490, 170), "620×560 在 1600×900 精确居中")
+	assert_eq(bg.color, Color("00000055"), "低透明背幕保留最终牌面可读性")
+	assert_eq(panel.position, TableLayout.RESULT_PANEL_RECT.position,
+		"结算层位于桌心偏上且避开手牌/操作带")
 	assert_eq(panel.size, Vector2(620, 560))
 	var style := panel.get_theme_stylebox("panel") as StyleBoxFlat
 	assert_eq(style.bg_color, Color.TRANSPARENT)
@@ -193,7 +194,7 @@ func test_reference_modal_shell_is_centered_green_felt() -> void:
 	assert_not_null(panel.get_node_or_null("FeltGradient"), "绿毡渐变不得退化成旧猩红主题")
 
 
-func test_result_hand_tiles_match_reference_modal_size() -> void:
+func test_result_hand_tiles_keep_readable_modal_size() -> void:
 	var tile := _pt._make_overlay_tile(TileId.W1, false)
 	add_child_autofree(tile)
 	assert_eq(tile.custom_minimum_size, Vector2(34, 45), "modal win hand 固定 34×45")
@@ -275,9 +276,9 @@ func test_win_result_waits_for_continue_before_score_roll() -> void:
 	assert_null(panel.get_node_or_null("ScoreDeltaList"),
 		"Step 1 只能显示番种，不得提前启动 1500ms 滚分")
 	assert_null(panel.get_node_or_null("RollingScore"),
-		"参考 Step 2 不得退回胜者单数字")
+		"Step 2 不得退回胜者单数字")
 	var buttons := panel.find_children("*", "Button", true, false)
-	assert_eq(buttons.size(), 1, "参考 Step 1 仅保留显式继续按钮")
+	assert_eq(buttons.size(), 1, "Step 1 仅保留显式继续按钮")
 	var button := buttons[0] as Button
 	assert_eq(button.text, "继续 →")
 	button.pressed.emit()

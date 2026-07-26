@@ -18,7 +18,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	# 与参考站固定 stage 同尺寸，截图直接核对设计基准。
+	# 使用产品固定视口，截图直接核对 1600×900 契约。
 	root.content_scale_size = CAPTURE_SIZE
 	DisplayServer.window_set_size(CAPTURE_SIZE)
 	await process_frame
@@ -146,7 +146,32 @@ func _capture_battle_with_state() -> void:
 	var out := "/tmp/shot_battle_live.png"
 	img.save_png(out)
 	print("[capture] saved ", out)
-	# 确认态特殊役横幅：只调用公开 bundle 的 MomentBand 翻译入口，避免同时
+	# 状态 B/方案1：真实 PlayableTable 的固定仪式带 + 真实手牌候选/禁用层。
+	var player := table._table.seat_panels[0] as SeatPanel
+	var allowed: Array = []
+	for slot_index in mini(3, player._hand_slots.size()):
+		allowed.append(int(player._hand_slots[slot_index].get_meta(
+			"hand_instance_id", Tile.INVALID_INSTANCE_ID)))
+	player.set_hand_clickable(true)
+	player.dim_hand_except(allowed)
+	table._action_panel.enter_waiting_claim(true, true, true, true, 1)
+	for _i in range(8):
+		await process_frame
+	var claim_img := root.get_texture().get_image()
+	claim_img.save_png("/tmp/shot_battle_claim_candidates.png")
+	print("[capture] saved /tmp/shot_battle_claim_candidates.png")
+	player.clear_hand_dim()
+	table._action_panel.enter_waiting_riichi_confirm()
+	player.set_riichi(true)
+	for _i in range(8):
+		await process_frame
+	var riichi_img := root.get_texture().get_image()
+	riichi_img.save_png("/tmp/shot_battle_riichi_confirm.png")
+	print("[capture] saved /tmp/shot_battle_riichi_confirm.png")
+	table._action_panel.enter_idle("等待 AI…")
+	player.set_riichi(false)
+	player.set_hand_clickable(false)
+	# 确认态特殊役横幅：只调用生产 MomentBand 入口，避免同时
 	# 挂 3 秒 win-announce 干扰后续终局截图。
 	table._play_confirmed_moment_band([{"name": "海底捞月", "han": 1}])
 	for _i in range(24):

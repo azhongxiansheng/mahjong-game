@@ -1,9 +1,7 @@
 class_name TableLayout
 
-# 麻将王 — 雀魂式牌桌布局契约（P0）
-#
-# 参考站 1600×900 固定 stage：顶栏 / 桌面 / 手牌带 / 操作条。
-# 所有坐标从这里派生，禁止在各 panel 再写魔法数。
+# 原创“结界舞台 HUD”1600×900 布局契约。
+# 所有安全区从这里派生；只约束牌局可读性，不复刻第三方像素布局。
 
 const VIEW_W: float = 1600.0
 const VIEW_H: float = 900.0
@@ -14,22 +12,43 @@ const TABLE_W: float = 1600.0
 const TABLE_H: float = 900.0
 
 # 操作条（浮在手牌上方）
-const ACTION_BAR_Y: float = 700.0
-const ACTION_BAR_H: float = 72.0
+const ACTION_BAR_Y: float = 680.0
+const ACTION_BAR_H: float = 78.0
+const ACTION_BAR_RECT := Rect2(440.0, ACTION_BAR_Y, 720.0, ACTION_BAR_H)
+const HAND_SAFE_RECT := Rect2(218.0, 778.0, 1164.0, 92.0)
+const RESULT_PANEL_RECT := Rect2(490.0, 90.0, 620.0, 560.0)
 
-# 公开 bundle 的 `.table-scene > .table-plane` 透视契约。
+# 四席信息牌是贴边悬浮 HUD，不与河牌、副露及固定操作带争夺空间。
+const SEAT_HUD_RECTS := [
+	Rect2(300.0, 620.0, 240.0, 56.0),
+	Rect2(1360.0, 318.0, 200.0, 128.0),
+	Rect2(1050.0, 52.0, 280.0, 86.0),
+	Rect2(40.0, 318.0, 200.0, 128.0),
+]
+
+
+static func crowded_state_rects() -> Array[Rect2]:
+	# 最大河牌与副露的合并公开信息区；用于 1600×900 几何门禁。
+	return [
+		Rect2(555.0, 476.0, 490.0, 184.0),
+		Rect2(900.0, 220.0, 340.0, 400.0),
+		Rect2(555.0, 142.0, 490.0, 154.0),
+		Rect2(360.0, 220.0, 340.0, 400.0),
+	]
+
+# 四向牌桌的透视参数。
 const PERSPECTIVE_DISTANCE: float = 1200.0
 const PERSPECTIVE_ORIGIN := Vector2(800.0, 288.0)
 const TABLE_PLANE_RECT := Rect2(0.0, -140.0, 1600.0, 1040.0)
 const TABLE_PLANE_ORIGIN := Vector2(800.0, 900.0)
 const TABLE_PLANE_ROTATION_X_DEGREES: float = 18.0
 
-# `.board` 的隐式 CSS grid：top/bottom 河决定 300px 中轨，left/right 河决定
+# 四向牌河网格：上下牌河决定 300px 中轨，左右牌河决定
 # 300px 中轨高度；两侧轨 144px，轨间 gap 4px，总尺寸 596×596。
 const BOARD_TRACKS := Vector3(144.0, 300.0, 144.0)
 const BOARD_GAP: float = 4.0
 const BOARD_SIZE := Vector2(596.0, 596.0)
-# 固定 stage 下 `.board` 变换前的布局盒顶边为 116.5px，横向由舞台居中推导。
+# 固定舞台下变换前的布局盒顶边为 116.5px，横向由舞台居中推导。
 const BOARD_LAYOUT_TOP: float = 116.5
 const BOARD_ORIGIN := Vector2((TABLE_W - BOARD_SIZE.x) * 0.5, BOARD_LAYOUT_TOP)
 const BOARD_TRANSLATE_Y: float = -30.0
@@ -39,7 +58,7 @@ const RIVER_SIZE := Vector2(300.0, 144.0)
 const CENTER_PLATE_SIZE := Vector2(220.0, 220.0)
 const CENTER_CSS_SCALE: float = 1.04
 
-# 公开 DOM `.board-frame` SVG 原始几何；位于 300×300 center track 中央，
+# 牌桌结构线的原始几何；位于 300×300 中轨中央，
 # 再随 table-plane 统一做 18° 透视。保留 raw 点，禁止按截图手调 screen 坐标。
 const BOARD_FRAME_SIZE := Vector2(852.0, 732.0)
 const BOARD_FRAME_OUTER_RAW := [
@@ -63,7 +82,7 @@ const BOARD_FRAME_DIVIDERS_RAW := [
 	[Vector2(802.0, 682.0), Vector2(536.0, 476.0)],
 ]
 
-# 公开 bundle 在 1600×900 固定 stage 下的 hand host。对家 hand host 都保留
+# 1600×900 固定舞台下的手牌 host。对家 hand host 都保留
 # 摸牌槽；出现副露时由同一个 flex 容器整体重排，而不是另写四角坐标。
 const HAND_HOST_RECTS := [
 	Rect2(302.0, 778.0, 996.0, 92.0),
@@ -77,7 +96,7 @@ const HAND_HOST_WITH_MELD_RECTS := [
 	Rect2(626.699, 24.341, 483.441, 45.067),
 	Rect2(257.346, 140.869, 95.406, 415.644),
 ]
-# 受控 DOM 测量：满14张暗手旁强插1个pon，不是合法牌局状态，仅保留视觉回归。
+# 受控极限测量：满14张暗手旁强插1个pon，不是合法牌局状态。
 const CONTROLLED_FULL_HAND_WITH_PON_RECTS := HAND_HOST_WITH_MELD_RECTS
 # 合法生产状态：1 pon 后暗手 base=10，再含1张摸牌（总11张）。
 const LEGAL_ONE_PON_POST_DRAW_HAND_RECTS := [
@@ -109,7 +128,7 @@ const AVATAR_RECTS := [
 	Rect2(105.0, 370.0, 78.0, 78.0),
 ]
 
-# q0()/aw() 的 SVG 外包围盒与 host 纵向公式。raw 坐标来自公开 DOM：
+# 侧家牌块的外包围盒与 host 纵向公式：
 # scene=(66,48)、side cell top=69、height=596、host=494.63、左右分别
 # translateY(0/-10)，右家再因 column-reverse 从预留槽之后的 44px 起排。
 const SIDE_HAND_RAW_SIZE := Vector2(46.71, 66.63)
@@ -186,7 +205,7 @@ static func _side_hand_raw_host_rect_for_state(seat_id: int, base_count: int,
 	var meld_outer := meld_main_extent + (SIDE_MELD_MAIN_OVERHANG \
 		if meld_main_extent > 0.0 else 0.0)
 	var flex := hand_meld_flex_layout(seat_id, hand_extent, meld_outer)
-	# side DOM hand 是 raw 46.703px 宽的竖盒；以合法1pon/base10实测为锚，
+	# 侧家 hand 是 raw 46.703px 宽的竖盒；以合法1pon/base10为锚，
 	# count/meld 变化严格按同一 flex 居中量平移。
 	var reference_hand_extent := hand_main_extent(seat_id, 10)
 	var reference_meld_outer := 137.0 + SIDE_MELD_MAIN_OVERHANG
@@ -236,7 +255,7 @@ static func side_hand_drawn_slot_raw_origin_for_state(seat_id: int,
 	return Vector2(host.position.x, raw_y)
 
 
-# CSS `rotateX(18deg)` + 父级 1200px perspective 的逐点投影。
+# `rotateX(18deg)` + 父级 1200px perspective 的逐点投影。
 static func project_table_point(point: Vector2) -> Vector2:
 	var angle := deg_to_rad(TABLE_PLANE_ROTATION_X_DEGREES)
 	var relative_y := point.y - TABLE_PLANE_ORIGIN.y
@@ -304,7 +323,7 @@ static func avatar_rect(seat_id: int) -> Rect2:
 
 # 左右家不能把整列当 rigid stack：每个 SVG 的四角分别过 rotateX +
 # perspective，故靠近镜头的末槽会自然变宽、变高并向外偏移。
-# 受控 full-hand DOM fixture 专用；生产路径调用 `*_for_state` 动态版本。
+# 受控 full-hand fixture 专用；生产路径调用 `*_for_state` 动态版本。
 static func controlled_side_hand_slot_rect(seat_id: int, slot_index: int,
 		meld_main_extent: float = 0.0) -> Rect2:
 	assert(seat_id == 1 or seat_id == 3)
@@ -402,7 +421,7 @@ static func seat_anchor(seat_id: int) -> Vector2:
 	return center()
 
 
-# 弃牌河：逐项翻译 `.board` grid、四向 30px 内移与透视后的屏幕 AABB。
+# 弃牌河：逐项应用四向网格、30px 内移与透视后的屏幕 AABB。
 static func discard_river(seat_id: int) -> Dictionary:
 	var projected := _projected_rect_aabb(_river_raw_rect(seat_id))
 	var rotation_degrees := 0.0

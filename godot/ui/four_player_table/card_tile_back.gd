@@ -53,13 +53,16 @@ var _back_tex: Texture2D = null
 # 牌背着色（按 owner_seat；保留 plan-3 D2/D5 的归属可视化）
 var _back_tint: Color = Color.WHITE
 var _soft_shadow: Panel = null
+var _candidate_brackets: Panel = null
+var _selected_seal: Label = null
+var _disabled_hatch: Label = null
 
 func _init() -> void:
 	custom_minimum_size = Vector2(TILE_WIDTH, TILE_HEIGHT)
 	size = Vector2(TILE_WIDTH, TILE_HEIGHT)
 
 func _ready() -> void:
-	# 参考 .tile 的第二层漫射影：主 StyleBox 画 2px 锐影，本子节点画 4px 软影。
+	# 第二层漫射影：主 StyleBox 画 2px 锐影，本子节点画 4px 软影。
 	_soft_shadow = Panel.new()
 	_soft_shadow.name = "SoftShadow"
 	_soft_shadow.position = Vector2.ZERO
@@ -95,7 +98,7 @@ func _ready() -> void:
 	_refresh()
 
 
-# 参考状态机：hover=-7px，lifted=-14px，lifted:hover=-22px。
+# 牌状态位移：hover=-7px，lifted=-14px，lifted:hover=-22px。
 const HOVER_LIFT_PX: float = 7.0
 const LIFTED_PX: float = 14.0
 const LIFTED_HOVER_PX: float = 22.0
@@ -194,7 +197,7 @@ var _dim_mask: ColorRect = null
 var _win_tween: Tween = null
 var _win_base_scale: Vector2 = Vector2.ONE
 
-# 宝牌:斜向高光循环扫过(对标参考作 .tile--dora dora-shine,2.4s 周期)。
+# 宝牌：斜向高光以 2.4s 周期循环扫过。
 # 只对正面牌有意义;牌背调用是 no-op。
 func set_dora(b: bool) -> void:
 	if _is_dora == b:
@@ -234,6 +237,8 @@ func set_lifted(b: bool) -> void:
 	if b and not _hover_active:
 		_capture_motion_base()
 	_is_lifted = b
+	_ensure_selected_seal()
+	_selected_seal.visible = b
 	_apply_motion_state()
 	queue_redraw()
 
@@ -275,6 +280,8 @@ func set_dim(b: bool) -> void:
 	if _is_dim == b:
 		return
 	_is_dim = b
+	_ensure_disabled_hatch()
+	_disabled_hatch.visible = b
 	if b:
 		if _dim_mask == null:
 			_dim_mask = _make_mask(Color(0, 0, 0, 0.55))
@@ -331,8 +338,60 @@ func _play_click_pulse() -> void:
 
 func set_clickable(b: bool) -> void:
 	_is_clickable = b
+	_ensure_candidate_brackets()
+	_candidate_brackets.visible = b
 	# 视觉反馈：可点击时鼠标悬停手指，不可点击时默认箭头
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND if b else Control.CURSOR_ARROW
+
+
+func _ensure_candidate_brackets() -> void:
+	if _candidate_brackets != null:
+		return
+	_candidate_brackets = Panel.new()
+	_candidate_brackets.name = "CandidateBrackets"
+	_candidate_brackets.position = Vector2(-3, -3)
+	_candidate_brackets.size = Vector2(TILE_WIDTH + 6, TILE_HEIGHT + 6)
+	_candidate_brackets.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color.TRANSPARENT
+	style.border_color = Color(0.82, 0.96, 1.0, 0.95)
+	style.set_border_width_all(2)
+	style.set_corner_radius_all(8)
+	_candidate_brackets.add_theme_stylebox_override("panel", style)
+	add_child(_candidate_brackets)
+
+
+func _ensure_selected_seal() -> void:
+	if _selected_seal != null:
+		return
+	_selected_seal = Label.new()
+	_selected_seal.name = "SelectedSeal"
+	_selected_seal.text = "◆"
+	_selected_seal.position = Vector2(28, TILE_HEIGHT - 15)
+	_selected_seal.size = Vector2(24, 24)
+	_selected_seal.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_selected_seal.add_theme_font_size_override("font_size", 18)
+	_selected_seal.add_theme_color_override("font_color", Color(1.0, 0.84, 0.35))
+	_selected_seal.add_theme_color_override("font_outline_color", Color(0.05, 0.08, 0.1))
+	_selected_seal.add_theme_constant_override("outline_size", 3)
+	_selected_seal.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_selected_seal)
+
+
+func _ensure_disabled_hatch() -> void:
+	if _disabled_hatch != null:
+		return
+	_disabled_hatch = Label.new()
+	_disabled_hatch.name = "DisabledHatch"
+	_disabled_hatch.text = "╱\n  ╱\n╱"
+	_disabled_hatch.position = Vector2(8, 22)
+	_disabled_hatch.size = Vector2(TILE_WIDTH - 16, TILE_HEIGHT - 28)
+	_disabled_hatch.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_disabled_hatch.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_disabled_hatch.add_theme_font_size_override("font_size", 22)
+	_disabled_hatch.add_theme_color_override("font_color", Color(0.88, 0.94, 0.96, 0.72))
+	_disabled_hatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_disabled_hatch)
 
 # ---- public setters ----
 
@@ -452,7 +511,7 @@ func _refresh() -> void:
 	sb.corner_radius_top_right = CORNER_RADIUS_TOP
 	sb.corner_radius_bottom_left = CORNER_RADIUS_BOTTOM
 	sb.corner_radius_bottom_right = CORNER_RADIUS_BOTTOM
-	# 参考 .tile 第一层锐影 0 2px 3px #00000059；第二层在 SoftShadow。
+	# 第一层锐影 0 2px 3px #00000059；第二层在 SoftShadow。
 	sb.shadow_color = Color(0, 0, 0, 0.35)
 	sb.shadow_size = 3
 	sb.shadow_offset = Vector2(0, 2)
