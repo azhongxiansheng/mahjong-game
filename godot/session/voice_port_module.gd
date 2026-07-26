@@ -249,8 +249,10 @@ func release_all() -> void:
 	if _whisper_model_manager != null and is_instance_valid(_whisper_model_manager):
 		if not _whisper_model_manager.is_inside_tree():
 			_whisper_model_manager.release()
-			_whisper_model_manager.free()
+			# 禁止信号栈内同步 free；脱树 manager 用 queue_free
+			_whisper_model_manager.queue_free()
 		else:
+			# 入树由 PlayableTable 负责 queue_free
 			_whisper_model_manager.release()
 	_whisper_model_manager = null
 	ptt_state_changed.emit(&"idle")

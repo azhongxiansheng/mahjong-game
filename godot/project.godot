@@ -71,4 +71,8 @@ physics_engine="GodotPhysics2D"
 ; 贴图(牌 272×389、立绘、图标)缩放时用 mipmap + 双线性,不会硬边糊。
 ; 旧的 NEAREST(=1)是 commit 6090d26 时代为 atlas 切片防色块用的,现已过时。
 textures/canvas_textures/default_texture_filter=3
+; E7-03（#257）：Godot 4.6.1 导出 universal/arm64 时硬失败：
+; "Cannot export for universal or arm64 if ETC2 ASTC texture format is disabled."
+; 证据见 /tmp/mahjong-e7-257-export-r1-*.log；官方文档 Exporting for macOS 使用官方模板 universal 二进制。
+textures/vram_compression/import_etc2_astc=true
 renderer/rendering_mode="forward_plus"

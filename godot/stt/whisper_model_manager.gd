@@ -32,21 +32,52 @@ var _ensure_requested: bool = false
 var _request_offset: int = 0
 ## 当前请求是否从 offset=0 直接写入 .partial（取消/中断时保留前缀）。
 var _download_to_partial: bool = false
+## #257：下载中进度采样去重；仅 STATE_DOWNLOADING 时 process。
+var _last_emitted_progress: int = -1
+var _progress_sampling: bool = false
+## #257：macOS HF resolve → CDN 异步解析（禁止主线程同步 curl / wait_to_finish）。
+## 使用可 kill 子进程 + 输出文件轮询；cancel/release/PREDELETE 立即返回。
+var _resolve_token: int = 0
+var _resolve_active_token: int = 0
+var _resolve_pid: int = -1
+var _resolve_out_path: String = ""
+var _resolve_in_flight: bool = false
+var _pending_request_headers: PackedStringArray = PackedStringArray()
+## 测试注入：平台名 / curl 路径 / 解析 Callable（返回 String URL）。
+var platform_name_override: String = ""
+var curl_bin_override: String = ""
+var resolve_url_override: Callable = Callable()
 
 
 func _init() -> void:
 	# GUT/headless 默认禁止公网 HF，避免误下 487MB；localhost 与显式允许不受影响。
 	_allow_public_network = not OS.has_feature("headless")
 	_manifest = WhisperModelManifest.production_small()
+	set_process(false)
 
 
 func _ready() -> void:
 	_ensure_http_node()
 
 
+func _process(_delta: float) -> void:
+	# 优先轮询可 kill 的 resolve 子进程（完成则读结果；不阻塞）。
+	if _resolve_pid > 0:
+		_poll_resolve_process()
+	# downloading 阶段有界采样 HTTPRequest 真实已下载字节。
+	if _progress_sampling and _state == STATE_DOWNLOADING and not _released and not _cancelled:
+		_sample_download_progress(false)
+	elif _resolve_pid <= 0:
+		# 无 resolve worker 且无需采样时停 process
+		if not _progress_sampling:
+			set_process(false)
+
+
 func _exit_tree() -> void:
 	# 卸树：取消在途 HTTP 并释放节点，但保留磁盘 partial；允许同实例 reparent 后续 ensure。
+	_stop_progress_sampling()
 	if _released:
+		_kill_resolve_process()
 		return
 	if _ensure_in_flight or _state == STATE_DOWNLOADING or _state == STATE_CHECKING or _state == STATE_VERIFYING:
 		_cancelled = true
@@ -54,6 +85,14 @@ func _exit_tree() -> void:
 		if _state != STATE_CANCELLED and _state != STATE_READY and _state != STATE_FAILED:
 			_set_state(STATE_CANCELLED)
 	_teardown_http()
+	_kill_resolve_process()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PREDELETE:
+		# 即将销毁：kill 活跃 resolver，绝不 wait_to_finish / 阻塞主线程
+		_invalidate_resolve()
+		_kill_resolve_process()
 
 
 func apply_production_manifest() -> void:
@@ -163,10 +202,14 @@ func cancel() -> void:
 	if _state == STATE_IDLE:
 		_cancelled = true
 		_ensure_in_flight = false
+		_invalidate_resolve()
+		_stop_progress_sampling()
 		_set_state(STATE_CANCELLED)
 		return
 	_cancelled = true
 	_ensure_in_flight = false
+	_invalidate_resolve()
+	_stop_progress_sampling()
 	# 先关闭 HTTP 句柄，再整理磁盘：保留合法 partial 前缀，丢弃未合并的 chunk
 	if _http != null and is_instance_valid(_http):
 		_http.cancel_request()
@@ -180,6 +223,8 @@ func release() -> void:
 	_released = true
 	_cancelled = true
 	_ensure_in_flight = false
+	_invalidate_resolve()
+	_stop_progress_sampling()
 	_teardown_http()
 	if _state != STATE_CANCELLED:
 		_set_state(STATE_CANCELLED)
@@ -198,7 +243,7 @@ func _run_ensure() -> void:
 	# 1) 已有本 version active 且 size+sha 匹配 → ready
 	if _active_matches_manifest():
 		_received_bytes = int(_manifest.get("size_bytes", 0))
-		progress_changed.emit(_received_bytes, _received_bytes)
+		_emit_progress(_received_bytes, _received_bytes)
 		_ensure_in_flight = false
 		_set_state(STATE_READY)
 		return
@@ -233,6 +278,7 @@ func _start_download() -> void:
 		_ensure_in_flight = false
 		return
 	_ensure_http_node()
+	_ensure_system_ca_bundle()
 	var expected: int = int(_manifest.get("size_bytes", 0))
 	var offset: int = 0
 	var partial: String = partial_model_path()
@@ -246,21 +292,41 @@ func _start_download() -> void:
 	_request_offset = offset
 	_download_to_partial = offset == 0
 	_received_bytes = offset
-	progress_changed.emit(_received_bytes, expected)
+	_last_emitted_progress = -1
+	_emit_progress(_received_bytes, expected)
 	_set_state(STATE_DOWNLOADING)
+	_start_progress_sampling()
 
 	var headers := PackedStringArray()
+	headers.append("User-Agent: MahjongGame-WhisperModelManager/1.0")
 	if offset > 0:
 		headers.append("Range: bytes=%d-" % offset)
+	_pending_request_headers = headers
 
 	_cleanup_chunk()
-	# offset==0：直接写入 .partial，中断可保留前缀；offset>0：写入 .chunk，成功 206 才 append
+	var url: String = String(_manifest.get("url", ""))
+	# macOS：HF resolve 在主线程外异步解析到 CDN；body 仍由 HTTPRequest 下载。
+	if _should_async_resolve_hf_url(url):
+		_start_async_url_resolve(url)
+		return
+	_begin_http_request(url, headers)
+
+
+func _begin_http_request(url: String, headers: PackedStringArray) -> void:
+	if _released or _cancelled:
+		_ensure_in_flight = false
+		return
+	_ensure_http_node()
+	# offset==0：直接写入 .partial；offset>0：写入 .chunk，成功 206 才 append
 	if _download_to_partial:
-		_http.download_file = partial
+		_http.download_file = partial_model_path()
 	else:
 		_http.download_file = chunk_model_path()
-	var err: Error = _http.request(String(_manifest.get("url", "")), headers)
+	# 仅公网 HTTPS 用线程；127.0.0.1 fixture 保持主线程以便慢流/cancel 对齐。
+	_http.use_threads = _is_public_host(url) and _allow_public_network
+	var err: Error = _http.request(url, headers)
 	if err != OK:
+		_stop_progress_sampling()
 		_cleanup_chunk()
 		_fail("HTTP_REQUEST_ERROR_%d" % err)
 
@@ -268,6 +334,8 @@ func _start_download() -> void:
 func _on_request_completed(
 	result: int, response_code: int, headers: PackedStringArray, _body: PackedByteArray
 ) -> void:
+	# 请求结束：先停采样，再整理（避免终态后继续 process）
+	_stop_progress_sampling()
 	if _released:
 		return
 	if _cancelled:
@@ -352,7 +420,7 @@ func _on_request_completed(
 
 	var psz: int = _file_size(partial)
 	_received_bytes = maxi(psz, 0)
-	progress_changed.emit(_received_bytes, expected)
+	_emit_progress(_received_bytes, expected)
 
 	if psz < 0:
 		_fail("PARTIAL_STAT_FAILED")
@@ -386,7 +454,7 @@ func _finalize_interrupted_download(from_failure: bool) -> void:
 		return
 	# 0 < psz < expected：保留供 Range 续传
 	_received_bytes = psz
-	progress_changed.emit(psz, expected)
+	_emit_progress(psz, expected)
 
 
 func _verify_and_activate(partial_path: String) -> bool:
@@ -414,7 +482,7 @@ func _verify_and_activate(partial_path: String) -> bool:
 			_delete_path(partial_path)
 			_cleanup_chunk()
 			_received_bytes = expected
-			progress_changed.emit(expected, expected)
+			_emit_progress(expected, expected)
 			_ensure_in_flight = false
 			_set_state(STATE_READY)
 			return true
@@ -425,7 +493,7 @@ func _verify_and_activate(partial_path: String) -> bool:
 		return false
 	_cleanup_chunk()
 	_received_bytes = expected
-	progress_changed.emit(expected, expected)
+	_emit_progress(expected, expected)
 	_ensure_in_flight = false
 	_set_state(STATE_READY)
 	return true
@@ -569,6 +637,7 @@ func _is_public_host(url: String) -> bool:
 
 func _fail(code: String) -> void:
 	_ensure_in_flight = false
+	_stop_progress_sampling()
 	# 注意：调用方若已 _finalize_interrupted_download，则不要二次误删 partial。
 	# 此处仅保证 chunk 不残留；partial 保留策略由调用路径决定。
 	if code.begins_with("HTTP_RESULT_") or code == "INCOMPLETE_DOWNLOAD":
@@ -580,6 +649,52 @@ func _fail(code: String) -> void:
 		_cleanup_chunk()
 	_set_error(code)
 	_set_state(STATE_FAILED)
+
+
+## #257：downloading 阶段启动 process 采样（有界/去重）。
+func _start_progress_sampling() -> void:
+	_progress_sampling = true
+	set_process(true)
+
+
+func _stop_progress_sampling() -> void:
+	_progress_sampling = false
+	# 若 resolve 子进程仍在跑，保持 process 以便收割/轮询
+	if _resolve_pid <= 0:
+		set_process(false)
+
+
+## 采样 HTTPRequest.get_downloaded_bytes；总进度 = request_offset + 当前请求已下载，clamp 到 manifest size。
+func _sample_download_progress(force: bool) -> void:
+	if _http == null or not is_instance_valid(_http):
+		return
+	var expected: int = int(_manifest.get("size_bytes", 0))
+	if expected <= 0:
+		return
+	var current: int = _http.get_downloaded_bytes()
+	if current < 0:
+		current = 0
+	var total_recv: int = _request_offset + current
+	if total_recv > expected:
+		total_recv = expected
+	if not force and total_recv == _last_emitted_progress:
+		return
+	_received_bytes = total_recv
+	_emit_progress(total_recv, expected)
+
+
+func _emit_progress(received_bytes: int, total_bytes: int) -> void:
+	var recv: int = received_bytes
+	if total_bytes > 0 and recv > total_bytes:
+		recv = total_bytes
+	if recv < 0:
+		recv = 0
+	# 去重：相同 received 不重复 emit
+	if recv == _last_emitted_progress:
+		return
+	_last_emitted_progress = recv
+	_received_bytes = recv
+	progress_changed.emit(recv, total_bytes)
 
 
 func _set_state(s: StringName) -> void:
@@ -603,20 +718,199 @@ func _ensure_http_node() -> void:
 	_http.name = "WhisperModelHttp"
 	# Godot 4.6：大型下载建议 timeout=0 禁用总时长超时
 	_http.timeout = 0.0
-	# 主线程推进，便于 cancel/落盘与 process_frame 对齐（不 mock 核心）
+	# 默认主线程；公网 HTTPS 在 _start_download 时切到线程。
 	_http.use_threads = false
+	_http.max_redirects = 16
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)
 
 
+## 注入系统 CA，改善 headless 下 HTTPS 校验。
+func _ensure_system_ca_bundle() -> void:
+	var existing: String = str(ProjectSettings.get_setting("network/tls/certificate_bundle_override", ""))
+	if not existing.is_empty() and FileAccess.file_exists(existing):
+		return
+	var ca: String = OS.get_system_ca_certificates()
+	if ca.is_empty():
+		return
+	var path: String = OS.get_user_data_dir().path_join("whisper_system_ca.pem")
+	# smoke 隔离 root 时 user:// 可能不便；优先 /tmp 仅当可写
+	var try_paths: Array[String] = [path, "/tmp/mahjong-e7-257-system-ca.pem"]
+	for p in try_paths:
+		var f := FileAccess.open(p, FileAccess.WRITE)
+		if f == null:
+			continue
+		f.store_string(ca)
+		f.close()
+		ProjectSettings.set_setting("network/tls/certificate_bundle_override", p)
+		return
+
+
+## 是否走 macOS 异步 curl 解析（Windows/其它平台永不调用）。
+func _should_async_resolve_hf_url(url: String) -> bool:
+	if not _allow_public_network:
+		return false
+	if _platform_name() != "macOS":
+		return false
+	# 测试注入：允许任意 URL 走异步解析路径（deferred，不阻塞主线程）
+	if resolve_url_override.is_valid():
+		return true
+	if url.is_empty() or not url.contains("huggingface.co"):
+		return false
+	return FileAccess.file_exists(_curl_bin_path())
+
+
+func _platform_name() -> String:
+	if not platform_name_override.is_empty():
+		return platform_name_override
+	return OS.get_name()
+
+
+func _curl_bin_path() -> String:
+	if not curl_bin_override.is_empty():
+		return curl_bin_override
+	return "/usr/bin/curl"
+
+
+func _invalidate_resolve() -> void:
+	_resolve_token += 1
+	_resolve_in_flight = false
+	# 立即 kill 活跃子进程；绝不 wait（避免主线程卡 curl --max-time）
+	_kill_resolve_process()
+
+
+## 终止活跃 resolve 子进程并清理临时输出；立即返回，不阻塞。
+func _kill_resolve_process() -> void:
+	var pid: int = _resolve_pid
+	_resolve_pid = -1
+	var out_path: String = _resolve_out_path
+	_resolve_out_path = ""
+	if pid > 0:
+		# 不在 kill 后调用 is_process_running（Unix 可能打 ECHILD ERROR）
+		OS.kill(pid)
+	if not out_path.is_empty() and FileAccess.file_exists(out_path):
+		DirAccess.remove_absolute(out_path)
+
+
+## 轮询：子进程已退出则读输出并完成 resolve；仍在跑则返回。
+func _poll_resolve_process() -> void:
+	if _resolve_pid <= 0:
+		return
+	if OS.is_process_running(_resolve_pid):
+		return
+	var token: int = _resolve_active_token
+	var out_path: String = _resolve_out_path
+	var fallback_url: String = String(_manifest.get("url", ""))
+	_resolve_pid = -1
+	_resolve_out_path = ""
+	var resolved: String = _read_resolve_out_file(out_path)
+	if not out_path.is_empty() and FileAccess.file_exists(out_path):
+		DirAccess.remove_absolute(out_path)
+	# 与旧 curl worker 一致：仅采纳 https 最终 URL，否则回退原 URL
+	if not resolved.begins_with("https://") or resolved.is_empty():
+		resolved = fallback_url
+	_on_resolve_finished(token, resolved)
+
+
+func _read_resolve_out_file(path: String) -> String:
+	if path.is_empty() or not FileAccess.file_exists(path):
+		return ""
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return ""
+	var text: String = f.get_as_text().strip_edges()
+	f.close()
+	return text
+
+
+func _shell_quote(s: String) -> String:
+	# 单引号包裹；内部 ' → '\''
+	return "'%s'" % s.replace("'", "'\\''")
+
+
+func _start_async_url_resolve(url: String) -> void:
+	_resolve_token += 1
+	var token: int = _resolve_token
+	_resolve_active_token = token
+	_resolve_in_flight = true
+	if resolve_url_override.is_valid():
+		# 测试注入：结果 deferred 投递（不阻塞主线程）
+		var resolved: String = str(resolve_url_override.call(url))
+		call_deferred("_on_resolve_finished", token, resolved)
+		return
+	# 若仍有旧进程：先 kill（token 已前进，旧结果丢弃）
+	_kill_resolve_process()
+	var bin: String = _curl_bin_path()
+	if bin.is_empty() or not FileAccess.file_exists(bin):
+		_resolve_in_flight = false
+		call_deferred("_on_resolve_finished", token, url)
+		return
+	_resolve_out_path = "/tmp/mahjong-e7-257-resolve-%d-%d.txt" % [Time.get_ticks_usec(), token]
+	# HEAD(-I)+-L 写 url_effective 到文件；禁止 GET 整包 body。
+	# exec 让 curl/shim 成为该 pid（无残留 shell 子进程）；OS.kill 立即结束；主线程永不 wait。
+	var cmd: String = "exec %s -sI -L -o /dev/null -w '%%{url_effective}' --max-redirs 8 --connect-timeout 10 --max-time 25 %s > %s 2>/dev/null" % [
+		_shell_quote(bin),
+		_shell_quote(url),
+		_shell_quote(_resolve_out_path),
+	]
+	var pid: int = OS.create_process("/bin/zsh", PackedStringArray(["-c", cmd]), false)
+	if pid <= 0:
+		_resolve_out_path = ""
+		_resolve_in_flight = false
+		call_deferred("_on_resolve_finished", token, url)
+		return
+	_resolve_pid = pid
+	set_process(true)
+
+
+func _on_resolve_finished(token: int, resolved_url: String) -> void:
+	if token != _resolve_token:
+		return
+	_resolve_in_flight = false
+	if _released or _cancelled:
+		return
+	if not is_instance_valid(self):
+		return
+	if _state != STATE_DOWNLOADING:
+		return
+	var url: String = resolved_url.strip_edges()
+	# 空结果回退 manifest 原 URL；override 可返回 http fixture，curl 产物须为 https
+	if url.is_empty():
+		url = String(_manifest.get("url", ""))
+	_begin_http_request(url, _pending_request_headers)
+
+
+## 兼容旧测试名：是否仍有活跃 resolve worker。
+func has_pending_resolve_thread() -> bool:
+	return has_pending_resolve_worker()
+
+
+## 测试/诊断：是否仍有活跃异步 resolver 子进程。
+func has_pending_resolve_worker() -> bool:
+	return _resolve_pid > 0
+
+
+## 测试：resolve 子进程 pid；无则 -1。
+func get_resolve_pid_for_test() -> int:
+	return _resolve_pid
+
+
+func was_resolve_in_flight() -> bool:
+	return _resolve_in_flight
+
+
+func get_resolve_token_for_test() -> int:
+	return _resolve_token
+
+
 func _teardown_http() -> void:
+	_stop_progress_sampling()
+	_invalidate_resolve()
 	if _http != null and is_instance_valid(_http):
 		_http.cancel_request()
 		if _http.request_completed.is_connected(_on_request_completed):
 			_http.request_completed.disconnect(_on_request_completed)
-		if _http.get_parent() == self:
-			remove_child(_http)
-		_http.free()
+		# 不单独 queue_free：保持为 manager 子节点，随 manager.queue_free 一并回收，避免 orphan
 	_http = null
 	_cleanup_chunk()
 

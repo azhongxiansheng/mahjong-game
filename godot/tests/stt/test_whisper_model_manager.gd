@@ -781,3 +781,440 @@ func test_oversized_partial_resets_retryable() -> void:
 	var st: StringName = await _wait_terminal(mgr)
 	assert_eq(st, &"ready", "超长 partial 恢复: %s" % mgr.get_error_code())
 	assert_eq(FileAccess.get_file_as_bytes(mgr.active_model_path()).size(), _fixture_body.size())
+
+
+# --- #257 P1-2：下载进度 HTTPRequest 采样（信号链，非仅磁盘） ---
+
+func test_download_progress_signal_emits_mid_values_on_fresh_download() -> void:
+	# 慢流真实 HTTP：progress_changed 必须出现 0 < received < total（非仅起终点）
+	var big: PackedByteArray = PackedByteArray()
+	for _i in range(12):
+		big.append_array(_fixture_body)
+	assert_gt(big.size(), 6000)
+	_http.body = big
+	_http.body_chunk_size = 64
+	_http.body_chunk_hold_frames = 1
+	var sha_big := _sha256_bytes(big)
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": _http.base_url(),
+		"size_bytes": big.size(),
+		"sha256": sha_big,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	var samples: Array = []
+	mgr.progress_changed.connect(func(recv: int, total: int):
+		samples.append({"recv": recv, "total": total, "state": mgr.get_lifecycle_state()})
+	)
+	mgr.ensure_ready()
+	var start_ms: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start_ms < 10000:
+		var st: StringName = mgr.get_lifecycle_state()
+		if st == &"ready" or st == &"failed" or st == &"cancelled":
+			break
+		await get_tree().process_frame
+	var st2: StringName = mgr.get_lifecycle_state()
+	assert_eq(st2, &"ready", "慢流须完成: %s samples=%d" % [mgr.get_error_code(), samples.size()])
+	var mid := false
+	var last_recv := -1
+	var monotonic := true
+	for s in samples:
+		var r: int = int(s["recv"])
+		var t: int = int(s["total"])
+		assert_eq(t, big.size())
+		if r > 0 and r < big.size():
+			mid = true
+		if r < last_recv:
+			monotonic = false
+		last_recv = r
+	assert_true(mid, "必须有中间进度值 0<recv<total，samples=%s" % str(samples))
+	assert_true(monotonic, "进度须单调不减")
+	# 终态后不应持续 process 采样
+	var after: int = samples.size()
+	for _j in range(10):
+		await get_tree().process_frame
+	assert_eq(samples.size(), after, "ready 后不得继续 progress 采样")
+
+
+func test_range_resume_progress_includes_request_offset() -> void:
+	# Range 续传：progress 必须从 offset 起算（offset + downloaded），不是从 0
+	var big: PackedByteArray = PackedByteArray()
+	for _i in range(10):
+		big.append_array(_fixture_body)
+	_http.body = big
+	_http.body_chunk_size = 48
+	_http.body_chunk_hold_frames = 1
+	var sha_big := _sha256_bytes(big)
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": _http.base_url(),
+		"size_bytes": big.size(),
+		"sha256": sha_big,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	var offset: int = 200
+	_write_bytes(mgr.partial_model_path(), big.slice(0, offset))
+	var samples: Array = []
+	mgr.progress_changed.connect(func(recv: int, total: int):
+		samples.append(recv)
+	)
+	mgr.ensure_ready()
+	var start_ms: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start_ms < 10000:
+		if mgr.get_lifecycle_state() == &"ready" or mgr.get_lifecycle_state() == &"failed":
+			break
+		await get_tree().process_frame
+	assert_eq(mgr.get_lifecycle_state(), &"ready", mgr.get_error_code())
+	var saw_at_least_offset := false
+	var saw_above_offset := false
+	for r in samples:
+		var recv: int = int(r)
+		if recv >= offset:
+			saw_at_least_offset = true
+		if recv > offset and recv < big.size():
+			saw_above_offset = true
+	assert_true(saw_at_least_offset, "续传进度起点须 >= offset，samples=%s" % str(samples))
+	assert_true(
+		saw_above_offset or samples.has(big.size()),
+		"续传须推进到 offset 以上或完成，samples=%s" % str(samples)
+	)
+
+
+func test_progress_sampling_stops_on_cancel() -> void:
+	var big: PackedByteArray = PackedByteArray()
+	for _i in range(10):
+		big.append_array(_fixture_body)
+	_http.body = big
+	_http.body_chunk_size = 32
+	_http.body_chunk_hold_frames = 2
+	var sha_big := _sha256_bytes(big)
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": _http.base_url(),
+		"size_bytes": big.size(),
+		"sha256": sha_big,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	var samples: Array = []
+	mgr.progress_changed.connect(func(recv: int, _t: int):
+		samples.append(recv)
+	)
+	mgr.ensure_ready()
+	var start_ms: int = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start_ms < 8000:
+		if samples.size() >= 2:
+			break
+		if mgr.get_lifecycle_state() == &"ready":
+			break
+		await get_tree().process_frame
+	mgr.cancel()
+	await get_tree().process_frame
+	var n: int = samples.size()
+	for _j in range(12):
+		await get_tree().process_frame
+	# cancel 后允许一次终态整理进度，但不得持续增长采样（允许 +1 次 finalize）
+	assert_lte(samples.size(), n + 2, "cancel 后不得持续 progress 采样")
+	assert_eq(mgr.get_lifecycle_state(), &"cancelled")
+
+
+# --- #257 P2-1：macOS 异步 HF resolve；Windows 不走旁路 ---
+
+func test_windows_platform_never_uses_hf_curl_resolve() -> void:
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": WhisperModelManifest.URL_SMALL,
+		"size_bytes": _fixture_body.size(),
+		"sha256": _fixture_sha,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	mgr.platform_name_override = "Windows"
+	var curl_calls: Array = []
+	mgr.resolve_url_override = func(u: String) -> String:
+		curl_calls.append(u)
+		return u
+	# Windows 不得进入异步 resolve 分支
+	assert_false(mgr._should_async_resolve_hf_url(WhisperModelManifest.URL_SMALL))
+	mgr.ensure_ready()
+	await get_tree().process_frame
+	assert_eq(curl_calls.size(), 0, "Windows 不得调用 resolve_url_override/curl")
+	# 公网 HF + allow 在 Windows 会直连失败；此处仅断言未走 resolve 旁路
+	mgr.cancel()
+
+
+func test_macos_resolve_success_uses_resolved_url_for_http() -> void:
+	# 本地 fixture HTTP：resolve 返回 fixture URL，证明异步完成后才 request
+	var big: PackedByteArray = _fixture_body
+	_http.body = big
+	var sha := _fixture_sha
+	var fixture_url: String = _http.base_url()
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/deadbeef/ggml-small.bin",
+		"size_bytes": big.size(),
+		"sha256": sha,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	mgr.platform_name_override = "macOS"
+	mgr.resolve_url_override = func(_u: String) -> String:
+		return fixture_url
+	assert_true(mgr._should_async_resolve_hf_url(String(mgr.get_manifest().get("url", ""))))
+	mgr.ensure_ready()
+	# 至少一帧：resolve deferred
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var st: StringName = await _wait_terminal(mgr, 8000)
+	assert_eq(st, &"ready", "resolve→fixture 后应 ready: %s" % mgr.get_error_code())
+	assert_eq(_sha256_file(mgr.active_model_path()), sha)
+
+
+func test_resolve_cancel_ignores_late_result_and_does_not_request() -> void:
+	var fixture_url: String = _http.base_url()
+	_http.body = _fixture_body
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/deadbeef/ggml-small.bin",
+		"size_bytes": _fixture_body.size(),
+		"sha256": _fixture_sha,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	mgr.platform_name_override = "macOS"
+	var gate := {"allow": false}
+	mgr.resolve_url_override = func(_u: String) -> String:
+		# 立即返回；真实延迟由 cancel 抢在 deferred 前完成
+		return fixture_url
+	mgr.ensure_ready()
+	# 在 deferred _on_resolve_finished 前 cancel
+	var tok: int = mgr.get_resolve_token_for_test()
+	mgr.cancel()
+	assert_gt(mgr.get_resolve_token_for_test(), tok, "cancel 必须 invalidate resolve token")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	assert_eq(mgr.get_lifecycle_state(), &"cancelled")
+	assert_eq(_http.request_count, 0, "迟到 resolve 不得发起 HTTP 请求")
+
+
+func test_resolve_failure_falls_back_to_original_url() -> void:
+	# override 返回空 → 回退 manifest 原 URL；原 URL 为 fixture 时应 ready
+	var fixture_url: String = _http.base_url()
+	_http.body = _fixture_body
+	var mgr := _make_manager({
+		"id": "fixture-small",
+		"version": "fixture-v1",
+		"url": fixture_url,
+		"size_bytes": _fixture_body.size(),
+		"sha256": _fixture_sha,
+		"source_revision": "fixture-rev",
+		"license": "mit",
+		"filename": "ggml-small.bin",
+	})
+	mgr.platform_name_override = "macOS"
+	mgr.resolve_url_override = func(_u: String) -> String:
+		return ""  # 解析失败 → 回退 manifest 原 fixture URL
+	assert_true(mgr._should_async_resolve_hf_url(fixture_url))
+	mgr.ensure_ready()
+	var st: StringName = await _wait_terminal(mgr, 8000)
+	assert_eq(st, &"ready", "空 resolve 须回退原 URL 并完成: %s" % mgr.get_error_code())
+	assert_false(mgr.was_resolve_in_flight())
+	assert_eq(_sha256_file(mgr.active_model_path()), _fixture_sha)
+
+# --- #257 P1-2：真实异步 resolver 生命周期（非 resolve_url_override 冒充）---
+
+func test_real_curl_resolve_worker_clears_after_finish() -> void:
+	if not FileAccess.file_exists("/usr/bin/curl"):
+		pending("no /usr/bin/curl")
+		return
+	if OS.get_name() != "macOS":
+		pending("real curl resolve only exercised on macOS host")
+		return
+	var mgr := WhisperModelManager.new()
+	add_child_autofree(mgr)
+	var root := "/tmp/mahjong-e7-257-thread-join-%d" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(root)
+	mgr.set_models_root(root)
+	mgr.apply_production_manifest()
+	mgr.set_allow_public_network(true)
+	mgr.platform_name_override = "macOS"
+	mgr.curl_bin_override = "/usr/bin/curl"
+	# 不注入 resolve_url_override → 真实可 kill 子进程 + curl HEAD
+	mgr.ensure_ready()
+	var start := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < 35000:
+		if not mgr.has_pending_resolve_worker() and not mgr.was_resolve_in_flight():
+			# 解析阶段结束（随后可能进入 HTTP 下载）
+			if mgr.get_lifecycle_state() != &"checking":
+				break
+		await get_tree().process_frame
+	# 解析完成后不得残留活跃 worker
+	assert_false(mgr.has_pending_resolve_worker(), "解析完成后不得残留活跃 resolve 子进程")
+	assert_false(mgr.has_pending_resolve_thread())
+	mgr.release()
+	start = Time.get_ticks_msec()
+	while Time.get_ticks_msec() - start < 2000:
+		if not mgr.has_pending_resolve_worker():
+			break
+		await get_tree().process_frame
+	assert_false(mgr.has_pending_resolve_worker())
+	_rm_rf_tmp_e7(root)
+
+
+func test_real_thread_cancel_and_table_release_no_orphan() -> void:
+	if not FileAccess.file_exists("/usr/bin/curl"):
+		pending("no /usr/bin/curl")
+		return
+	if OS.get_name() != "macOS":
+		pending("macOS only")
+		return
+	var table: PlayableTable = load("res://ui/four_player_table/playable_table.gd").new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var intent := SessionIntent.new(&"PRACTICE", &"EAST", &"TRASH_TALK", &"lin_yeche")
+	var converted := GameSessionConfig.from_intent(intent, 7, "tt-thread-rel", "e7-r4", {})
+	assert_true(converted.ok)
+	var driver := PracticeSessionLauncher.new().launch(converted.config)
+	var bc: PlayableBattleController = driver.bc_factory.call(7, 0, false, TileId.E, 0)
+	var vp: VoicePortModule = bc.mode_modules.voice_port
+	vp.set_capture_backend(VoicePortModule.CaptureBackend.FIXTURE)
+	var root := "/tmp/mahjong-e7-257-thread-rel-%d" % Time.get_ticks_usec()
+	DirAccess.make_dir_recursive_absolute(root)
+	var mgr := WhisperModelManager.new()
+	mgr.apply_production_manifest()
+	mgr.set_models_root(root)
+	mgr.set_allow_public_network(true)
+	mgr.platform_name_override = "macOS"
+	mgr.curl_bin_override = "/usr/bin/curl"
+	vp.attach_whisper_model_manager(mgr)
+	table.bind_voice_from_battle(bc)
+	await get_tree().process_frame
+	# 解析/下载进行中立即释放牌桌
+	table.release_voice_runtime()
+	for _i in range(90):
+		await get_tree().process_frame
+		if not is_instance_valid(mgr):
+			break
+	assert_null(vp.whisper_model_manager())
+	assert_null(table.get_node_or_null("WhisperModelManager"))
+	assert_false(is_instance_valid(mgr), "释放后 manager 须销毁完毕")
+	_rm_rf_tmp_e7(root)
+
+
+## #257 R5 P1：活跃慢 resolver 期间 release/销毁必须严格短时完成（不可用同步 Callable 冒充）。
+func test_active_slow_resolve_release_never_blocks_main_thread() -> void:
+	if OS.get_name() != "macOS":
+		pending("macOS only")
+		return
+	var usec: int = Time.get_ticks_usec()
+	# 单进程 Python shim（exec 后 pid 即该解释器，kill 可靠；禁止同步 Callable 冒充）
+	var shim: String = "/tmp/mahjong-e7-257-slow-curl-%d.py" % usec
+	var f := FileAccess.open(shim, FileAccess.WRITE)
+	assert_ne(f, null, "write slow curl shim")
+	f.store_string(
+		"#!/usr/bin/env python3\n"
+		+ "import time, sys\n"
+		+ "time.sleep(8)\n"
+		+ "sys.stdout.write('https://example.invalid/e7-257-never-get.bin')\n"
+	)
+	f.close()
+	OS.execute("/bin/chmod", PackedStringArray(["+x", shim]), [], false, false)
+
+	var table: PlayableTable = load("res://ui/four_player_table/playable_table.gd").new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var intent := SessionIntent.new(&"PRACTICE", &"EAST", &"TRASH_TALK", &"lin_yeche")
+	var converted := GameSessionConfig.from_intent(intent, 7, "tt-slow-rel", "e7-r5", {})
+	assert_true(converted.ok)
+	var driver := PracticeSessionLauncher.new().launch(converted.config)
+	var bc: PlayableBattleController = driver.bc_factory.call(7, 0, false, TileId.E, 0)
+	var vp: VoicePortModule = bc.mode_modules.voice_port
+	vp.set_capture_backend(VoicePortModule.CaptureBackend.FIXTURE)
+	var root := "/tmp/mahjong-e7-257-slow-rel-%d" % usec
+	DirAccess.make_dir_recursive_absolute(root)
+	var mgr := WhisperModelManager.new()
+	mgr.apply_production_manifest()
+	mgr.set_models_root(root)
+	mgr.set_allow_public_network(true)
+	mgr.platform_name_override = "macOS"
+	mgr.curl_bin_override = shim
+	# 禁止 resolve_url_override：必须走真实外部异步 worker
+	assert_false(mgr.resolve_url_override.is_valid())
+	vp.attach_whisper_model_manager(mgr)
+	table.bind_voice_from_battle(bc)
+	await get_tree().process_frame
+
+	# 等 worker 真正启动（pid/thread 句柄存在）
+	var boot := Time.get_ticks_msec()
+	while Time.get_ticks_msec() - boot < 2000:
+		if mgr.has_pending_resolve_worker() or mgr.has_pending_resolve_thread():
+			break
+		await get_tree().process_frame
+	assert_true(
+		mgr.has_pending_resolve_worker() or mgr.has_pending_resolve_thread(),
+		"释放前必须仍有活跃异步 resolver worker"
+	)
+	var worker_pid: int = mgr.get_resolve_pid_for_test()
+	var tok_before: int = mgr.get_resolve_token_for_test()
+
+	var t0: int = Time.get_ticks_msec()
+	table.release_voice_runtime()
+	var release_ms: int = Time.get_ticks_msec() - t0
+	assert_lt(release_ms, 250, "release_voice_runtime 不得阻塞主线程（实测 %dms）" % release_ms)
+
+	# queue_free → PREDELETE 也不得阻塞（旧实现 wait_to_finish 可卡 ~8s）
+	for _i in range(45):
+		await get_tree().process_frame
+		if not is_instance_valid(mgr):
+			break
+	var total_ms: int = Time.get_ticks_msec() - t0
+	assert_lt(total_ms, 800, "manager 销毁/主线程帧推进须在短时上界内（实测 %dms）" % total_ms)
+	assert_false(is_instance_valid(mgr), "manager 须已销毁")
+	assert_null(vp.whisper_model_manager())
+	assert_null(table.get_node_or_null("WhisperModelManager"))
+
+	# 迟到结果不得再启动模型 GET：shim 永远写 example.invalid，且 token 已 invalidate
+	assert_gt(tok_before, 0)
+	# worker 进程须被终止（若有 pid）
+	if worker_pid > 0:
+		var still: Array = []
+		var kill0: int = OS.execute("/bin/kill", PackedStringArray(["-0", str(worker_pid)]), still, true, false)
+		assert_ne(kill0, 0, "活跃 resolver 进程须在释放后终止（pid=%d）" % worker_pid)
+
+	DirAccess.remove_absolute(shim)
+	_rm_rf_tmp_e7(root)
+
+
+func _rm_rf_tmp_e7(path: String) -> void:
+	if path.is_empty() or not path.begins_with("/tmp/mahjong-e7-257-"):
+		return
+	var dir := DirAccess.open(path)
+	if dir == null:
+		return
+	dir.list_dir_begin()
+	var entry := dir.get_next()
+	while entry != "":
+		if entry != "." and entry != "..":
+			var child: String = path.path_join(entry)
+			if dir.current_is_dir():
+				_rm_rf_tmp_e7(child)
+			else:
+				DirAccess.remove_absolute(child)
+		entry = dir.get_next()
+	dir.list_dir_end()
+	DirAccess.remove_absolute(path)

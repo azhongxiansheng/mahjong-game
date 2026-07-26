@@ -114,6 +114,23 @@ docker-compose -f docker-compose.e7.yml --env-file .env.example down -v --remove
 ```
 端口：Redis `6379`、CP `8081`、Worker A `9000`/`9001`、Worker B `9002`/`9003`、STT `9100`（均默认 `127.0.0.1`）。Worker 经 `WORKER_REGISTRATION_TOKEN` 向 CP 注册；匹配按租约/容量选择。**网络端到端未验证。**
 
+### E7 macOS Alpha 包（#257）
+```bash
+# 契约（预设 / ad-hoc / 麦克风说明 / 路径隔离）
+scripts/e7_257_macos_export_contract_test.sh
+# 安装 Godot 4.6.1 export template（如缺）并导出 → /tmp/mahjong-e7-257-*
+scripts/e7_257_macos_package.sh
+# 干净目录 smoke：Info.plist / ad-hoc codesign / 包内无 ggml 大模型
+scripts/e7_257_macos_package_smoke.sh
+# 真实 ggml-small（487601967 字节）下载 + SHA-256（隔离 /tmp，不写真实 Application Support）
+scripts/e7_257_whisper_model_download_smoke.sh
+```
+- 预设名 `macOS Alpha`；bundle id `com.lovteam.MahjongGame`；**仅 ad-hoc**（禁止 Developer ID / 公证）。
+- Gatekeeper：未公证应用可能被拦截，见 `docs/superpowers/specs/2026-07-26-e7-03-macos-alpha-packaging.md`。
+- Godot 4.6 macOS `user://`：`~/Library/Application Support/Godot/app_userdata/MahjongGame`（smoke 监控此路径，非旧 `Application Support/MahjongGame`）。
+- 模型 smoke：必须用导出 `MahjongGame.app` 在空 root 上 `ensure_ready()` 拉生产清单（487601967 字节）；禁止编辑器冒充与 curl 预置成品。macOS 可用 `/usr/bin/curl` 经可 kill 子进程（`OS.create_process`，非阻塞轮询）仅解析 HF CDN URL（不下载 body）；cancel/release/销毁立即 kill，主线程不等待。
+- 欢乐场内联权限说明 + 模型进度采样；标准场零麦克风/零下载。**网络端到端未验证**；真实麦克风授权需可见人工操作。不含 App Store / Windows #258 / 四端 #259。
+
 #248 new-api 备份（可选）：专用 `STT_NEW_API_ENDPOINT` / `STT_NEW_API_MODEL` / `STT_NEW_API_TOKEN` /
 `STT_NEW_API_TIMEOUT_MS` + 主逻辑 `STT_PRIMARY_TIMEOUT_MS`。缺配置则备份禁用，主服务仍运行。
 仅 final 在主异常/逻辑超时后回退；partial 与正常空白终态不回退。熔断与 PONG 健康摘要不含 token。
