@@ -228,6 +228,31 @@ func test_ying_li_status_reads_authoritative_registered_skill_only_for_owner() -
 		"真实消费后状态视图必须立即清除")
 
 
+func test_lian_yao_profile_formats_authoritative_layer_and_actual_bonus() -> void:
+	var bc := BattleController.new(349)
+	assert_true(BossAbilityFactory.inject(
+		bc.registry, &"char_teru_passive_v1", 2))
+	bc.call("_emit", &"WIN_DECLARED_PRE", 2, null, {})
+	bc.call("_emit", &"WIN_DECLARED_PRE", 2, null, {})
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"qiu_jue", &"bai_touli", &"lian_yao", &"hua_ling"])
+	var status: Dictionary = router.status_for_registry(bc.registry, 2)
+	assert_eq(status.get("character_id", &""), &"lian_yao")
+	assert_eq(status.get("text", ""), "叠曜 2 层 · 本次 +2 番")
+	assert_true(router.status_for_registry(bc.registry, 0).is_empty())
+
+	var ability_event := _event(&"SKILL_TRIGGERED", 2, {
+		"skill_id": &"char_teru_passive_v1",
+		"skill_name": "连曜真·叠曜连斩",
+	})
+	assert_eq(router.feedback_for_event(ability_event).text,
+		"☀ 连曜真 · 叠曜连斩　连斩加深")
+	var requests: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(requests.size(), 1)
+	assert_eq(requests[0].character_id, &"lian_yao")
+	assert_eq(requests[0].event_kind, &"ability")
+
+
 func test_catalog_activates_bao_luo_red_feedback_and_six_voice_kinds_without_crossing() -> void:
 	var router = Router.new(Catalog.active_profiles())
 	router.bind_characters([&"bao_luo", &"qiu_jue", &"bai_touli", &"hua_ling"])

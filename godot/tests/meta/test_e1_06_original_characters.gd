@@ -17,7 +17,7 @@ const EXPECTED_MAP: Array = [
 		"triggers": [&"WIN_DECLARED_PRE"]},
 	{"id": &"lian_yao", "name": "连曜真", "ability": &"char_teru_passive_v1",
 		"title": "连曜真·叠曜连斩", "primary": &"DOMINATION", "secondary": &"PASSION",
-		"triggers": [&"WIN_DECLARED_PRE"]},
+		"triggers": [&"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"]},
 	{"id": &"an_cheng", "name": "安澄青", "ability": &"char_awai_passive_v1",
 		"title": "安澄青·无风净界", "primary": &"CALM", "secondary": &"MYSTIC",
 		"triggers": [&"GAME_BEGIN"]},

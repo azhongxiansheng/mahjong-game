@@ -58,6 +58,18 @@ static func active_profiles() -> Array:
 			Color("a9a1c8"),
 		),
 		Profile.new(
+			&"lian_yao",
+			&"char_teru_passive_v1",
+			"☀ {skill_name}　连斩加深",
+			Color("ff7a45"),
+			true,
+			"",
+			"",
+			&"streak",
+			"叠曜 {value} 层 · 本次 +{value} 番",
+			Color("ff9a66"),
+		),
+		Profile.new(
 			&"bao_luo",
 			&"char_kuro_passive_v1",
 			"♦ {skill_name}　+2 赤 Dora",

@@ -500,12 +500,20 @@ static func _should_linger_character_registration(slot: CharacterAbilitySlot) ->
 	return not state_param.is_empty() and bool(slot.skill.params.get(state_param, false))
 
 
-static func _clear_lingering_character_state(slot: CharacterAbilitySlot) -> void:
+static func _clear_lingering_character_state(
+	slot: CharacterAbilitySlot,
+	force_cross_hand: bool = false
+) -> void:
 	if slot == null or slot.skill == null:
+		return
+	if not force_cross_hand \
+			and bool(slot.skill.params.get("_registry_linger_across_hands", false)):
 		return
 	var state_param := String(slot.skill.params.get("_registry_linger_while_param", ""))
 	if not state_param.is_empty():
-		slot.skill.params[state_param] = false
+		var current: Variant = slot.skill.params.get(state_param, false)
+		slot.skill.params[state_param] = 0 \
+			if typeof(current) == TYPE_INT or typeof(current) == TYPE_FLOAT else false
 
 
 ## 和牌取消：pending 必须为空，DISARM active（库存保留）。
@@ -552,6 +560,7 @@ static func clear_match(
 	for seat in range(4):
 		if seat < slots.size() and slots[seat] is CharacterAbilitySlot:
 			var slot: CharacterAbilitySlot = slots[seat] as CharacterAbilitySlot
+			_clear_lingering_character_state(slot, true)
 			if slot.registry_registered and bc != null and bc.registry != null and slot.skill != null:
 				bc.registry.unregister(slot.skill, seat)
 			slot.registry_registered = false

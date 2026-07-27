@@ -41,7 +41,8 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"char_kaiji_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_washizu_passive_v1": [&"GAME_BEGIN"],
 	&"char_saki_passive_v1": [&"WIN_DECLARED_PRE"],
-	&"char_teru_passive_v1": [&"WIN_DECLARED_PRE"],
+	&"char_teru_passive_v1": [
+		&"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"],
 	&"char_awai_passive_v1": [&"GAME_BEGIN"],
 	# E1-06：补齐后 6 角色工厂登记（不得用近义 M12 卡池 id 顶替）
 	&"char_koromo_passive_v1": [&"HAITEI", &"HOUTEI", &"TILE_DRAWN"],
@@ -100,6 +101,9 @@ static func build(boss_id: StringName) -> SkillResource:
 	s.owner_triggers = triggers
 	if boss_id == &"char_momoko_passive_v1":
 		s.params["_registry_linger_while_param"] = "primed"
+	elif boss_id == &"char_teru_passive_v1":
+		s.params["_registry_linger_while_param"] = "streak"
+		s.params["_registry_linger_across_hands"] = true
 	s.hook_script = hook_script
 	return s
 

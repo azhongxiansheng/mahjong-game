@@ -49,3 +49,9 @@ func format_feedback(skill_name: String) -> String:
 func has_active_status(skill: SkillResource) -> bool:
 	return skill != null and status_param != &"" and not status_text.is_empty() \
 		and bool(skill.params.get(status_param, false))
+
+
+func format_status(skill: SkillResource) -> String:
+	if not has_active_status(skill):
+		return ""
+	return status_text.format({"value": skill.params.get(status_param, 0)})

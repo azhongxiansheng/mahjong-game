@@ -439,7 +439,8 @@ func test_twelve_character_passives_exact_triggers() -> void:
 		&"char_kaiji_passive_v1": [&"WIN_DECLARED_PRE"],
 		&"char_washizu_passive_v1": [&"GAME_BEGIN"],
 		&"char_saki_passive_v1": [&"WIN_DECLARED_PRE"],
-		&"char_teru_passive_v1": [&"WIN_DECLARED_PRE"],
+		&"char_teru_passive_v1": [
+			&"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"],
 		&"char_awai_passive_v1": [&"GAME_BEGIN"],
 		&"char_koromo_passive_v1": [&"HAITEI", &"HOUTEI", &"TILE_DRAWN"],
 		&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"HAND_FORMED"],
