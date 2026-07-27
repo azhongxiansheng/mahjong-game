@@ -1,5 +1,8 @@
 class_name SeatPanel extends Node2D
 
+const ViewerRevealStrip := preload(
+	"res://ui/four_player_table/viewer_reveal_strip.gd")
+
 # seat 0 (玩家) 自家手牌被点击时转发给上层（PlayerActionPanel / PlayableTable）。
 # 其它 seat 永不 emit（手牌色块本身不 clickable）。
 # E2-02 / #232：参数 = tile_instance_id（entity identity）
@@ -127,6 +130,7 @@ const WAIT_TILE_H: float = 40.0
 const WAIT_TILE_GAP: float = 3.0
 var _wait_row: Node2D = null
 var _wait_ids: Array = []  # Array[int]
+var _viewer_reveal_strip: Control = null
 
 
 func _ready() -> void:
@@ -144,6 +148,9 @@ func _ready() -> void:
 	_wait_row.position = Vector2(PLAYER_HAND_ROW_OFFSET_X, PLAYER_HAND_ROW_OFFSET_Y - 48.0)
 	_wait_row.visible = false
 	add_child(_wait_row)
+	_viewer_reveal_strip = ViewerRevealStrip.new()
+	_viewer_reveal_strip.name = "ViewerRevealStrip"
+	add_child(_viewer_reveal_strip)
 	_refresh_labels()
 
 
@@ -595,6 +602,32 @@ func set_wait_tiles(ids: Array) -> void:
 
 func clear_wait_tiles() -> void:
 	set_wait_tiles([])
+
+
+func set_viewer_revealed_tiles(instances: Array) -> void:
+	if _viewer_reveal_strip == null:
+		return
+	_viewer_reveal_strip.set_tiles(instances)
+	_position_viewer_reveal_strip()
+
+
+func viewer_reveal_count() -> int:
+	if _viewer_reveal_strip == null:
+		return 0
+	return int(_viewer_reveal_strip.revealed_count())
+
+
+func _position_viewer_reveal_strip() -> void:
+	if _viewer_reveal_strip == null or not _viewer_reveal_strip.visible:
+		return
+	var strip_size: Vector2 = _viewer_reveal_strip.size
+	var anchor := cluster_anchor()
+	var screen_pos := anchor + Vector2(28.0 - strip_size.x / 2.0, 84.0)
+	if _seat_id == 1:
+		screen_pos = anchor + Vector2(-12.0 - strip_size.x, 84.0)
+	elif _seat_id == 3:
+		screen_pos = anchor + Vector2(72.0, 84.0)
+	_pin_info_node(_viewer_reveal_strip, screen_pos)
 
 
 func count_wait_tiles_shown() -> int:

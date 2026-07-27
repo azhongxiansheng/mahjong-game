@@ -287,6 +287,43 @@ func test_public_order_codec_riichi_no_leak() -> void:
 					int((ot as Dictionary).get("instance_id", -2)))
 
 
+func test_authorized_reveal_uses_existing_concealed_tiles_without_cross_seat_leak() -> void:
+	var st := _build_state()
+	if st == null:
+		return
+	var target_tile: Tile = st.seats[1].hand.first()
+	var instance := TileSkillAnchor.make(target_tile, 1)
+	instance.holder_seat = 1
+	st.revealed_tiles = [{"tile": instance, "visible_to": [0]}]
+	var owner_view := _dict(_project(st, 0))
+	var revealed: Array = ((owner_view.seats as Array)[1] as Dictionary).concealed_tiles
+	assert_eq(revealed.size(), 1)
+	assert_eq(int((revealed[0] as Dictionary).instance_id), target_tile.instance_id)
+	var other_view := _dict(_project(st, 2))
+	assert_true((((other_view.seats as Array)[1] as Dictionary).concealed_tiles as Array).is_empty(),
+		"无权限 recipient 不得收到林夜彻私有牌")
+	var payload := {
+		"snapshot_server_seq": 1,
+		"next_server_seq": 2,
+		"seat_view": 0,
+		"modules": [{
+			"module_key": "core_table",
+			"schema_version": 1,
+			"payload": owner_view,
+		}],
+	}
+	var wire := {
+		"protocol_version": 1,
+		"server_seq": 1,
+		"room_id": "room_reveal",
+		"kind": "ROOM_SNAPSHOT",
+		"payload": payload,
+		"view_hash": ProtocolViewCodec.compute_view_hash(payload),
+	}
+	assert_not_null(NetworkedEvent.from_dict(wire),
+		"授权 reveal 投影必须能通过真实 ROOM_SNAPSHOT wire validator")
+
+
 func test_deep_copy_and_invalid() -> void:
 	if not ResourceLoader.exists(PATH):
 		assert_true(false, "缺 projector")

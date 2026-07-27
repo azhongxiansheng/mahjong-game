@@ -30,6 +30,7 @@ const ITEM_INVENTORY_DRAWER_SCR := preload(
 )
 const ABILITY_BADGE_SCR := preload("res://ui/four_player_table/ability_badge.gd")
 const TABLE_ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
+const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
 
 signal inventory_use_requested(item_instance_id: String)
 
@@ -63,6 +64,8 @@ func _ready() -> void:
 
 # 把当前 hand 的 BattleState 喂给 4 个 seat panel + center + discard rivers
 func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
+	var revealed_by_holder: Dictionary = ViewerRevealResolver.tiles_by_holder(
+		state, _local_seat)
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
 		# 当前回合家显示名(「你」/AI persona 名)
@@ -85,6 +88,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
+		sp.set_viewer_revealed_tiles(revealed_by_holder.get(i, []))
 		sp.set_discards_count(seat.river.size())
 		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
 		sp.set_active(i == state.current_seat)

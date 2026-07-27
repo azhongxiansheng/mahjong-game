@@ -146,6 +146,18 @@ func _capture_battle_with_state() -> void:
 	var out := "/tmp/shot_battle_live.png"
 	img.save_png(out)
 	print("[capture] saved ", out)
+	# #340：走真实 ability factory/hook/state → FourPlayerTable reveal strip，
+	# 截完清理，避免污染后续牌桌基线截图。
+	BossAbilityFactory.inject(bc.registry, &"char_akagi_passive_v1", 0)
+	bc.scheduler.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+	table._table.bind_battle_state(bc.state, 0, 4)
+	for _i in range(8):
+		await process_frame
+	var reveal_img := root.get_texture().get_image()
+	reveal_img.save_png("/tmp/shot_battle_lin_reveal.png")
+	print("[capture] saved /tmp/shot_battle_lin_reveal.png")
+	bc.state.revealed_tiles.clear()
+	table._table.bind_battle_state(bc.state, 0, 4)
 	# 状态 B/方案1：真实 PlayableTable 的固定仪式带 + 真实手牌候选/禁用层。
 	var player := table._table.seat_panels[0] as SeatPanel
 	var allowed: Array = []

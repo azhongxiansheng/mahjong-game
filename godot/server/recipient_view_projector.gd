@@ -1,8 +1,11 @@
 class_name RecipientViewProjector
 extends RefCounted
 
-# E2-02 / #232：按 recipient 生成严格公共 core_table 投影。
-# 仅本人可见 concealed TileView；他席仅 concealed_count。
+const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
+
+# E2-02 / #232：按 recipient 生成严格 core_table 投影。
+# 本人可见完整 concealed TileView；他席默认仅 concealed_count，信息能力可附带
+# 只对该 recipient 授权且仍在目标手牌中的可见子集。
 # 不泄露牌墙内容、他手、裏 dora、决策窗、RNG 或 AuthorityReplaySnapshot。
 
 const CORE_KEYS := [
@@ -40,8 +43,9 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		dora_out.append(tv)
 
 	var seats_out: Array = []
+	var revealed_by_holder: Dictionary = ViewerRevealResolver.tiles_by_holder(st, recip)
 	for i in range(4):
-		var sv: Variant = _project_seat(st, i, recip)
+		var sv: Variant = _project_seat(st, i, recip, revealed_by_holder)
 		if sv == null:
 			return null
 		seats_out.append(sv)
@@ -62,7 +66,12 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 	}
 
 
-static func _project_seat(st: BattleState, seat_i: int, recip: int) -> Variant:
+static func _project_seat(
+	st: BattleState,
+	seat_i: int,
+	recip: int,
+	revealed_by_holder: Dictionary
+) -> Variant:
 	var seat: Seat = st.seats[seat_i] as Seat
 	if seat == null or seat.hand == null:
 		return null
@@ -80,6 +89,13 @@ static func _project_seat(st: BattleState, seat_i: int, recip: int) -> Variant:
 			last_drawn = ld
 		else:
 			last_drawn = -1
+	elif revealed_by_holder.has(seat_i):
+		for instance_value in revealed_by_holder[seat_i] as Array:
+			var instance := instance_value as TileSkillAnchor
+			var tv: Variant = ProtocolViewCodec.tile_view_from_tile(instance.tile)
+			if tv == null:
+				return null
+			concealed_tiles.append(tv)
 
 	var river_out: Array = []
 	var river_src: Array = seat.river.tiles()
