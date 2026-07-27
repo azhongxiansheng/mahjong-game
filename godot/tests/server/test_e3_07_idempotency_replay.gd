@@ -761,11 +761,12 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var server_tt := LocalLoopbackServer.new(cfg_tt, 0)
 	assert_true(server_tt.snapshot_registry.is_trash_talk_registry())
 	var keys_tt: Array = server_tt.snapshot_registry.registered_keys()
-	# #253：TRASH_TALK registry 升序 core_table + item_inventory + reward_window
-	assert_eq(keys_tt.size(), 3)
+	# #344：注册表含 optional viewer_next_draw；无预知时实际 SNAP 仍只发既有三模块。
+	assert_eq(keys_tt.size(), 4)
 	assert_eq(str(keys_tt[0]), "core_table")
 	assert_eq(str(keys_tt[1]), "item_inventory")
 	assert_eq(str(keys_tt[2]), "reward_window")
+	assert_eq(str(keys_tt[3]), "viewer_next_draw")
 	assert_true(server_tt.start())
 	assert_true(server_tt.publish_snapshot())
 	var snap_tt: NetworkedEvent = null

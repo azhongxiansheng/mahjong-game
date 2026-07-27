@@ -1,6 +1,6 @@
 extends GutTest
 
-# E2-02 Red：RecipientViewProjector.static project_core_table → core_table exact-12。
+# E2-02：RecipientViewProjector.static project_core_table → core_table@1 exact-12。
 # 无 server_seq/snapshot 包络；真实 BattleState。领域数组保序，禁 MeldView.tiles iid 重排。
 
 const PATH := "res://server/recipient_view_projector.gd"
@@ -339,6 +339,25 @@ func test_bai_touli_real_hook_projects_two_per_opponent_only_to_owner() -> void:
 	for holder in [0, 1, 3]:
 		assert_true(((((unauthorized_view.seats as Array)[holder] as Dictionary).concealed_tiles) as Array).is_empty(),
 			"未授权 recipient 不得看到 seat %d 的白透璃揭示" % holder)
+
+
+func test_an_cheng_next_draw_projects_only_to_owner_and_expires_after_draw() -> void:
+	var st := BattleState.for_east_round(344, 0, 1, 0, 0)
+	var registry := SkillRegistry.new()
+	var scheduler := SkillScheduler.new(registry, st)
+	assert_true(BossAbilityFactory.inject(registry, &"char_awai_passive_v1", 0))
+	var expected: Tile = st.wall.peek_next_draw()
+	var ctx := scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	var owner_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 0)
+	assert_eq(int((owner_view as Dictionary).instance_id), expected.instance_id)
+	var other_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 1)
+	assert_null(other_view,
+		"未授权 recipient 不得收到墙顶牌身份")
+	assert_eq(st.wall.draw().instance_id, expected.instance_id)
+	var expired_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 0)
+	assert_null(expired_view,
+		"目标牌被摸走后预知必须失效")
 
 
 func test_deep_copy_and_invalid() -> void:

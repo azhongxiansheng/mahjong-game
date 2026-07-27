@@ -216,7 +216,7 @@ static func all_abilities() -> Array:
 		"每次胡牌 +N 番（N=连续胡牌次数，累积）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_teru_passive_hook.gd"))
 	pool.append(_mk_ability(&"char_awai_passive_v1", "安澄青·无风净界",
-		"开局清振听 + 预知下张摸牌（角色被动）",
+		"奖励窗武装时清振听 + 预知自己下一张摸牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_awai_passive_hook.gd"))
 
 	pool.append(_mk_ability(&"char_koromo_passive_v1", "渊汐·底牌潮掌",

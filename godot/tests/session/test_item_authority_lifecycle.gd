@@ -414,3 +414,42 @@ func test_bai_touli_arm_equivalent_game_begin_emits_one_real_skill_event() -> vo
 	assert_true(bool(ItemAuthority.disarm_all_active(bc, inv, slots, "w1").get("ok", false)))
 	assert_eq(bc.state.revealed_tiles.size(), reveal_count,
 		"解除武装不抹除玩家已获得的信息")
+
+
+func test_an_cheng_arm_once_clears_authoritative_furiten_and_reveals_private_next_draw() -> void:
+	var bc := BattleController.new(344, 0, false, TileId.E, 0)
+	var inv := ItemInventoryModule.new()
+	inv.set_match_namespace("an-cheng-arm")
+	assert_true(bool(inv.grant_for_seat({
+		"seat": 0, "item_id": "iron_shield_v1", "window_id": "w0",
+		"hand_seq": 0, "score": 0, "rule_version": "rv", "assignment_version": "av",
+		"matched_rule_ids": [], "affinity_match": true, "next_window_id": "w1",
+	}).get("ok", false)))
+	var ch := CharacterPool.find(&"an_cheng")
+	var skill := BossAbilityFactory.build(ch.ability_id)
+	var slot := CharacterAbilitySlot.new(0, ch.id, ch.ability_id, skill, false)
+	var slots: Array = [slot, null, null, null]
+	bc.state.furiten_flags[0] = true
+	bc.state.seats[0].furiten.permanent = true
+	bc.state.seats[0].furiten.temporary = true
+	bc.state.seats[0].furiten.waits = [TileId.W9]
+	var expected: Tile = bc.state.wall.peek_next_draw()
+	var before_events := bc.events.size()
+	var arm := ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1")
+	assert_true(bool(arm.get("ok", false)))
+	assert_false(bc.state.furiten_flags[0], "兼容状态须同步清除")
+	assert_false(bc.state.seats[0].furiten.is_furiten(), "真实荣和判定读取的 Seat.furiten 须清除")
+	assert_eq(bc.state.seats[0].furiten.waits, [TileId.W9], "净化不改写当前听张")
+	assert_eq(bc.events.size(), before_events + 1)
+	var event := bc.events[-1] as BattleEvent
+	assert_eq(event.type, &"SKILL_TRIGGERED")
+	assert_eq(event.extra.get("skill_id"), &"char_awai_passive_v1")
+	assert_eq(event.extra.get("source_event"), &"GAME_BEGIN")
+	var predicted: TileSkillAnchor = ViewerRevealResolverScript.next_draw_for_viewer(
+		bc.state, 0)
+	assert_not_null(predicted)
+	assert_eq(predicted.tile.instance_id, expected.instance_id)
+	assert_null(ViewerRevealResolverScript.next_draw_for_viewer(bc.state, 1),
+		"下一摸只能授权给安澄青本人")
+	assert_true(bool(ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1").get("ok", false)))
+	assert_eq(bc.events.size(), before_events + 1, "同窗重复 arm 不得再次发动")

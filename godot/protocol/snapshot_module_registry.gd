@@ -25,7 +25,7 @@ static func make_standard() -> SnapshotModuleRegistry:
 
 
 ## #252+#253：TRASH_TALK 生产注册表：
-## core_table + item_inventory + reward_window（升序）。
+## core_table + item_inventory + reward_window + optional viewer_next_draw（升序）。
 ## 不把 AuthorityReplaySnapshot 放入线上协议。
 static func make_trash_talk() -> SnapshotModuleRegistry:
 	var reg := make_standard()
@@ -35,6 +35,10 @@ static func make_trash_talk() -> SnapshotModuleRegistry:
 	var r: Dictionary = reg.register(RewardWindowSnapshotProvider.new())
 	if not bool(r.get("ok", false)):
 		push_error("SnapshotModuleRegistry.make_trash_talk reward_window failed: %s" % str(r))
+	var r_prediction: Dictionary = reg.register(ViewerNextDrawSnapshotProvider.new())
+	if not bool(r_prediction.get("ok", false)):
+		push_error("SnapshotModuleRegistry.make_trash_talk viewer_next_draw failed: %s" \
+			% str(r_prediction))
 	return reg
 
 
@@ -74,13 +78,14 @@ func is_standard_only() -> bool:
 	return keys.size() == 1 and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY
 
 
-## TRASH_TALK：恰为 core_table + item_inventory + reward_window（升序）。
+## TRASH_TALK：三项既有模块 + optional viewer_next_draw（升序）。
 func is_trash_talk_registry() -> bool:
 	var keys: Array = registered_keys()
-	return keys.size() == 3 \
+	return keys.size() == 4 \
 			and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY \
 			and str(keys[1]) == ItemInventorySnapshotProvider.MODULE_KEY \
-			and str(keys[2]) == RewardWindowSnapshotProvider.MODULE_KEY
+			and str(keys[2]) == RewardWindowSnapshotProvider.MODULE_KEY \
+			and str(keys[3]) == ViewerNextDrawSnapshotProvider.MODULE_KEY
 
 
 ## 权威侧：按 module_key 升序组合 modules 数组。失败返回 {ok:false,...}。
@@ -95,7 +100,9 @@ func serialize_modules(ctx: Dictionary, seat: int) -> Dictionary:
 		var p: SnapshotModuleProvider = _providers[k] as SnapshotModuleProvider
 		var payload: Variant = p.serialize(ctx, seat)
 		if payload == null:
-			return _fail(ERR_SERIALIZE_FAILED, "serialize failed: %s" % k)
+			if p.is_required():
+				return _fail(ERR_SERIALIZE_FAILED, "serialize failed: %s" % k)
+			continue
 		# 组合器只包装三键，不改写 payload 内容
 		modules.append({
 			"module_key": str(k),

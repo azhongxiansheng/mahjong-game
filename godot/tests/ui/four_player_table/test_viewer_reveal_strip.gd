@@ -27,6 +27,17 @@ func _state_with_bai_touli_reveal(viewer_seat: int = 0) -> BattleState:
 	return st
 
 
+func _state_with_an_cheng_prediction(viewer_seat: int = 0) -> BattleState:
+	var st := BattleState.for_east_round(344, 0, 1, 0, 0)
+	var registry := SkillRegistry.new()
+	var scheduler := SkillScheduler.new(registry, st)
+	assert_true(BossAbilityFactory.inject(
+		registry, &"char_awai_passive_v1", viewer_seat))
+	var ctx := scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", viewer_seat))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	return st
+
+
 func test_strip_renders_real_tile_instance_and_clears() -> void:
 	var st := _state_with_reveal()
 	var instance := st.revealed_tiles[0].tile as TileSkillAnchor
@@ -109,3 +120,27 @@ func test_three_opponent_positions_keep_reveal_strips_screen_upright_and_in_boun
 		assert_true(rect.position.y >= TableLayout.TOP_BAR_H \
 			and rect.end.y < TableLayout.ACTION_BAR_RECT.position.y,
 			"揭示条不得越过顶栏或操作栏")
+
+
+func test_an_cheng_prediction_reuses_top_reveal_strip_and_clears_after_draw() -> void:
+	var table = TABLE_SCENE.instantiate()
+	add_child_autofree(table)
+	var st := _state_with_an_cheng_prediction(0)
+	var expected: Tile = st.wall.peek_next_draw()
+	table.set_local_seat(0)
+	table.set_next_draw_reveal_label("预知")
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.next_draw_reveal_count(), 1)
+	assert_eq(table.next_draw_revealed_instance_ids(), [expected.instance_id])
+	var strip := table._next_draw_reveal_strip as Control
+	var rect := strip.get_global_rect()
+	assert_true(rect.position.y >= TableLayout.TOP_BAR_H)
+	assert_true(rect.end.y < TableLayout.ACTION_BAR_RECT.position.y,
+		"预知条须留在顶部安全区，不遮操作栏")
+	table.set_local_seat(1)
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.next_draw_reveal_count(), 0, "其他本地 viewer 不得看到预知")
+	table.set_local_seat(0)
+	assert_eq(st.wall.draw().instance_id, expected.instance_id)
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.next_draw_reveal_count(), 0, "摸牌后预知条须清除")

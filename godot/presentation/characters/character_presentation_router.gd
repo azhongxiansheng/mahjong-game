@@ -80,6 +80,17 @@ func reveal_label_for_local_character(local_seat: int = 0) -> String:
 	return ""
 
 
+func next_draw_label_for_local_character(local_seat: int = 0) -> String:
+	var character_id := _character_at(local_seat)
+	if not _registered_characters.has(character_id):
+		return ""
+	for profile_value in _profiles_by_ability.values():
+		var profile := profile_value as CharacterPresentationProfile
+		if profile.character_id == character_id:
+			return profile.next_draw_reveal_label
+	return ""
+
+
 func status_for_registry(registry: SkillRegistry, viewer_seat: int) -> Dictionary:
 	if registry == null or _character_at(viewer_seat) == &"":
 		return {}

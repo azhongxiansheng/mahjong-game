@@ -159,6 +159,15 @@ func get_reward_window_view() -> Dictionary:
 	return {}
 
 
+func get_viewer_next_draw_view() -> Dictionary:
+	if not _applied_modules.has(ViewerNextDrawSnapshotProvider.MODULE_KEY):
+		return {}
+	var applied: Variant = _applied_modules[ViewerNextDrawSnapshotProvider.MODULE_KEY]
+	if typeof(applied) != TYPE_DICTIONARY:
+		return {}
+	return (applied as Dictionary).duplicate(true)
+
+
 ## #253：本席库存/武装公共投影。
 func get_item_inventory_view() -> Dictionary:
 	if _applied_modules.has("item_inventory"):

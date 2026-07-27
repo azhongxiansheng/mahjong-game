@@ -31,6 +31,7 @@ const ITEM_INVENTORY_DRAWER_SCR := preload(
 const ABILITY_BADGE_SCR := preload("res://ui/four_player_table/ability_badge.gd")
 const TABLE_ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
 const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
+const ViewerRevealStripScript := preload("res://ui/four_player_table/viewer_reveal_strip.gd")
 
 signal inventory_use_requested(item_instance_id: String)
 
@@ -54,6 +55,7 @@ var item_inventory_drawer: Control = null
 var ability_badge: Control = null
 var _inventory_btn: Button = null
 var _inventory_count_label: Label = null
+var _next_draw_reveal_strip: Control = null
 var _local_seat: int = 0
 
 func _ready() -> void:
@@ -66,6 +68,10 @@ func _ready() -> void:
 func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg: int = 4) -> void:
 	var revealed_by_holder: Dictionary = ViewerRevealResolver.tiles_by_holder(
 		state, _local_seat)
+	var predicted := ViewerRevealResolver.next_draw_for_viewer(state, _local_seat)
+	if _next_draw_reveal_strip != null:
+		_next_draw_reveal_strip.set_tiles([predicted] if predicted != null else [])
+		_position_next_draw_reveal_strip()
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
 		# 当前回合家显示名(「你」/AI persona 名)
@@ -242,6 +248,12 @@ func _build_layout() -> void:
 	ability_panel.visible = false
 	ability_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ability_panel)
+
+	# 信息能力共用的顶部 reveal 牌面；角色只通过表现 profile 提供标签。
+	_next_draw_reveal_strip = ViewerRevealStripScript.new()
+	_next_draw_reveal_strip.name = "NextDrawRevealStrip"
+	_next_draw_reveal_strip.z_index = 24
+	add_child(_next_draw_reveal_strip)
 
 	# E4-04：字幕覆盖层（鼠标穿透；不随 seat 旋转）
 	caption_overlay = SEAT_CAPTION_OVERLAY_SCR.new()
@@ -484,6 +496,31 @@ func set_viewer_reveal_label(value: String) -> void:
 	for panel in seat_panels:
 		if panel is SeatPanel:
 			(panel as SeatPanel).set_viewer_reveal_label(value)
+
+
+func set_next_draw_reveal_label(value: String) -> void:
+	if _next_draw_reveal_strip != null:
+		_next_draw_reveal_strip.set_label_text(value)
+
+
+func next_draw_reveal_count() -> int:
+	if _next_draw_reveal_strip == null:
+		return 0
+	return int(_next_draw_reveal_strip.revealed_count())
+
+
+func next_draw_revealed_instance_ids() -> Array:
+	if _next_draw_reveal_strip == null:
+		return []
+	return _next_draw_reveal_strip.revealed_instance_ids()
+
+
+func _position_next_draw_reveal_strip() -> void:
+	if _next_draw_reveal_strip == null or not _next_draw_reveal_strip.visible:
+		return
+	_next_draw_reveal_strip.position = Vector2(
+		(TABLE_WIDTH - _next_draw_reveal_strip.size.x) / 2.0,
+		TableLayout.TOP_BAR_H + 8.0)
 
 
 func _on_inventory_btn_pressed() -> void:

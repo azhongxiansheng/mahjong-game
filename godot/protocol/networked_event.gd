@@ -69,6 +69,7 @@ const CORE_TABLE_KEYS := [
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
 	"dora_indicators", "seats",
 ]
+const VIEWER_NEXT_DRAW_KEYS := ["recipient_seat", "hand_seq", "tile"]
 const SEAT_VIEW_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
 	"last_drawn_tile_instance_id", "river", "melds", "riichi_declared",
@@ -1239,6 +1240,7 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 	var prev_key: String = ""
 	var has_prev := false
 	var core_count := 0
+	var core_hand_seq := -1
 
 	for item in raw_mods:
 		if typeof(item) != TYPE_DICTIONARY:
@@ -1276,6 +1278,14 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 			if typeof(pl_raw) != TYPE_DICTIONARY:
 				return null
 			pl_out = _validate_core_table(pl_raw as Dictionary, seat_view_i)
+			if pl_out == null:
+				return null
+			core_hand_seq = int((pl_out as Dictionary)["hand_seq"])
+		elif mkey == "viewer_next_draw" and sver == 1:
+			if typeof(pl_raw) != TYPE_DICTIONARY:
+				return null
+			pl_out = _validate_viewer_next_draw(
+				pl_raw as Dictionary, seat_view_i, core_hand_seq)
 			if pl_out == null:
 				return null
 		else:
@@ -1435,6 +1445,31 @@ static func _validate_core_table(p: Dictionary, seat_view: int) -> Variant:
 		"live_wall_count": int(live),
 		"dora_indicators": dora_out,
 		"seats": seats_out,
+	}
+
+
+static func _validate_viewer_next_draw(
+	p: Dictionary, seat_view: int, core_hand_seq: int
+) -> Variant:
+	if not _has_exact_keys(p, VIEWER_NEXT_DRAW_KEYS):
+		return null
+	var recipient: Variant = _require_seat(p["recipient_seat"])
+	if recipient == null or int(recipient) != seat_view:
+		return null
+	if typeof(p["hand_seq"]) != TYPE_INT:
+		return null
+	var hand_seq := int(p["hand_seq"])
+	if hand_seq < 0 or hand_seq != core_hand_seq:
+		return null
+	var tile: Variant = ProtocolViewCodec.tile_view_from_dict(p["tile"])
+	if tile == null:
+		return null
+	if not _is_instance_id_in_hand_namespace(int((tile as Dictionary)["instance_id"]), hand_seq):
+		return null
+	return {
+		"recipient_seat": int(recipient),
+		"hand_seq": hand_seq,
+		"tile": tile,
 	}
 
 

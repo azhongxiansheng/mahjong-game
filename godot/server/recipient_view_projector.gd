@@ -20,7 +20,7 @@ const SEAT_KEYS := [
 ]
 
 
-## static project_core_table(state, recipient_seat) → exact-12 Dictionary 或 null
+## static project_core_table(state, recipient_seat) → stable core_table@1 exact-12 或 null
 static func project_core_table(state: Variant, recipient_seat: Variant) -> Variant:
 	if state == null or not (state is BattleState):
 		return null
@@ -49,7 +49,6 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		if sv == null:
 			return null
 		seats_out.append(sv)
-
 	return {
 		"recipient_seat": recip,
 		"hand_seq": int(st.hand_seq),
@@ -64,6 +63,18 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		"dora_indicators": dora_out,
 		"seats": seats_out,
 	}
+
+
+## #344：独立 viewer_next_draw@1 payload 的 tile 字段；不改变 core_table@1。
+static func project_viewer_next_draw(state: Variant, recipient_seat: Variant) -> Variant:
+	if not (state is BattleState) or typeof(recipient_seat) != TYPE_INT:
+		return null
+	var st := state as BattleState
+	var recip := int(recipient_seat)
+	var predicted := ViewerRevealResolver.next_draw_for_viewer(st, recip)
+	if predicted == null:
+		return null
+	return ProtocolViewCodec.tile_view_from_tile(predicted.tile)
 
 
 static func _project_seat(

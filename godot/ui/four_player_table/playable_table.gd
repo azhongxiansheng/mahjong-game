@@ -237,6 +237,10 @@ func _sync_viewer_reveal_label() -> void:
 		_table.set_viewer_reveal_label(
 			_character_presentation_router.reveal_label_for_local_character(
 				_reward_local_seat))
+	if _table != null and _table.has_method("set_next_draw_reveal_label"):
+		_table.set_next_draw_reveal_label(
+			_character_presentation_router.next_draw_label_for_local_character(
+				_reward_local_seat))
 
 
 func on_match_scores_updated(scores: Array) -> void:

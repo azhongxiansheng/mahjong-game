@@ -30,6 +30,15 @@ static func active_profiles() -> Array:
 			"镜华",
 		),
 		Profile.new(
+			&"an_cheng",
+			&"char_awai_passive_v1",
+			"🫧 {skill_name}　净化振听并预知下一摸",
+			Color("9de8df"),
+			true,
+			"",
+			"预知",
+		),
+		Profile.new(
 			&"hua_ling",
 			&"char_saki_passive_v1",
 			"✦ {skill_name}　+2 Dora",
@@ -42,6 +51,7 @@ static func active_profiles() -> Array:
 			"🌑 {skill_name}　潜伏解除 · +1 番",
 			Color("b8add8"),
 			true,
+			"",
 			"",
 			&"primed",
 			"消影一发 · 潜伏中",

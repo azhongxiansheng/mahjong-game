@@ -172,6 +172,21 @@ func _capture_battle_with_state() -> void:
 	var bai_reveal_img := root.get_texture().get_image()
 	bai_reveal_img.save_png("/tmp/shot_battle_bai_touli_reveal.png")
 	print("[capture] saved /tmp/shot_battle_bai_touli_reveal.png")
+	# #344：安澄青复用顶部 reveal 牌面显示本人下一摸，并由 catalog 路由
+	# 顶部专属 toast；不在 PlayableTable 写角色 ID 分支。
+	var an_bc := BattleController.new(344, 0, false, TileId.E)
+	table.bind_character_ids([&"an_cheng", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	table.set_player_persona("安澄青",
+		"res://assets/roguelike/characters/char_an_cheng.png")
+	var an_skill := BossAbilityFactory.build(&"char_awai_passive_v1")
+	an_bc.activate_single_skill_for_event(an_skill, 0, &"GAME_BEGIN")
+	table._table.bind_battle_state(an_bc.state, 0, 4)
+	table._handle_event_toast(an_bc.events[-1] as BattleEvent)
+	for _i in range(8):
+		await process_frame
+	var an_reveal_img := root.get_texture().get_image()
+	an_reveal_img.save_png("/tmp/shot_battle_an_cheng_prediction.png")
+	print("[capture] saved /tmp/shot_battle_an_cheng_prediction.png")
 	table.bind_character_ids([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
 	table.set_player_persona("林夜彻",
 		"res://assets/roguelike/characters/char_lin_yeche.png")
