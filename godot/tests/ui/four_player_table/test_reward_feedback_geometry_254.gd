@@ -9,10 +9,14 @@ const HudScr := preload("res://ui/four_player_table/reward_pool_hud.gd")
 
 const VIEW := Vector2(1600.0, 900.0)
 
-# 方案 A（约）：HUD x=480..1120 y=132..224
-const HUD_RECT := Rect2(480.0, 132.0, 640.0, 92.0)
-# 抽屉 x=1160..1584 y=96..776（底边避开 seat0 手牌 y=778）
-const DRAWER_RECT := Rect2(1160.0, 96.0, 424.0, 680.0)
+# #326 方案 A：左右各两槽，避开中央/牌河/四向手牌。
+const HUD_RECTS := [
+	Rect2(24.0, 132.0, 52.0, 52.0),
+	Rect2(24.0, 192.0, 52.0, 52.0),
+	Rect2(1524.0, 132.0, 52.0, 52.0),
+	Rect2(1524.0, 192.0, 52.0, 52.0),
+]
+const DRAWER_RECT := Rect2(1384.0, 456.0, 200.0, 312.0)
 const PTT_RECT := Rect2(1424.0, 820.0, 160.0, 40.0)
 const ACTION_RECT := Rect2(
 	(1600.0 - 720.0) / 2.0,
@@ -34,15 +38,8 @@ func test_hud_rect_matches_scheme_a() -> void:
 	await get_tree().process_frame
 	var hud: Control = table.get_node_or_null("RewardPoolHud") as Control
 	assert_not_null(hud)
-	var r := Rect2(hud.position, hud.size)
-	if r.size == Vector2.ZERO:
-		r = Rect2(hud.position, hud.custom_minimum_size)
-	assert_eq(r.position.x, HUD_RECT.position.x)
-	assert_eq(r.position.y, HUD_RECT.position.y)
-	assert_eq(r.size.x, HUD_RECT.size.x)
-	assert_eq(r.size.y, HUD_RECT.size.y)
-	assert_eq(HudScr.HUD_W, 640.0)
-	assert_eq(HudScr.HUD_H, 92.0)
+	assert_eq(hud.prize_icon_rects(), HUD_RECTS)
+	assert_eq(HudScr.PRIZE_ICON_SIZE, Vector2(52.0, 52.0))
 
 
 func test_drawer_rect_matches_scheme_a_and_default_closed() -> void:
@@ -61,8 +58,8 @@ func test_drawer_rect_matches_scheme_a_and_default_closed() -> void:
 	assert_eq(r.position.y, DRAWER_RECT.position.y)
 	assert_eq(r.size.x, DRAWER_RECT.size.x)
 	assert_eq(r.size.y, DRAWER_RECT.size.y)
-	assert_eq(DrawerScr.DRAWER_W, 424.0)
-	assert_eq(DrawerScr.DRAWER_H, 680.0)
+	assert_eq(DrawerScr.DRAWER_W, 200.0)
+	assert_eq(DrawerScr.DRAWER_H, 312.0)
 
 
 func test_no_overlap_hud_captions_hand_action_ptt() -> void:
@@ -70,22 +67,21 @@ func test_no_overlap_hud_captions_hand_action_ptt() -> void:
 	add_child_autofree(overlay)
 	await get_tree().process_frame
 
-	# HUD 不得与四席字幕重叠
-	for seat in range(4):
-		var cap: Rect2 = overlay.slot_rect(seat)
-		assert_false(_rects_overlap(HUD_RECT, cap),
-			"HUD 不得与 seat%d 字幕重叠" % seat)
+	for hud_rect in HUD_RECTS:
+		# HUD 不得与四席字幕重叠
+		for seat in range(4):
+			var cap: Rect2 = overlay.slot_rect(seat)
+			assert_false(_rects_overlap(hud_rect, cap),
+				"HUD 不得与 seat%d 字幕重叠" % seat)
+		assert_false(_rects_overlap(hud_rect, ACTION_RECT), "HUD 不得遮挡行动栏")
+		assert_false(_rects_overlap(hud_rect, PTT_RECT), "HUD 不得遮挡 PTT")
+		assert_false(_rects_overlap(hud_rect, SELF_HAND), "HUD 不得遮挡自家手牌")
 
-	assert_false(_rects_overlap(HUD_RECT, ACTION_RECT), "HUD 不得遮挡行动栏")
-	assert_false(_rects_overlap(HUD_RECT, PTT_RECT), "HUD 不得遮挡 PTT")
-	assert_false(_rects_overlap(HUD_RECT, SELF_HAND), "HUD 不得遮挡自家手牌")
-
-	# 抽屉：不挡行动栏 / PTT / 自家手牌；右侧 seat1 字幕允许在打开时被盖住
+	# 抽屉：不挡行动栏 / PTT / 自家手牌 / 任一字幕。
 	assert_false(_rects_overlap(DRAWER_RECT, ACTION_RECT), "抽屉不得遮挡行动栏")
 	assert_false(_rects_overlap(DRAWER_RECT, PTT_RECT), "抽屉不得遮挡 PTT")
 	assert_false(_rects_overlap(DRAWER_RECT, SELF_HAND), "抽屉不得遮挡自家手牌")
-	# seat0 / seat2 / seat3 字幕仍不与抽屉重叠
-	for seat in [0, 2, 3]:
+	for seat in range(4):
 		var cap2: Rect2 = overlay.slot_rect(seat)
 		assert_false(_rects_overlap(DRAWER_RECT, cap2),
 			"抽屉不得与 seat%d 字幕重叠" % seat)

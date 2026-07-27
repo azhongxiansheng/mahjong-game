@@ -42,8 +42,8 @@ const TOP_HAND_DRAWN_GAP: float = 22.0
 const SIDE_HAND_TILE_GAP: float = 0.0
 const CUBE_RAW_POINTS_META := &"reference_raw_points"
 const SIDE_INFO_WIDTH: float = 58.0
-const SIDE_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 34.0)
-const TOP_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 31.0)
+const SIDE_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 24.0)
+const TOP_NAME_COLUMN_SIZE := Vector2(SIDE_INFO_WIDTH, 24.0)
 const TOP_HAND_ROW_OFFSET_X: float = -265.0
 const HAND_ROW_OFFSET_Y: float = 28.0
 # 自家手牌使用 66×92 大牌；13 张宽 882px，以 seat anchor 居中。
@@ -54,8 +54,8 @@ const PLAYER_HAND_ROW_OFFSET_X: float = -498.0
 const PLAYER_HAND_ROW_OFFSET_Y: float = 78.0
 # 刚摸的牌与其他 13 张之间的间距（spec 2026-05-08 bug 2 fix；日麻 UI 标准）
 const PLAYER_HAND_DRAWN_GAP: float = 24.0
-const BOTTOM_NAME_COLUMN_SIZE := Vector2(200.0, 34.0)
-const BOTTOM_SCORE_SIZE := Vector2(78.0, 21.0)
+const BOTTOM_NAME_COLUMN_SIZE := Vector2(140.0, 26.0)
+const SCORE_SIZE := Vector2(66.0, 18.0)
 const PORTRAIT_BORDER_COLOR := Color("d9b65b66")
 const PORTRAIT_ACTIVE_BORDER_COLOR := Color("ffd97a")
 var _hand_tile_row: Node2D = null
@@ -151,25 +151,18 @@ func _ensure_seat_hud() -> void:
 	if get_node_or_null("SeatHUD") != null:
 		return
 	var rect: Rect2 = TableLayout.SEAT_HUD_RECTS[_seat_id]
-	var hud := Panel.new()
+	var hud := Control.new()
 	hud.name = "SeatHUD"
 	hud.size = rect.size
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.025, 0.045, 0.065, 0.72)
-	style.border_color = Color(0.28, 0.72, 0.78, 0.48)
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(8)
-	style.shadow_color = Color(0, 0, 0, 0.45)
-	style.shadow_size = 8
-	hud.add_theme_stylebox_override("panel", style)
+	hud.visible = false
 	add_child(hud)
 	_pin_info_node(hud, rect.position)
 	move_child(hud, 0)
 	var status_row := HBoxContainer.new()
 	status_row.name = "StatusRow"
-	status_row.position = Vector2(8, rect.size.y - 28)
-	status_row.size = Vector2(rect.size.x - 16, 22)
+	status_row.position = Vector2.ZERO
+	status_row.size = rect.size
 	status_row.add_theme_constant_override("separation", 6)
 	status_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(status_row)
@@ -210,6 +203,9 @@ func _sync_hud_status_badges() -> void:
 		row.add_child(_hud_status_badge("FuritenBadge", "◇ 振听", DT.TEXT_DANGER))
 	if _riichi:
 		row.add_child(_hud_status_badge("RiichiBadge", "◆ 立直", DT.TEXT_TITLE))
+	var hud := get_node_or_null("SeatHUD") as Control
+	if hud != null:
+		hud.visible = row.get_child_count() > 0
 
 
 # 上/左/右三家手牌的可观察尺寸。
@@ -282,14 +278,14 @@ func _apply_bottom_seat_label_layout() -> void:
 	if _label_score.get_parent() != self:
 		_label_score.reparent(self)
 	vbox.size = BOTTOM_NAME_COLUMN_SIZE
-	_pin_info_node(vbox, cluster_anchor() + Vector2(83.0, 34.0))
+	_pin_info_node(vbox, cluster_anchor() + Vector2(61.0, 10.0))
 	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label_seat_info.add_theme_font_size_override("font_size", 12)
-	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.size = SCORE_SIZE
 	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(-5.0, 59.0))
 
 
 # 左右 seat-label：名字朝桌内、与头像相隔 5px；分数属于 avatar-col，
@@ -305,15 +301,15 @@ func _apply_side_seat_label_layout() -> void:
 	if _label_score.get_parent() != self:
 		_label_score.reparent(self)
 	vbox.size = SIDE_NAME_COLUMN_SIZE
-	_pin_info_node(vbox, _info_top_left(vbox.size.x, 36.0))
+	_pin_info_node(vbox, _info_top_left(vbox.size.x, 16.0))
 	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT \
 		if _seat_id == 1 else HORIZONTAL_ALIGNMENT_LEFT
 	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label_seat_info.add_theme_font_size_override("font_size", 12)
-	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.size = SCORE_SIZE
 	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(-5.0, 59.0))
 
 
 # top seat-label：短名字位于头像右侧 5px，分数固定在头像下方 3px。
@@ -328,14 +324,14 @@ func _apply_top_seat_label_layout() -> void:
 	if _label_score.get_parent() != self:
 		_label_score.reparent(self)
 	vbox.size = TOP_NAME_COLUMN_SIZE
-	_pin_info_node(vbox, cluster_anchor() + Vector2(83.0, 35.5))
+	_pin_info_node(vbox, cluster_anchor() + Vector2(61.0, 16.0))
 	_label_seat_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_label_seat_info.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_label_seat_info.add_theme_font_size_override("font_size", 12)
-	_label_score.size = BOTTOM_SCORE_SIZE
+	_label_score.size = SCORE_SIZE
 	_label_score.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_label_score.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_pin_info_node(_label_score, cluster_anchor() + Vector2(0.0, 81.0))
+	_pin_info_node(_label_score, cluster_anchor() + Vector2(-5.0, 59.0))
 
 # 把信息类 Control 绕自身中心反向旋转,抵消 SeatPanel 整体旋转 → 文字恒正立。
 # 牌(手牌行/河/副露)不在此列 — 牌的旋转是方位语义,必须保留。
@@ -367,12 +363,12 @@ func cluster_anchor() -> Vector2:
 func _info_top_left(width: float, offset_y: float) -> Vector2:
 	var anchor := cluster_anchor()
 	if _seat_id == 0:
-		return anchor + Vector2(36.0 - width / 2.0, 78.0)
+		return anchor + Vector2(28.0 - width / 2.0, 59.0)
 	if _seat_id == 1:
 		return anchor + Vector2(-5.0 - width, offset_y)
 	if _seat_id == 3:
-		return anchor + Vector2(83.0, offset_y)
-	return anchor + Vector2(36.0 - width / 2.0, offset_y)
+		return anchor + Vector2(61.0, offset_y)
+	return anchor + Vector2(28.0 - width / 2.0, offset_y)
 
 # 把 node 的**视觉 top-left** 钉到桌面屏幕坐标(node 同时被反向旋转恒正立)。
 func _pin_info_node(node: Control, screen_top_left: Vector2) -> void:
@@ -471,7 +467,7 @@ func get_portrait_texture() -> Texture2D:
 	return null
 
 
-# 立绘节点懒创建。seat-avatar 固定 78×78、cover 裁切、金软边。
+# 立绘节点懒创建。seat-avatar 固定 56×56、cover 裁切、金软边。
 # seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
 func _ensure_portrait() -> void:
 	if _portrait_path == "":
@@ -488,14 +484,14 @@ func _ensure_portrait() -> void:
 	_portrait_rect.texture = tex
 	_portrait_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	_portrait_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_portrait_rect.size = Vector2(78, 78)
+	_portrait_rect.size = TableLayout.avatar_rect(_seat_id).size
 	_portrait_rect.clip_contents = true
 	_portrait_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_portrait_rect)
 	_pin_info_node(_portrait_rect, anchor)
 	var border := Panel.new()
 	border.name = "PortraitBorder"
-	border.size = Vector2(78, 78)
+	border.size = TableLayout.avatar_rect(_seat_id).size
 	border.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var border_style := StyleBoxFlat.new()
 	border_style.bg_color = Color.TRANSPARENT
@@ -652,16 +648,17 @@ func set_ippatsu(b: bool) -> void:
 
 
 func _apply_status_badges() -> void:
-	# 自家按 name-row 横排在名字列尾；对手保留头像右侧竖排。
+	# 自家按 name-row 横排在名字列尾；对手沿头像外侧竖排，避开名字列。
 	var anchor: Vector2 = cluster_anchor()
 	var bottom_origin := Vector2(
-		83.0 + BOTTOM_NAME_COLUMN_SIZE.x + 5.0,
-		34.0 + (BOTTOM_NAME_COLUMN_SIZE.y - 20.0) * 0.5)
-	var furiten_offset := bottom_origin if _seat_id == 0 else Vector2(78, 4)
+		61.0 + BOTTOM_NAME_COLUMN_SIZE.x + 5.0,
+		10.0 + (BOTTOM_NAME_COLUMN_SIZE.y - 20.0) * 0.5)
+	var opponent_x := 61.0 if _seat_id == 1 else -33.0
+	var furiten_offset := bottom_origin if _seat_id == 0 else Vector2(opponent_x, 4)
 	var tenpai_offset := bottom_origin + Vector2(32, 0) \
-		if _seat_id == 0 else Vector2(78, 28)
+		if _seat_id == 0 else Vector2(opponent_x, 28)
 	var ippatsu_offset := bottom_origin + Vector2(64, 0) \
-		if _seat_id == 0 else Vector2(78, 52)
+		if _seat_id == 0 else Vector2(opponent_x, 52)
 	_badge_furiten = _set_badge(_badge_furiten, _furiten, "振",
 		Color(0.85, 0.18, 0.18), anchor + furiten_offset)
 	# 听牌 — 仅玩家自家 seat 0 + 非立直时显示。
@@ -733,7 +730,7 @@ func set_furiten(b: bool) -> void:
 		_sync_hud_status_badges()
 
 
-# 当前回合高亮：只增强 78×78 头像自身边框与名字颜色。
+# 当前回合高亮：只增强 56×56 头像自身边框与名字颜色。
 func set_active(b: bool) -> void:
 	if _active == b:
 		return
