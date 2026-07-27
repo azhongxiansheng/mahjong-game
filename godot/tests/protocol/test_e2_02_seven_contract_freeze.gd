@@ -187,6 +187,7 @@ func _core_table(hand_seq: int, seats: Array) -> Dictionary:
 		"riichi_sticks": 0,
 		"live_wall_count": 70,
 		"dora_indicators": [_canonical_tile_for_iid(_ns(hand_seq, 1))],
+		"viewer_next_draw": {},
 		"seats": seats.duplicate(true),
 	}
 

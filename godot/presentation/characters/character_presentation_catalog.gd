@@ -29,4 +29,13 @@ static func active_profiles() -> Array:
 			true,
 			"镜华",
 		),
+		Profile.new(
+			&"an_cheng",
+			&"char_awai_passive_v1",
+			"🫧 {skill_name}　净化振听并预知下一摸",
+			Color("9de8df"),
+			true,
+			"",
+			"预知",
+		),
 	]

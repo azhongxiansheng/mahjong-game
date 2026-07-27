@@ -124,3 +124,21 @@ func test_catalog_activates_bai_touli_feedback_voice_and_reveal_label() -> void:
 	assert_eq(feedback.text, "🔮 白透璃 · 万透镜华　看破三家各两张手牌")
 	router.bind_characters([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
 	assert_eq(router.reveal_label_for_local_character(), "读脊")
+
+
+func test_catalog_activates_an_cheng_feedback_voice_and_next_draw_label() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"an_cheng", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	assert_eq(router.next_draw_label_for_local_character(), "预知")
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_awai_passive_v1",
+		"skill_name": "安澄青·无风净界",
+	})
+	var voice: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(voice.size(), 1)
+	assert_eq(voice[0].character_id, &"an_cheng")
+	assert_eq(voice[0].event_kind, &"ability")
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "🫧 安澄青 · 无风净界　净化振听并预知下一摸")
+	router.bind_characters([&"qiu_jue", &"an_cheng", &"lin_yeche", &"hua_ling"])
+	assert_eq(router.next_draw_label_for_local_character(), "")

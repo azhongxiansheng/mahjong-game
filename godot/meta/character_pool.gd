@@ -55,7 +55,7 @@ static func all() -> Array:
 		&"char_teru_passive_v1", &"DOMINATION", &"PASSION",
 		4, 30, &"starter_aggro", 100))
 	pool.append(_mk(&"an_cheng", "安澄青",
-		"虚席馆「澄安」席。开局清振听，并预知自己下一张摸牌。安全先于进攻。",
+		"虚席馆「澄安」席。奖励窗武装时清振听，并预知自己下一张摸牌。安全先于进攻。",
 		&"char_awai_passive_v1", &"CALM", &"MYSTIC",
 		5, 20, &"starter_fast", 200))
 

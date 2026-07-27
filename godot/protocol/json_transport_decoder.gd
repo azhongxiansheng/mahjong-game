@@ -442,6 +442,11 @@ static func _convert_core_table_ints(core: Dictionary) -> bool:
 				continue
 			if not _convert_tile_view_ints(item):
 				return false
+	if core.has("viewer_next_draw") \
+			and typeof(core["viewer_next_draw"]) == TYPE_DICTIONARY \
+			and not (core["viewer_next_draw"] as Dictionary).is_empty():
+		if not _convert_tile_view_ints(core["viewer_next_draw"]):
+			return false
 	if core.has("seats") and typeof(core["seats"]) == TYPE_ARRAY:
 		for item in core["seats"]:
 			if typeof(item) != TYPE_DICTIONARY:

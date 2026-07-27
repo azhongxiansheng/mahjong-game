@@ -11,7 +11,7 @@ const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
 const CORE_KEYS := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "seats",
+	"dora_indicators", "viewer_next_draw", "seats",
 ]
 const SEAT_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
@@ -20,7 +20,7 @@ const SEAT_KEYS := [
 ]
 
 
-## static project_core_table(state, recipient_seat) → exact-12 Dictionary 或 null
+## static project_core_table(state, recipient_seat) → exact-13 Dictionary 或 null
 static func project_core_table(state: Variant, recipient_seat: Variant) -> Variant:
 	if state == null or not (state is BattleState):
 		return null
@@ -49,6 +49,13 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		if sv == null:
 			return null
 		seats_out.append(sv)
+	var viewer_next_draw: Dictionary = {}
+	var predicted := ViewerRevealResolver.next_draw_for_viewer(st, recip)
+	if predicted != null:
+		var predicted_view: Variant = ProtocolViewCodec.tile_view_from_tile(predicted.tile)
+		if predicted_view == null:
+			return null
+		viewer_next_draw = predicted_view as Dictionary
 
 	return {
 		"recipient_seat": recip,
@@ -62,6 +69,7 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		"riichi_sticks": int(st.riichi_sticks),
 		"live_wall_count": int(st.wall.live_wall_size()),
 		"dora_indicators": dora_out,
+		"viewer_next_draw": viewer_next_draw,
 		"seats": seats_out,
 	}
 

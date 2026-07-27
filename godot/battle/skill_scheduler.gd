@@ -143,6 +143,7 @@ func _snapshot_before(ctx: SkillCtx) -> Dictionary:
 		"revealed_count": _state.revealed_tiles.size(),
 		"haitei": _state.haitei_forced_seat,
 		"furiten": _state.furiten_flags.duplicate(),
+		"seat_furiten": _seat_furiten_snapshot(),
 		"ron_cancelled": _state.ron_cancelled.duplicate(),
 		"scores": _state.scores.duplicate(),
 		"extra_dora": _state.extra_dora_count.duplicate(),
@@ -165,6 +166,8 @@ func _did_mutate(ctx: SkillCtx, snap: Dictionary) -> bool:
 		return true
 	if _state.furiten_flags != snap.furiten:
 		return true
+	if _seat_furiten_snapshot() != snap.seat_furiten:
+		return true
 	if _state.ron_cancelled != snap.ron_cancelled:
 		return true
 	if _state.scores != snap.scores:
@@ -185,6 +188,17 @@ func _dump_state() -> Dictionary:
 		"ron_cancelled": _state.ron_cancelled.duplicate(),
 		"haitei_forced_seat": _state.haitei_forced_seat,
 	}
+
+
+func _seat_furiten_snapshot() -> Array:
+	var out: Array = []
+	for seat_value in _state.seats:
+		var seat := seat_value as Seat
+		if seat == null or seat.furiten == null:
+			out.append([false, false])
+		else:
+			out.append([seat.furiten.permanent, seat.furiten.temporary])
+	return out
 
 
 ## 角色：ab:<id>；道具多实例：ii:<item_instance_id>（最小改动，不破坏角色语义）。

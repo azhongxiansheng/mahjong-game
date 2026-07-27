@@ -14,7 +14,7 @@ const SNAP := ["snapshot_server_seq", "next_server_seq", "seat_view", "modules"]
 const CORE := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "seats",
+	"dora_indicators", "viewer_next_draw", "seats",
 ]
 
 func _exact(d: Dictionary, keys: Array) -> bool:

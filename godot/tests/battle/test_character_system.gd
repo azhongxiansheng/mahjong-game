@@ -142,3 +142,27 @@ func test_washizu_reveal_survives_authority_restore_and_new_hand_clears() -> voi
 		"权威恢复不得扩大 viewer 授权")
 	var next_hand := BattleController.new(342, 0, false, TileId.E, 1)
 	assert_true(next_hand.state.revealed_tiles.is_empty(), "新局必须清空上局揭示")
+
+
+func test_an_cheng_next_draw_survives_restore_then_expires_on_draw() -> void:
+	var source := BattleController.new(344, 0, false, TileId.E, 0)
+	assert_true(BossAbilityFactory.inject(source.registry, &"char_awai_passive_v1", 0))
+	var expected: Tile = source.state.wall.peek_next_draw()
+	var ctx := source.scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	var snapshot := AuthorityReplaySnapshot.capture(source)
+	assert_not_null(snapshot)
+	assert_true(snapshot.can_restore())
+	var restored := BattleController.new(999, 1, false, TileId.S_WIND, 0)
+	assert_true(snapshot.restore_into(restored))
+	var predicted: TileSkillAnchor = ViewerRevealResolverScript.next_draw_for_viewer(
+		restored.state, 0)
+	assert_not_null(predicted)
+	assert_eq(predicted.tile.instance_id, expected.instance_id)
+	assert_null(ViewerRevealResolverScript.next_draw_for_viewer(restored.state, 1))
+	assert_eq(restored.state.wall.draw().instance_id, expected.instance_id)
+	assert_null(ViewerRevealResolverScript.next_draw_for_viewer(restored.state, 0),
+		"摸走已预知实体后恢复态投影必须立即清除")
+	var next_hand := BattleController.new(345, 0, false, TileId.E, 1)
+	assert_null(ViewerRevealResolverScript.next_draw_for_viewer(next_hand.state, 0),
+		"新局不得继承上一局预知")

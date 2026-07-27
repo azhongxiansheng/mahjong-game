@@ -148,6 +148,7 @@ func _room_snapshot_payload(
 			"riichi_sticks": 0,
 			"live_wall_count": 69,
 			"dora_indicators": [_canonical_tile_view_for_iid(_ns(hs, 1))],
+			"viewer_next_draw": {},
 			"seats": seats,
 		},
 	}]

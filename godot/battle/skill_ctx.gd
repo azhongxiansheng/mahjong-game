@@ -148,11 +148,17 @@ func reveal_next_draw_for_seat(target_seat: int, viewer_seat: int) -> bool:
 	return true
 
 func clear_furiten(seat: int) -> void:
+	if seat < 0 or seat >= _state.furiten_flags.size():
+		return
 	_state.furiten_flags[seat] = false
+	if seat < _state.seats.size():
+		var seat_state := _state.seats[seat] as Seat
+		if seat_state != null and seat_state.furiten != null:
+			seat_state.furiten.permanent = false
+			seat_state.furiten.temporary = false
 
-# M7 ctx 扩展 B1：set_furiten — 主动把指定座位置振听 / 解振听。
-# 现有 clear_furiten(seat) 是 set_furiten(seat, false) 的 alias，保留以维持
-# 5 个调用点的稳定（hook 升级到本 API 走独立 PR）。
+# M7 ctx 扩展 B1：set_furiten — 主动切换兼容技能状态；clear_furiten 另行
+# 同步真实 Seat.furiten，供权威荣和判定消费。
 # 真"振听 N 巡倒计时"需 furiten_turns_remaining 状态字段（M7 后续 PR）；
 # 当前版本只切 bool 标记，配合 turn_engine 在 turn 结束清振听做一巡过期。
 func set_furiten(seat: int, value: bool = true) -> void:

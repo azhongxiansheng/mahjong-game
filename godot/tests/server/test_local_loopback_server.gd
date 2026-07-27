@@ -12,7 +12,7 @@ const MOD := ["module_key", "schema_version", "payload"]
 const CORE := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "seats",
+	"dora_indicators", "viewer_next_draw", "seats",
 ]
 const SEAT := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
@@ -208,7 +208,7 @@ func _snap(ne: NetworkedEvent, seat: int, tag: String) -> Dictionary:
 	var entry: Dictionary = (p["modules"] as Array)[idx]
 	assert_eq(int(entry["schema_version"]), 1)
 	var core: Dictionary = entry["payload"]
-	assert_true(_exact(core, CORE), "%s core exact-12" % tag)
+	assert_true(_exact(core, CORE), "%s core exact-13" % tag)
 	assert_eq(int(core["recipient_seat"]), seat)
 	assert_eq((core["seats"] as Array).size(), 4)
 	for i in range(4):
