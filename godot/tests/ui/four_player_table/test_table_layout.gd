@@ -111,32 +111,25 @@ func test_table_stage_uses_repo_felt_and_layered_barrier() -> void:
 	if felt != null:
 		assert_eq(felt.texture.resource_path, expected_path)
 		assert_eq(felt.get_rect(), VIEW_RECT)
+		assert_eq(felt.texture.get_width(), 1600,
+			"生产桌布必须直接匹配 1600×900，禁止再拉伸旧 4:3 背景")
+		assert_eq(felt.texture.get_height(), 900)
 	var barrier := stage.get_node_or_null("BarrierField") as Node2D
 	assert_not_null(barrier)
 	if barrier != null:
 		assert_not_null(barrier.get_node_or_null("SealDiamond"))
 		assert_eq(barrier.get_child_count(), 5,
 			"中心菱形与四席方向线组成原创结界")
-	assert_not_null(stage.get_node_or_null("TableRails"))
+	assert_null(stage.get_node_or_null("TableRails"),
+		"完整四边框已在选定桌布中，不得重复叠加程序化斜轨")
 
 
-func test_table_rails_and_board_frame_are_structural_not_interactive() -> void:
+func test_single_table_frame_and_board_lines_are_structural() -> void:
 	var host := Control.new()
 	add_child_autofree(host)
 	var stage := TableStage.build(host, 1600.0, 900.0)
-	var rails := stage.get_node_or_null("TableRails") as Node2D
-	assert_not_null(rails)
-	if rails != null:
-		for side_name in ["Left", "Right"]:
-			var base := rails.get_node_or_null("Rail%s" % side_name) as Polygon2D
-			var highlight := rails.get_node_or_null(
-				"Highlight%s" % side_name) as Polygon2D
-			assert_not_null(base)
-			assert_not_null(highlight)
-			if base != null:
-				assert_eq(base.polygon.size(), 4)
-			if highlight != null:
-				assert_eq(highlight.polygon.size(), 4)
+	assert_null(stage.get_node_or_null("TableRails"),
+		"牌桌四周只能保留选定背景中的连续桌框")
 	var table: FourPlayerTable = load(
 		"res://ui/four_player_table/four_player_table.tscn").instantiate()
 	add_child_autofree(table)

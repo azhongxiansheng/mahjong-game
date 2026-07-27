@@ -269,3 +269,11 @@ func test_approved_rects_and_critical_regions_do_not_overlap() -> void:
 		for region in critical:
 			assert_false(hud_rect.intersects(region),
 				"HUD %s 不得遮挡关键区 %s" % [hud_rect, region])
+
+
+func test_issue_326_capture_uses_real_battle_state() -> void:
+	var capture_script := load("res://tools/capture_table_icon_hud_326.gd") as Script
+	assert_not_null(capture_script)
+	assert_true(bool(capture_script.get_script_constant_map().get(
+		"USES_REAL_BATTLE_STATE", false)),
+		"#326 验收图必须绑定真实四席手牌，不能再用空 FourPlayerTable 误导选稿")
