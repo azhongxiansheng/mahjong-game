@@ -10,6 +10,8 @@ var next_draw_reveal_label: String
 var status_param: StringName
 var status_text: String
 var status_color: Color
+var feedback_templates_by_source: Dictionary
+var feedback_position: Vector2
 
 
 func _init(
@@ -22,7 +24,9 @@ func _init(
 	p_next_draw_reveal_label: String = "",
 	p_status_param: StringName = &"",
 	p_status_text: String = "",
-	p_status_color: Color = Color(0.66, 0.63, 0.78)
+	p_status_color: Color = Color(0.66, 0.63, 0.78),
+	p_feedback_templates_by_source: Dictionary = {},
+	p_feedback_position: Vector2 = Vector2(420, 12)
 ) -> void:
 	character_id = p_character_id
 	ability_id = p_ability_id
@@ -34,16 +38,21 @@ func _init(
 	status_param = p_status_param
 	status_text = p_status_text
 	status_color = p_status_color
+	feedback_templates_by_source = p_feedback_templates_by_source.duplicate()
+	feedback_position = p_feedback_position
 
 
 func is_valid() -> bool:
 	return character_id != &"" and ability_id != &"" and not feedback_template.is_empty()
 
 
-func format_feedback(skill_name: String) -> String:
+func format_feedback(skill_name: String, source_event: StringName = &"") -> String:
 	if not is_valid() or skill_name.is_empty():
 		return ""
-	return feedback_template.format({"skill_name": skill_name.replace("·", " · ")})
+	var template := feedback_template
+	if feedback_templates_by_source.has(source_event):
+		template = String(feedback_templates_by_source[source_event])
+	return template.format({"skill_name": skill_name.replace("·", " · ")})
 
 
 func has_active_status(skill: SkillResource) -> bool:

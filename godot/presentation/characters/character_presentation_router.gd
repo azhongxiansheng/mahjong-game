@@ -59,13 +59,19 @@ func feedback_for_event(event: BattleEvent) -> Dictionary:
 	var profile := profile_value as CharacterPresentationProfile
 	if _character_at(event.actor_seat) != profile.character_id:
 		return {}
-	var text := profile.format_feedback(String(event.extra.get("skill_name", "")))
+	var source_event := StringName(String(event.extra.get("source_event", "")))
+	var text := profile.format_feedback(
+		String(event.extra.get("skill_name", "")),
+		source_event)
 	if text.is_empty():
+		if profile.feedback_templates_by_source.has(source_event):
+			return {"text": "", "suppress_toast": true}
 		return {}
 	return {
 		"text": text,
 		"color": profile.feedback_color,
 		"pulse": profile.feedback_pulse,
+		"position": profile.feedback_position,
 	}
 
 

@@ -234,12 +234,40 @@ func _step_rob_kan_collect() -> void:
 
 # 把一次 emit 集中到此 helper：登记 log + 调 scheduler。
 func _emit(type: StringName, actor_seat: int, ti: TileSkillAnchor, extra: Dictionary) -> SkillCtx:
+	if type == &"TILE_DRAWN":
+		_prune_consumed_wall_top_reveals()
+	if type in [&"WIN_DECLARED", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"]:
+		# 私有牌面只在当前局进行中有效；终局事件入 journal 前清空，避免末帧泄漏。
+		state.revealed_tiles.clear()
 	var ev := BattleEvent.make(type, actor_seat, ti, extra)
 	events.append(ev)
 	_last_event_type = type
 	var ctx := scheduler.emit_event(ev)
 	_append_skill_triggered_events(ctx, type)
 	return ctx
+
+
+func _prune_consumed_wall_top_reveals() -> void:
+	if state == null or state.wall == null or state.revealed_tiles.is_empty():
+		return
+	var live_ids: Dictionary = {}
+	for index in range(state.wall.draw_index(), state.wall.live_end_index()):
+		var tile := state.wall.authority_tile_at(index)
+		if tile != null:
+			live_ids[tile.instance_id] = true
+	var retained: Array = []
+	for value in state.revealed_tiles:
+		var remove := false
+		if typeof(value) == TYPE_DICTIONARY:
+			var instance_value: Variant = (value as Dictionary).get("tile", null)
+			if instance_value is TileSkillAnchor:
+				var instance := instance_value as TileSkillAnchor
+				remove = instance.holder_seat == -1 and instance.owner_seat >= 0 \
+						and (instance.tile == null \
+						or not live_ids.has(instance.tile.instance_id))
+		if not remove:
+			retained.append(value)
+	state.revealed_tiles = retained
 
 
 # 只激活指定技能，不把等价 source event 广播给 registry 中其他技能。
@@ -1298,7 +1326,8 @@ func _apply_tsumo_action(action: Action) -> ActionResolution:
 	var drawn: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
 	if drawn == null:
 		return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
-	var is_haitei: bool = (state.wall.live_wall_size() == 0)
+	var is_haitei: bool = (
+		state.wall.live_wall_size() == 0 and not seat.last_draw_is_rinshan)
 	var win: Dictionary = _check_tsumo(drawn, is_haitei, seat.last_draw_is_rinshan)
 	if not win.is_winning:
 		return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
@@ -1576,7 +1605,10 @@ func _execute_winning_claim(action: Action) -> int:
 	var actor: int = action.seat
 	match action.kind:
 		"RON":
-			var is_houtei: bool = (state.wall.live_wall_size() == 0)
+			var discarder_seat := _get_last_discarder()
+			var is_houtei: bool = state.wall.live_wall_size() == 0 \
+					and discarder_seat >= 0 \
+					and not (state.seats[discarder_seat] as Seat).last_draw_is_rinshan
 			return _apply_ron_private(actor, discarded, discarder, is_houtei, false)
 		"PON":
 			var comps: Array = action.payload.get("companion_tile_instance_ids", []) as Array
@@ -1846,7 +1878,8 @@ func _build_turn_offers(seat: Seat) -> Array:
 	if seat.last_drawn_instance_id != Tile.INVALID_INSTANCE_ID:
 		var drawn: Tile = seat.hand.find_by_instance_id(seat.last_drawn_instance_id)
 		if drawn != null:
-			var is_haitei: bool = (state.wall.live_wall_size() == 0)
+			var is_haitei: bool = state.wall.live_wall_size() == 0 \
+					and not seat.last_draw_is_rinshan
 			var first_draw: bool = state.first_round_active \
 				and seat.river.is_empty()
 			var is_tenhou: bool = first_draw and seat.seat_id == state.dealer_seat

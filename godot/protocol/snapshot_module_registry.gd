@@ -25,7 +25,7 @@ static func make_standard() -> SnapshotModuleRegistry:
 
 
 ## #252+#253：TRASH_TALK 生产注册表：
-## core_table + item_inventory + reward_window + optional viewer_next_draw（升序）。
+## core_table + item_inventory + reward_window + 两个 optional viewer 模块（升序）。
 ## 不把 AuthorityReplaySnapshot 放入线上协议。
 static func make_trash_talk() -> SnapshotModuleRegistry:
 	var reg := make_standard()
@@ -39,6 +39,10 @@ static func make_trash_talk() -> SnapshotModuleRegistry:
 	if not bool(r_prediction.get("ok", false)):
 		push_error("SnapshotModuleRegistry.make_trash_talk viewer_next_draw failed: %s" \
 			% str(r_prediction))
+	var r_wall_top: Dictionary = reg.register(ViewerWallTopSnapshotProvider.new())
+	if not bool(r_wall_top.get("ok", false)):
+		push_error("SnapshotModuleRegistry.make_trash_talk viewer_wall_top failed: %s" \
+			% str(r_wall_top))
 	return reg
 
 
@@ -78,14 +82,15 @@ func is_standard_only() -> bool:
 	return keys.size() == 1 and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY
 
 
-## TRASH_TALK：三项既有模块 + optional viewer_next_draw（升序）。
+## TRASH_TALK：三项既有模块 + 两个 optional viewer 模块（升序）。
 func is_trash_talk_registry() -> bool:
 	var keys: Array = registered_keys()
-	return keys.size() == 4 \
+	return keys.size() == 5 \
 			and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY \
 			and str(keys[1]) == ItemInventorySnapshotProvider.MODULE_KEY \
 			and str(keys[2]) == RewardWindowSnapshotProvider.MODULE_KEY \
-			and str(keys[3]) == ViewerNextDrawSnapshotProvider.MODULE_KEY
+			and str(keys[3]) == ViewerNextDrawSnapshotProvider.MODULE_KEY \
+			and str(keys[4]) == ViewerWallTopSnapshotProvider.MODULE_KEY
 
 
 ## 权威侧：按 module_key 升序组合 modules 数组。失败返回 {ok:false,...}。

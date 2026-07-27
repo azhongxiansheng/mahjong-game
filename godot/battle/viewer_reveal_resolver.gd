@@ -68,7 +68,8 @@ static func next_draw_for_viewer(
 		if not (instance_value is TileSkillAnchor):
 			continue
 		var instance := instance_value as TileSkillAnchor
-		if instance.holder_seat != -1 or instance.tile == null:
+		if instance.holder_seat != -1 or instance.owner_seat != -1 \
+				or instance.tile == null:
 			continue
 		if instance.tile.instance_id != next_tile.instance_id \
 				or instance.tile.id != next_tile.id \
@@ -78,6 +79,46 @@ static func next_draw_for_viewer(
 		live.holder_seat = -1
 		return live
 	return null
+
+
+# 返回仍连续位于 live wall 顶部、且明确授权给 viewer 的牌墙序列。
+# 第一个未授权位置即截断，保证后续普通摸只消费、不补入原批次第四张。
+static func wall_top_for_viewer(
+	state: BattleState, viewer_seat: int, limit: int = 3
+) -> Array:
+	var out: Array = []
+	if state == null or state.wall == null or viewer_seat < 0 \
+			or viewer_seat >= state.seats.size() or limit <= 0:
+		return out
+	var top: Array[Tile] = state.wall.peek_top_n(limit)
+	for tile in top:
+		var revealed := false
+		for value in state.revealed_tiles:
+			if typeof(value) != TYPE_DICTIONARY:
+				continue
+			var record := value as Dictionary
+			var visible_to: Variant = record.get("visible_to", null)
+			if typeof(visible_to) != TYPE_ARRAY \
+					or not _contains_seat(visible_to, viewer_seat):
+				continue
+			var instance_value: Variant = record.get("tile", null)
+			if not (instance_value is TileSkillAnchor):
+				continue
+			var instance := instance_value as TileSkillAnchor
+			if instance.holder_seat != -1 or instance.owner_seat != viewer_seat \
+					or instance.tile == null:
+				continue
+			if instance.tile.instance_id == tile.instance_id \
+					and instance.tile.id == tile.id \
+					and instance.tile.is_red_dora == tile.is_red_dora:
+				revealed = true
+				break
+		if not revealed:
+			break
+		var live := TileSkillAnchor.make(tile, viewer_seat)
+		live.holder_seat = -1
+		out.append(live)
+	return out
 
 
 static func _contains_seat(values: Array, seat: int) -> bool:

@@ -70,6 +70,8 @@ const CORE_TABLE_KEYS := [
 	"dora_indicators", "seats",
 ]
 const VIEWER_NEXT_DRAW_KEYS := ["recipient_seat", "hand_seq", "tile"]
+const VIEWER_WALL_TOP_KEYS := ["recipient_seat", "hand_seq", "tiles"]
+const VIEWER_WALL_TOP_ENTRY_KEYS := ["offset", "tile"]
 const SEAT_VIEW_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
 	"last_drawn_tile_instance_id", "river", "melds", "riichi_declared",
@@ -1288,6 +1290,13 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 				pl_raw as Dictionary, seat_view_i, core_hand_seq)
 			if pl_out == null:
 				return null
+		elif mkey == "viewer_wall_top" and sver == 1:
+			if typeof(pl_raw) != TYPE_DICTIONARY:
+				return null
+			pl_out = _validate_viewer_wall_top(
+				pl_raw as Dictionary, seat_view_i, core_hand_seq)
+			if pl_out == null:
+				return null
 		else:
 			# unknown module：JSON-safe domain + deep copy；保序
 			if ProtocolViewCodec.compute_view_hash(pl_raw).is_empty():
@@ -1470,6 +1479,45 @@ static func _validate_viewer_next_draw(
 		"recipient_seat": int(recipient),
 		"hand_seq": hand_seq,
 		"tile": tile,
+	}
+
+
+static func _validate_viewer_wall_top(
+	p: Dictionary, seat_view: int, core_hand_seq: int
+) -> Variant:
+	if not _has_exact_keys(p, VIEWER_WALL_TOP_KEYS):
+		return null
+	var recipient: Variant = _require_seat(p["recipient_seat"])
+	if recipient == null or int(recipient) != seat_view \
+			or typeof(p["hand_seq"]) != TYPE_INT:
+		return null
+	var hand_seq := int(p["hand_seq"])
+	if hand_seq < 0 or hand_seq != core_hand_seq or typeof(p["tiles"]) != TYPE_ARRAY:
+		return null
+	var raw_tiles := p["tiles"] as Array
+	if raw_tiles.is_empty() or raw_tiles.size() > 3:
+		return null
+	var tiles_out: Array = []
+	var seen: Dictionary = {}
+	for index in range(raw_tiles.size()):
+		if typeof(raw_tiles[index]) != TYPE_DICTIONARY:
+			return null
+		var entry := raw_tiles[index] as Dictionary
+		if not _has_exact_keys(entry, VIEWER_WALL_TOP_ENTRY_KEYS) \
+				or typeof(entry["offset"]) != TYPE_INT or int(entry["offset"]) != index:
+			return null
+		var tile: Variant = ProtocolViewCodec.tile_view_from_dict(entry["tile"])
+		if tile == null:
+			return null
+		var iid := int((tile as Dictionary)["instance_id"])
+		if seen.has(iid) or not _is_instance_id_in_hand_namespace(iid, hand_seq):
+			return null
+		seen[iid] = true
+		tiles_out.append({"offset": index, "tile": tile})
+	return {
+		"recipient_seat": int(recipient),
+		"hand_seq": hand_seq,
+		"tiles": tiles_out,
 	}
 
 

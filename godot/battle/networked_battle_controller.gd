@@ -168,6 +168,15 @@ func get_viewer_next_draw_view() -> Dictionary:
 	return (applied as Dictionary).duplicate(true)
 
 
+func get_viewer_wall_top_view() -> Dictionary:
+	if not _applied_modules.has(ViewerWallTopSnapshotProvider.MODULE_KEY):
+		return {}
+	var applied: Variant = _applied_modules[ViewerWallTopSnapshotProvider.MODULE_KEY]
+	if typeof(applied) != TYPE_DICTIONARY:
+		return {}
+	return (applied as Dictionary).duplicate(true)
+
+
 ## #253：本席库存/武装公共投影。
 func get_item_inventory_view() -> Dictionary:
 	if _applied_modules.has("item_inventory"):
