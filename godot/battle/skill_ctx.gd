@@ -16,7 +16,9 @@ var mangan_floor_seats: Dictionary = {}
 var yakuman_force_seats: Dictionary = {}
 var beneficiary_seat: int = -1  # 由 scheduler 在每个 candidate 派发前设置
 var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派发前设置；M7 ctx.consume_self 用
-var triggered_skills: Array = []  # scheduler 在每个 hook fire 后追加 {skill_id, skill_name, beneficiary_seat}
+# scheduler 在每个真实 mutation 后记录稳定身份；Dora mutation 额外携带 delta，
+# is_ability 仅供结算层区分角色/能力反馈与普通牌技能。
+var triggered_skills: Array = []
 
 func _init(p_state: BattleState, p_event: BattleEvent) -> void:
 	_state = p_state

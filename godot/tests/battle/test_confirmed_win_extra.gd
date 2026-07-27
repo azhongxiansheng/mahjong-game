@@ -83,6 +83,10 @@ func test_chankan_ron_action_reaches_confirmed_win_extra() -> void:
 	assert_false(bool(win_event.extra.get("is_tsumo", true)))
 	assert_true(bool(win_event.extra.get("is_chankan", false)),
 		"抢杠 RON 必须把 is_chankan 传到最终确认事件")
+	assert_true(win_event.extra.has("dora_count"),
+		"RON 确认事件必须公开权威 Dora 总数")
+	assert_eq(int(win_event.extra.get("ability_extra_dora_count", -1)), 0,
+		"无角色能力时 RON 的能力 Dora 归因必须显式为 0")
 
 
 func test_tsumo_action_confirmed_win_extra_is_explicit() -> void:
@@ -105,3 +109,7 @@ func test_tsumo_action_confirmed_win_extra_is_explicit() -> void:
 	assert_not_null(win_event)
 	assert_true(bool(win_event.extra.get("is_tsumo", false)))
 	assert_false(bool(win_event.extra.get("is_chankan", true)))
+	assert_true(win_event.extra.has("dora_count"),
+		"TSUMO 确认事件必须公开权威 Dora 总数")
+	assert_eq(int(win_event.extra.get("ability_extra_dora_count", -1)), 0,
+		"无角色能力时 TSUMO 的能力 Dora 归因必须显式为 0")

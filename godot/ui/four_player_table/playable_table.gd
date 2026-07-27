@@ -389,16 +389,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	if win_event != null:
 		var result_yaku: Array = win_event.extra.get("yaku_names", [])
 		yaku_list = _build_yaku_rows(panel, result_yaku)
-		# 所有 bonus 同时揭示为一个 phase。本仓事件只保留总番，
-		# 因此只把「总番 - 已命中役番」的可证明差额聚合为一行，不猜来源。
-		var named_han := 0
-		for item in result_yaku:
-			if item is Dictionary and int(item.get("yakuman_multiplier", 0)) == 0:
-				named_han += int(item.get("han", 0))
-		var bonus_han := maxi(int(win_event.extra.get("han", 0)) - named_han, 0)
-		var bonus_rows: Array = []
-		if bonus_han > 0:
-			bonus_rows.append({"name": "附加番", "han": bonus_han})
+		var bonus_rows := _result_bonus_rows(win_event.extra, result_yaku)
 		var shown_yaku_count := result_yaku.size()
 		if not bonus_rows.is_empty():
 			var bonus_delay := (shown_yaku_count + 1) * RESULT_PHASE_INTERVAL
@@ -1089,6 +1080,26 @@ static func _make_yaku_row_label(nm: String, suffix: String) -> Control:
 
 # bonus（庄家/宝牌/报听/自摸）共用一次 phase；这里接收已适配的
 # bonus 行，所有行在同一 260ms tween 内同时揭示。
+static func _result_bonus_rows(result: Dictionary, yaku_names: Array) -> Array:
+	var named_han := 0
+	for item in yaku_names:
+		if item is Dictionary and int(item.get("yakuman_multiplier", 0)) == 0:
+			named_han += int(item.get("han", 0))
+	var rows: Array = []
+	var dora_count := maxi(int(result.get("dora_count", 0)), 0)
+	var ability_extra := maxi(int(result.get("ability_extra_dora_count", 0)), 0)
+	if dora_count > 0:
+		var dora_name := "宝牌"
+		if ability_extra > 0:
+			dora_name = "宝牌（含能力额外 +%d）" % ability_extra
+		rows.append({"name": dora_name, "han": dora_count})
+	var other_bonus := maxi(
+		int(result.get("han", 0)) - named_han - dora_count, 0)
+	if other_bonus > 0:
+		rows.append({"name": "附加番", "han": other_bonus})
+	return rows
+
+
 func _build_result_bonus_rows(panel: Control, bonus_rows: Array,
 		reveal_delay: float) -> VBoxContainer:
 	var list := VBoxContainer.new()

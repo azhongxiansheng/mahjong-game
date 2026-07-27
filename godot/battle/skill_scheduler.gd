@@ -127,11 +127,20 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 		var snap := _snapshot_before(ctx)
 		c.hook.on_event(c.skill, event, ctx)
 		if _did_mutate(ctx, snap):
-			ctx.triggered_skills.append({
+			var triggered := {
 				"skill_id": c.skill.id,
 				"skill_name": c.skill.display_name,
 				"beneficiary_seat": c.beneficiary_seat,
-			})
+				"is_ability": c.skill.is_ability,
+			}
+			var seat := int(c.beneficiary_seat)
+			if seat >= 0 and seat < _state.extra_dora_count.size():
+				var before_dora: Array = snap.extra_dora
+				var extra_dora_delta := int(_state.extra_dora_count[seat]) \
+					- int(before_dora[seat])
+				if extra_dora_delta != 0:
+					triggered["extra_dora_delta"] = extra_dora_delta
+			ctx.triggered_skills.append(triggered)
 	ctx.current_skill = null
 
 func _snapshot_before(ctx: SkillCtx) -> Dictionary:
