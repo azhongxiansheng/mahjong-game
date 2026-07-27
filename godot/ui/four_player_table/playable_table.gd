@@ -10,7 +10,10 @@ class_name PlayableTable extends Control
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
-const QiuJueVoicePolicyScript := preload("res://audio/qiu_jue_voice_policy.gd")
+const CharacterPresentationCatalogScript := preload(
+	"res://presentation/characters/character_presentation_catalog.gd")
+const CharacterPresentationRouterScript := preload(
+	"res://presentation/characters/character_presentation_router.gd")
 
 # 高冲击 MomentBand：固定在牌河与操作带之间，1.3s 后卸载。
 const MOMENT_BAND_Y: float = 94.0
@@ -52,7 +55,8 @@ var _model_total_bytes: int = 0
 var _ptt_ui_state: StringName = &"idle"
 var _voice_capture: VoiceCapturePipeline = null
 var _voice_playback: VoicePlaybackRouter = null
-var _qiu_jue_voice_policy = QiuJueVoicePolicyScript.new()
+var _character_presentation_router = CharacterPresentationRouterScript.new(
+	CharacterPresentationCatalogScript.active_profiles())
 
 func _ready() -> void:
 	# 操作条位于 1600×900 舞台内，是 overlay，不额外增加 72px 高度。
@@ -217,17 +221,18 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 
 
 func bind_character_ids(character_ids: Array) -> void:
-	_qiu_jue_voice_policy.bind_characters(character_ids)
+	_character_presentation_router.bind_characters(character_ids)
 
 
 func on_match_scores_updated(scores: Array) -> void:
-	_play_character_voice_requests(_qiu_jue_voice_policy.requests_for_scores(scores))
+	_play_character_voice_requests(
+		_character_presentation_router.voice_requests_for_scores(scores))
 
 
 func on_match_finished(summary: Dictionary) -> void:
 	var final_scores: Array = summary.get("final_scores", [])
 	_play_character_voice_requests(
-		_qiu_jue_voice_policy.requests_for_match_result(final_scores))
+		_character_presentation_router.voice_requests_for_match_result(final_scores))
 
 
 # 同一张 PlayableTable 会连续跑多局；必须在新状态 bind 前清上局胜者翻牌，
@@ -1751,7 +1756,8 @@ func _play_event_sfx(ev: BattleEvent) -> void:
 
 
 func _handle_character_voice_event(ev: BattleEvent) -> void:
-	_play_character_voice_requests(_qiu_jue_voice_policy.requests_for_event(ev))
+	_play_character_voice_requests(
+		_character_presentation_router.voice_requests_for_event(ev))
 
 
 func _play_character_voice_requests(requests: Array) -> void:
@@ -1775,13 +1781,18 @@ func _play_character_voice_requests(requests: Array) -> void:
 func _handle_event_toast(ev: BattleEvent) -> void:
 	if ev == null:
 		return
+	var feedback: Dictionary = _character_presentation_router.feedback_for_event(ev)
+	if not feedback.is_empty():
+		var feedback_color: Color = feedback.get("color", Color(1, 0.88, 0.32))
+		_show_toast_text(
+			String(feedback.get("text", "")),
+			feedback_color,
+			bool(feedback.get("pulse", false)))
+		return
 	var text: String = _format_toast_text(ev)
 	if text == "":
 		return
-	var is_qiu_jue := ev.type == &"SKILL_TRIGGERED" \
-		and StringName(String(ev.extra.get("skill_id", ""))) == &"char_kaiji_passive_v1"
-	_show_toast_text(text, Color("ffb347") if is_qiu_jue else Color(1, 0.88, 0.32),
-		is_qiu_jue)
+	_show_toast_text(text)
 
 
 # 任意文本 toast — 共用于 BC 事件 + 成就解锁等。
@@ -1855,11 +1866,6 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 		&"GAME_BEGIN":
 			return "开局"
 		&"SKILL_TRIGGERED":
-			if StringName(String(ev.extra.get("skill_id", ""))) == &"char_kaiji_passive_v1":
-				var qiu_name := String(ev.extra.get("skill_name", "")).replace("·", " · ")
-				if qiu_name.is_empty():
-					return ""
-				return "🔥 %s　+2 番（点数 < 15000）" % qiu_name
 			var name: String = String(ev.extra.get("skill_name", ""))
 			if name == "":
 				return ""
