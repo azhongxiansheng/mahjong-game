@@ -92,6 +92,27 @@ func test_bonus_rows_share_one_reveal_phase() -> void:
 		assert_eq(row.get_meta("reference_reveal_duration_ms", -1), 260)
 
 
+func test_result_bonus_rows_expose_total_dora_and_ability_increment() -> void:
+	assert_true(_pt.has_method("_result_bonus_rows"),
+		"确认结算必须从权威 WIN_DECLARED 明细生成通用 bonus 行")
+	if not _pt.has_method("_result_bonus_rows"):
+		return
+	var rows: Array = _pt.call("_result_bonus_rows", {
+		"han": 4,
+		"dora_count": 3,
+		"ability_extra_dora_count": 2,
+	}, [{"name": "立直", "han": 1}])
+	assert_eq(rows, [{"name": "宝牌（含能力额外 +2）", "han": 3}],
+		"结算页必须明确展示总 Dora，且说明其中能力增量；不得混称附加番")
+	var ordinary: Array = _pt.call("_result_bonus_rows", {
+		"han": 3,
+		"dora_count": 0,
+		"ability_extra_dora_count": 0,
+	}, [{"name": "立直", "han": 1}])
+	assert_eq(ordinary, [{"name": "附加番", "han": 2}],
+		"非 Dora 的既有 bonus 仍使用通用附加番，不猜测来源")
+
+
 func test_total_waits_extra_1000ms_and_enters_in_420ms() -> void:
 	assert_true(_pt.has_method("_result_total_reveal_delay"))
 	assert_true(_pt.has_method("_build_result_total_bar"))
