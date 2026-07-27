@@ -35,7 +35,8 @@ const EXPECTED_MAP: Array = [
 		"triggers": [&"WIN_DECLARED_PRE"]},
 	{"id": &"ying_li", "name": "影立静", "ability": &"char_momoko_passive_v1",
 		"title": "影立静·消影一发", "primary": &"CUNNING", "secondary": &"CALM",
-		"triggers": [&"RIICHI_DECLARED", &"WIN_DECLARED_PRE"]},
+		"triggers": [
+			&"RIICHI_DECLARED", &"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"]},
 	{"id": &"ju_jin", "name": "局进吾", "ability": &"char_tetsuya_passive_v1",
 		"title": "局进吾·阶升必杀", "primary": &"DOMINATION", "secondary": &"CUNNING",
 		"triggers": [&"WIN_DECLARED_PRE"]},
@@ -277,3 +278,18 @@ func test_all_portrait_paths_load_from_original_production_assets():
 			ResourceLoader.exists(path),
 			"Gate B 后最终 portrait 必须存在于生产资源树: %s" % path
 		)
+
+
+func test_ying_li_three_existing_visual_assets_load_with_frozen_dimensions() -> void:
+	var expected := {
+		"res://assets/roguelike/characters/char_ying_li.png": Vector2i(1024, 1536),
+		"res://assets/roguelike/characters/char_ying_li_cutout.png": Vector2i(1024, 1536),
+		"res://assets/roguelike/characters/char_ying_li_avatar.png": Vector2i(512, 512),
+	}
+	for path_value in expected:
+		var path := String(path_value)
+		assert_true(ResourceLoader.exists(path), "%s 必须是既有生产资源" % path)
+		var texture := load(path) as Texture2D
+		assert_not_null(texture)
+		if texture != null:
+			assert_eq(Vector2i(texture.get_width(), texture.get_height()), expected[path])
