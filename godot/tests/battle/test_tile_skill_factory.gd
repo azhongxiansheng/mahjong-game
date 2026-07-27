@@ -67,7 +67,7 @@ func test_inject_one_registers_with_tile_anchor():
 	var entries: Array = reg.get_all_entries()
 	assert_eq(entries.size(), 1)
 	var anchor = entries[0].anchor
-	assert_true(anchor is TileInstance)
+	assert_true(anchor is TileSkillAnchor)
 	assert_eq(anchor.owner_seat, 0)
 	assert_eq(anchor.tile.id, TileId.W5)
 

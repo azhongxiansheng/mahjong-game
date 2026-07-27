@@ -263,7 +263,7 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 	var prev_wall: int = _wall_remaining
 	_wall_remaining = state.wall.live_wall_size()
 	_dora_indicators = []
-	for ti in state.dora_indicators.visible:
+	for ti in state.dora_indicators.visible_tiles():
 		_dora_indicators.append(ti.id)
 	# T3b:四方分数/风位/立直灯摘要
 	var summary: Array = []

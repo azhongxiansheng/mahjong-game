@@ -77,7 +77,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 	# 手牌/河 rebuild 时按它标扫光/金边。
 	var dora_ids: Array = []
 	if state.dora_indicators:
-		for ind in state.dora_indicators.visible:
+		for ind in state.dora_indicators.visible_tiles():
 			if ind != null:
 				dora_ids.append(DoraIndicator.dora_from_indicator(ind.id))
 	for i in range(seat_panels.size()):
@@ -85,7 +85,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
-		sp.set_discards_count(state.discards_per_seat[i].size())
+		sp.set_discards_count(seat.river.size())
 		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
 		sp.set_active(i == state.current_seat)
 		# 玩家自家(seat 0)post-discard 听牌时显示"听"金徽章。
@@ -96,7 +96,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 			var waits: Array = []
 			if seat.hand.size() == 13:
 				var typed_melds: Array[Meld] = []
-				for m in seat.melds:
+				for m in seat.melds.all():
 					typed_melds.append(m)
 				waits = WaitCalculator.wait_tiles(seat.hand, typed_melds)
 				is_tenpai = waits.size() > 0
@@ -109,17 +109,18 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		# 一发窗口(刚立直未轮一圈)— 所有 seat 都显(玩家算对家一发风险)。
 		sp.set_ippatsu(seat.riichi.declared and seat.riichi.ippatsu_window)
 	for i in range(discard_rivers.size()):
-		var dr: DiscardRiver = discard_rivers[i]
-		# 立直宣告时该 seat 的 riichi.riichi_discard_index 标出"这张牌弹出时
-		# 同时声了立直" → DiscardRiver 渲染时把它旋 90° (日麻标志记号)。
-		var riichi_idx: int = state.seats[i].riichi.riichi_discard_index
+		var dr: DiscardRiverView = discard_rivers[i]
+		var river_owner: Seat = state.seats[i]
+		# 立直宣告牌索引由领域牌河持有，渲染层只读取快照。
+		var riichi_idx: int = river_owner.river.riichi_discard_index()
 		dr.set_dora_ids(dora_ids)
-		dr.set_tiles(state.discards_per_seat[i], riichi_idx)
+		dr.set_tiles(river_owner.river.tiles(), riichi_idx)
 	# spec 2026-05-08：每家副露视觉化（chi/pon/minkan/ankan/added_kan）
 	for i in range(meld_areas.size()):
 		var ma: MeldArea = meld_areas[i]
-		ma.set_melds(state.seats[i].melds, i)
-		var has_meld: bool = not state.seats[i].melds.is_empty()
+		var meld_owner: Seat = state.seats[i]
+		ma.set_melds(meld_owner.melds.all(), i)
+		var has_meld: bool = not meld_owner.melds.is_empty()
 		var meld_main_extent: float = ma.get_layout_bounds().size.x \
 			if has_meld else 0.0
 		seat_panels[i].apply_reference_hand_layout(meld_main_extent)
@@ -137,7 +138,7 @@ func bind_cumulative_scores(scores: Array) -> void:
 # 雀魂式全桌同名高亮：河 + 副露 + 自家手牌
 func highlight_tile_id(tile_id: int) -> void:
 	for dr in discard_rivers:
-		if dr is DiscardRiver:
+		if dr is DiscardRiverView:
 			dr.set_hover_match_id(tile_id)
 	for ma in meld_areas:
 		if ma is MeldArea:
@@ -149,7 +150,7 @@ func highlight_tile_id(tile_id: int) -> void:
 
 func clear_tile_highlight() -> void:
 	for dr in discard_rivers:
-		if dr is DiscardRiver:
+		if dr is DiscardRiverView:
 			dr.clear_hover_match()
 	for ma in meld_areas:
 		if ma is MeldArea:
@@ -207,7 +208,7 @@ func _build_layout() -> void:
 
 	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
 	for i in range(4):
-		var dr := DiscardRiver.new()
+		var dr := DiscardRiverView.new()
 		dr.set_seat_id(i)
 		var p := _discard_river_layout(i)
 		dr.position = p.position

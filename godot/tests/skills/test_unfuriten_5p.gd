@@ -25,7 +25,7 @@ func test_unfuriten_clears_furiten_on_owner_event():
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
 	st.furiten_flags[0] = true
-	var ti := TileInstance.make(Tile.new(TileId.T5), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T5), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"FURITEN_TRIGGERED", 0))
 	assert_false(st.furiten_flags[0])
@@ -37,7 +37,7 @@ func test_unfuriten_skip_when_not_in_furiten():
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
 	# furiten_flags[0] 默认 false
-	var ti := TileInstance.make(Tile.new(TileId.T5), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T5), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"FURITEN_TRIGGERED", 0))
 	assert_false(sk.consumed, "未振听不应消耗")
@@ -49,7 +49,7 @@ func test_unfuriten_consumed_after_fire_does_not_clear_again():
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
 	st.furiten_flags[0] = true
-	var ti := TileInstance.make(Tile.new(TileId.T5), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T5), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"FURITEN_TRIGGERED", 0))
 	st.furiten_flags[0] = true  # 模拟再次振听

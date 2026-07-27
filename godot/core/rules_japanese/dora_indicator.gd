@@ -25,7 +25,7 @@ static func count_normal_dora(hand: Hand, called_melds: Array, indicator_ids: Ar
 # 赤 dora 张数：扫 hand + 副露中所有 Tile.is_red_dora
 static func count_red_dora(hand: Hand, called_melds: Array) -> int:
 	var total := 0
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if t.is_red_dora:
 			total += 1
 	for m in called_melds:

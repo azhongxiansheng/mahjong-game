@@ -151,7 +151,7 @@ func test_live_rivers_stay_inside_crowded_public_zones() -> void:
 	assert_eq(table.discard_rivers.size(), 4)
 	var crowded := TableLayout.crowded_state_rects()
 	for seat_id in range(4):
-		var river := table.discard_rivers[seat_id] as DiscardRiver
+		var river := table.discard_rivers[seat_id] as DiscardRiverView
 		var container := river.get_node_or_null("RiverContainer") as Control
 		assert_not_null(container)
 		if container == null:

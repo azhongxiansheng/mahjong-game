@@ -4,20 +4,20 @@ const NO_CHAIN := 0
 
 var type: StringName
 var actor_seat: int
-var tile_instance: TileInstance
+var tile_anchor: TileSkillAnchor
 var chain_id: int = NO_CHAIN
 var extra: Dictionary = {}
 
 static func make(
 	p_type: StringName,
 	p_actor: int,
-	p_tile: TileInstance = null,
+	p_tile: TileSkillAnchor = null,
 	p_extra: Dictionary = {}
 ) -> BattleEvent:
 	var ev := BattleEvent.new()
 	ev.type = p_type
 	ev.actor_seat = p_actor
-	ev.tile_instance = p_tile
+	ev.tile_anchor = p_tile
 	ev.extra = p_extra
 	return ev
 
@@ -31,7 +31,7 @@ func to_dict() -> Dictionary:
 	return {
 		"type": String(type),
 		"actor_seat": actor_seat,
-		"tile": tile_instance.to_dict() if tile_instance != null else {},
+		"tile": tile_anchor.to_dict() if tile_anchor != null else {},
 		"chain_id": chain_id,
 		"extra": _serialize_extra(extra),
 	}
@@ -44,7 +44,7 @@ static func from_dict(d: Dictionary) -> BattleEvent:
 	ev.actor_seat = int(d.get("actor_seat", -1))
 	var tile_dict: Dictionary = d.get("tile", {})
 	if not tile_dict.is_empty():
-		ev.tile_instance = TileInstance.from_dict(tile_dict)
+		ev.tile_anchor = TileSkillAnchor.from_dict(tile_dict)
 	ev.chain_id = int(d.get("chain_id", NO_CHAIN))
 	ev.extra = d.get("extra", {}).duplicate(true)
 	return ev

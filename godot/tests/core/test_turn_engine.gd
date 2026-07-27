@@ -20,7 +20,7 @@ func _set_hand(seat: Seat, tiles: Array) -> void:
 
 
 func _first_hand_iid(seat: Seat) -> int:
-	return seat.hand._tiles[0].instance_id
+	return seat.hand.tiles()[0].instance_id
 
 
 # ---- draw_for_current ----
@@ -51,9 +51,9 @@ func test_discard_moves_tile_to_pile_and_advances_phase():
 	var ok := e.discard(t.instance_id)
 	assert_true(ok)
 	assert_eq(e.state.seats[0].hand.size(), 13)
-	assert_eq(e.state.discards_per_seat[0].size(), 1)
-	assert_eq(e.state.discards_per_seat[0][0].instance_id, t.instance_id)
-	assert_eq(e.state.discards_per_seat[0][0].id, t.id)
+	assert_eq(e.state.seats[0].river.size(), 1)
+	assert_eq(e.state.seats[0].river.tiles()[0].instance_id, t.instance_id)
+	assert_eq(e.state.seats[0].river.tiles()[0].id, t.id)
 	assert_eq(e.state.phase, BattlePhase.Kind.CLAIM)
 
 func test_discard_returns_false_when_not_in_hand():
@@ -120,7 +120,7 @@ func test_declare_riichi_succeeds_when_valid():
 	assert_eq(e.state.riichi_sticks, 1, "桌上立直棒 +1")
 	assert_eq(e.state.seats[0].hand.size(), 13)
 	assert_null(e.state.seats[0].hand.find_by_instance_id(900))
-	assert_eq(e.state.discards_per_seat[0][-1].instance_id, 900)
+	assert_eq(e.state.seats[0].river.tiles()[-1].instance_id, 900)
 	assert_eq(e.state.phase, BattlePhase.Kind.CLAIM)
 	assert_eq(e.state.seats[0].last_drawn_instance_id, Tile.INVALID_INSTANCE_ID)
 
@@ -138,7 +138,7 @@ func test_declare_riichi_fails_when_invalid():
 	_set_hand(e.state.seats[0], tiles)
 	e.state.phase = BattlePhase.Kind.DISCARD
 	var hand_iids: Array = []
-	for t in e.state.seats[0].hand._tiles:
+	for t in e.state.seats[0].hand.tiles():
 		hand_iids.append(t.instance_id)
 	var points: int = e.state.seats[0].points
 	var sticks: int = e.state.riichi_sticks
@@ -149,10 +149,10 @@ func test_declare_riichi_fails_when_invalid():
 	assert_eq(e.state.seats[0].points, 25000, "未扣点")
 	assert_eq(e.state.seats[0].points, points)
 	assert_eq(e.state.riichi_sticks, sticks)
-	assert_eq(e.state.discards_per_seat[0].size(), 0)
+	assert_eq(e.state.seats[0].river.size(), 0)
 	assert_eq(e.state.phase, phase)
 	var after_iids: Array = []
-	for t in e.state.seats[0].hand._tiles:
+	for t in e.state.seats[0].hand.tiles():
 		after_iids.append(t.instance_id)
 	assert_eq(after_iids, hand_iids)
 
@@ -167,7 +167,7 @@ func _setup_after_dealer_discards(e: TurnEngine, discard_tid: int, discard_iid: 
 	_set_hand(e.state.seats[0], hand_tiles)
 	e.state.phase = BattlePhase.Kind.DISCARD
 	e.discard(discard_iid)
-	return e.state.discards_per_seat[0][-1]
+	return e.state.seats[0].river.tiles()[-1]
 
 func test_apply_chi_success():
 	var e := _new_engine()
@@ -177,11 +177,11 @@ func test_apply_chi_success():
 	var ok := e.apply_chi(1, tile.instance_id, [501, 502])
 	assert_true(ok)
 	assert_eq(e.state.seats[1].melds.size(), 1)
-	assert_eq(e.state.seats[1].melds[0].kind, Meld.Kind.CHI)
-	assert_same(e.state.seats[1].melds[0].called_tile, tile,
+	assert_eq(e.state.seats[1].melds.all()[0].kind, Meld.Kind.CHI)
+	assert_same(e.state.seats[1].melds.all()[0].called_tile, tile,
 		"TurnEngine 必须把河里的真实叫牌写进 Meld")
 	assert_eq(e.state.seats[1].hand.size(), 0)
-	assert_eq(e.state.discards_per_seat[0].size(), 0, "弃牌被取走")
+	assert_eq(e.state.seats[0].river.size(), 0, "弃牌被取走")
 	assert_eq(e.state.current_seat, 1)
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
 	assert_false(e.state.first_round_active, "鸣牌打破第一巡")
@@ -199,8 +199,8 @@ func test_apply_pon_success():
 	var tile := _setup_after_dealer_discards(e, TileId.W5, 600)
 	var ok := e.apply_pon(2, tile.instance_id, [601, 602])
 	assert_true(ok)
-	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.PON)
-	assert_same(e.state.seats[2].melds[0].called_tile, tile)
+	assert_eq(e.state.seats[2].melds.all()[0].kind, Meld.Kind.PON)
+	assert_same(e.state.seats[2].melds.all()[0].called_tile, tile)
 	assert_eq(e.state.current_seat, 2)
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
 
@@ -209,13 +209,13 @@ func test_apply_minkan_reveals_new_dora_and_takes_rinshan():
 	_set_hand(e.state.seats[2], [
 		_tile(TileId.W5, 701), _tile(TileId.W5, 702), _tile(TileId.W5, 703),
 	])
-	var initial_dora_count := e.state.dora_indicators.visible.size()
+	var initial_dora_count := e.state.dora_indicators.visible_tiles().size()
 	var tile := _setup_after_dealer_discards(e, TileId.W5, 700)
 	var ok := e.apply_minkan(2, tile.instance_id, [701, 702, 703])
 	assert_true(ok)
-	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.MINKAN)
-	assert_same(e.state.seats[2].melds[0].called_tile, tile)
-	assert_eq(e.state.dora_indicators.visible.size(), initial_dora_count + 1, "明杠翻 dora")
+	assert_eq(e.state.seats[2].melds.all()[0].kind, Meld.Kind.MINKAN)
+	assert_same(e.state.seats[2].melds.all()[0].called_tile, tile)
+	assert_eq(e.state.dora_indicators.visible_tiles().size(), initial_dora_count + 1, "明杠翻 dora")
 	assert_eq(e.state.seats[2].hand.size(), 1, "摸岭上后 1 张")
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
 
@@ -232,12 +232,12 @@ func test_apply_ankan_success():
 		tiles.append(_tile(TileId.T1 + i, 810 + i))
 	_set_hand(e.state.seats[0], tiles)
 	e.state.phase = BattlePhase.Kind.DISCARD
-	var initial_dora_count := e.state.dora_indicators.visible.size()
+	var initial_dora_count := e.state.dora_indicators.visible_tiles().size()
 	var ok := e.apply_ankan(0, [801, 802, 803, 804])
 	assert_true(ok)
-	assert_eq(e.state.seats[0].melds[0].kind, Meld.Kind.ANKAN)
-	assert_eq(e.state.seats[0].melds[0].tiles.size(), 4, "暗杠 4 张")
-	assert_eq(e.state.dora_indicators.visible.size(), initial_dora_count + 1)
+	assert_eq(e.state.seats[0].melds.all()[0].kind, Meld.Kind.ANKAN)
+	assert_eq(e.state.seats[0].melds.all()[0].tiles.size(), 4, "暗杠 4 张")
+	assert_eq(e.state.dora_indicators.visible_tiles().size(), initial_dora_count + 1)
 	assert_eq(e.state.phase, BattlePhase.Kind.DISCARD)
 
 func test_apply_added_kan_success():
@@ -245,19 +245,19 @@ func test_apply_added_kan_success():
 	# 已有 PON W5 副露 + 手中第 4 张 W5
 	var called := _tile(TileId.W5, 900)
 	var pon := Meld.make_pon(
-		[called, _tile(TileId.W5, 901), _tile(TileId.W5, 902)], 1, 7, called)
-	e.state.seats[0].melds.append(pon)
-	e.state.seats[0].next_meld_id = 8
+		[called, _tile(TileId.W5, 901), _tile(TileId.W5, 902)], 1, 0, called)
+	e.state.seats[0].melds.add_existing(pon)
+	assert_true(e.state.seats[0].melds.restore(e.state.seats[0].melds.all(), 1))
 	_set_hand(e.state.seats[0], [_tile(TileId.W5, 903)])
 	for i in range(10):
 		e.state.seats[0].hand.add(_tile(TileId.T1 + i, 910 + i))
 	e.state.phase = BattlePhase.Kind.DISCARD
-	var ok := e.apply_added_kan(0, 7, 903)
+	var ok := e.apply_added_kan(0, 0, 903)
 	assert_true(ok)
-	assert_eq(e.state.seats[0].melds[0].kind, Meld.Kind.ADDED_KAN)
-	assert_eq(e.state.seats[0].melds[0].meld_id, 7, "加杠保留 meld_id")
-	assert_eq(e.state.seats[0].melds[0].tiles.size(), 4, "加杠 4 张")
-	assert_eq(e.state.seats[0].melds[0].added_tile_instance_id, 903)
+	assert_eq(e.state.seats[0].melds.all()[0].kind, Meld.Kind.ADDED_KAN)
+	assert_eq(e.state.seats[0].melds.all()[0].meld_id, 0, "加杠保留 meld_id")
+	assert_eq(e.state.seats[0].melds.all()[0].tiles.size(), 4, "加杠 4 张")
+	assert_eq(e.state.seats[0].melds.all()[0].added_tile_instance_id, 903)
 
 # ---- apply_ron / apply_tsumo ----
 # 成功路径必须用真实标准和牌 fixture（不可依赖随机起手 / 未校验的假和）。
@@ -285,8 +285,8 @@ func test_apply_ron_advances_to_settle():
 	assert_true(e.discard(1000))
 	_set_hand(e.state.seats[2], _standard_tenpai_waiting_w5(2000))
 	assert_true(ClaimValidator.can_ron(
-		e.state.seats[2].hand, e.state.seats[2].melds,
-		e.state.discards_per_seat[0][-1], e.state.seats[2].furiten))
+		e.state.seats[2].hand, e.state.seats[2].melds.all(),
+		e.state.seats[0].river.tiles()[-1], e.state.seats[2].furiten))
 	var ok := e.apply_ron(2, 1000)
 	assert_true(ok)
 	assert_eq(e.state.phase, BattlePhase.Kind.SETTLE)
@@ -301,11 +301,11 @@ func test_apply_tsumo_advances_to_settle():
 	e.state.phase = BattlePhase.Kind.DISCARD
 	e.state.seats[0].last_drawn_instance_id = win_iid
 	var without := Hand.new()
-	for t in e.state.seats[0].hand._tiles:
+	for t in e.state.seats[0].hand.tiles():
 		if t.instance_id != win_iid:
 			without.add(t)
 	var drawn: Tile = e.state.seats[0].hand.find_by_instance_id(win_iid)
-	assert_true(ClaimValidator.can_tsumo(without, e.state.seats[0].melds, drawn))
+	assert_true(ClaimValidator.can_tsumo(without, e.state.seats[0].melds.all(), drawn))
 	var ok := e.apply_tsumo(0, win_iid)
 	assert_true(ok)
 	assert_eq(e.state.phase, BattlePhase.Kind.SETTLE)

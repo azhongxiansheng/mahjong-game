@@ -87,7 +87,7 @@ func test_ai_added_kan_when_has_pon_plus_4th():
 	])
 	var pon := Meld.make_pon(
 		[Tile.new(TileId.W5), Tile.new(TileId.W5), Tile.new(TileId.W5)], 0)
-	seat.melds = [pon]
+	assert_true(seat.melds.add_existing(pon))
 	var result: Dictionary = ai.decide_self_kan(seat)
 	assert_eq(result.get("kind", ""), "added_kan")
 	assert_eq(result.get("tile_id", -1), TileId.W5)

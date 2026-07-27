@@ -12,10 +12,10 @@ static func is_suufon_renda(state: BattleState) -> bool:
 	if not state.first_round_active:
 		return false
 	var first_discards: Array = []
-	for seat_discards in state.discards_per_seat:
-		if seat_discards.size() == 0:
+	for seat in state.seats:
+		if seat.river.is_empty():
 			return false
-		first_discards.append(seat_discards[0].id)
+		first_discards.append(seat.river.tiles()[0].id)
 	return AbortiveDraw.is_suufon_renda(first_discards)
 
 # 四家立直：4 个 seat 全 riichi.declared
@@ -29,7 +29,7 @@ static func is_suucha_riichi(state: BattleState) -> bool:
 static func is_suukantsu_sanra(state: BattleState) -> bool:
 	var kan_seats: Array = []
 	for seat in state.seats:
-		for m in seat.melds:
+		for m in seat.melds.all():
 			if m.is_kan():
 				kan_seats.append(seat.seat_id)
 	return AbortiveDraw.is_suukantsu_sanra(kan_seats)

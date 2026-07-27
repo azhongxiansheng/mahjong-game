@@ -7,7 +7,7 @@ func test_inject_random_ai_seat_abilities_default_3_seats():
 	var n := BossAbilityFactory.inject_random_ai_seat_abilities(reg, 42)
 	assert_eq(n, 3, "默认 3 个 AI seats（1/2/3）")
 	assert_eq(reg.get_all_entries().size(), 3)
-	# 验证 anchor 是 seat int 而非 TileInstance（ability path）
+	# 验证 anchor 是 seat int 而非 TileSkillAnchor（ability path）
 	for e in reg.get_all_entries():
 		assert_true(e.anchor is int, "ability anchor 应为 seat int")
 		var seat: int = e.anchor

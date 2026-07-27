@@ -877,9 +877,9 @@ func test_tile_view_from_tile_domain_mutation_does_not_pollute() -> void:
 	assert_not_null(tv)
 	if tv == null:
 		return
-	tile.owner_seat = 3
-	tile.is_red_dora = true
-	tile.id = TileId.W1
+	tile._owner_seat = 3  # 测试专用：验证 DTO 已与领域对象解耦
+	tile._is_red_dora = true
+	tile._id = TileId.W1
 	var out: Dictionary = _as_dict(tv)
 	assert_eq(int(out["owner_seat"]), 1, "改 domain owner 不得污染已返回 DTO")
 	assert_eq(bool(out["is_red_dora"]), false, "改 domain red 不得污染")
@@ -1008,8 +1008,8 @@ func test_meld_view_from_meld_domain_mutation_does_not_pollute() -> void:
 	var snap: Dictionary = _as_dict(mv).duplicate(true)
 	# 后续可变 domain 数组/字段
 	m.tiles.append(_canonical_tile(TileId.HAKU, 3))
-	m.from_seat = 0
-	m.kind = Meld.Kind.CHI
+	m._from_seat = 0  # 测试专用：注入损坏领域态
+	m._kind = Meld.Kind.CHI
 	var out: Dictionary = _as_dict(mv)
 	assert_eq(str(out["kind"]), "PON", "改 domain kind 不得污染")
 	assert_eq(int(out["from_seat"]), 2, "改 domain from_seat 不得污染")

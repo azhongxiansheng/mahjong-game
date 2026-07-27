@@ -31,7 +31,7 @@ func test_apply_chi_clears_all_ippatsu_windows() -> void:
 	bc.state.seats[1].hand.add(_tile(TileId.W3, 502))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [_tile(TileId.W1, 500)]
+	bc.state.seats[0].river.restore([_tile(TileId.W1, 500)])
 	var ok: bool = bc.engine.apply_chi(1, 500, [501, 502])
 	assert_true(ok, "chi 应成立")
 	assert_false(bc.state.seats[0].riichi.ippatsu_window, "chi 后 seat0 一発关")
@@ -45,7 +45,7 @@ func test_apply_chi_via_state_clears_window() -> void:
 	bc.state.seats[1].hand.add(_tile(TileId.W3, 512))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [_tile(TileId.W1, 510)]
+	bc.state.seats[0].river.restore([_tile(TileId.W1, 510)])
 	# claimant 是下家 seat 1,日麻规定只能从上家吃 — seat1 上家=seat0 ✓
 	var ok: bool = bc.engine.apply_chi(1, 510, [511, 512])
 	assert_true(ok, "chi 应成立")
@@ -74,7 +74,7 @@ func test_apply_pon_clears_all_windows() -> void:
 	bc.state.seats[1].hand.add(_tile(TileId.T5, 602))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [_tile(TileId.T5, 600)]
+	bc.state.seats[0].river.restore([_tile(TileId.T5, 600)])
 	var ok: bool = bc.engine.apply_pon(1, 600, [601, 602])
 	assert_true(ok, "pon 应成立")
 	assert_false(bc.state.seats[3].riichi.ippatsu_window, "pon 关 seat3 窗口")

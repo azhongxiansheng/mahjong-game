@@ -44,10 +44,10 @@ func test_yaku_evaluator_evaluate_budget() -> void:
 		if seat.hand.size() == 0:
 			continue
 		var typed_melds: Array[Meld] = []
-		for m in seat.melds:
+		for m in seat.melds.all():
 			typed_melds.append(m)
 		# 摸末张做 win pattern detect(可能 false 但走完算法路径)
-		var last_tile: Tile = seat.hand._tiles[seat.hand._tiles.size() - 1]
+		var last_tile: Tile = seat.hand.tiles()[seat.hand.tiles().size() - 1]
 		WinPattern.detect(seat.hand, typed_melds, last_tile)
 	var elapsed: int = Time.get_ticks_msec() - t0
 	gut.p("WinPattern.detect x100 (post-hand fixture): %d ms" % elapsed)

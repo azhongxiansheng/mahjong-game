@@ -78,7 +78,7 @@ func _make_player_panel_with_hand(ids: Array, instance_ids: Array = []) -> SeatP
 		var iid: int = int(instance_ids[i]) if i < instance_ids.size() else (1000 + i)
 		hand.add(Tile.new(ids[i], false, Tile.NO_OWNER, iid))
 	var seat := Seat.new(0, TileId.E)
-	for t in hand._tiles:
+	for t in hand.tiles():
 		seat.hand.add(t)
 	sp.bind_seat(seat)
 	return sp

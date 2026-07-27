@@ -3,7 +3,7 @@ class_name BattleState
 # 一局对战快照（spec §5）。
 # 合并自 plan 0e（含 seats/wall/phase 等完整对战字段）与 main PR #8 里程碑 1（技能框架字段）。
 # 两条路线共存：
-#   - 0e 字段：seats / wall / dora_indicators / discards_per_seat / phase / current/dealer 等
+#   - 0e 字段：seats / wall / dora_indicators / phase / current/dealer 等
 #     —— TurnEngine 与 ScoreCalc 用
 #   - 里程碑 1 字段：scores / furiten_flags / ron_cancelled / revealed_tiles / haitei_forced_seat
 #     —— SkillScheduler 与 SkillCtx 用
@@ -19,7 +19,6 @@ const _SEAT_WINDS: Array = [TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N]
 var seats: Array = []                  # Array[Seat] 长度 4
 var wall: Wall                         # 含 dead_wall 切片
 var dora_indicators: DoraIndicators
-var discards_per_seat: Array = []      # 4 个 Array[Tile]
 var dealer_seat: int = 0               # 庄家 seat_id（一局内不变）
 var current_seat: int = 0
 var phase: int = BattlePhase.Kind.DRAW
@@ -73,7 +72,6 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 		var relative: int = (i - p_dealer + 4) % 4
 		var seat_wind: int = _SEAT_WINDS[relative]
 		s.seats.append(Seat.new(i, seat_wind))
-		s.discards_per_seat.append([])
 
 	# 牌墙：按 hand_seq 分配 instance_id → 洗 + 切 dead wall
 	s.wall = Wall.new_full_set(hand_seq_arg)
@@ -86,10 +84,11 @@ static func for_east_round(rng_seed: int, p_dealer: int, hand_number_arg: int, h
 	# 缺裏 dora 之前是 dead code:立直胡牌时 count_total_dora(include_uradora=true)
 	# 但 hidden_uradora 列表为空,实际 uradora 永不计入 — 立直收益被低估。
 	s.dora_indicators = DoraIndicators.new()
-	s.dora_indicators.add_visible(s.wall.peek_dora_indicator(0))
+	var visible_first := s.wall.peek_dora_indicator(0)
 	var ura_first := s.wall.peek_uradora_indicator(0)
-	if ura_first != null:
-		s.dora_indicators.add_hidden_uradora(ura_first)
+	if visible_first == null or ura_first == null \
+			or not s.dora_indicators.reveal_pair(visible_first, ura_first):
+		return null
 
 	# 发 13 张 × 4
 	for _i in range(13):

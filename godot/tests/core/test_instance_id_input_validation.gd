@@ -15,7 +15,7 @@ func _tile(tid: int, iid: int, red: bool = false) -> Tile:
 
 func _hand_iids(h: Hand) -> Array:
 	var out: Array = []
-	for t in h._tiles:
+	for t in h.tiles():
 		out.append(t.instance_id)
 	return out
 
@@ -23,7 +23,7 @@ func _hand_iids(h: Hand) -> Array:
 func _hand_entity_order(h: Hand) -> Array:
 	# 逐实体：instance_id + id + red，顺序敏感
 	var out: Array = []
-	for t in h._tiles:
+	for t in h.tiles():
 		out.append([t.instance_id, t.id, t.is_red_dora])
 	return out
 
@@ -85,13 +85,13 @@ func test_discard_rejects_out_of_range_zero_mod() -> void:
 	e.state.phase = BattlePhase.Kind.DISCARD
 	var hand_snap := _hand_entity_order(e.state.seats[0].hand)
 	var phase := e.state.phase
-	var river_size: int = e.state.discards_per_seat[0].size()
+	var river_size: int = e.state.seats[0].river.size()
 
 	assert_false(e.discard(-2))
 	assert_false(e.discard(_OVER_SAFE_IID))
 	assert_eq(_hand_entity_order(e.state.seats[0].hand), hand_snap)
 	assert_eq(e.state.phase, phase)
-	assert_eq(e.state.discards_per_seat[0].size(), river_size)
+	assert_eq(e.state.seats[0].river.size(), river_size)
 
 
 # ---- Hand.add：有效 id 去重 / INVALID 可重复 ----
@@ -105,7 +105,7 @@ func test_hand_add_rejects_duplicate_valid_instance_id() -> void:
 	assert_eq(h.size(), 1)
 	assert_eq(h.call("add", t2), false, "重复有效 instance_id 应拒绝")
 	assert_eq(h.size(), 1, "拒绝后不追加")
-	assert_eq(h._tiles[0].id, TileId.W1)
+	assert_eq(h.tile_at(0).id, TileId.W1)
 
 
 func test_hand_add_allows_repeated_invalid_instance_id() -> void:
@@ -117,8 +117,8 @@ func test_hand_add_allows_repeated_invalid_instance_id() -> void:
 	assert_eq(h.call("add", a), true, "INVALID fixture 可加入")
 	assert_eq(h.call("add", b), true, "INVALID fixture 可重复加入")
 	assert_eq(h.size(), 2)
-	assert_eq(h._tiles[0].instance_id, Tile.INVALID_INSTANCE_ID)
-	assert_eq(h._tiles[1].instance_id, Tile.INVALID_INSTANCE_ID)
+	assert_eq(h.tile_at(0).instance_id, Tile.INVALID_INSTANCE_ID)
+	assert_eq(h.tile_at(1).instance_id, Tile.INVALID_INSTANCE_ID)
 
 
 # ---- Wall / BattleState hand_seq 范围 ----
@@ -318,10 +318,10 @@ func _snap_engine_core(e: TurnEngine) -> Dictionary:
 			_hand_entity_order(e.state.seats[3].hand),
 		],
 		"rivers": [
-			e.state.discards_per_seat[0].size(),
-			e.state.discards_per_seat[1].size(),
-			e.state.discards_per_seat[2].size(),
-			e.state.discards_per_seat[3].size(),
+			e.state.seats[0].river.size(),
+			e.state.seats[1].river.size(),
+			e.state.seats[2].river.size(),
+			e.state.seats[3].river.size(),
 		],
 		"meld_counts": [
 			e.state.seats[0].melds.size(),
@@ -441,7 +441,7 @@ func test_ankan_and_tsumo_and_added_kan_reject_bad_identities() -> void:
 	e2.state.seats[1].hand.add(_tile(TileId.W5, 901))
 	e2.state.seats[1].hand.add(_tile(TileId.W5, 902))
 	assert_true(e2.apply_pon(1, 900, [901, 902]))
-	var mid: int = e2.state.seats[1].melds[0].meld_id
+	var mid: int = e2.state.seats[1].melds.all()[0].meld_id
 	e2.state.seats[1].hand.add(_tile(TileId.W5, 903))
 	e2.state.phase = BattlePhase.Kind.DISCARD
 	for raw in _bad_identity_values():

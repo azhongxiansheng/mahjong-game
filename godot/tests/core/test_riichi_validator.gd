@@ -28,7 +28,7 @@ func test_already_declared_blocks():
 func test_open_melds_blocks():
 	var s := _seat_with_tenpai_concealed()
 	# 副露 1 个 PON，破门清
-	s.melds.append(Meld.make_pon(
+	s.melds.add_existing(Meld.make_pon(
 		[Tile.new(TileId.W5), Tile.new(TileId.W5), Tile.new(TileId.W5)], 1))
 	# hand 也得调短到 10 张以匹配（但本测试只看 is_concealed_hand 失败）
 	assert_false(RiichiValidator.can_declare_riichi(s, 50))
@@ -43,7 +43,7 @@ func test_ankan_keeps_concealed_can_riichi():
 		TileId.S5, TileId.S5,
 	]:
 		s.add_to_hand(Tile.new(tid))
-	s.melds.append(Meld.make_ankan([
+	s.melds.add_existing(Meld.make_ankan([
 		Tile.new(TileId.S1), Tile.new(TileId.S1),
 		Tile.new(TileId.S1), Tile.new(TileId.S1)]))
 	assert_true(RiichiValidator.can_declare_riichi(s, 50))

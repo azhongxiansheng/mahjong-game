@@ -56,7 +56,7 @@ func test_chi_companion_offers_use_instance_ids() -> void:
 	var discarded := Tile.new(TileId.W5, false, 0, 50)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 3
-	bc.state.discards_per_seat[3] = [discarded]
+	bc.state.seats[3].river.restore([discarded])
 	var ctx: DecisionContext = bc.decision_context_for_seat(0)
 	assert_not_null(ctx)
 	assert_true(ctx.has_kind("CHI"), "下家可 CHI")

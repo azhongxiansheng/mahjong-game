@@ -371,9 +371,7 @@ static func _dora_visible_count(state: BattleState) -> int:
 	if state == null or state.dora_indicators == null:
 		return 0
 	var di: DoraIndicators = state.dora_indicators
-	if di.visible is Array:
-		return di.visible.size()
-	return 0
+	return di.visible_count()
 
 
 static func _require_nonneg_int(v: Variant) -> int:

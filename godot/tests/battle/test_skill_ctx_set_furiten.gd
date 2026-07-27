@@ -43,7 +43,7 @@ func test_set_furiten_true_marks_seat_furiten():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill(_SetFuritenHook)
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	assert_false(st.furiten_flags[2], "初始未振听")
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0, null, {"target_seat": 2}))
@@ -62,7 +62,7 @@ func test_set_furiten_false_clears():
 	var sched: SkillScheduler = arr[2]
 	st.furiten_flags[1] = true
 	var sk := _make_skill(_ClearFuritenViaSetHook)
-	var ti := TileInstance.make(Tile.new(TileId.W1), 1, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 1, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
 	assert_false(st.furiten_flags[1], "set_furiten(seat, false) 等价 clear_furiten")

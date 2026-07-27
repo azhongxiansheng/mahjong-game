@@ -19,7 +19,7 @@ func _on_clicked(tile_instance_id: int) -> void:
 
 func _set_action_tile(tile_id: int, tile_instance_id: int) -> void:
 	var tile := Tile.new(tile_id, false, 0, tile_instance_id)
-	_tile.set_tile_instance(TileInstance.make(tile, 0))
+	_tile.set_tile_instance(TileSkillAnchor.make(tile, 0))
 
 func _emit_left_click() -> void:
 	var ev := InputEventMouseButton.new()

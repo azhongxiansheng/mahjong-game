@@ -186,31 +186,31 @@ func _restore_before_24th_discard(server: LocalLoopbackServer) -> void:
 # ---- live hand helpers（复用 LLS 真实墙实体语义）----
 
 func _prep_live(bc: BattleController) -> int:
-	var draw_floor: int = int(bc.state.wall._draw_index)
+	var draw_floor: int = int(bc.state.wall.draw_index())
 	for s in range(4):
 		var seat: Seat = bc.state.seats[s]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.furiten = FuritenState.new()
-		bc.state.discards_per_seat[s] = []
-	bc.state.wall._draw_index = 0
+		bc.state.seats[s].river.restore([])
+	bc.state.wall.set_draw_index(0)
 	return draw_floor
 
 
 func _seal_live_wall_draw_index(bc: BattleController, draw_floor: int) -> void:
 	var w: Wall = bc.state.wall
-	w._draw_index = maxi(int(draw_floor), int(w._draw_index))
+	w.set_draw_index(maxi(int(draw_floor), int(w.draw_index())))
 
 
 func _live_end_wall(w: Wall) -> int:
-	return w._tiles.size() - w._dead_wall_size
+	return w.authority_tiles().size() - w.dead_wall_size()
 
 
 func _find_live_idx(w: Wall, tid: int, used: Dictionary) -> int:
 	var end_i: int = _live_end_wall(w)
-	for i in range(w._draw_index, end_i):
-		var t: Tile = w._tiles[i]
+	for i in range(w.draw_index(), end_i):
+		var t: Tile = w.authority_tiles()[i]
 		if t == null or int(t.id) != int(tid):
 			continue
 		if used.has(int(t.instance_id)):
@@ -223,10 +223,8 @@ func _draw_live_tid(bc: BattleController, tid: int, used: Dictionary) -> Tile:
 	var w: Wall = bc.state.wall
 	var live_idx: int = _find_live_idx(w, tid, used)
 	assert_true(live_idx >= 0, "live 区无 id=%d" % tid)
-	if live_idx != w._draw_index:
-		var tmp: Tile = w._tiles[w._draw_index]
-		w._tiles[w._draw_index] = w._tiles[live_idx]
-		w._tiles[live_idx] = tmp
+	if live_idx != w.draw_index():
+		assert_true(w.move_live_index_to_top(live_idx))
 	var drawn: Tile = w.draw()
 	assert_not_null(drawn)
 	if drawn != null:
@@ -404,7 +402,7 @@ func test_closing_ron_cancels_not_full_grant() -> void:
 	bc.state.first_round_active = false
 	bc.state.seats[1].hand = _hand_live(bc, _noise_14_with(TileId.W9), used)
 	var disc: Tile = null
-	for t in bc.state.seats[1].hand._tiles:
+	for t in bc.state.seats[1].hand.tiles():
 		if t != null and int(t.id) == TileId.W9:
 			disc = t
 			break
@@ -1114,7 +1112,7 @@ func test_exhaustive_draw_deferred_hand_settled_order() -> void:
 	}).get("accepted", false)))
 	# 真实 exhaustive domain
 	var w: Wall = bc.state.wall
-	w._draw_index = _live_end_wall(w)
+	w.set_draw_index(_live_end_wall(w))
 	bc.state.phase = BattlePhase.Kind.DRAW
 	bc.state.current_seat = 0
 	bc.set("_settled", false)
@@ -1190,7 +1188,7 @@ func test_match_end_deferred_display_only_no_next_open() -> void:
 		"ptt_end_server_seq": maxi(server.current_server_seq(), 1), "terminal": false,
 	}).get("accepted", false)))
 	var w: Wall = bc.state.wall
-	w._draw_index = _live_end_wall(w)
+	w.set_draw_index(_live_end_wall(w))
 	bc.state.phase = BattlePhase.Kind.DRAW
 	bc.set("_settled", false)
 	bc.set("_active_window", null)

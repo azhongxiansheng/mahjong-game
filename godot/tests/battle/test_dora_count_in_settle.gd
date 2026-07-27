@@ -1,7 +1,7 @@
 extends GutTest
 
 # _adapt_yaku_list dora 计数修复回归测试。
-# 之前 sc.dora_count = state.dora_indicators.visible.size() —— 错的(只数
+# 之前 sc.dora_count = state.dora_indicators.visible_tiles().size() —— 错的(只数
 # 指示牌张数,常 1)。修复后调 count_total_dora(hand, melds, include_ura)
 # 实际数胡牌手 + 副露里匹配 dora 的牌数。
 #
@@ -19,8 +19,8 @@ func _make_bc() -> BattleController:
 func test_dora_count_uses_real_hand_match_not_indicator_size() -> void:
 	var bc := _make_bc()
 	# 干净 dora 状态:1 个明 dora 指示牌 = W4
-	bc.state.dora_indicators.visible.clear()
-	bc.state.dora_indicators.add_visible(Tile.new(TileId.W4))
+	assert_true(bc.state.dora_indicators.restore_pairs(
+		[Tile.new(TileId.W4)], [Tile.new(TileId.W1)]))
 	# 拼 14 张手:m5 m5 m5 + ...其它 11 张随便凑(本测试只关心 dora_count 不验胡牌型)
 	var hand := Hand.new()
 	for tid in [
@@ -39,8 +39,8 @@ func test_dora_count_uses_real_hand_match_not_indicator_size() -> void:
 # 没匹配 dora → 0(过去 bug 仍 = indicator 张数 1,fix 后 = 0)
 func test_no_dora_match_returns_zero() -> void:
 	var bc := _make_bc()
-	bc.state.dora_indicators.visible.clear()
-	bc.state.dora_indicators.add_visible(Tile.new(TileId.W4))  # dora=W5
+	assert_true(bc.state.dora_indicators.restore_pairs(
+		[Tile.new(TileId.W4)], [Tile.new(TileId.W1)]))  # dora=W5
 	var hand := Hand.new()
 	for tid in [
 		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
@@ -58,8 +58,8 @@ func test_no_dora_match_returns_zero() -> void:
 # 主要为了保护其它老 caller(如有)不爆。
 func test_old_api_fallback_still_uses_indicator_count() -> void:
 	var bc := _make_bc()
-	bc.state.dora_indicators.visible.clear()
-	bc.state.dora_indicators.add_visible(Tile.new(TileId.W4))
+	assert_true(bc.state.dora_indicators.restore_pairs(
+		[Tile.new(TileId.W4)], [Tile.new(TileId.W1)]))
 	var empty_entries := YakuEntries.new()
 	var sc: YakuList = bc._adapt_yaku_list(empty_entries)
 	assert_eq(sc.dora_count, 1,

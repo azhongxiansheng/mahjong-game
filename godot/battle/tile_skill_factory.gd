@@ -7,11 +7,11 @@ class_name TileSkillFactory
 #   - BossAbilityFactory.inject_player_abilities(reg, ability_ids, seat=0)
 #   - TileSkillFactory.inject_player_tile_variants(reg, variants_dict, seat=0)
 #
-# 不同于 ability anchored 到 seat int，tile skill anchor 必须是 TileInstance
-# （SkillScheduler._collect 据此分流）。本工厂构造一个 fixture TileInstance
+# 不同于 ability anchored 到 seat int，tile skill anchor 必须是 TileSkillAnchor
+# （SkillScheduler._collect 据此分流）。本工厂构造一个 fixture TileSkillAnchor
 # (tile_id=variant.tile_id, owner_seat=player_seat)，作为该牌的"代表"在
 # registry 持有。当事件 emit 时，scheduler 读 anchor.owner_seat / holder_seat
-# 决定是否触发，无需事件中的物理 tile 与 anchor TileInstance 对齐。
+# 决定是否触发，无需事件中的物理 tile 与 anchor TileSkillAnchor 对齐。
 #
 # 加新 tile_variant：在 _TILE_TRIGGERS 加 entry（owner / holder 列表）。
 
@@ -96,13 +96,13 @@ static func build(variant_id: StringName) -> SkillResource:
 	s.hook_script = hook_script
 	return s
 
-# 把 SkillResource 注册到 SkillRegistry，anchor = fixture TileInstance（tile_id
+# 把 SkillResource 注册到 SkillRegistry，anchor = fixture TileSkillAnchor（tile_id
 # 来自 variant，owner_seat=玩家座位）。holder_triggers 非空时还设 holder_seat。
 static func inject_one(registry: SkillRegistry, variant_id: StringName, player_seat: int = 0, variant_override: TileVariant = null) -> bool:
 	var sk: SkillResource = _build_with_override(variant_id, variant_override) if variant_override else build(variant_id)
 	if sk == null:
 		return false
-	var ti := TileInstance.make(Tile.new(sk.attached_tile), player_seat, sk)
+	var ti := TileSkillAnchor.make(Tile.new(sk.attached_tile), player_seat, sk)
 	if not sk.holder_triggers.is_empty():
 		ti.holder_seat = player_seat
 	registry.register(sk, ti)

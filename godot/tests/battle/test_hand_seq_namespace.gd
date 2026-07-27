@@ -36,14 +36,14 @@ func _new_battle_controller(args: Array):
 
 func _wall_tile_order(bc) -> Array:
 	var order: Array = []
-	for t in bc.state.wall._tiles:
+	for t in bc.state.wall.authority_tiles():
 		order.append([t.id, t.is_red_dora])
 	return order
 
 
 func _wall_instance_ids(bc) -> Array:
 	var ids: Array = []
-	for t in bc.state.wall._tiles:
+	for t in bc.state.wall.authority_tiles():
 		ids.append(t.instance_id)
 	return ids
 

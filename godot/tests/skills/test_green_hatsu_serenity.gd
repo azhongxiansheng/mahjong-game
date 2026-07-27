@@ -26,7 +26,7 @@ func test_serenity_adds_2_han_when_holder_is_winner():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 1, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 1, sk)
 	ti.holder_seat = 1
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
@@ -37,7 +37,7 @@ func test_serenity_no_han_when_other_seat_wins():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 0, sk)
 	ti.holder_seat = 1
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 3))
@@ -49,7 +49,7 @@ func test_serenity_no_holder_no_trigger():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 0, sk)
 	ti.holder_seat = -1
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))

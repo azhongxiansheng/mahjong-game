@@ -18,7 +18,7 @@ func test_suufon_renda_triggers_abortive_draw() -> void:
 	# 强制 state.first_round_active = true,然后每家 discards 第一张都是东风
 	bc.state.first_round_active = true
 	for seat_id in range(4):
-		bc.state.discards_per_seat[seat_id] = [Tile.new(TileId.E)]
+		bc.state.seats[seat_id].river.restore([Tile.new(TileId.E)])
 
 	bc._check_and_emit_abortive_draws()
 
@@ -32,10 +32,10 @@ func test_suufon_renda_triggers_abortive_draw() -> void:
 func test_suufon_renda_mixed_winds_no_trigger() -> void:
 	var bc := _make_bc()
 	bc.state.first_round_active = true
-	bc.state.discards_per_seat[0] = [Tile.new(TileId.E)]
-	bc.state.discards_per_seat[1] = [Tile.new(TileId.S_WIND)]
-	bc.state.discards_per_seat[2] = [Tile.new(TileId.E)]
-	bc.state.discards_per_seat[3] = [Tile.new(TileId.E)]
+	bc.state.seats[0].river.restore([Tile.new(TileId.E)])
+	bc.state.seats[1].river.restore([Tile.new(TileId.S_WIND)])
+	bc.state.seats[2].river.restore([Tile.new(TileId.E)])
+	bc.state.seats[3].river.restore([Tile.new(TileId.E)])
 
 	bc._check_and_emit_abortive_draws()
 
@@ -47,7 +47,7 @@ func test_suufon_renda_non_wind_no_trigger() -> void:
 	var bc := _make_bc()
 	bc.state.first_round_active = true
 	for seat_id in range(4):
-		bc.state.discards_per_seat[seat_id] = [Tile.new(TileId.W1)]
+		bc.state.seats[seat_id].river.restore([Tile.new(TileId.W1)])
 
 	bc._check_and_emit_abortive_draws()
 
@@ -59,7 +59,7 @@ func test_suufon_renda_after_first_round_no_trigger() -> void:
 	var bc := _make_bc()
 	bc.state.first_round_active = false  # 已过第一巡
 	for seat_id in range(4):
-		bc.state.discards_per_seat[seat_id] = [Tile.new(TileId.E)]
+		bc.state.seats[seat_id].river.restore([Tile.new(TileId.E)])
 
 	bc._check_and_emit_abortive_draws()
 
@@ -96,16 +96,16 @@ func test_suukantsu_sanra_triggers_abortive_draw() -> void:
 	var bc := _make_bc()
 	# seat 0 暗杠 2 个(萬 1 / 萬 9),seat 1 暗杠 1 个(筒 5),seat 2 暗杠 1 个(索 9)
 	var seats = bc.state.seats
-	seats[0].melds.append(Meld.make_ankan(
+	seats[0].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1)]))
-	seats[0].melds.append(Meld.make_ankan(
+	seats[0].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.W9), Tile.new(TileId.W9),
 		Tile.new(TileId.W9), Tile.new(TileId.W9)]))
-	seats[1].melds.append(Meld.make_ankan(
+	seats[1].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.T5), Tile.new(TileId.T5),
 		Tile.new(TileId.T5), Tile.new(TileId.T5)]))
-	seats[2].melds.append(Meld.make_ankan(
+	seats[2].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.S9), Tile.new(TileId.S9),
 		Tile.new(TileId.S9), Tile.new(TileId.S9)]))
 
@@ -123,7 +123,7 @@ func test_suukantsu_sanra_all_one_seat_no_trigger() -> void:
 	var s0: Seat = bc.state.seats[0]
 	# 同一 seat 4 个暗杠
 	for tid in [TileId.W1, TileId.W9, TileId.T5, TileId.S9]:
-		s0.melds.append(Meld.make_ankan(
+		s0.melds.add_existing(Meld.make_ankan(
 			[Tile.new(tid), Tile.new(tid), Tile.new(tid), Tile.new(tid)]))
 
 	bc._check_and_emit_abortive_draws()
@@ -135,13 +135,13 @@ func test_suukantsu_sanra_all_one_seat_no_trigger() -> void:
 func test_suukantsu_sanra_three_kans_no_trigger() -> void:
 	var bc := _make_bc()
 	var seats = bc.state.seats
-	seats[0].melds.append(Meld.make_ankan(
+	seats[0].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1)]))
-	seats[1].melds.append(Meld.make_ankan(
+	seats[1].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.T5), Tile.new(TileId.T5),
 		Tile.new(TileId.T5), Tile.new(TileId.T5)]))
-	seats[2].melds.append(Meld.make_ankan(
+	seats[2].melds.add_existing(Meld.make_ankan(
 		[Tile.new(TileId.S9), Tile.new(TileId.S9),
 		Tile.new(TileId.S9), Tile.new(TileId.S9)]))
 

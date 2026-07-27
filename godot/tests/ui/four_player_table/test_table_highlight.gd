@@ -8,7 +8,7 @@ func test_highlight_and_clear_on_discard_river() -> void:
 	add_child_autofree(table)
 	await get_tree().process_frame
 	assert_gt(table.discard_rivers.size(), 0)
-	var dr: DiscardRiver = table.discard_rivers[0]
+	var dr: DiscardRiverView = table.discard_rivers[0]
 	# 注入两张弃牌
 	var t1 := Tile.new(TileId.W5)
 	var t2 := Tile.new(TileId.T1)

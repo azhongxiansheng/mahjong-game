@@ -22,7 +22,7 @@ func _register_skill() -> void:
 	_skill.holder_triggers = ht
 	_skill.hook_script = Hook
 	# owner 与 holder 分离:owner=2 持牌人=0
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 2, _skill)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 2, _skill)
 	ti.holder_seat = 0
 	_registry.register(_skill, ti)
 

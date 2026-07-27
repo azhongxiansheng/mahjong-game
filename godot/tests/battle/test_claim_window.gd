@@ -19,16 +19,16 @@ func _assert_wall_and_active_entities_canonical_unique(bc, tag: String) -> bool:
 	if wall == null:
 		assert_true(false, "%s: wall 须非 null" % tag)
 		return false
-	if typeof(wall._tiles) != TYPE_ARRAY:
-		assert_true(false, "%s: wall._tiles 须为 Array" % tag)
+	if typeof(wall.authority_tiles()) != TYPE_ARRAY:
+		assert_true(false, "%s: wall.authority_tiles() 须为 Array" % tag)
 		return false
-	if wall._tiles.size() != 136:
-		assert_eq(wall._tiles.size(), 136, "%s: wall._tiles 须恰 136" % tag)
+	if wall.authority_tiles().size() != 136:
+		assert_eq(wall.authority_tiles().size(), 136, "%s: wall.authority_tiles() 须恰 136" % tag)
 		return false
 	var hand_seq: int = bc.state.hand_seq
 	var wall_by_iid: Dictionary = {}
-	for i in range(wall._tiles.size()):
-		var raw = wall._tiles[i]
+	for i in range(wall.authority_tiles().size()):
+		var raw = wall.authority_tiles()[i]
 		if raw == null or not (raw is Tile):
 			assert_true(false, "%s: wall[%d] 须为真实 Tile" % [tag, i])
 			return false
@@ -73,30 +73,27 @@ func _assert_wall_and_active_entities_canonical_unique(bc, tag: String) -> bool:
 		return false
 	for seat_i in range(4):
 		var seat: Seat = bc.state.seats[seat_i]
-		if seat == null or seat.hand == null or typeof(seat.hand._tiles) != TYPE_ARRAY:
-			assert_true(false, "%s: seat%d hand._tiles 不可用" % [tag, seat_i])
+		if seat == null or seat.hand == null or typeof(seat.hand.tiles()) != TYPE_ARRAY:
+			assert_true(false, "%s: seat%d hand.tiles() 不可用" % [tag, seat_i])
 			return false
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			locs.append([t, "hand@%d" % seat_i])
-		if typeof(seat.melds) != TYPE_ARRAY:
+		if typeof(seat.melds.all()) != TYPE_ARRAY:
 			assert_true(false, "%s: seat%d melds 须为 Array" % [tag, seat_i])
 			return false
 		for mi in range(seat.melds.size()):
-			var meld = seat.melds[mi]
+			var meld = seat.melds.all()[mi]
 			if meld == null or typeof(meld.tiles) != TYPE_ARRAY:
 				assert_true(false, "%s: seat%d meld[%d].tiles 不可用" % [tag, seat_i, mi])
 				return false
 			for t in meld.tiles:
 				locs.append([t, "meld@%d[%d]" % [seat_i, mi]])
-	if bc.state.discards_per_seat == null or bc.state.discards_per_seat.size() != 4:
-		assert_true(false, "%s: discards_per_seat 须恰 4 席" % tag)
-		return false
 	for seat_i in range(4):
-		var river = bc.state.discards_per_seat[seat_i]
-		if typeof(river) != TYPE_ARRAY:
-			assert_true(false, "%s: river seat%d 须为 Array" % [tag, seat_i])
+		var river: DiscardRiver = bc.state.seats[seat_i].river
+		if river == null:
+			assert_true(false, "%s: river seat%d 须存在" % [tag, seat_i])
 			return false
-		for t in river:
+		for t in river.tiles():
 			locs.append([t, "river@%d" % seat_i])
 
 	for entry in locs:
@@ -136,11 +133,9 @@ func _sync_dora_from_wall(bc) -> void:
 	var wall: Wall = bc.state.wall
 	var dora := DoraIndicators.new()
 	var ind: Tile = wall.peek_dora_indicator(0)
-	if ind != null:
-		dora.add_visible(ind)
 	var ura: Tile = wall.peek_uradora_indicator(0)
-	if ura != null:
-		dora.add_hidden_uradora(ura)
+	if ind != null and ura != null:
+		assert_true(dora.reveal_pair(ind, ura))
 	bc.state.dora_indicators = dora
 
 
@@ -155,10 +150,10 @@ func _reset_entity_fixture(bc) -> void:
 	for i in range(4):
 		var seat: Seat = bc.state.seats[i]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.last_draw_is_rinshan = false
-		bc.state.discards_per_seat[i] = []
+		bc.state.seats[i].river.restore([])
 	bc.events.clear()
 	bc._last_discarded_tile = null
 	bc._last_discarder_seat = -1
@@ -182,8 +177,8 @@ func _red_filter_matches(t: Tile, red_filter: int) -> bool:
 ## 未消费区 [draw_index, size) 找匹配 canonical 实体下标；允许落在 dead wall。
 func _find_unconsumed_wall_index(bc, tid: int, red_filter: int = -1) -> int:
 	var wall: Wall = bc.state.wall
-	for i in range(wall._draw_index, wall._tiles.size()):
-		var t: Tile = wall._tiles[i]
+	for i in range(wall.draw_index(), wall.authority_tiles().size()):
+		var t: Tile = wall.authority_tiles()[i]
 		if t == null:
 			continue
 		if int(t.id) != int(tid):
@@ -196,12 +191,7 @@ func _find_unconsumed_wall_index(bc, tid: int, red_filter: int = -1) -> int:
 
 ## 交换两侧 `_tiles[index]=...`（非覆盖外来 tile）。
 func _swap_wall_to_draw_index(wall: Wall, target_index: int) -> void:
-	var di: int = wall._draw_index
-	if target_index == di:
-		return
-	var tmp: Tile = wall._tiles[di]
-	wall._tiles[di] = wall._tiles[target_index]
-	wall._tiles[target_index] = tmp
+	assert_true(wall.move_unconsumed_index_to_top(target_index))
 
 
 ## 从 wall 未消费区 take 匹配实体：swap → 真实 draw()；绝 new/clone/remove wall。
@@ -214,7 +204,7 @@ func _take_entity_from_wall(bc, tid: int, red_filter: int = -1) -> Tile:
 	assert_true(idx >= 0, "wall 未消费区无 id=%d red_filter=%d" % [tid, red_filter])
 	if idx < 0:
 		return null
-	var target: Tile = wall._tiles[idx]
+	var target: Tile = wall.authority_tiles()[idx]
 	_swap_wall_to_draw_index(wall, idx)
 	var drawn: Tile = wall.draw()
 	assert_not_null(drawn, "wall.draw 须返回实体")
@@ -250,9 +240,9 @@ func _force_next_draw_from_wall(bc, tid: int, red_filter: int = -1) -> Tile:
 	assert_true(idx >= 0, "force next draw：wall 无 id=%d red_filter=%d" % [tid, red_filter])
 	if idx < 0:
 		return null
-	var target: Tile = wall._tiles[idx]
+	var target: Tile = wall.authority_tiles()[idx]
 	_swap_wall_to_draw_index(wall, idx)
-	assert_eq(wall._tiles[wall._draw_index], target)
+	assert_eq(wall.authority_tiles()[wall.draw_index()], target)
 	_sync_dora_from_wall(bc)
 	return target
 
@@ -297,7 +287,7 @@ func test_ai_ankan_after_draw():
 	)
 	assert_true(bc.apply_action(act, ActionSource.AI).accepted)
 	var has_ankan := false
-	for m in seat1.melds:
+	for m in seat1.melds.all():
 		if m.kind == Meld.Kind.ANKAN and m.tiles[0].id == TileId.E:
 			has_ankan = true
 	assert_true(has_ankan, "AI should declare ankan with 4 copies of E")
@@ -346,8 +336,8 @@ func test_ai_pon_during_claim_phase():
 	assert_not_null(discarded)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
-	bc.events.append(BattleEvent.make(&"TILE_DISCARDED", 0, TileInstance.make(discarded, 0, null), {}))
+	bc.state.seats[0].river.restore([discarded])
+	bc.events.append(BattleEvent.make(&"TILE_DISCARDED", 0, TileSkillAnchor.make(discarded, 0, null), {}))
 	assert_true(
 		_assert_wall_and_active_entities_canonical_unique(bc, "test_ai_pon_during_claim_phase"),
 		"test_ai_pon_during_claim_phase: fixture 实体审计")
@@ -368,7 +358,7 @@ func test_ai_pon_during_claim_phase():
 				"550e8400-e29b-41d4-a716-00000000010%d" % s, ctx.decision_id, 0, s)
 		assert_true(bc.apply_action(act, ActionSource.HUMAN).accepted)
 	var has_pon := false
-	for m in seat2.melds:
+	for m in seat2.melds.all():
 		if m.kind == Meld.Kind.PON and m.tiles[0].id == TileId.W5:
 			has_pon = true
 	assert_true(has_pon, "seat 2 should pon W5")
@@ -390,7 +380,7 @@ func test_no_claims_advances():
 		var hand: Hand = bc.state.seats[i].hand
 		while hand.count_of(TileId.HAKU) > 0:
 			var iid: int = Tile.INVALID_INSTANCE_ID
-			for t in hand._tiles:
+			for t in hand.tiles():
 				if t.id == TileId.HAKU:
 					iid = t.instance_id
 					break
@@ -411,9 +401,9 @@ func test_no_claims_advances():
 	assert_eq(discarded.id, TileId.HAKU)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	bc.events.append(BattleEvent.make(&"TILE_DISCARDED", 0,
-		TileInstance.make(discarded, 0, null), {}))
+		TileSkillAnchor.make(discarded, 0, null), {}))
 	assert_true(
 		_assert_wall_and_active_entities_canonical_unique(bc, "test_no_claims_advances"),
 		"test_no_claims_advances: fixture 实体审计")
@@ -439,7 +429,7 @@ func test_tile_claimed_event_emitted():
 	assert_not_null(discarded)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	assert_true(
 		_assert_wall_and_active_entities_canonical_unique(bc, "test_tile_claimed_event_emitted"),
 		"test_tile_claimed_event_emitted: fixture 实体审计")
@@ -491,11 +481,11 @@ func test_chankan_ron_on_added_kan():
 	assert_not_null(pon_b)
 	assert_not_null(pon_c)
 	var pon_tiles: Array[Tile] = [pon_a, pon_b, pon_c]
-	var pon := Meld.make_pon(pon_tiles, 0, 1000)
-	bc.state.seats[1].melds = [pon]
+	var pon := Meld.make_pon(pon_tiles, 0, 1)
+	bc.state.seats[1].melds.restore([pon], 1)
 	bc.state.current_seat = 1
 	bc.state.phase = BattlePhase.Kind.DISCARD
-	bc.state.seats[1].last_drawn_instance_id = bc.state.seats[1].hand._tiles[0].instance_id
+	bc.state.seats[1].last_drawn_instance_id = bc.state.seats[1].hand.tiles()[0].instance_id
 	assert_true(
 		_assert_wall_and_active_entities_canonical_unique(bc, "test_chankan_ron_on_added_kan"),
 		"test_chankan_ron_on_added_kan: fixture 实体审计")
@@ -533,7 +523,7 @@ func test_chankan_ron_on_added_kan():
 			won = true
 			assert_true(bool(ev.extra.get("is_chankan", false)))
 	assert_true(won, "seat 2 should ron via chankan")
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, Meld.Kind.PON,
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, Meld.Kind.PON,
 		"chankan never upgrades")
 
 
@@ -563,10 +553,10 @@ func test_chankan_blocked_by_furiten():
 	assert_not_null(pon_b)
 	assert_not_null(pon_c)
 	var pon_tiles: Array[Tile] = [pon_a, pon_b, pon_c]
-	bc.state.seats[1].melds = [Meld.make_pon(pon_tiles, 0, 1000)]
+	bc.state.seats[1].melds.restore([Meld.make_pon(pon_tiles, 0, 1)], 1)
 	bc.state.current_seat = 1
 	bc.state.phase = BattlePhase.Kind.DISCARD
-	bc.state.seats[1].last_drawn_instance_id = bc.state.seats[1].hand._tiles[0].instance_id
+	bc.state.seats[1].last_drawn_instance_id = bc.state.seats[1].hand.tiles()[0].instance_id
 	assert_true(
 		_assert_wall_and_active_entities_canonical_unique(bc, "test_chankan_blocked_by_furiten"),
 		"test_chankan_blocked_by_furiten: fixture 实体审计")

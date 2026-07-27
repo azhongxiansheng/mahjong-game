@@ -11,7 +11,7 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if owner < 0 or owner >= ctx._state.seats.size():
 		return
 	var seat: Seat = ctx._state.seats[owner]
-	for m in seat.melds:
+	for m in seat.melds.all():
 		if m.is_kan():
 			ctx.add_han(owner, KAN_HAN)
 			return

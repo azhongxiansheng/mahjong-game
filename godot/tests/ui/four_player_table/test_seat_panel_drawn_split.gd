@@ -58,7 +58,7 @@ func test_drawn_separated_at_right():
 		TileId.CHUN,
 		TileId.W5,  # serial=13 = 刚摸
 	])
-	var drawn_iid: int = h._tiles[h._tiles.size() - 1].instance_id
+	var drawn_iid: int = h.tile_at(h.size() - 1).instance_id
 	var split: Dictionary = SeatPanel.split_hand_for_display(h, drawn_iid)
 	assert_eq(split.sorted_ids.size(), 13, "13 张 sorted")
 	assert_eq(split.drawn_ids.size(), 1, "1 张 drawn")
@@ -147,7 +147,7 @@ func test_drawn_honor_tile():
 		TileId.CHUN,
 		TileId.HAKU,  # 刚摸 serial=13
 	])
-	var drawn_iid: int = h._tiles[h._tiles.size() - 1].instance_id
+	var drawn_iid: int = h.tile_at(h.size() - 1).instance_id
 	var split: Dictionary = SeatPanel.split_hand_for_display(h, drawn_iid)
 	assert_eq(split.sorted_ids.size(), 13)
 	assert_eq(split.drawn_ids.size(), 1)

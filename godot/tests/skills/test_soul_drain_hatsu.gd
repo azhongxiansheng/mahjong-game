@@ -26,7 +26,7 @@ func test_drain_transfers_12_percent_on_opponent_win():
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
 	# holder_seat=0 持牌；座位 1 胡 8000 → 0 拿 12% × 8000 = 960
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 2, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 2, sk)
 	ti.holder_seat = 0
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {"points_won": 8000}))
@@ -39,7 +39,7 @@ func test_drain_does_not_fire_when_holder_is_winner():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HATSU), 2, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HATSU), 2, sk)
 	ti.holder_seat = 0
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0, null, {"points_won": 8000}))

@@ -2,6 +2,17 @@ class_name Hand
 
 var _tiles: Array[Tile] = []
 
+func tiles() -> Array[Tile]:
+	return _tiles.duplicate()
+
+func tile_at(index: int) -> Tile:
+	if index < 0 or index >= _tiles.size():
+		return null
+	return _tiles[index]
+
+func first() -> Tile:
+	return tile_at(0)
+
 func size() -> int:
 	return _tiles.size()
 
@@ -9,7 +20,7 @@ func size() -> int:
 # INVALID_INSTANCE_ID 可重复（规则 fixture）。
 # 0..MAX_SAFE 合法但重复 → false；其它非法 identity（-2 / 超界）→ false 且不追加。
 func add(t: Tile) -> bool:
-	if t == null:
+	if t == null or not t.is_valid():
 		return false
 	var iid: int = t.instance_id
 	if iid == Tile.INVALID_INSTANCE_ID:
@@ -110,3 +121,12 @@ func clone() -> Hand:
 	for t in _tiles:
 		c._tiles.append(t.clone())
 	return c
+
+# 权威恢复专用：先完整校验，再一次替换；失败时当前手牌零修改。
+func restore_tiles(p_tiles: Array) -> bool:
+	var staged := Hand.new()
+	for raw in p_tiles:
+		if not (raw is Tile) or not staged.add(raw as Tile):
+			return false
+	_tiles = staged._tiles
+	return true

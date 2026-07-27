@@ -3,7 +3,7 @@ extends SkillTestSceneBase
 const Hook := preload("res://skills/hooks/seal_chun_hook.gd")
 
 var _skill: SkillResource
-var _ti: TileInstance
+var _ti: TileSkillAnchor
 
 func _scene_title() -> String:
 	return "中·封印 — §8.3 阻胡系 Demo(消耗型)"
@@ -21,7 +21,7 @@ func _register_skill() -> void:
 	var ot: Array[StringName] = [&"RON_DECLARED"]
 	_skill.owner_triggers = ot
 	_skill.hook_script = Hook
-	_ti = TileInstance.make(Tile.new(TileId.CHUN), 0, _skill)
+	_ti = TileSkillAnchor.make(Tile.new(TileId.CHUN), 0, _skill)
 	_registry.register(_skill, _ti)
 
 func _on_trigger(_trigger_id: StringName) -> SkillCtx:

@@ -20,7 +20,7 @@ func _play_hand(bc: PlayableBattleController, winds: Array, player_actions: Arra
 	port.responder = func(kind: StringName, _context: Dictionary):
 		match kind:
 			&"discard":
-				var hand_tiles: Array[Tile] = bc.state.seats[0].hand._tiles
+				var hand_tiles: Array[Tile] = bc.state.seats[0].hand.tiles()
 				if not hand_tiles.is_empty():
 					player_actions.append(&"DISCARD")
 					return {

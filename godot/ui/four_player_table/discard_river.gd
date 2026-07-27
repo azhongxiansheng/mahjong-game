@@ -1,4 +1,4 @@
-class_name DiscardRiver extends Node2D
+class_name DiscardRiverView extends Node2D
 
 # 公开参考 bundle `tV` / `.river` 的 Godot 等价实现。
 #

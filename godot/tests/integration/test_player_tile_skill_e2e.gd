@@ -41,7 +41,7 @@ func _noise_13() -> Array:
 
 
 func _live_end(w: Wall) -> int:
-	return w._tiles.size() - w._dead_wall_size
+	return w.authority_tiles().size() - w.dead_wall_size()
 
 
 ## 清空 active hand/river/meld，draw_index 回绕到 0，
@@ -50,11 +50,11 @@ func _prepare_live_fixture(bc: BattleController) -> void:
 	for s in range(4):
 		var seat: Seat = bc.state.seats[s]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.furiten = FuritenState.new()
-		bc.state.discards_per_seat[s] = []
-	bc.state.wall._draw_index = 0
+		bc.state.seats[s].river.restore([])
+	bc.state.wall.set_draw_index(0)
 	_used_wall_iids.clear()
 
 
@@ -65,12 +65,12 @@ func _assert_iid_absent_from_active_zones(
 		if s == except_seat:
 			continue
 		var seat: Seat = bc.state.seats[s]
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			if t == null:
 				continue
 			assert_ne(int(t.instance_id), iid,
 				"iid=%d 不得仍在 seat%d hand" % [iid, s])
-		for m in seat.melds:
+		for m in seat.melds.all():
 			if m == null:
 				continue
 			for t2 in m.tiles:
@@ -78,7 +78,7 @@ func _assert_iid_absent_from_active_zones(
 					continue
 				assert_ne(int(t2.instance_id), iid,
 					"iid=%d 不得仍在 seat%d meld" % [iid, s])
-		for t3 in bc.state.discards_per_seat[s]:
+		for t3 in bc.state.seats[s].river.tiles():
 			if t3 == null:
 				continue
 			assert_ne(int(t3.instance_id), iid,
@@ -87,8 +87,8 @@ func _assert_iid_absent_from_active_zones(
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
 		var raw = (item as Dictionary).get("tile", null)
-		if raw is TileInstance and (raw as TileInstance).tile != null:
-			assert_ne(int((raw as TileInstance).tile.instance_id), iid,
+		if raw is TileSkillAnchor and (raw as TileSkillAnchor).tile != null:
+			assert_ne(int((raw as TileSkillAnchor).tile.instance_id), iid,
 				"iid=%d 不得仍在 revealed" % iid)
 		elif raw is Tile:
 			assert_ne(int((raw as Tile).instance_id), iid,
@@ -97,8 +97,8 @@ func _assert_iid_absent_from_active_zones(
 
 func _find_live_index(w: Wall, tid: int) -> int:
 	var end_i: int = _live_end(w)
-	for i in range(w._draw_index, end_i):
-		var t: Tile = w._tiles[i]
+	for i in range(w.draw_index(), end_i):
+		var t: Tile = w.authority_tiles()[i]
 		if t == null or int(t.id) != int(tid):
 			continue
 		var iid: int = int(t.instance_id)
@@ -109,13 +109,9 @@ func _find_live_index(w: Wall, tid: int) -> int:
 
 
 func _swap_live_to_draw_index(w: Wall, live_idx: int) -> void:
-	assert_gte(live_idx, w._draw_index)
+	assert_gte(live_idx, w.draw_index())
 	assert_lt(live_idx, _live_end(w))
-	if live_idx == w._draw_index:
-		return
-	var tmp: Tile = w._tiles[w._draw_index]
-	w._tiles[w._draw_index] = w._tiles[live_idx]
-	w._tiles[live_idx] = tmp
+	assert_true(w.move_live_index_to_top(live_idx))
 
 
 ## 从 live 未摸区找 tid：swap 到 _draw_index 后真实 wall.draw() 消耗。
@@ -127,7 +123,7 @@ func _draw_from_live(bc: BattleController, tid: int) -> Tile:
 	var live_idx: int = _find_live_index(w, tid)
 	assert_true(live_idx >= 0, "live 未摸区无剩余 id=%d 的 canonical 实体" % tid)
 	_swap_live_to_draw_index(w, live_idx)
-	var selected: Tile = w._tiles[w._draw_index]
+	var selected: Tile = w.authority_tiles()[w.draw_index()]
 	assert_not_null(selected)
 	var iid: int = int(selected.instance_id)
 	assert_true(Tile.is_instance_id_in_hand_seq(iid, bc.state.hand_seq),
@@ -148,15 +144,15 @@ func _set_next_draw(bc: BattleController, tid: int) -> Tile:
 	var live_idx: int = _find_live_index(w, tid)
 	assert_true(live_idx >= 0, "live 未摸区无剩余 id=%d 作 next draw" % tid)
 	_swap_live_to_draw_index(w, live_idx)
-	var next: Tile = w._tiles[w._draw_index]
+	var next: Tile = w.authority_tiles()[w.draw_index()]
 	assert_not_null(next)
 	var iid: int = int(next.instance_id)
 	assert_true(Tile.is_instance_id_in_hand_seq(iid, bc.state.hand_seq))
 	# live 区内该 iid 唯一，且无复制对象槽位
 	var iid_slots: int = 0
 	var same_obj_slots: int = 0
-	for i in range(w._draw_index, _live_end(w)):
-		var t: Tile = w._tiles[i]
+	for i in range(w.draw_index(), _live_end(w)):
+		var t: Tile = w.authority_tiles()[i]
 		if t == null:
 			continue
 		if int(t.instance_id) == iid:
@@ -195,7 +191,7 @@ func _consume_skill_anchor_from_live(
 	assert_true(Tile.is_instance_id_in_hand_seq(anchor_tile.instance_id, bc.state.hand_seq))
 	if not register:
 		return anchor_tile
-	var ti: TileInstance = TileInstance.make(anchor_tile, 0, sk)
+	var ti: TileSkillAnchor = TileSkillAnchor.make(anchor_tile, 0, sk)
 	if not sk.holder_triggers.is_empty():
 		ti.holder_seat = 0
 	bc.registry.register(sk, ti)
@@ -238,7 +234,7 @@ func _setup_seat0_discard_w9(bc: BattleController) -> Tile:
 	ids.append(TileId.W9)
 	bc.state.seats[0].hand = _hand_from_live(bc, ids)
 	var disc: Tile = null
-	for t in bc.state.seats[0].hand._tiles:
+	for t in bc.state.seats[0].hand.tiles():
 		if t != null and int(t.id) == TileId.W9:
 			disc = t
 			break
@@ -314,7 +310,7 @@ func _run_soul_drain_ron_fixture(with_skill: bool) -> Dictionary:
 
 	var disc: Tile = _setup_seat0_discard_w9(bc)
 	assert_true(ClaimValidator.can_ron(
-		bc.state.seats[1].hand, bc.state.seats[1].melds, disc, bc.state.seats[1].furiten),
+		bc.state.seats[1].hand, bc.state.seats[1].melds.all(), disc, bc.state.seats[1].furiten),
 		"seat1 必须真实可荣 disc.iid=%d" % disc.instance_id)
 	# control / skill：fixture 就绪后、真实 CLAIM 前做 ARS 严格 restore（与 thunder 时机对齐）
 	assert_true(

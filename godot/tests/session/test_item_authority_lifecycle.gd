@@ -161,7 +161,7 @@ func test_display_only_hand_settled_before_match_settled_order() -> void:
 		"ptt_end_server_seq": maxi(server.current_server_seq(), 1), "terminal": false,
 	}).get("accepted", false)))
 	var w: Wall = bc.state.wall
-	w._draw_index = w._tiles.size() - w._dead_wall_size
+	w.set_draw_index(w.authority_tiles().size() - w.dead_wall_size())
 	bc.state.phase = BattlePhase.Kind.DRAW
 	bc.set("_settled", false)
 	bc.set("_active_window", null)
@@ -277,7 +277,7 @@ func test_match_settled_emits_matching_snapshot_and_clears() -> void:
 		"ptt_end_server_seq": maxi(server.current_server_seq(), 1), "terminal": false,
 	}).get("accepted", false)))
 	var w: Wall = bc.state.wall
-	w._draw_index = w._tiles.size() - w._dead_wall_size
+	w.set_draw_index(w.authority_tiles().size() - w.dead_wall_size())
 	bc.state.phase = BattlePhase.Kind.DRAW
 	bc.set("_settled", false)
 	bc.set("_active_window", null)

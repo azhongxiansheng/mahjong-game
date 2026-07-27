@@ -50,7 +50,7 @@ func test_factory_live_wall_after_deal():
 
 func test_factory_dora_indicator_revealed():
 	var s := BattleState.for_east_round(42, 0, 1, 0, 0)
-	assert_eq(s.dora_indicators.visible.size(), 1, "开局翻 1 张 dora indicator")
+	assert_eq(s.dora_indicators.visible_tiles().size(), 1, "开局翻 1 张 dora indicator")
 
 func test_factory_phase_is_draw():
 	var s := BattleState.for_east_round(42, 0, 1, 0, 0)
@@ -60,11 +60,11 @@ func test_factory_current_seat_is_dealer():
 	var s := BattleState.for_east_round(42, 1, 1, 0, 0)
 	assert_eq(s.current_seat, 1)
 
-func test_factory_discards_per_seat_initialized_empty():
+func test_factory_seat_rivers_initialized_empty():
 	var s := BattleState.for_east_round(42, 0, 1, 0, 0)
-	assert_eq(s.discards_per_seat.size(), 4)
-	for arr in s.discards_per_seat:
-		assert_eq(arr.size(), 0)
+	assert_eq(s.seats.size(), 4)
+	for seat in s.seats:
+		assert_eq(seat.river.size(), 0)
 
 func test_factory_passes_honba_and_sticks():
 	var s := BattleState.for_east_round(42, 0, 2, 3, 1)

@@ -13,22 +13,22 @@ func _hand(ids: Array) -> Hand:
 
 func test_default_empty():
 	var d := DoraIndicators.new()
-	assert_eq(d.visible.size(), 0)
-	assert_eq(d.hidden_uradora.size(), 0)
+	assert_eq(d.visible_count(), 0)
+	assert_eq(d.uradora_tiles().size(), 0)
 	assert_eq(d.count_total_dora(_hand([TileId.W5]), [], false), 0)
 
 func test_visible_indicator_counts_dora():
 	# indicator W4 → dora W5；手中 1 张 W5
 	var d := DoraIndicators.new()
-	d.add_visible(Tile.new(TileId.W4))
+	assert_true(d.reveal_pair(Tile.new(TileId.W4), Tile.new(TileId.S1)))
 	var h := _hand([TileId.W5, TileId.W3])
 	assert_eq(d.count_total_dora(h, [], false), 1)
 
 func test_multiple_visible_indicators_after_kan():
 	# 杠后翻新指示牌：W4 + S2 → dora W5 + S3
 	var d := DoraIndicators.new()
-	d.add_visible(Tile.new(TileId.W4))
-	d.add_visible(Tile.new(TileId.S2))
+	assert_true(d.reveal_pair(Tile.new(TileId.W4), Tile.new(TileId.T1)))
+	assert_true(d.reveal_pair(Tile.new(TileId.S2), Tile.new(TileId.T2)))
 	var h := _hand([TileId.W5, TileId.W5, TileId.S3])
 	assert_eq(d.count_total_dora(h, [], false), 3)
 
@@ -42,14 +42,14 @@ func test_red_dora_counted():
 
 func test_uradora_included_only_when_requested():
 	var d := DoraIndicators.new()
-	d.add_visible(Tile.new(TileId.W4))      # dora W5
-	d.add_hidden_uradora(Tile.new(TileId.S2))  # uradora S3
+	assert_true(d.reveal_pair(
+		Tile.new(TileId.W4), Tile.new(TileId.S2)))  # dora W5 / uradora S3
 	var h := _hand([TileId.W5, TileId.S3])
 	assert_eq(d.count_total_dora(h, [], false), 1, "不含裏 dora")
 	assert_eq(d.count_total_dora(h, [], true), 2, "含裏 dora")
 
 func test_visible_indicator_ids_helper():
 	var d := DoraIndicators.new()
-	d.add_visible(Tile.new(TileId.W4))
-	d.add_visible(Tile.new(TileId.S2))
+	assert_true(d.reveal_pair(Tile.new(TileId.W4), Tile.new(TileId.T1)))
+	assert_true(d.reveal_pair(Tile.new(TileId.S2), Tile.new(TileId.T2)))
 	assert_eq(d.visible_indicator_ids(), [TileId.W4, TileId.S2])

@@ -5,9 +5,18 @@ enum Kind { CHI, PON, MINKAN, ANKAN, ADDED_KAN }
 # 暗杠不来自任何人，from_seat 用此哨兵表示
 const NO_SOURCE_SEAT: int = -1
 
-var kind: Kind
-var tiles: Array[Tile]
-var from_seat: int  # 牌来自哪个 seat（暗杠 = NO_SOURCE_SEAT）
+var _kind: Kind
+var kind: Kind:
+	get:
+		return _kind
+var _tiles: Array[Tile] = []
+var tiles: Array[Tile]:
+	get:
+		return _tiles.duplicate()
+var _from_seat: int
+var from_seat: int:  # 牌来自哪个 seat（暗杠 = NO_SOURCE_SEAT）
+	get:
+		return _from_seat
 # E2-02 / #232：副露 identity + 叫牌实体 id 只读；called_tile 仅 getter。
 # added_tile_instance_id 只能经 promote_to_added_kan 一次性写入。
 # 唯一契约：第 4 参 = meld_id(int)，第 5 参 = called Tile（可选）；无 Tile 第 4 参兼容。
@@ -29,7 +38,7 @@ var called_tile: Tile:
 	get:
 		if _called_tile_instance_id == Tile.INVALID_INSTANCE_ID:
 			return null
-		for t in tiles:
+		for t in _tiles:
 			if t.instance_id == _called_tile_instance_id:
 				return t
 		return null
@@ -37,9 +46,9 @@ var called_tile: Tile:
 func _init(p_kind: Kind, p_tiles: Array[Tile], p_from: int,
 		p_meld_id: int = Tile.INVALID_INSTANCE_ID,
 		p_called_tile: Tile = null) -> void:
-	kind = p_kind
-	tiles = p_tiles
-	from_seat = p_from
+	_kind = p_kind
+	_tiles = p_tiles.duplicate()
+	_from_seat = p_from
 	_meld_id = p_meld_id
 	if p_called_tile != null:
 		_called_tile_instance_id = p_called_tile.instance_id
@@ -88,10 +97,10 @@ func promote_to_added_kan(tile: Tile) -> bool:
 		return false
 	if _added_tile_instance_id != Tile.INVALID_INSTANCE_ID:
 		return false
-	if tiles.is_empty() or tile.id != tiles[0].id:
+	if _tiles.is_empty() or tile.id != _tiles[0].id:
 		return false
-	tiles.append(tile)
-	kind = Kind.ADDED_KAN
+	_tiles.append(tile)
+	_kind = Kind.ADDED_KAN
 	_added_tile_instance_id = tile.instance_id
 	return true
 
@@ -103,6 +112,6 @@ func is_kan() -> bool:
 
 func to_id_array() -> Array:
 	var ids := []
-	for t in tiles:
+	for t in _tiles:
 		ids.append(t.id)
 	return ids

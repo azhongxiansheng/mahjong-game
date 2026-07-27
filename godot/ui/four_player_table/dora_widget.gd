@@ -17,7 +17,7 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	size = Vector2(SLOTS * (SLOT_W + SLOT_GAP) + 16, SLOT_H + 14)
 
-# indicators: Array[int] 已翻指示牌 id(state.dora_indicators.visible 的 id)
+# indicators: Array[int] 已翻指示牌 id(state.dora_indicators.visible_tiles() 的 id)
 func update_indicators(indicators: Array) -> void:
 	var key: String = ",".join(indicators.map(func(v): return str(v)))
 	if key == _rendered_key:

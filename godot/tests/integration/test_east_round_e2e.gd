@@ -26,7 +26,7 @@ func _run_full_round(seed: int) -> GameDriver:
 			for i in range(4):
 				var seat: Seat = bc.state.seats[i]
 				var typed_melds: Array[Meld] = []
-				for m in seat.melds:
+				for m in seat.melds.all():
 					typed_melds.append(m)
 				var waits: Array = WaitCalculator.wait_tiles(seat.hand, typed_melds)
 				tenpai_array.append(waits.size() > 0)

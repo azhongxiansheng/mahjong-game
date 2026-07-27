@@ -24,36 +24,36 @@ func test_exhaustive_true_when_live_wall_empty():
 func test_suufon_renda_all_east_first_round():
 	var s := _empty_state_with_4_seats()
 	for seat in range(4):
-		s.discards_per_seat[seat].append(Tile.new(TileId.E))
+		s.seats[seat].river.append_discard(Tile.new(TileId.E))
 	# first_round_active 默认 true
 	assert_true(DrawDetector.is_suufon_renda(s))
 
 func test_suufon_renda_blocked_after_first_round():
 	var s := _empty_state_with_4_seats()
 	for seat in range(4):
-		s.discards_per_seat[seat].append(Tile.new(TileId.E))
+		s.seats[seat].river.append_discard(Tile.new(TileId.E))
 	s.first_round_active = false
 	assert_false(DrawDetector.is_suufon_renda(s))
 
 func test_suufon_renda_not_all_seats_discarded_yet():
 	var s := _empty_state_with_4_seats()
 	for seat in range(3):
-		s.discards_per_seat[seat].append(Tile.new(TileId.E))
+		s.seats[seat].river.append_discard(Tile.new(TileId.E))
 	# seat 3 还没弃
 	assert_false(DrawDetector.is_suufon_renda(s))
 
 func test_suufon_renda_mixed_winds_no():
 	var s := _empty_state_with_4_seats()
-	s.discards_per_seat[0].append(Tile.new(TileId.E))
-	s.discards_per_seat[1].append(Tile.new(TileId.S_WIND))
-	s.discards_per_seat[2].append(Tile.new(TileId.E))
-	s.discards_per_seat[3].append(Tile.new(TileId.E))
+	s.seats[0].river.append_discard(Tile.new(TileId.E))
+	s.seats[1].river.append_discard(Tile.new(TileId.S_WIND))
+	s.seats[2].river.append_discard(Tile.new(TileId.E))
+	s.seats[3].river.append_discard(Tile.new(TileId.E))
 	assert_false(DrawDetector.is_suufon_renda(s))
 
 func test_suufon_renda_all_dragon_no():
 	var s := _empty_state_with_4_seats()
 	for seat in range(4):
-		s.discards_per_seat[seat].append(Tile.new(TileId.HAKU))
+		s.seats[seat].river.append_discard(Tile.new(TileId.HAKU))
 	assert_false(DrawDetector.is_suufon_renda(s), "白板不算字风")
 
 # ---- is_suucha_riichi ----
@@ -75,7 +75,7 @@ func test_suucha_riichi_only_3_no():
 func test_suukantsu_sanra_4_kans_different_seats():
 	var s := _empty_state_with_4_seats()
 	for seat_id in range(4):
-		s.seats[seat_id].melds.append(Meld.make_ankan([
+		s.seats[seat_id].melds.add_existing(Meld.make_ankan([
 			Tile.new(TileId.W1), Tile.new(TileId.W1),
 			Tile.new(TileId.W1), Tile.new(TileId.W1)]))
 	assert_true(DrawDetector.is_suukantsu_sanra(s))
@@ -84,7 +84,7 @@ func test_suukantsu_sanra_4_kans_same_seat_no():
 	# 同 1 人 4 杠 → 四杠子役满，不流局
 	var s := _empty_state_with_4_seats()
 	for _i in range(4):
-		s.seats[0].melds.append(Meld.make_ankan([
+		s.seats[0].melds.add_existing(Meld.make_ankan([
 			Tile.new(TileId.W1), Tile.new(TileId.W1),
 			Tile.new(TileId.W1), Tile.new(TileId.W1)]))
 	assert_false(DrawDetector.is_suukantsu_sanra(s))
@@ -92,7 +92,7 @@ func test_suukantsu_sanra_4_kans_same_seat_no():
 func test_suukantsu_sanra_3_kans_no():
 	var s := _empty_state_with_4_seats()
 	for seat_id in range(3):
-		s.seats[seat_id].melds.append(Meld.make_ankan([
+		s.seats[seat_id].melds.add_existing(Meld.make_ankan([
 			Tile.new(TileId.W1), Tile.new(TileId.W1),
 			Tile.new(TileId.W1), Tile.new(TileId.W1)]))
 	assert_false(DrawDetector.is_suukantsu_sanra(s))

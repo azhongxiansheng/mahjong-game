@@ -21,7 +21,7 @@ func _register_skill() -> void:
 	var ot: Array[StringName] = [&"TILE_DRAWN"]
 	_skill.owner_triggers = ot
 	_skill.hook_script = Hook
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, _skill)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, _skill)
 	ti.holder_seat = 0
 	_registry.register(_skill, ti)
 

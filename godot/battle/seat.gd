@@ -1,7 +1,7 @@
 class_name Seat
 
 # 一座位的数据 + 简单 helper（spec §5）。
-# 弃牌河由 BattleState.discards_per_seat 单独维护，本对象不存。
+# Seat 是席位聚合根，统一持有手牌、牌河与副露。
 # deck_owner 字段（卡组系统）属里程碑 4，0e 不实装。
 
 const DEFAULT_STARTING_POINTS: int = 25000
@@ -9,7 +9,8 @@ const DEFAULT_STARTING_POINTS: int = 25000
 var seat_id: int
 var seat_wind: int
 var hand: Hand
-var melds: Array = []
+var river: DiscardRiver
+var melds: MeldCollection
 var points: int
 var riichi: RiichiState
 var furiten: FuritenState
@@ -22,17 +23,17 @@ var last_drawn_instance_id: int = Tile.INVALID_INSTANCE_ID
 var last_draw_is_rinshan: bool = false
 # E2-02 / #232：本座位本局副露序号；公开 meld_id 以四席交错编码，
 # `local_index * 4 + seat_id`，从而无需共享可变分配器也能保证同局全局唯一。
-var next_meld_id: int = 0
 
 func _init(p_seat_id: int, p_seat_wind: int, p_points: int = DEFAULT_STARTING_POINTS) -> void:
 	seat_id = p_seat_id
 	seat_wind = p_seat_wind
 	points = p_points
 	hand = Hand.new()
+	river = DiscardRiver.new()
+	melds = MeldCollection.new(seat_id)
 	riichi = RiichiState.new()
 	furiten = FuritenState.new()
 	last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
-	next_meld_id = 0
 
 func add_to_hand(t: Tile) -> void:
 	hand.add(t)
@@ -43,16 +44,10 @@ func discard_from_hand(instance_id: Variant) -> bool:
 
 func is_concealed_hand() -> bool:
 	# 门清：melds 中只允许 ANKAN
-	for m in melds:
+	for m in melds.all():
 		if m.kind != Meld.Kind.ANKAN:
 			return false
 	return true
 
 func adjust_points(delta: int) -> void:
 	points += delta
-
-# 分配下一个 meld_id（仅成功提交路径调用）。
-func allocate_meld_id() -> int:
-	var mid: int = next_meld_id * 4 + seat_id
-	next_meld_id += 1
-	return mid

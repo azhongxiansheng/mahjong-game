@@ -395,7 +395,7 @@ func _ensure_disabled_hatch() -> void:
 
 # ---- public setters ----
 
-func set_tile_instance(ti: TileInstance) -> void:
+func set_tile_instance(ti: TileSkillAnchor) -> void:
 	if ti == null:
 		_owner_seat = -1
 		_tile_id = -1

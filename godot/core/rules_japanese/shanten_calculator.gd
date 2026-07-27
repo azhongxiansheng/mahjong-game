@@ -47,7 +47,7 @@ static func _hand_to_counts(hand: Hand) -> Array[int]:
 	var counts: Array[int] = []
 	counts.resize(34)
 	counts.fill(0)
-	for t in hand._tiles:
+	for t in hand.tiles():
 		counts[t.id] += 1
 	return counts
 

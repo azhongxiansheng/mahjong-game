@@ -35,21 +35,23 @@ func _legal_post_draw_state_with_melds(seat_id: int,
 	var state := BattleState.for_east_round(20260720 + seat_id, 0, 1, 0, 0)
 	var seat: Seat = state.seats[seat_id]
 	var base_count := 13 - meld_count * 3
-	var drawn_instance_id: int = seat.hand._tiles[base_count].instance_id
-	seat.hand._tiles.resize(base_count)
+	var drawn_instance_id: int = seat.hand.tiles()[base_count].instance_id
+	var hand_tiles: Array[Tile] = seat.hand.tiles()
+	hand_tiles.resize(base_count)
 	var drawn := Tile.new(
 		TileId.T1 + meld_count, false, Tile.NO_OWNER, drawn_instance_id)
-	seat.hand.add(drawn)
+	hand_tiles.append(drawn)
+	assert_true(seat.hand.restore_tiles(hand_tiles))
 	seat.last_drawn_instance_id = drawn.instance_id
 	for meld_index in range(meld_count):
 		var tile_id := TileId.W1 + meld_index
 		var base_iid: int = 4000 + seat_id * 100 + meld_index * 10
 		var called := Tile.new(tile_id, false, Tile.NO_OWNER, base_iid)
-		seat.melds.append(Meld.make_pon([
+		seat.melds.add_existing(Meld.make_pon([
 			called,
 			Tile.new(tile_id, false, Tile.NO_OWNER, base_iid + 1),
 			Tile.new(tile_id, false, Tile.NO_OWNER, base_iid + 2),
-		], (seat_id + 1) % 4, base_iid, called))
+		], (seat_id + 1) % 4, meld_index * 4 + seat_id, called))
 	return state
 
 
@@ -266,7 +268,9 @@ func test_real_bind_uses_legal_concealed_count_for_one_and_two_pon() -> void:
 
 func test_live_left_one_pon_post_discard_matches_browser_bbox() -> void:
 	var state := _legal_post_draw_state_with_melds(3, 1)
-	state.seats[3].hand._tiles.pop_back()
+	var hand_tiles: Array[Tile] = state.seats[3].hand.tiles()
+	hand_tiles.pop_back()
+	assert_true(state.seats[3].hand.restore_tiles(hand_tiles))
 	state.seats[3].last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 	var table: FourPlayerTable = load(
 		"res://ui/four_player_table/four_player_table.tscn").instantiate()

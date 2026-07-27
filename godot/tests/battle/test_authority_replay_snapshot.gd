@@ -72,13 +72,13 @@ func _collect_active_iids(st: BattleState, reg: SkillRegistry = null) -> Diction
 	var occ: Dictionary = {}
 	for si in range(4):
 		var seat: Seat = st.seats[si]
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			if t is Tile:
 				occ[int((t as Tile).instance_id)] = true
-		for t in st.discards_per_seat[si]:
+		for t in seat.river.tiles():
 			if t is Tile:
 				occ[int((t as Tile).instance_id)] = true
-		for m in seat.melds:
+		for m in seat.melds.all():
 			if m is Meld:
 				for mt in (m as Meld).tiles:
 					if mt is Tile:
@@ -87,15 +87,15 @@ func _collect_active_iids(st: BattleState, reg: SkillRegistry = null) -> Diction
 		if typeof(item) != TYPE_DICTIONARY:
 			continue
 		var raw = (item as Dictionary).get("tile", null)
-		if raw is TileInstance and (raw as TileInstance).tile != null:
-			occ[int((raw as TileInstance).tile.instance_id)] = true
+		if raw is TileSkillAnchor and (raw as TileSkillAnchor).tile != null:
+			occ[int((raw as TileSkillAnchor).tile.instance_id)] = true
 		elif raw is Tile:
 			occ[int((raw as Tile).instance_id)] = true
 	if reg != null:
 		for e in reg.get_all_entries():
 			var anchor = e["anchor"]
-			if anchor is TileInstance and (anchor as TileInstance).tile != null:
-				occ[int((anchor as TileInstance).tile.instance_id)] = true
+			if anchor is TileSkillAnchor and (anchor as TileSkillAnchor).tile != null:
+				occ[int((anchor as TileSkillAnchor).tile.instance_id)] = true
 	return occ
 
 func _tile_in_any_hand(st: BattleState, iid: int) -> int:
@@ -104,7 +104,7 @@ func _tile_in_any_hand(st: BattleState, iid: int) -> int:
 			return si
 	return -1
 
-## 按 tile id + 未占用 iid 从 state.wall._tiles 选取真实实体；不得 new Tile 造 iid。
+## 按 tile id + 未占用 iid 从 state.wall.authority_tiles() 选取真实实体；不得 new Tile 造 iid。
 ## 优先未在任何手牌中的墙牌；若只能从手取，按 instance_id 从原手移除。
 ## 选中后写入 occupied；失败返 null。
 ## tid < 0 时按 wall 顺序取任意未占用真实实体（mutation 回退）。
@@ -112,7 +112,7 @@ func _pick_wall_tile(st: BattleState, tid: int, occupied: Dictionary) -> Tile:
 	var hs: int = int(st.hand_seq)
 	var undrawn: Array = []
 	var in_hand: Array = []
-	for t in st.wall._tiles:
+	for t in st.wall.authority_tiles():
 		if t == null or not (t is Tile):
 			continue
 		var tile: Tile = t as Tile
@@ -170,9 +170,9 @@ func _skill_entry_dict(e: Dictionary) -> Dictionary:
 	var anchor_val: Variant = 0
 	if typeof(anchor) == TYPE_INT:
 		anchor_val = int(anchor)
-	elif anchor is TileInstance and (anchor as TileInstance).tile != null:
+	elif anchor is TileSkillAnchor and (anchor as TileSkillAnchor).tile != null:
 		anchor_kind = "tile"
-		anchor_val = int((anchor as TileInstance).tile.instance_id)
+		anchor_val = int((anchor as TileSkillAnchor).tile.instance_id)
 	else:
 		anchor_kind = "other"
 		anchor_val = str(anchor)
@@ -206,8 +206,8 @@ func _revealed_norm(items: Array) -> Array:
 		var d: Dictionary = item
 		var tile_d := {}
 		var t = d.get("tile", null)
-		if t is TileInstance:
-			tile_d = (t as TileInstance).to_dict()
+		if t is TileSkillAnchor:
+			tile_d = (t as TileSkillAnchor).to_dict()
 		elif t is Tile:
 			tile_d = (t as Tile).to_dict()
 		elif typeof(t) == TYPE_DICTIONARY:
@@ -294,13 +294,13 @@ func _fixture_dict(bc: Object) -> Dictionary:
 	for si in range(4):
 		var seat: Seat = st.seats[si]
 		var melds_f: Array = []
-		for m in seat.melds:
+		for m in seat.melds.all():
 			melds_f.append(_meld_dict(m as Meld))
 		seats_f.append({
-			"hand": _tiles_dicts(seat.hand._tiles),
-			"river": _tiles_dicts(st.discards_per_seat[si]),
+			"hand": _tiles_dicts(seat.hand.tiles()),
+			"river": _tiles_dicts(seat.river.tiles()),
 			"melds": melds_f,
-			"next_meld_id": int(seat.next_meld_id),
+			"next_meld_id": int(seat.melds.next_local_index()),
 			"last_draw": int(seat.last_drawn_instance_id),
 			"rinshan": bool(seat.last_draw_is_rinshan),
 			"points": int(seat.points),
@@ -310,7 +310,7 @@ func _fixture_dict(bc: Object) -> Dictionary:
 				"ippatsu": bool(seat.riichi.ippatsu_window),
 				"stick": bool(seat.riichi.riichi_stick_paid),
 				"double": bool(seat.riichi.double_riichi),
-				"discard_index": int(seat.riichi.riichi_discard_index),
+				"discard_index": int(seat.river.riichi_discard_index()),
 			},
 			"furiten": {
 				"permanent": bool(seat.furiten.permanent),
@@ -353,14 +353,14 @@ func _fixture_dict(bc: Object) -> Dictionary:
 		"momentum_total": float(st.momentum.total_momentum),
 		"momentum_scores": st.momentum.scores.duplicate(true),
 		"wall": {
-			"tiles": _tiles_dicts(wall._tiles),
-			"draw_index": int(wall.get("_draw_index")),
-			"dead_size": int(wall.get("_dead_wall_size")),
-			"rinshan_taken": int(wall.get("_rinshan_taken")),
+			"tiles": _tiles_dicts(wall.authority_tiles()),
+			"draw_index": wall.draw_index(),
+			"dead_size": wall.dead_wall_size(),
+			"rinshan_taken": wall.rinshan_taken(),
 			"live": int(wall.live_wall_size()),
 		},
-		"dora": _tiles_dicts(st.dora_indicators.visible),
-		"ura": _tiles_dicts(st.dora_indicators.hidden_uradora),
+		"dora": _tiles_dicts(st.dora_indicators.visible_tiles()),
+		"ura": _tiles_dicts(st.dora_indicators.uradora_tiles()),
 		"seats": seats_f, "skills": skills,
 		"reg_next_order": int(reg.get("_next_order")),
 		"sched_next_chain": int(sched.get("_next_chain_id")),
@@ -387,13 +387,11 @@ func _enrich(bc: Object) -> Dictionary:
 		engine.draw_for_current()
 	assert_eq(st.phase, BattlePhase.Kind.DISCARD)
 	var wall: Wall = st.wall
-	wall.set("_rinshan_taken", 1)
+	assert_true(wall.set_rinshan_taken(1))
 	var dora1: Tile = wall.peek_dora_indicator(1)
-	if dora1 != null:
-		st.dora_indicators.add_visible(dora1)
 	var ura1: Tile = wall.peek_uradora_indicator(1)
-	if ura1 != null:
-		st.dora_indicators.add_hidden_uradora(ura1)
+	if dora1 != null and ura1 != null:
+		assert_true(st.dora_indicators.reveal_pair(dora1, ura1))
 	st.scores = [24000, 26000, 23000, 27000] as Array[int]
 	st.turn_count = 5
 	st.first_round_active = false
@@ -411,9 +409,9 @@ func _enrich(bc: Object) -> Dictionary:
 		seat.points = 25000 + si * 100 + 17
 		# 他席可先入河；当前席保留 14 张以便 DISCARD apply_action
 		if si != disc_seat and seat.hand.size() > 2:
-			var t: Tile = seat.hand._tiles[0]
+			var t: Tile = seat.hand.tiles()[0]
 			seat.hand.take_by_instance_id(t.instance_id)
-			st.discards_per_seat[si].append(t)
+			seat.river.append_discard(t)
 			occupied[int(t.instance_id)] = true
 		if si == disc_seat:
 			seat.last_draw_is_rinshan = true
@@ -424,7 +422,7 @@ func _enrich(bc: Object) -> Dictionary:
 			seat.riichi.ippatsu_window = (si % 2 == 0)
 			seat.riichi.riichi_stick_paid = true
 			seat.riichi.double_riichi = (si == 1)
-			seat.riichi.riichi_discard_index = 0
+			assert_true(seat.river.restore(seat.river.tiles(), 0))
 		seat.furiten.permanent = (si == 0)
 		seat.furiten.temporary = (si == 2)
 		seat.furiten.waits = [TileId.W1 + si, TileId.T5]
@@ -443,13 +441,13 @@ func _enrich(bc: Object) -> Dictionary:
 		assert_eq(int(t2.id), TileId.W2)
 		assert_eq(int(t3.id), TileId.W3)
 		var mt: Array[Tile] = [t1, t2, t3]
-		seat.melds.append(Meld.make_chi(mt, (si + 1) % 4, si * 10 + 3, t3))
-		seat.next_meld_id = si + 5
+		seat.melds.add_existing(Meld.make_chi(mt, (si + 1) % 4, si, t3))
+		assert_true(seat.melds.restore(seat.melds.all(), si + 5))
 	var rev_src: Tile = _pick_wall_tile(st, TileId.S3, occupied)
 	assert_not_null(rev_src, "revealed 须本局 wall 真实 S3 iid")
 	if rev_src == null:
 		return {}
-	var rev_tile := TileInstance.make(rev_src, 1, null)
+	var rev_tile := TileSkillAnchor.make(rev_src, 1, null)
 	st.revealed_tiles = [{"tile": rev_tile, "visible_to": [0, 2]}]
 	st.kuikae_restricted = [[TileId.W2], [], [TileId.T1], []]
 	st.momentum.scores[Momentum.Attribute.DOMINATION] = 0.7
@@ -462,7 +460,7 @@ func _enrich(bc: Object) -> Dictionary:
 	assert_not_null(anchor_src, "skill anchor 须本局 wall 真实 W5 iid")
 	if anchor_src == null:
 		return {}
-	reg.register(sk_a, TileInstance.make(anchor_src, 0, sk_a))
+	reg.register(sk_a, TileSkillAnchor.make(anchor_src, 0, sk_a))
 	reg.register(sk_b, 2)
 	var sched: SkillScheduler = bc.get("scheduler") as SkillScheduler
 	sched.emit_event(BattleEvent.make(&"ARS_ENRICH_PROBE", 0, null, {"probe": 1}))
@@ -514,7 +512,7 @@ func _enrich(bc: Object) -> Dictionary:
 		return {}
 	var subj_iid: int = int((last_tile as Tile).instance_id)
 	assert_eq(subj_iid, disc_iid, "last_discarded.instance_id 对齐 DISCARD payload")
-	var river: Array = st.discards_per_seat[disc_seat]
+	var river: Array = st.seats[disc_seat].river.tiles()
 	assert_gt(river.size(), 0, "discarder 河须有牌")
 	if river.is_empty():
 		return {}
@@ -739,34 +737,25 @@ func _apply_mutation(bc: Object, kind: int) -> void:
 	var st: BattleState = bc.get("state") as BattleState
 	match kind:
 		0: # wall tile/order
-			var tiles: Array = st.wall._tiles
-			assert_gte(tiles.size(), 2)
-			var tmp = tiles[0]
-			tiles[0] = tiles[1]
-			tiles[1] = tmp
+			assert_true(st.wall.set_draw_index(st.wall.draw_index() + 1))
 		1: # dora/ura
-			var u: Tile = st.wall.peek_uradora_indicator(2)
-			if u != null:
-				st.dora_indicators.add_hidden_uradora(u)
-			else:
-				st.dora_indicators.add_visible(st.wall.peek_dora_indicator(2))
+			var pair_index: int = st.dora_indicators.visible_count()
+			var d: Tile = st.wall.peek_dora_indicator(pair_index)
+			var u: Tile = st.wall.peek_uradora_indicator(pair_index)
+			assert_true(st.dora_indicators.reveal_pair(d, u))
 		2: # hand order
-			var htiles = st.seats[0].hand._tiles
+			var htiles = st.seats[0].hand.tiles()
 			assert_gte(htiles.size(), 2)
 			var a = htiles[0]
 			htiles[0] = htiles[1]
 			htiles[1] = a
-		3: # meld content：替换为 wall 本局未占用真实 Tile
-			var reg_m: SkillRegistry = bc.get("registry") as SkillRegistry
-			var occ_m: Dictionary = _collect_active_iids(st, reg_m)
-			# 旧 tiles[0] 即将离开活动 meld 槽，允许其 iid 再被选用以外的牌
-			var old0: Tile = (st.seats[0].melds[0] as Meld).tiles[0]
-			if old0 != null:
-				occ_m.erase(int(old0.instance_id))
-			var repl_m: Tile = _pick_wall_tile_prefer(st, [TileId.S1, TileId.S2, TileId.S9], occ_m)
-			assert_not_null(repl_m, "mutation[3] 须 wall 未占用真实 Tile")
-			if repl_m != null:
-				(st.seats[0].melds[0] as Meld).tiles[0] = repl_m
+			assert_true(st.seats[0].hand.restore_tiles(htiles))
+		3: # meld content：保持顺子合法，只改变来源席
+			var original: Meld = st.seats[0].melds.all()[0]
+			var changed := Meld.new(original.kind, original.tiles, 2,
+				original.meld_id, original.called_tile)
+			assert_true(st.seats[0].melds.restore([changed],
+				st.seats[0].melds.next_local_index()))
 		4: # riichi（挑已 declared 席）
 			var riichi_seat: int = 1 if st.seats[1].riichi.declared else (disc_alt_seat(st))
 			st.seats[riichi_seat].riichi.declared_turn += 3
@@ -783,7 +772,7 @@ func _apply_mutation(bc: Object, kind: int) -> void:
 			assert_not_null(repl_v, "mutation[8] 须 wall 未占用真实 Tile")
 			if repl_v != null:
 				st.revealed_tiles.append({
-					"tile": TileInstance.make(repl_v, 0, null),
+					"tile": TileSkillAnchor.make(repl_v, 0, null),
 					"visible_to": [3]})
 		9: # kuikae
 			st.kuikae_restricted[0] = [TileId.W3, TileId.W4]
@@ -827,15 +816,15 @@ func _apply_mutation(bc: Object, kind: int) -> void:
 			var e0: Dictionary = entries_a[0]
 			var sk0: SkillResource = e0["skill"]
 			var old_anchor = e0["anchor"]
-			if old_anchor is TileInstance:
+			if old_anchor is TileSkillAnchor:
 				var occ_a: Dictionary = _collect_active_iids(st, reg_a)
 				# 旧 anchor 即将被替换，释放其占用以便可选其它牌
-				if (old_anchor as TileInstance).tile != null:
-					occ_a.erase(int((old_anchor as TileInstance).tile.instance_id))
+				if (old_anchor as TileSkillAnchor).tile != null:
+					occ_a.erase(int((old_anchor as TileSkillAnchor).tile.instance_id))
 				var repl_a: Tile = _pick_wall_tile_prefer(st, [TileId.W9, TileId.W8, TileId.W4], occ_a)
 				assert_not_null(repl_a, "mutation[14] 须 wall 未占用真实 Tile")
 				if repl_a != null:
-					e0["anchor"] = TileInstance.make(repl_a, 0, sk0)
+					e0["anchor"] = TileSkillAnchor.make(repl_a, 0, sk0)
 			elif typeof(old_anchor) == TYPE_INT:
 				e0["anchor"] = (int(old_anchor) + 1) % 4
 			else:
@@ -944,7 +933,7 @@ func test_rich_fixture_mutation_changes_sha_and_restore_fields() -> void:
 	assert_true(bool(ok))
 	assert_false(bool(snap.call("restore_into", null)))
 
-## capture→restore 须完整恢复 SkillResource 非默认字段与 TileInstance owner/holder，
+## capture→restore 须完整恢复 SkillResource 非默认字段与 TileSkillAnchor owner/holder，
 ## 且同一 owner/holder trigger 事件下 spy 触发与 beneficiary 语义不变。
 func test_ars_skill_full_fields_and_tile_anchor_owner_holder_roundtrip() -> void:
 	const SpyHook := preload("res://tests/_fixtures/spy_hook.gd")
@@ -1006,7 +995,7 @@ func test_ars_skill_full_fields_and_tile_anchor_owner_holder_roundtrip() -> void
 	assert_false(sk.holder_triggers.is_empty())
 	assert_false(sk.params.is_empty())
 
-	var ti := TileInstance.make(wall_tile, OWNER_SEAT, sk)
+	var ti := TileSkillAnchor.make(wall_tile, OWNER_SEAT, sk)
 	ti.holder_seat = HOLDER_SEAT
 	assert_eq(ti.owner_seat, OWNER_SEAT)
 	assert_eq(ti.holder_seat, HOLDER_SEAT)
@@ -1062,10 +1051,10 @@ func test_ars_skill_full_fields_and_tile_anchor_owner_holder_roundtrip() -> void
 	var sk_r: SkillResource = restored_entry["skill"] as SkillResource
 	var anchor_r = restored_entry["anchor"]
 	assert_not_null(sk_r)
-	assert_true(anchor_r is TileInstance, "restore 后 anchor 须为 TileInstance")
-	if sk_r == null or not (anchor_r is TileInstance):
+	assert_true(anchor_r is TileSkillAnchor, "restore 后 anchor 须为 TileSkillAnchor")
+	if sk_r == null or not (anchor_r is TileSkillAnchor):
 		return
-	var ti_r: TileInstance = anchor_r as TileInstance
+	var ti_r: TileSkillAnchor = anchor_r as TileSkillAnchor
 	assert_not_null(ti_r.tile, "restore 后 anchor.tile 须非 null")
 	if ti_r.tile == null:
 		return
@@ -1080,8 +1069,8 @@ func test_ars_skill_full_fields_and_tile_anchor_owner_holder_roundtrip() -> void
 		"restore 后 holder_triggers 须含 %s（实际 size=%d）" % [HOLDER_EVT, sk_r.holder_triggers.size()])
 	assert_eq(JSON.stringify(sk_r.params), JSON.stringify(WANT_PARAMS),
 		"restore 后 params 须保留")
-	assert_eq(int(ti_r.owner_seat), OWNER_SEAT, "restore 后 TileInstance.owner_seat")
-	assert_eq(int(ti_r.holder_seat), HOLDER_SEAT, "restore 后 TileInstance.holder_seat")
+	assert_eq(int(ti_r.owner_seat), OWNER_SEAT, "restore 后 TileSkillAnchor.owner_seat")
+	assert_eq(int(ti_r.holder_seat), HOLDER_SEAT, "restore 后 TileSkillAnchor.holder_seat")
 
 	# 同一事件：spy trace 与 beneficiary 与恢复前一致（真 scheduler，禁 mock）
 	SpyHook.reset()
@@ -1848,7 +1837,7 @@ func test_ars_strict_rejects_invalid_skill_tile_anchors_and_is_atomic() -> void:
 				if typeof(rev_tile) != TYPE_DICTIONARY:
 					return
 				var rev_td: Dictionary = rev_tile as Dictionary
-				# TileInstance 六键 tile_instance_id；Tile 四键 instance_id
+				# TileSkillAnchor 六键 tile_instance_id；Tile 四键 instance_id
 				if rev_td.has("tile_instance_id"):
 					rev_iid = int(rev_td["tile_instance_id"])
 				elif rev_td.has("instance_id"):
@@ -2632,7 +2621,7 @@ func _collect_int_key_stats_into(v: Variant, out: Dictionary) -> void:
 			pass
 
 
-## 回归：现有 TileSkillFactory 用 INVALID_INSTANCE_ID 的虚拟 TileInstance 作技能锚点。
+## 回归：现有 TileSkillFactory 用 INVALID_INSTANCE_ID 的虚拟 TileSkillAnchor 作技能锚点。
 ## 该锚点不属于 136 张实体牌墙，但仍是权威技能状态，capture/restore 必须无损。
 func test_ars_restores_tile_skill_factory_virtual_anchor() -> void:
 	var source := BattleController.new(73, 0, false, TileId.E, 2)
@@ -2644,10 +2633,10 @@ func test_ars_restores_tile_skill_factory_virtual_anchor() -> void:
 	if source_entries.size() != 1:
 		return
 	var source_anchor: Variant = (source_entries[0] as Dictionary).get("anchor")
-	assert_true(source_anchor is TileInstance)
-	if not (source_anchor is TileInstance):
+	assert_true(source_anchor is TileSkillAnchor)
+	if not (source_anchor is TileSkillAnchor):
 		return
-	assert_eq(int((source_anchor as TileInstance).tile.instance_id), Tile.INVALID_INSTANCE_ID)
+	assert_eq(int((source_anchor as TileSkillAnchor).tile.instance_id), Tile.INVALID_INSTANCE_ID)
 
 	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(source)
 	assert_not_null(snap)
@@ -2664,7 +2653,7 @@ func test_ars_restores_tile_skill_factory_virtual_anchor() -> void:
 		return
 	var restored: Dictionary = restored_entries[0] as Dictionary
 	var restored_skill: SkillResource = restored.get("skill") as SkillResource
-	var restored_anchor: TileInstance = restored.get("anchor") as TileInstance
+	var restored_anchor: TileSkillAnchor = restored.get("anchor") as TileSkillAnchor
 	assert_not_null(restored_skill)
 	assert_not_null(restored_anchor)
 	if restored_skill == null or restored_anchor == null:
@@ -2869,12 +2858,12 @@ func test_ars_allows_revealed_overlap_with_drawn_hand_tile() -> void:
 	var st: BattleState = bc.get("state") as BattleState
 	assert_not_null(st)
 	assert_gt(st.wall.live_wall_size(), 0)
-	var top: Tile = st.wall._tiles[st.wall._draw_index]
+	var top: Tile = st.wall.authority_tiles()[st.wall.draw_index()]
 	assert_not_null(top)
 	var top_iid: int = int(top.instance_id)
 	# 墙顶 peek 式 reveal（投影），随后真实 draw 进 hand
 	st.revealed_tiles = [{
-		"tile": TileInstance.make(top, 0, null),
+		"tile": TileSkillAnchor.make(top, 0, null),
 		"visible_to": [0, 1, 2, 3],
 	}]
 	var drawn: Tile = st.wall.draw()
@@ -2889,6 +2878,11 @@ func test_ars_allows_revealed_overlap_with_drawn_hand_tile() -> void:
 	assert_true(_hex64(h1))
 	var target := _make_bc(bc_scr, 2532, 1)
 	assert_true(bool(snap1.call("restore_into", target)), "revealed∩hand restore_into 须成功")
+	var target_state: BattleState = target.get("state") as BattleState
+	var restored_reveal: TileSkillAnchor = target_state.revealed_tiles[0]["tile"] as TileSkillAnchor
+	assert_same(restored_reveal.tile,
+		target_state.seats[seat_i].hand.find_by_instance_id(top_iid),
+		"reveal 必须锚定恢复后的同一物理 Tile")
 	var snap2: Variant = _capture(ars, target)
 	assert_not_null(snap2)
 	assert_eq(_sha(snap2), h1, "restore 后 hash 须稳定")

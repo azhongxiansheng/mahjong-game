@@ -128,7 +128,7 @@ func test_s7_counter_ron_steals_20_percent():
 	var sched: SkillScheduler = ctx[2]
 	var triggers: Array[StringName] = [&"RON_DECLARED"]
 	var sk := _make_tile_skill(&"s7_counter_ron_v1", TileId.S7, S7CounterRonHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.S7), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.S7), 0, sk)
 	reg.register(sk, ti)
 	# seat 1 ron, seat 0 is discarder (owner)
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0}))
@@ -143,7 +143,7 @@ func test_s7_counter_ron_no_steal_when_not_discarder():
 	var sched: SkillScheduler = ctx[2]
 	var triggers: Array[StringName] = [&"RON_DECLARED"]
 	var sk := _make_tile_skill(&"s7_counter_ron_v1", TileId.S7, S7CounterRonHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.S7), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.S7), 0, sk)
 	reg.register(sk, ti)
 	# seat 1 ron, seat 2 is discarder (not owner)
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 2}))
@@ -159,7 +159,7 @@ func test_chun_blood_pact_transfers_1000_from_each():
 	var sched: SkillScheduler = ctx[2]
 	var triggers: Array[StringName] = [&"WIN_DECLARED"]
 	var sk := _make_tile_skill(&"chun_blood_pact_v1", TileId.CHUN, ChunBloodPactHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.CHUN), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.CHUN), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	assert_eq(st.scores[0], 25000 + 3000, "owner gains 3000 total")
@@ -174,7 +174,7 @@ func test_chun_blood_pact_no_transfer_when_other_wins():
 	var sched: SkillScheduler = ctx[2]
 	var triggers: Array[StringName] = [&"WIN_DECLARED"]
 	var sk := _make_tile_skill(&"chun_blood_pact_v1", TileId.CHUN, ChunBloodPactHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.CHUN), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.CHUN), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
 	assert_eq(st.scores[0], 25000, "owner unchanged when other wins")
@@ -195,11 +195,11 @@ func test_w8_kan_bonus_adds_2_han_with_kan():
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 	]
-	seat.melds.append(Meld.make_ankan(kan_tiles))
+	seat.melds.add_existing(Meld.make_ankan(kan_tiles))
 	st.seats = [seat, Seat.new(1, TileId.S_WIND), Seat.new(2, TileId.W_WIND), Seat.new(3, TileId.N)]
 	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
 	var sk := _make_tile_skill(&"w8_kan_bonus_v1", TileId.W8, W8KanBonusHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.W8), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W8), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 2, "kan meld = +2 han")
@@ -214,11 +214,11 @@ func test_w8_kan_bonus_no_bonus_without_kan():
 	var pon_tiles: Array[Tile] = [
 		Tile.new(TileId.W1), Tile.new(TileId.W1), Tile.new(TileId.W1),
 	]
-	seat.melds.append(Meld.make_pon(pon_tiles, 1))
+	seat.melds.add_existing(Meld.make_pon(pon_tiles, 1))
 	st.seats = [seat, Seat.new(1, TileId.S_WIND), Seat.new(2, TileId.W_WIND), Seat.new(3, TileId.N)]
 	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
 	var sk := _make_tile_skill(&"w8_kan_bonus_v1", TileId.W8, W8KanBonusHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.W8), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W8), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0, "pon only = no kan bonus")
@@ -233,11 +233,11 @@ func test_w8_kan_bonus_no_bonus_when_other_wins():
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 	]
-	seat.melds.append(Meld.make_ankan(kan_tiles))
+	seat.melds.add_existing(Meld.make_ankan(kan_tiles))
 	st.seats = [seat, Seat.new(1, TileId.S_WIND), Seat.new(2, TileId.W_WIND), Seat.new(3, TileId.N)]
 	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
 	var sk := _make_tile_skill(&"w8_kan_bonus_v1", TileId.W8, W8KanBonusHook, triggers)
-	var ti := TileInstance.make(Tile.new(TileId.W8), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W8), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 3))
 	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0, "other wins = no bonus for owner")
