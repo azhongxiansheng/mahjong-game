@@ -69,6 +69,8 @@ func test_playable_table_does_not_embed_specific_character_ids() -> void:
 	assert_false(source.contains("char_momoko_passive_v1"), "牌桌不得识别影立静 ability_id")
 	assert_false(source.contains("bao_luo"), "宝络绯不得回到牌桌硬编码")
 	assert_false(source.contains("char_kuro_passive_v1"), "宝络绯能力不得回到牌桌硬编码")
+	assert_false(source.contains("lian_yao"), "连曜真状态不得回到牌桌硬编码")
+	assert_false(source.contains("char_teru_passive_v1"), "连曜真能力不得回到牌桌硬编码")
 
 
 func test_profile_feedback_reaches_real_toast_handler() -> void:
@@ -170,6 +172,35 @@ func test_bao_luo_profile_feedback_reaches_existing_top_safe_toast() -> void:
 	assert_eq(table._toast_label.get_theme_color("font_color"), Color("ff5b6e"))
 	assert_eq(table._toast_label.position, Vector2(420, 12),
 		"必须复用既有顶部安全区，不改变牌桌布局")
+
+
+func test_lian_yao_real_streak_reaches_top_safe_dynamic_status_capsule() -> void:
+	var bc := PlayableBattleController.new(349)
+	assert_true(BossAbilityFactory.inject(
+		bc.registry, &"char_teru_passive_v1", 1))
+	bc.call("_emit", &"WIN_DECLARED_PRE", 1, null, {})
+	bc.call("_emit", &"WIN_DECLARED_PRE", 1, null, {})
+
+	var table = PT.new()
+	add_child_autofree(table)
+	table.set("_reward_local_seat", 1)
+	table.bind_character_ids([&"qiu_jue", &"lian_yao", &"bai_touli", &"hua_ling"])
+	table.set("_bc", bc)
+	table.call("_sync_character_status")
+	var capsule := table.get_node_or_null("CharacterStatusBadge") as Control
+	assert_not_null(capsule)
+	if capsule == null:
+		return
+	assert_true(capsule.visible)
+	assert_eq(String(capsule.call("status_text")), "叠曜 2 层 · 本次 +2 番")
+	var rect := capsule.get_rect()
+	assert_gte(rect.position.y, 0.0)
+	assert_lte(rect.end.y, TableLayout.TOP_BAR_H)
+	assert_lte(rect.end.x, TableLayout.TABLE_W - 196.0)
+
+	bc.call("_emit", &"EXHAUSTIVE_DRAW", -1, null, {})
+	table.call("_sync_character_status")
+	assert_false(capsule.visible, "流局重置后状态胶囊必须立即消失")
 
 
 func test_unknown_event_returns_empty() -> void:

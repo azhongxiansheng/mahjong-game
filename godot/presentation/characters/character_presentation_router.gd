@@ -113,7 +113,7 @@ func status_for_registry(registry: SkillRegistry, viewer_seat: int) -> Dictionar
 			continue
 		return {
 			"character_id": profile.character_id,
-			"text": profile.status_text,
+			"text": profile.format_status(skill),
 			"color": profile.status_color,
 		}
 	return {}
