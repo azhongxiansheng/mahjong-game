@@ -1501,7 +1501,9 @@ static func _validate_seat_view(
 		if last_drawn >= 0 and not ct_ids.has(last_drawn):
 			return null
 	else:
-		if not ct_out.is_empty():
+		# 信息能力允许服务端向 recipient 投影对手手牌的可见子集；权限由
+		# RecipientViewProjector 决定。wire 层只接受不超过真实手牌张数的子集。
+		if ct_out.size() > ccount_i:
 			return null
 		if last_drawn != -1:
 			return null

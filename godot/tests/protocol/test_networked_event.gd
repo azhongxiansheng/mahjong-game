@@ -1975,15 +1975,28 @@ func test_room_snapshot_rejects_core_privacy_type_range_and_seat_cross() -> void
 		])
 	)), "seat_wind 重复拒绝")
 
-	# 非 recipient 不得泄露手牌；count 可正
-	var seats_hand_leak := _default_seats(0)
-	(seats_hand_leak[2] as Dictionary)["concealed_tiles"] = [_tile_view(99, TileId.W1, false, 2)]
-	(seats_hand_leak[2] as Dictionary)["concealed_count"] = 1
+	# 非 recipient 默认 count-only；信息能力可投影不超过 concealed_count 的可见子集。
+	# 权限由服务端 RecipientViewProjector 决定，wire validator 只验证子集结构边界。
+	var seats_partial_reveal := _default_seats(0)
+	(seats_partial_reveal[2] as Dictionary)["concealed_tiles"] = [
+		_tile_view(99, TileId.W1, false, 2)]
+	(seats_partial_reveal[2] as Dictionary)["concealed_count"] = 2
+	assert_not_null(NetworkedEvent.from_dict(_room_snapshot_event(
+		seq, _room_snapshot_payload(seq, 0, [
+			_core_module(_core_table_payload(0, 0, "DRAW", seats_partial_reveal)),
+		])
+	)), "非 recipient 可携带服务端授权的部分可见手牌")
+	var too_many_revealed := _default_seats(0)
+	(too_many_revealed[2] as Dictionary)["concealed_tiles"] = [
+		_tile_view(99, TileId.W1, false, 2),
+		_tile_view(100, TileId.W2, false, 2),
+	]
+	(too_many_revealed[2] as Dictionary)["concealed_count"] = 1
 	assert_null(NetworkedEvent.from_dict(_room_snapshot_event(
 		seq, _room_snapshot_payload(seq, 0, [
-			_core_module(_core_table_payload(0, 0, "DRAW", seats_hand_leak)),
+			_core_module(_core_table_payload(0, 0, "DRAW", too_many_revealed)),
 		])
-	)), "非 recipient 有 concealed_tiles 拒绝")
+	)), "可见子集不得超过真实 concealed_count")
 	var leak_drawn := _default_seats(0)
 	(leak_drawn[3] as Dictionary)["last_drawn_tile_instance_id"] = 5
 	assert_null(NetworkedEvent.from_dict(_room_snapshot_event(

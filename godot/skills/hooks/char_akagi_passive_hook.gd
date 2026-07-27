@@ -7,4 +7,4 @@ func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
 	var target: int = (ctx.beneficiary_seat + 1) % 4
-	ctx.reveal_random_from_seat(target, ctx.beneficiary_seat)
+	ctx.reveal_random_from_seat(target, ctx.beneficiary_seat, true)

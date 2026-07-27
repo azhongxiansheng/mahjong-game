@@ -4,6 +4,8 @@ const Profile := preload(
 	"res://presentation/characters/character_presentation_profile.gd")
 const Router := preload(
 	"res://presentation/characters/character_presentation_router.gd")
+const Catalog := preload(
+	"res://presentation/characters/character_presentation_catalog.gd")
 
 
 func _profile(
@@ -87,3 +89,20 @@ func test_duplicate_character_profile_is_ignored_to_prevent_double_voice() -> vo
 	router.bind_characters([&"qiu_jue", &"lin_yeche", &"bai_touli", &"hua_ling"])
 	var entry: Array = router.voice_requests_for_event(_event(&"GAME_BEGIN", 0))
 	assert_eq(entry.size(), 1, "同一 character_id 只能注册一个表现 profile")
+
+
+func test_catalog_activates_lin_yeche_without_table_character_branch() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	var entry: Array = router.voice_requests_for_event(_event(&"GAME_BEGIN", 0))
+	assert_eq(entry.size(), 1)
+	assert_eq(entry[0].character_id, &"lin_yeche")
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_akagi_passive_v1",
+		"skill_name": "林夜彻·脊读鬼神",
+	})
+	var ability: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(ability.size(), 1)
+	assert_eq(ability[0].character_id, &"lin_yeche")
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "👁 林夜彻 · 脊读鬼神　透视下家手牌")
