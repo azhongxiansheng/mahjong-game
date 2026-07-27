@@ -259,8 +259,8 @@ func test_side_hand_hosts_leave_avatar_info_clear() -> void:
 
 func test_side_seat_labels_face_table_inward_like_reference() -> void:
 	var expected_name_rects := {
-		1: Rect2(1354.0, 406.0, 58.0, 34.0),
-		3: Rect2(188.0, 406.0, 58.0, 34.0),
+		1: Rect2(1354.0, 386.0, 58.0, 24.0),
+		3: Rect2(166.0, 386.0, 58.0, 24.0),
 	}
 	for seat_id in [1, 3]:
 		var panel: SeatPanel = SEAT_PANEL_SCENE.instantiate()
@@ -285,7 +285,7 @@ func test_side_seat_labels_face_table_inward_like_reference() -> void:
 		assert_eq(score.get_parent(), panel,
 			"左右家分数属于 avatar-col，不和名字一起挤向屏幕边缘")
 		_assert_rect_almost_eq(SeatPanel._control_global_aabb(score),
-			Rect2(avatar_rect.position + Vector2(0.0, 81.0), Vector2(78.0, 21.0)),
+			Rect2(avatar_rect.position + Vector2(-5.0, 59.0), Vector2(66.0, 18.0)),
 			0.02, "seat %d score below avatar" % seat_id)
 		assert_null(panel.get_node_or_null("InfoChip"),
 			"参考左右家名字没有自创长胶囊")
@@ -307,11 +307,11 @@ func test_top_seat_label_matches_reference_short_name_layout() -> void:
 	if portrait == null:
 		return
 	var avatar_rect := SeatPanel._control_global_aabb(portrait)
-	_assert_rect_almost_eq(avatar_rect, Rect2(1110.0, 85.0, 78.0, 78.0),
+	_assert_rect_almost_eq(avatar_rect, Rect2(1110.0, 85.0, 56.0, 56.0),
 		0.02, "top avatar")
 	var name_column := panel.get_node("VBox") as Control
 	var name_rect := SeatPanel._control_global_aabb(name_column)
-	_assert_rect_almost_eq(name_rect, Rect2(1193.0, 120.5, 58.0, 31.0),
+	_assert_rect_almost_eq(name_rect, Rect2(1171.0, 101.0, 58.0, 24.0),
 		0.02, "top short name column")
 	assert_almost_eq(name_rect.position.x, avatar_rect.end.x + 5.0, 0.02,
 		"对家短名字位于头像右侧 5px")
@@ -321,7 +321,7 @@ func test_top_seat_label_matches_reference_short_name_layout() -> void:
 	assert_eq(score.get_parent(), panel,
 		"对家分数独立属于 avatar-col")
 	_assert_rect_almost_eq(SeatPanel._control_global_aabb(score),
-		Rect2(1110.0, 166.0, 78.0, 21.0), 0.02,
+		Rect2(1105.0, 144.0, 66.0, 18.0), 0.02,
 		"top score below avatar")
 	assert_null(panel.get_node_or_null("InfoChip"),
 		"参考对家名字没有自创长胶囊")
@@ -351,7 +351,7 @@ func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
 	assert_null(panel.get_node_or_null("InfoChip"),
 		"参考 bottom seat-label 没有自创胶囊底条")
 	assert_null(panel.get_node_or_null("ActiveGlow"),
-		"当前态只增强 78x78 头像自身边框")
+		"当前态只增强 56x56 头像自身边框")
 	var border := panel.get_node_or_null("PortraitBorder") as Panel
 	assert_not_null(border)
 	if border != null:
@@ -374,7 +374,7 @@ func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
 	var name_rect := SeatPanel._control_global_aabb(name_column)
 	assert_almost_eq(name_rect.position.x, portrait_rect.end.x + 5.0, 0.02,
 		"名字主列位于头像右侧 5px")
-	assert_almost_eq(name_rect.position.y, 678.0, 0.02,
+	assert_almost_eq(name_rect.position.y, 654.0, 0.02,
 		"名字主列沿用参考 seat-label 垂直居中坐标")
 	panel.set_furiten(true)
 	panel.set_tenpai(true)

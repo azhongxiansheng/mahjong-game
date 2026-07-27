@@ -131,6 +131,72 @@ func test_ability_and_inventory_are_compact_equipment_seals() -> void:
 	assert_not_null(ability.find_child("AbilityStateMark", true, false))
 
 
+func test_seat_identity_has_no_persistent_empty_panel_and_keeps_gameplay_rects() -> void:
+	var table = TableScr.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	for seat_id in range(4):
+		var seat: SeatPanel = table.seat_panels[seat_id]
+		var hud: Control = seat.get_node_or_null("SeatHUD") as Control
+		assert_not_null(hud)
+		assert_false(hud is Panel, "身份 HUD 不得再铺常驻黑色面板")
+		assert_false(hud.visible, "无状态时不得保留空 HUD")
+		var portrait: TextureRect = seat._portrait_rect
+		if seat_id > 0:
+			assert_not_null(portrait)
+		if portrait != null:
+			assert_eq(portrait.size, Vector2(56.0, 56.0))
+	table.seat_panels[0].set_riichi(true)
+	var player_hud: Control = table.seat_panels[0].get_node("SeatHUD") as Control
+	assert_true(player_hud.visible, "真实宣告出现时才显示状态印")
+	assert_not_null(player_hud.find_child("RiichiBadge", true, false))
+	assert_eq(TableLayout.ACTION_BAR_RECT, Rect2(440.0, 680.0, 720.0, 78.0))
+	assert_eq(TableLayout.HAND_HOST_RECTS[0], Rect2(302.0, 778.0, 996.0, 92.0))
+	assert_eq(TableLayout.crowded_state_rects()[2], Rect2(555.0, 142.0, 490.0, 154.0))
+
+
+func test_inventory_is_icon_grid_with_detail_tooltip_and_single_selected_action() -> void:
+	var drawer = load("res://ui/four_player_table/item_inventory_drawer.gd").new()
+	add_child_autofree(drawer)
+	await get_tree().process_frame
+	var emitted: Array = []
+	drawer.use_item_requested.connect(func(iid: String) -> void: emitted.append(iid))
+	drawer.set_instances([{
+		"item_instance_id": "ii_grid_a",
+		"item_id": "iron_shield_v1",
+		"display_name": "铁壁",
+		"effect_summary": "抵消下一次失分",
+		"status": "held",
+		"icon_path": _item_icon_path("iron_shield_v1"),
+	}])
+	var drawer_panel: PanelContainer = drawer.find_child(
+		"DrawerPanel", true, false) as PanelContainer
+	assert_not_null(drawer_panel)
+	assert_lte(drawer_panel.size.y, 128.0,
+		"单排库存只占内容高度，不得保留整块 312px 空黑底")
+	var grid: GridContainer = drawer.find_child("InstanceGrid", true, false) as GridContainer
+	assert_not_null(grid)
+	assert_eq(grid.columns, 3)
+	var cell: Control = drawer.find_child("Row_ii_grid_a", true, false) as Control
+	assert_not_null(cell)
+	var item_button: Button = cell.find_child("ItemButton", true, false) as Button
+	assert_not_null(item_button)
+	assert_true(item_button.tooltip_text.contains("铁壁"))
+	assert_true(item_button.tooltip_text.contains("抵消下一次失分"))
+	assert_true(item_button.tooltip_text.contains("ii_grid_a"))
+	assert_null(cell.find_child("InstanceIdLabel", true, false), "内部 ID 不得常驻可见")
+	var use_selected: Button = drawer.find_child("UseSelectedButton", true, false) as Button
+	assert_not_null(use_selected)
+	assert_false(use_selected.visible, "未选择道具时不显示动作")
+	item_button.pressed.emit()
+	assert_true(use_selected.visible)
+	await get_tree().process_frame
+	assert_lte(drawer_panel.size.y, 176.0,
+		"共享动作出现后仍保持紧凑，不扩成固定高浮窗")
+	use_selected.pressed.emit()
+	assert_eq(emitted, ["ii_grid_a"], "共享动作仍须发送精确 instance ID")
+
+
 func test_inventory_preserves_duplicate_instances_and_non_color_state_labels() -> void:
 	var table = TableScr.new()
 	add_child_autofree(table)
@@ -152,12 +218,36 @@ func test_inventory_preserves_duplicate_instances_and_non_color_state_labels() -
 	for iid in drawer.row_ids():
 		var panel: Control = drawer.find_child("Row_%s" % iid, true, false) as Control
 		assert_not_null(panel)
-		assert_not_null(panel.find_child("ItemIcon", true, false))
+		assert_not_null(panel.find_child("ItemButton", true, false))
 		assert_not_null(panel.find_child("StateLabel", true, false), "状态不能只靠颜色")
-	var held_button: Button = drawer.find_child("Row_ii_same_a", true, false).find_child("UseButton", true, false)
-	var armed_button: Button = drawer.find_child("Row_ii_same_b", true, false).find_child("UseButton", true, false)
-	assert_false(held_button.disabled)
-	assert_true(armed_button.disabled)
+	var use_selected: Button = drawer.find_child("UseSelectedButton", true, false) as Button
+	drawer.select_instance("ii_same_a")
+	assert_true(use_selected.visible)
+	assert_false(use_selected.disabled)
+	drawer.select_instance("ii_same_b")
+	assert_false(use_selected.visible, "armed 实例不得出现使用动作")
+
+
+func test_inventory_many_instances_scroll_inside_approved_rail() -> void:
+	var drawer = load("res://ui/four_player_table/item_inventory_drawer.gd").new()
+	add_child_autofree(drawer)
+	await get_tree().process_frame
+	var rows: Array = []
+	for index in range(15):
+		rows.append({
+			"item_instance_id": "ii_many_%02d" % index,
+			"item_id": "iron_shield_v1",
+			"display_name": "铁壁",
+			"status": "held",
+			"icon_path": _item_icon_path("iron_shield_v1"),
+		})
+	drawer.set_instances(rows)
+	drawer.select_instance("ii_many_00")
+	await get_tree().process_frame
+	var drawer_panel := drawer.find_child("DrawerPanel", true, false) as PanelContainer
+	assert_not_null(drawer_panel)
+	assert_lte(drawer_panel.size.y, DRAWER_RECT.size.y,
+		"大量实例必须在批准轨道内滚动，不得把可见面板向下撑出安全区")
 
 
 func test_approved_rects_and_critical_regions_do_not_overlap() -> void:
