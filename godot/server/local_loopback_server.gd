@@ -2168,6 +2168,8 @@ func _restore_ability_slots_arm(snap: Array) -> bool:
 		return true
 	if snap.size() != slots.size():
 		return false
+	var restored_skills: Array = []
+	restored_skills.resize(slots.size())
 	for i in range(slots.size()):
 		if not (slots[i] is CharacterAbilitySlot):
 			continue
@@ -2176,15 +2178,42 @@ func _restore_ability_slots_arm(snap: Array) -> bool:
 		var slot: CharacterAbilitySlot = slots[i] as CharacterAbilitySlot
 		var d: Dictionary = snap[i]
 		var want_reg: bool = bool(d.get("registry_registered", false))
-		# 先对齐 registry
+		if want_reg:
+			var restored_skill := _registered_character_skill(slot.seat, slot.ability_id)
+			if restored_skill == null:
+				return false
+			restored_skills[i] = restored_skill
+	for i in range(slots.size()):
+		if not (slots[i] is CharacterAbilitySlot):
+			continue
+		var slot: CharacterAbilitySlot = slots[i] as CharacterAbilitySlot
+		var d: Dictionary = snap[i]
+		var want_reg: bool = bool(d.get("registry_registered", false))
+		if want_reg:
+			slot.skill = restored_skills[i] as SkillResource
+		# want_reg 已由预检确认存在权威 entry；这里只处理快照要求注销的方向。
 		if slot.registry_registered and not want_reg and _bc != null and slot.skill != null:
 			_bc.registry.unregister(slot.skill, slot.seat)
-		if want_reg and not slot.registry_registered and _bc != null and slot.skill != null:
-			_bc.registry.register(slot.skill, slot.seat)
 		slot.armed = bool(d.get("armed", false))
 		slot.active_window_id = d.get("active_window_id", null)
 		slot.registry_registered = want_reg
 	return true
+
+
+func _registered_character_skill(seat: int, ability_id: StringName) -> SkillResource:
+	if _bc == null or _bc.registry == null:
+		return null
+	for entry_value in _bc.registry.get_all_entries():
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			continue
+		var entry := entry_value as Dictionary
+		var anchor_value: Variant = entry.get("anchor", null)
+		if typeof(anchor_value) != TYPE_INT or int(anchor_value) != seat:
+			continue
+		var skill := entry.get("skill") as SkillResource
+		if skill != null and skill.is_ability and skill.id == ability_id:
+			return skill
+	return null
 
 
 ## #253：SETTLED(FULL_GRANT) → 4×ITEM_GRANTED → 注册 relic；随后 DISARM active。

@@ -119,6 +119,33 @@ func test_character_voice_variants_rotate_deterministically() -> void:
 	am.stop_character_voice()
 
 
+func test_ying_li_ability_variants_load_and_rotate_deterministically() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"ying_li", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_01.wav"))
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"ying_li", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_02.wav"))
+	am.stop_character_voice()
+
+
+func test_playable_table_exit_stops_ying_li_voice() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"ying_li", &"entry", 10))
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
+	add_child(table)
+	table.queue_free()
+	await get_tree().process_frame
+	assert_eq(am.current_character_voice_path(), "")
+	assert_eq(am.character_voice_pending_count(), 0)
+
+
 func test_high_priority_character_voice_interrupts_normal_and_queues_peer() -> void:
 	var am: Node = _am()
 	if am == null:

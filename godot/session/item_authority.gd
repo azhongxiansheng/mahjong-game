@@ -183,6 +183,10 @@ static func prepare_new_hand(
 			registered.append({"skill": csk, "seat": seat3})
 			inv.remember_registered_skill(iid, csk, seat3)
 		# held 延迟件未 USE：不注册
+	# 所有可失败重建均完成后，再提交“新局不继承跨事件状态”；避免破坏回滚原子性。
+	for slot_value in slots:
+		if slot_value is CharacterAbilitySlot:
+			_clear_lingering_character_state(slot_value as CharacterAbilitySlot)
 	return {"ok": true}
 
 
@@ -470,7 +474,9 @@ static func disarm_all_active(
 			slot = slots[seat] as CharacterAbilitySlot
 		if slot != null:
 			var prev_active = was_active
-			if slot.registry_registered and bc != null and bc.registry != null and slot.skill != null:
+			var linger_registered := _should_linger_character_registration(slot)
+			if slot.registry_registered and not linger_registered \
+					and bc != null and bc.registry != null and slot.skill != null:
 				bc.registry.unregister(slot.skill, seat)
 				slot.registry_registered = false
 			slot.clear_active_keep_pending()
@@ -485,6 +491,21 @@ static func disarm_all_active(
 				},
 			})
 	return {"ok": true, "events": events}
+
+
+static func _should_linger_character_registration(slot: CharacterAbilitySlot) -> bool:
+	if slot == null or slot.skill == null:
+		return false
+	var state_param := String(slot.skill.params.get("_registry_linger_while_param", ""))
+	return not state_param.is_empty() and bool(slot.skill.params.get(state_param, false))
+
+
+static func _clear_lingering_character_state(slot: CharacterAbilitySlot) -> void:
+	if slot == null or slot.skill == null:
+		return
+	var state_param := String(slot.skill.params.get("_registry_linger_while_param", ""))
+	if not state_param.is_empty():
+		slot.skill.params[state_param] = false
 
 
 ## 和牌取消：pending 必须为空，DISARM active（库存保留）。

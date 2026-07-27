@@ -48,7 +48,8 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"HAND_FORMED"],
 	&"char_toki_passive_v1": [&"GAME_BEGIN"],
 	&"char_kuro_passive_v1": [&"WIN_DECLARED_PRE"],
-	&"char_momoko_passive_v1": [&"RIICHI_DECLARED", &"WIN_DECLARED_PRE"],
+	&"char_momoko_passive_v1": [
+		&"RIICHI_DECLARED", &"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"],
 	&"char_tetsuya_passive_v1": [&"WIN_DECLARED_PRE"],
 	# M12 新增角色能力（卡池 / gacha；身份 ≠ 角色被动）
 	&"hisa_bad_wait_v1": [&"WIN_DECLARED_PRE"],
@@ -97,6 +98,8 @@ static func build(boss_id: StringName) -> SkillResource:
 	for t in _ABILITY_TRIGGERS[boss_id]:
 		triggers.append(t)
 	s.owner_triggers = triggers
+	if boss_id == &"char_momoko_passive_v1":
+		s.params["_registry_linger_while_param"] = "primed"
 	s.hook_script = hook_script
 	return s
 

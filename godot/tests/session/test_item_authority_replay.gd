@@ -445,7 +445,8 @@ func test_twelve_character_passives_exact_triggers() -> void:
 		&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"HAND_FORMED"],
 		&"char_toki_passive_v1": [&"GAME_BEGIN"],
 		&"char_kuro_passive_v1": [&"WIN_DECLARED_PRE"],
-		&"char_momoko_passive_v1": [&"RIICHI_DECLARED", &"WIN_DECLARED_PRE"],
+		&"char_momoko_passive_v1": [
+			&"RIICHI_DECLARED", &"WIN_DECLARED_PRE", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"],
 		&"char_tetsuya_passive_v1": [&"WIN_DECLARED_PRE"],
 	}
 	assert_eq(expected.size(), 12)

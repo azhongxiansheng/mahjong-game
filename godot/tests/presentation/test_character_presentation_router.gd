@@ -173,3 +173,38 @@ func test_catalog_activates_hua_ling_feedback_and_six_voice_kinds_without_crossi
 	assert_true(router.voice_requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
 		"skill_id": &"char_saki_passive_v1",
 	})).is_empty(), "同能力 ID 也必须匹配华岭澄所在座位，防止跨角色串音")
+
+
+func test_catalog_activates_ying_li_consumption_feedback_and_voice() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"ying_li", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_momoko_passive_v1",
+		"skill_name": "影立静·消影一发",
+		"source_event": &"WIN_DECLARED_PRE",
+	})
+	var requests: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(requests.size(), 1)
+	assert_eq(requests[0].character_id, &"ying_li")
+	assert_eq(requests[0].event_kind, &"ability")
+	assert_eq(requests[0].priority, 20)
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "🌑 影立静 · 消影一发　潜伏解除 · +1 番")
+
+
+func test_ying_li_status_reads_authoritative_registered_skill_only_for_owner() -> void:
+	var bc := BattleController.new(343)
+	assert_true(BossAbilityFactory.inject(
+		bc.registry, &"char_momoko_passive_v1", 0))
+	bc.call("_emit", &"RIICHI_DECLARED", 0, null, {})
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"ying_li", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	var status: Dictionary = router.status_for_registry(bc.registry, 0)
+	assert_eq(status.text, "消影一发 · 潜伏中")
+	assert_eq(status.character_id, &"ying_li")
+	assert_true(router.status_for_registry(bc.registry, 1).is_empty(),
+		"非 owner viewer 不得继承本席状态")
+
+	bc.call("_emit", &"WIN_DECLARED_PRE", 0, null, {})
+	assert_true(router.status_for_registry(bc.registry, 0).is_empty(),
+		"真实消费后状态视图必须立即清除")

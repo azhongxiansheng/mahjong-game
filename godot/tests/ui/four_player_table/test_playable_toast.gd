@@ -65,6 +65,8 @@ func test_playable_table_does_not_embed_specific_character_ids() -> void:
 	assert_false(source.contains("char_washizu_passive_v1"), "白透璃能力不得回到牌桌硬编码")
 	assert_false(source.contains("hua_ling"), "华岭澄不得回到牌桌硬编码")
 	assert_false(source.contains("char_saki_passive_v1"), "华岭澄能力不得回到牌桌硬编码")
+	assert_false(source.contains("ying_li"), "状态胶囊仍须由 profile 驱动")
+	assert_false(source.contains("char_momoko_passive_v1"), "牌桌不得识别影立静 ability_id")
 
 
 func test_profile_feedback_reaches_real_toast_handler() -> void:
@@ -118,6 +120,36 @@ func test_hua_ling_profile_feedback_reaches_real_toast_handler() -> void:
 		return
 	assert_eq(table._toast_label.text, "✦ 华岭澄 · 宝华绽放　+2 Dora")
 	assert_eq(table._toast_label.get_theme_color("font_color"), Color("7fe0c3"))
+
+
+func test_ying_li_real_primed_state_reaches_top_safe_status_capsule() -> void:
+	var bc := PlayableBattleController.new(343)
+	assert_true(BossAbilityFactory.inject(
+		bc.registry, &"char_momoko_passive_v1", 2))
+	bc.call("_emit", &"RIICHI_DECLARED", 2, null, {})
+
+	var table = PT.new()
+	add_child_autofree(table)
+	table.set("_reward_local_seat", 2)
+	table.bind_character_ids([&"qiu_jue", &"bai_touli", &"ying_li", &"hua_ling"])
+	table.set("_bc", bc)
+	table.call("_sync_character_status")
+	var capsule := table.get_node_or_null("CharacterStatusBadge") as Control
+	assert_not_null(capsule)
+	if capsule == null:
+		return
+	assert_true(capsule.visible)
+	assert_eq(String(capsule.call("status_text")), "消影一发 · 潜伏中")
+	var rect := capsule.get_rect()
+	assert_gte(rect.position.y, 0.0)
+	assert_lte(rect.end.y, TableLayout.TOP_BAR_H,
+		"状态胶囊不得下探到牌桌")
+	assert_lte(rect.end.x, TableLayout.TABLE_W - 196.0,
+		"状态胶囊不得覆盖规则/设置按钮")
+
+	bc.call("_emit", &"WIN_DECLARED_PRE", 2, null, {})
+	table.call("_sync_character_status")
+	assert_false(capsule.visible, "能力消费后胶囊必须消失")
 
 
 func test_unknown_event_returns_empty() -> void:
