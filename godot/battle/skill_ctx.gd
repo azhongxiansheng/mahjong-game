@@ -77,6 +77,18 @@ func reveal_wall_top_to(viewer_seat: int, n: int) -> int:
 		_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return tiles.size()
 
+
+# 从 live wall 顶部确定性移除至多 n 张，返回实际移除数。
+func discard_wall_top(n: int) -> int:
+	if _state.wall == null or n <= 0:
+		return 0
+	var removed := 0
+	for _i in range(mini(n, _state.wall.live_wall_size())):
+		if _state.wall.draw() == null:
+			break
+		removed += 1
+	return removed
+
 # 第 n 张未翻 dora 指示牌 reveal 给 viewer_seat（n=0..4）。
 # 用途：white_oracle（每巡看 1 张未翻 dora）。
 # n 超界返 false。

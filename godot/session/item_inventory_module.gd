@@ -543,21 +543,18 @@ static func score_and_rules_from_matrix(
 
 
 static func is_relic_item(item_id: String) -> bool:
-	for r in CardPool.all_relics():
-		if String(r.id) == item_id:
-			return true
-	return false
+	var definition := ItemCatalog.definition(StringName(item_id))
+	return definition != null and definition.is_relic()
 
 
 static func is_battle_consumable(item_id: String) -> bool:
-	for c in CardPool.consumables_by_kind(ConsumableItem.Kind.BATTLE):
-		if String(c.id) == item_id:
-			return true
-	return false
+	var definition := ItemCatalog.definition(StringName(item_id))
+	return definition != null and definition.is_consumable()
 
 
 static func is_grantable(item_id: String) -> bool:
-	return TrashTalkRuleCatalog.is_alpha_grantable(item_id)
+	var definition := ItemCatalog.definition(StringName(item_id))
+	return definition != null and definition.is_grantable
 
 
 func _err(reason: String) -> Dictionary:

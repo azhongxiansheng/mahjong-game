@@ -93,19 +93,9 @@ static func can_request_use(row: Dictionary) -> bool:
 	if row.is_empty():
 		return false
 	var status := String(row.get("status", "")).strip_edges()
-	if status != ItemInstance.STATUS_HELD:
-		return false
 	var item_id := String(row.get("item_id", "")).strip_edges()
-	if item_id.is_empty() or ItemInventoryModule.is_relic_item(item_id):
-		return false
-	if not ItemInventoryModule.is_battle_consumable(item_id):
-		return false
-	if item_id == "seat_swap_v1" or item_id == "tsubame_v1":
-		return false
-	if not ItemInventoryModule.is_grantable(item_id) \
-			and not ItemInventoryModule.is_battle_consumable(item_id):
-		return false
-	return true
+	return not item_id.is_empty() \
+		and ItemCatalog.can_use(StringName(item_id), status)
 
 
 func has_full_instance_id_accessible(item_instance_id: String) -> bool:
@@ -290,7 +280,8 @@ static func _cell_style(selected: bool) -> StyleBoxFlat:
 
 
 static func _state_short(status: String, item_id: String) -> String:
-	if ItemInventoryModule.is_relic_item(item_id):
+	var definition := ItemCatalog.definition(StringName(item_id))
+	if definition != null and definition.is_relic():
 		return "遗"
 	match status:
 		ItemInstance.STATUS_HELD:
@@ -301,7 +292,8 @@ static func _state_short(status: String, item_id: String) -> String:
 
 
 static func _state_label(status: String, item_id: String) -> String:
-	if ItemInventoryModule.is_relic_item(item_id):
+	var definition := ItemCatalog.definition(StringName(item_id))
+	if definition != null and definition.is_relic():
 		return "常驻遗物"
 	match status:
 		ItemInstance.STATUS_HELD:

@@ -101,9 +101,10 @@ static func register_relic_for_grant(
 	var item_id := String(grant_payload.get("item_id", ""))
 	var iid := String(grant_payload.get("item_instance_id", ""))
 	var seat: int = int(grant_payload.get("seat", -1))
-	if not ItemInventoryModule.is_relic_item(item_id):
+	var definition := ItemCatalog.definition(StringName(item_id))
+	if definition == null or not definition.is_relic():
 		return true
-	var sk: SkillResource = RelicFactory.build_for_instance(StringName(item_id), iid)
+	var sk: SkillResource = ItemSkillBuilder.build(definition, iid)
 	if sk == null:
 		return false
 	bc.registry.register(sk, seat)
@@ -156,11 +157,12 @@ static func prepare_new_hand(
 		var item_id := inst.item_id
 		var iid := inst.item_instance_id
 		var seat3: int = inst.seat
-		if ItemInventoryModule.is_relic_item(item_id):
+		var definition := ItemCatalog.definition(StringName(item_id))
+		if definition != null and definition.is_relic():
 			if inst.status != ItemInstance.STATUS_HELD:
 				_fail_prepare(bc, registered, slots, slots_snap, inv, inv_snap, reg_snap)
 				return {"ok": false, "reason": "RELIC_BAD_STATUS"}
-			var rsk: SkillResource = RelicFactory.build_for_instance(StringName(item_id), iid)
+			var rsk: SkillResource = ItemSkillBuilder.build(definition, iid)
 			if rsk == null:
 				_fail_prepare(bc, registered, slots, slots_snap, inv, inv_snap, reg_snap)
 				return {"ok": false, "reason": "RELIC_BUILD_FAIL"}
@@ -169,12 +171,11 @@ static func prepare_new_hand(
 			inv.remember_registered_skill(iid, rsk, seat3)
 		elif inst.status == ItemInstance.STATUS_ARMED:
 			# armed 必须可重建到 registry；未知/失败 fail-closed 全回滚
-			if not ItemInventoryModule.is_battle_consumable(item_id):
+			if definition == null \
+					or definition.use_mode != ItemDefinition.UseMode.ARMED:
 				_fail_prepare(bc, registered, slots, slots_snap, inv, inv_snap, reg_snap)
 				return {"ok": false, "reason": "ARMED_UNKNOWN_ITEM"}
-			var csk: SkillResource = ConsumableFactory.build_for_instance(
-				StringName(item_id), iid
-			)
+			var csk: SkillResource = ItemSkillBuilder.build(definition, iid)
 			if csk == null:
 				_fail_prepare(bc, registered, slots, slots_snap, inv, inv_snap, reg_snap)
 				return {"ok": false, "reason": "ARMED_BUILD_FAIL"}
@@ -252,20 +253,13 @@ static func use_item(
 	if inst.status != ItemInstance.STATUS_HELD:
 		return _reject("RULE_REJECTED")
 	var item_id := inst.item_id
-	if ItemInventoryModule.is_relic_item(item_id):
-		return _reject("RULE_REJECTED")
-	if not ItemInventoryModule.is_battle_consumable(item_id):
+	var definition := ItemCatalog.definition(StringName(item_id))
+	if definition == null or not definition.can_use(inst.status):
 		return _reject("RULE_REJECTED")
 
 	var events: Array = []
-	var cid := StringName(item_id)
-
-	# P1-5：seat_swap / tsubame 无稳定权威语义，拒绝发明效果
-	if cid == &"seat_swap_v1" or cid == &"tsubame_v1":
-		return _reject("RULE_REJECTED")
-
-	if ConsumableFactory.is_immediate_on_use(cid):
-		if not _apply_immediate_consumable(bc, seat, cid):
+	if definition.use_mode == ItemDefinition.UseMode.IMMEDIATE:
+		if not ItemEffectRunner.apply_immediate(definition, bc.state, seat):
 			return _reject("RULE_REJECTED")
 		var cons: Dictionary = inv.consume_instance(item_instance_id, seat)
 		if not bool(cons.get("ok", false)):
@@ -297,7 +291,7 @@ static func use_item(
 		return {"ok": true, "accepted": true, "events": events}
 
 	# 延迟：武装，保留实例与 registry 索引，不发 APPLIED/CONSUMED
-	var sk: SkillResource = ConsumableFactory.build_for_instance(cid, item_instance_id)
+	var sk: SkillResource = ItemSkillBuilder.build(definition, item_instance_id)
 	if sk == null:
 		return _reject("RULE_REJECTED")
 	bc.registry.register(sk, seat)
@@ -350,39 +344,6 @@ static func finalize_triggered(bc: BattleController, inv: ItemInventoryModule) -
 			},
 		})
 	return {"ok": true, "events": events}
-
-
-static func _apply_immediate_consumable(
-	bc: BattleController, seat: int, consumable_id: StringName
-) -> bool:
-	var sk: SkillResource = ConsumableFactory.build(consumable_id)
-	if sk == null:
-		return false
-	var ev := BattleEvent.make(&"GAME_BEGIN", seat, null, {})
-	var ctx := SkillCtx.new(bc.state, ev)
-	ctx.beneficiary_seat = seat
-	ctx.current_skill = sk
-	match consumable_id:
-		&"wall_peek_v1":
-			ctx.reveal_wall_top_to(seat, 5)
-		&"wall_collapse_v1":
-			# CardPool：开局减少牌墙 10 张 → 权威 wall.draw 推进 live wall
-			if bc.state.wall == null:
-				return false
-			var n: int = mini(10, bc.state.wall.live_wall_size())
-			for _i in range(n):
-				if bc.state.wall.draw() == null:
-					break
-		&"seat_swap_v1", &"tsubame_v1":
-			return false
-		_:
-			if sk.hook_script != null:
-				var hook = sk.hook_script.new()
-				if hook is SkillHook:
-					hook.on_event(sk, ev, ctx)
-			else:
-				return false
-	return true
 
 
 ## OPEN 后武装：pending→active，注册角色 skill，GAME_BEGIN 能力等价激活。

@@ -35,6 +35,7 @@ This repo contains **two unrelated trees** that share a directory but not a buil
      - `core/rules_japanese/` — 和牌、听牌、振听、Dora、流局；`fu/` `score/` `yaku/`（约 38 役）
      - `core/turn_engine/` — `TurnEngine` + `ClaimValidator` / `RiichiValidator` / `DrawDetector`
    - `battle/` — 对战运行时：`BattleState`、`Seat`、`PlayableBattleController`、`SkillScheduler` 等
+   - `items/` — 道具领域定义与运行时适配：`ItemCatalog` 是稳定 ID、类型、使用模式、触发器、发放资格与牌桌图标的唯一注册源；`ItemSkillBuilder` / `ItemEffectRunner` 负责技能构建与即时 Hook 执行
    - `skills/` — 技能框架 + hooks
    - `meta/` — 当前角色/卡牌目录、设置与战绩等持久数据
    - `tests/` — **GUT 9.x** 测试；日常快速门禁与重型协议/UI/STT 回归分开运行
@@ -176,6 +177,9 @@ scripts/e7_257_whisper_model_download_smoke.sh
 ### 日麻引擎与技能（active）
 见 `core/`、`battle/`、`skills/`。玩家输入：`PlayerDecisionPort` + `TableDecisionAdapter` + `PlayerActionPanel`。
 里程碑与差距：`docs/superpowers/specs/`（含牌桌 overhaul、gap analysis 等）。
+
+### 道具领域（active）
+`items/item_catalog.gd` 统一登记当前 10 个战斗消耗品与 12 个遗物；`CardPool`、`ConsumableFactory`、`RelicFactory`、`ItemInventoryModule`、`ItemAuthority` 和牌桌 UI 只消费该目录，不再维护各自的具体 ID 白名单。`seat_swap_v1` / `tsubame_v1` 保留为已知但不可发放、不可使用；协议 DTO、`ItemInstance` 状态与 `ITEM_*` 事件仍由 `session/` 权威链维护。
 
 ### Class_name
 全局 `class_name` **不可重复**。新增前 `grep -rn 'class_name <Name>' godot/`。
