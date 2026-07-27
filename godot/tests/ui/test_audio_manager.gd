@@ -111,6 +111,12 @@ func test_character_voice_variants_rotate_deterministically() -> void:
 	if am == null:
 		return
 	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"bao_luo", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_01.wav"))
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"bao_luo", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_02.wav"))
+	am.stop_character_voice()
 	assert_true(am.play_character_voice(&"qiu_jue", &"entry", 10))
 	assert_true(String(am.current_character_voice_path()).ends_with("entry_01.wav"))
 	am.stop_character_voice()

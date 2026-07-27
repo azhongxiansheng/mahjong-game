@@ -111,6 +111,16 @@ func test_result_bonus_rows_expose_total_dora_and_ability_increment() -> void:
 	}, [{"name": "立直", "han": 1}])
 	assert_eq(ordinary, [{"name": "附加番", "han": 2}],
 		"非 Dora 的既有 bonus 仍使用通用附加番，不猜测来源")
+	var mixed: Array = _pt.call("_result_bonus_rows", {
+		"han": 7,
+		"dora_count": 6,
+		"ability_extra_dora_count": 2,
+		"ability_extra_red_dora_count": 2,
+	}, [{"name": "立直", "han": 1}])
+	assert_eq(mixed, [
+		{"name": "宝牌（含能力额外 +2）", "han": 4},
+		{"name": "赤宝牌（能力额外 +2）", "han": 2},
+	], "普通能力 Dora 与能力赤 Dora 必须分行归因，总番不得重复计算")
 
 
 func test_total_waits_extra_1000ms_and_enters_in_420ms() -> void:

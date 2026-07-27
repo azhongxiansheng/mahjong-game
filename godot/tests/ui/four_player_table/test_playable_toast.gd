@@ -67,6 +67,8 @@ func test_playable_table_does_not_embed_specific_character_ids() -> void:
 	assert_false(source.contains("char_saki_passive_v1"), "华岭澄能力不得回到牌桌硬编码")
 	assert_false(source.contains("ying_li"), "状态胶囊仍须由 profile 驱动")
 	assert_false(source.contains("char_momoko_passive_v1"), "牌桌不得识别影立静 ability_id")
+	assert_false(source.contains("bao_luo"), "宝络绯不得回到牌桌硬编码")
+	assert_false(source.contains("char_kuro_passive_v1"), "宝络绯能力不得回到牌桌硬编码")
 
 
 func test_profile_feedback_reaches_real_toast_handler() -> void:
@@ -150,6 +152,24 @@ func test_ying_li_real_primed_state_reaches_top_safe_status_capsule() -> void:
 	bc.call("_emit", &"WIN_DECLARED_PRE", 2, null, {})
 	table.call("_sync_character_status")
 	assert_false(capsule.visible, "能力消费后胶囊必须消失")
+
+
+func test_bao_luo_profile_feedback_reaches_existing_top_safe_toast() -> void:
+	var table = PT.new()
+	add_child_autofree(table)
+	table.bind_character_ids([&"bao_luo", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	table._handle_event_toast(_make_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_kuro_passive_v1",
+		"skill_name": "宝络绯·赤线缠宝",
+		"extra_red_dora_delta": 2,
+	}))
+	assert_not_null(table._toast_label)
+	if table._toast_label == null:
+		return
+	assert_eq(table._toast_label.text, "♦ 宝络绯 · 赤线缠宝　+2 赤 Dora")
+	assert_eq(table._toast_label.get_theme_color("font_color"), Color("ff5b6e"))
+	assert_eq(table._toast_label.position, Vector2(420, 12),
+		"必须复用既有顶部安全区，不改变牌桌布局")
 
 
 func test_unknown_event_returns_empty() -> void:

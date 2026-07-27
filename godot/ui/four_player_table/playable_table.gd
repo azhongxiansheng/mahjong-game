@@ -1091,11 +1091,19 @@ static func _result_bonus_rows(result: Dictionary, yaku_names: Array) -> Array:
 	var rows: Array = []
 	var dora_count := maxi(int(result.get("dora_count", 0)), 0)
 	var ability_extra := maxi(int(result.get("ability_extra_dora_count", 0)), 0)
-	if dora_count > 0:
+	var ability_extra_red := clampi(
+		int(result.get("ability_extra_red_dora_count", 0)), 0, dora_count)
+	var other_dora := dora_count - ability_extra_red
+	if other_dora > 0:
 		var dora_name := "宝牌"
 		if ability_extra > 0:
 			dora_name = "宝牌（含能力额外 +%d）" % ability_extra
-		rows.append({"name": dora_name, "han": dora_count})
+		rows.append({"name": dora_name, "han": other_dora})
+	if ability_extra_red > 0:
+		rows.append({
+			"name": "赤宝牌（能力额外 +%d）" % ability_extra_red,
+			"han": ability_extra_red,
+		})
 	var other_bonus := maxi(
 		int(result.get("han", 0)) - named_han - dora_count, 0)
 	if other_bonus > 0:
