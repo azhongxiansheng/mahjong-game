@@ -171,6 +171,7 @@ static func _validate_restore_shape(d: Dictionary) -> bool:
 		"hand_number", "honba", "riichi_sticks", "scores", "turn_count",
 		"first_round_active", "furiten_flags", "ron_cancelled", "haitei_forced_seat",
 		"extra_dora_count", "extra_red_dora_count", "event_chain_depth", "revealed",
+		"tenpai_flags", "tenpai_wait_reveals",
 		"kuikae", "momentum_total", "momentum_scores", "wall", "dora", "ura",
 		"seats", "skills", "reg_next_order", "sched_next_chain", "window",
 		"action_journal", "expected_replay", "event_journal", "settled", "last_event",
@@ -196,13 +197,13 @@ static func _validate_restore_shape(d: Dictionary) -> bool:
 	if typeof(d["momentum_total"]) != TYPE_FLOAT:
 		return false
 	for key in [
-		"scores", "furiten_flags", "ron_cancelled", "extra_dora_count",
+		"scores", "furiten_flags", "ron_cancelled", "tenpai_flags", "extra_dora_count",
 		"extra_red_dora_count", "revealed", "kuikae", "dora", "ura", "seats",
 		"skills", "action_journal", "expected_replay", "event_journal",
 	]:
 		if typeof(d[key]) != TYPE_ARRAY:
 			return false
-	for key in ["momentum_scores", "wall", "window", "last_discarded", "pending_added_kan", "ai"]:
+	for key in ["tenpai_wait_reveals", "momentum_scores", "wall", "window", "last_discarded", "pending_added_kan", "ai"]:
 		if typeof(d[key]) != TYPE_DICTIONARY:
 			return false
 
@@ -211,6 +212,12 @@ static func _validate_restore_shape(d: Dictionary) -> bool:
 	if not _typed_array(d["furiten_flags"] as Array, 4, TYPE_BOOL):
 		return false
 	if not _typed_array(d["ron_cancelled"] as Array, 4, TYPE_BOOL):
+		return false
+	if not _typed_array(d["tenpai_flags"] as Array, 4, TYPE_BOOL):
+		return false
+	if not _validate_tenpai_wait_reveals(
+		d["tenpai_wait_reveals"] as Dictionary, d["tenpai_flags"] as Array
+	):
 		return false
 	if not _typed_array(d["extra_dora_count"] as Array, 4, TYPE_INT):
 		return false
@@ -280,6 +287,34 @@ static func _validate_restore_shape(d: Dictionary) -> bool:
 		if typeof(raw) != TYPE_DICTIONARY or Action.from_dict(raw) == null:
 			return false
 	return _validate_window_shape(d["window"] as Dictionary)
+
+
+static func _validate_tenpai_wait_reveals(raw: Dictionary, flags: Array) -> bool:
+	for viewer_value in raw.keys():
+		if typeof(viewer_value) != TYPE_INT or int(viewer_value) < 0 or int(viewer_value) > 3:
+			return false
+		var subjects_value: Variant = raw[viewer_value]
+		if typeof(subjects_value) != TYPE_DICTIONARY:
+			return false
+		var subjects := subjects_value as Dictionary
+		if subjects.is_empty():
+			return false
+		for subject_value in subjects.keys():
+			if typeof(subject_value) != TYPE_INT or int(subject_value) < 0 \
+					or int(subject_value) > 3 or int(subject_value) == int(viewer_value):
+				return false
+			if not bool(flags[int(subject_value)]):
+				return false
+			var waits_value: Variant = subjects[subject_value]
+			if typeof(waits_value) != TYPE_ARRAY or (waits_value as Array).is_empty():
+				return false
+			var previous := -1
+			for tile_id in waits_value as Array:
+				if typeof(tile_id) != TYPE_INT or not TileId.ALL.has(tile_id) \
+						or int(tile_id) <= previous:
+					return false
+				previous = int(tile_id)
+	return true
 
 
 static func _exact_keys(d: Dictionary, keys: Array) -> bool:
@@ -993,6 +1028,8 @@ static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 		"first_round_active": bool(st.first_round_active),
 		"furiten_flags": st.furiten_flags.duplicate(),
 		"ron_cancelled": st.ron_cancelled.duplicate(),
+		"tenpai_flags": st.tenpai_flags.duplicate(),
+		"tenpai_wait_reveals": st.tenpai_wait_reveals.duplicate(true),
 		"haitei_forced_seat": int(st.haitei_forced_seat),
 		"extra_dora_count": st.extra_dora_count.duplicate(),
 		"extra_red_dora_count": st.extra_red_dora_count.duplicate(),
@@ -1253,6 +1290,15 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 	while rc_t.size() < 4:
 		rc_t.append(false)
 	st.ron_cancelled = rc_t
+
+	var tf: Array = d.get("tenpai_flags", []) as Array
+	var tf_t: Array[bool] = []
+	for v in tf:
+		tf_t.append(bool(v))
+	while tf_t.size() < 4:
+		tf_t.append(false)
+	st.tenpai_flags = tf_t
+	st.tenpai_wait_reveals = (d.get("tenpai_wait_reveals", {}) as Dictionary).duplicate(true)
 
 	var ed: Array = d.get("extra_dora_count", []) as Array
 	var ed_t: Array[int] = []

@@ -120,6 +120,33 @@ static func project_viewer_seat_draw_forecast(
 	return out
 
 
+## Issue #346：纪枢 recipient 私有等待牌集合；仅牌种，不投影对手暗手实体。
+static func project_viewer_tenpai_waits(state: Variant, recipient_seat: Variant) -> Array:
+	var out: Array = []
+	if not (state is BattleState) or typeof(recipient_seat) != TYPE_INT:
+		return out
+	var st := state as BattleState
+	var recipient := int(recipient_seat)
+	if recipient < 0 or recipient > 3:
+		return out
+	var by_subject_value: Variant = st.tenpai_wait_reveals.get(recipient, null)
+	if typeof(by_subject_value) != TYPE_DICTIONARY:
+		return out
+	var by_subject := by_subject_value as Dictionary
+	var subjects: Array = by_subject.keys()
+	subjects.sort()
+	for subject_value in subjects:
+		var subject := int(subject_value)
+		var waits: Array = (by_subject.get(subject, []) as Array).duplicate()
+		if subject < 0 or subject > 3 or subject == recipient or waits.is_empty():
+			return []
+		if subject >= st.tenpai_flags.size() or not bool(st.tenpai_flags[subject]):
+			return []
+		waits.sort()
+		out.append({"seat": subject, "wait_tile_ids": waits})
+	return out
+
+
 static func _project_seat(
 	st: BattleState,
 	seat_i: int,

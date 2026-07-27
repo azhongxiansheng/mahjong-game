@@ -611,6 +611,13 @@ func set_viewer_revealed_tiles(instances: Array) -> void:
 	_position_viewer_reveal_strip()
 
 
+func set_viewer_wait_tiles(tile_ids: Array) -> void:
+	if _viewer_reveal_strip == null:
+		return
+	_viewer_reveal_strip.set_tile_ids(tile_ids)
+	_position_viewer_reveal_strip()
+
+
 func set_viewer_reveal_label(value: String) -> void:
 	if _viewer_reveal_strip != null:
 		_viewer_reveal_strip.set_label_text(value)

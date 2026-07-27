@@ -70,6 +70,8 @@ const CORE_TABLE_KEYS := [
 	"dora_indicators", "seats",
 ]
 const VIEWER_NEXT_DRAW_KEYS := ["recipient_seat", "hand_seq", "tile"]
+const VIEWER_TENPAI_WAITS_KEYS := ["recipient_seat", "hand_seq", "subjects"]
+const VIEWER_TENPAI_SUBJECT_KEYS := ["seat", "wait_tile_ids"]
 const VIEWER_WALL_TOP_KEYS := ["recipient_seat", "hand_seq", "tiles"]
 const VIEWER_WALL_TOP_ENTRY_KEYS := ["offset", "tile"]
 const VIEWER_SEAT_DRAW_FORECAST_KEYS := ["recipient_seat", "hand_seq", "predictions"]
@@ -1306,6 +1308,13 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 				pl_raw as Dictionary, seat_view_i, core_hand_seq)
 			if pl_out == null:
 				return null
+		elif mkey == "viewer_tenpai_waits" and sver == 1:
+			if typeof(pl_raw) != TYPE_DICTIONARY:
+				return null
+			pl_out = _validate_viewer_tenpai_waits(
+				pl_raw as Dictionary, seat_view_i, core_hand_seq)
+			if pl_out == null:
+				return null
 		else:
 			# unknown module：JSON-safe domain + deep copy；保序
 			if ProtocolViewCodec.compute_view_hash(pl_raw).is_empty():
@@ -1571,6 +1580,54 @@ static func _validate_viewer_seat_draw_forecast(
 		"recipient_seat": int(recipient),
 		"hand_seq": hand_seq,
 		"predictions": out,
+	}
+
+
+static func _validate_viewer_tenpai_waits(
+	p: Dictionary, seat_view: int, core_hand_seq: int
+) -> Variant:
+	if not _has_exact_keys(p, VIEWER_TENPAI_WAITS_KEYS):
+		return null
+	var recipient: Variant = _require_seat(p["recipient_seat"])
+	if recipient == null or int(recipient) != seat_view \
+			or typeof(p["hand_seq"]) != TYPE_INT \
+			or int(p["hand_seq"]) != core_hand_seq \
+			or typeof(p["subjects"]) != TYPE_ARRAY:
+		return null
+	var subjects := p["subjects"] as Array
+	if subjects.is_empty() or subjects.size() > 3:
+		return null
+	var out: Array = []
+	var previous_seat := -1
+	for subject_value in subjects:
+		if typeof(subject_value) != TYPE_DICTIONARY:
+			return null
+		var subject := subject_value as Dictionary
+		if not _has_exact_keys(subject, VIEWER_TENPAI_SUBJECT_KEYS) \
+				or typeof(subject["seat"]) != TYPE_INT \
+				or typeof(subject["wait_tile_ids"]) != TYPE_ARRAY:
+			return null
+		var subject_seat := int(subject["seat"])
+		if subject_seat <= previous_seat or subject_seat < 0 or subject_seat > 3 \
+				or subject_seat == seat_view:
+			return null
+		previous_seat = subject_seat
+		var waits := subject["wait_tile_ids"] as Array
+		if waits.is_empty() or waits.size() > TileId.ALL.size():
+			return null
+		var waits_out: Array = []
+		var previous_tile := -1
+		for tile_id in waits:
+			if typeof(tile_id) != TYPE_INT or not TileId.ALL.has(tile_id) \
+					or int(tile_id) <= previous_tile:
+				return null
+			previous_tile = int(tile_id)
+			waits_out.append(int(tile_id))
+		out.append({"seat": subject_seat, "wait_tile_ids": waits_out})
+	return {
+		"recipient_seat": int(recipient),
+		"hand_seq": int(p["hand_seq"]),
+		"subjects": out,
 	}
 
 

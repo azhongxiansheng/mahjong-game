@@ -46,7 +46,7 @@ const _ABILITY_TRIGGERS: Dictionary = {
 	&"char_awai_passive_v1": [&"GAME_BEGIN"],
 	# E1-06：补齐后 6 角色工厂登记（不得用近义 M12 卡池 id 顶替）
 	&"char_koromo_passive_v1": [&"HAITEI", &"HOUTEI", &"TILE_DRAWN"],
-	&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"HAND_FORMED"],
+	&"char_nodoka_passive_v1": [&"WIN_DECLARED_PRE", &"TENPAI_ENTERED"],
 	&"char_toki_passive_v1": [&"GAME_BEGIN"],
 	&"char_kuro_passive_v1": [&"WIN_DECLARED_PRE"],
 	&"char_momoko_passive_v1": [

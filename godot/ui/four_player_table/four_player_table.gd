@@ -76,6 +76,7 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 	var predicted := ViewerRevealResolver.next_draw_for_viewer(state, _local_seat)
 	var wall_top: Array = ViewerRevealResolver.wall_top_for_viewer(
 		state, _local_seat, 3)
+	var tenpai_by_subject: Dictionary = state.tenpai_wait_reveals.get(_local_seat, {})
 	if _next_draw_reveal_strip != null:
 		_next_draw_reveal_strip.set_tiles(
 			wall_top if not wall_top.is_empty() \
@@ -108,7 +109,10 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
-		sp.set_viewer_revealed_tiles(revealed_by_holder.get(i, []))
+		if tenpai_by_subject.has(i):
+			sp.set_viewer_wait_tiles(tenpai_by_subject.get(i, []))
+		else:
+			sp.set_viewer_revealed_tiles(revealed_by_holder.get(i, []))
 		sp.set_discards_count(seat.river.size())
 		# 当前回合 seat 高亮:Bg 加金色描边,玩家立刻知道"现在该谁出牌"。
 		sp.set_active(i == state.current_seat)
@@ -544,6 +548,21 @@ func seat_draw_forecast_slot_labels() -> Array:
 func seat_draw_forecast_slot_texts() -> Array:
 	return _seat_draw_forecast_strip.slot_texts() \
 		if _seat_draw_forecast_strip != null else []
+
+
+func apply_viewer_tenpai_waits_view(payload: Dictionary) -> void:
+	var by_subject: Dictionary = {}
+	if not payload.is_empty() and int(payload.get("recipient_seat", -1)) == _local_seat:
+		for subject_value in payload.get("subjects", []) as Array:
+			if typeof(subject_value) == TYPE_DICTIONARY:
+				var subject := subject_value as Dictionary
+				by_subject[int(subject.get("seat", -1))] = \
+					(subject.get("wait_tile_ids", []) as Array).duplicate()
+	for seat_id in range(seat_panels.size()):
+		var panel := seat_panels[seat_id] as SeatPanel
+		if panel == null or seat_id == _local_seat:
+			continue
+		panel.set_viewer_wait_tiles(by_subject.get(seat_id, []))
 
 
 func next_draw_reveal_count() -> int:

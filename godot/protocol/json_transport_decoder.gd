@@ -417,6 +417,12 @@ static func _convert_room_snapshot_ints(payload: Dictionary) -> bool:
 			if typeof(md["payload"]) == TYPE_DICTIONARY \
 					and not _convert_viewer_wall_top_ints(md["payload"]):
 				return false
+		elif mkey == "viewer_tenpai_waits" \
+				and typeof(md.get("schema_version")) == TYPE_INT \
+				and int(md["schema_version"]) == 1:
+			if typeof(md["payload"]) == TYPE_DICTIONARY \
+					and not _convert_viewer_tenpai_waits_ints(md["payload"]):
+				return false
 		else:
 			var pl: Variant = md["payload"]
 			if typeof(pl) == TYPE_FLOAT:
@@ -488,6 +494,28 @@ static func _convert_viewer_wall_top_ints(payload: Dictionary) -> bool:
 		if entry.has("tile") and typeof(entry["tile"]) == TYPE_DICTIONARY \
 				and not _convert_tile_view_ints(entry["tile"]):
 			return false
+	return true
+
+
+static func _convert_viewer_tenpai_waits_ints(payload: Dictionary) -> bool:
+	if not _set_int_field(payload, "recipient_seat") \
+			or not _set_int_field(payload, "hand_seq"):
+		return false
+	if not payload.has("subjects") or typeof(payload["subjects"]) != TYPE_ARRAY:
+		return true
+	for subject_value in payload["subjects"] as Array:
+		if typeof(subject_value) != TYPE_DICTIONARY:
+			continue
+		var subject := subject_value as Dictionary
+		if not _set_int_field(subject, "seat"):
+			return false
+		if subject.has("wait_tile_ids") and typeof(subject["wait_tile_ids"]) == TYPE_ARRAY:
+			for index in range((subject["wait_tile_ids"] as Array).size()):
+				var converted: Variant = _safe_to_int(
+					(subject["wait_tile_ids"] as Array)[index])
+				if converted == null:
+					return false
+				(subject["wait_tile_ids"] as Array)[index] = converted
 	return true
 
 

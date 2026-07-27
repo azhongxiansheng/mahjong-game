@@ -160,6 +160,7 @@ func _snapshot_before(ctx: SkillCtx) -> Dictionary:
 		"mangan_size": ctx.mangan_floor_seats.size(),
 		"yakuman_size": ctx.yakuman_force_seats.size(),
 		"revealed_count": _state.revealed_tiles.size(),
+		"tenpai_wait_reveals": _state.tenpai_wait_reveals.duplicate(true),
 		"haitei": _state.haitei_forced_seat,
 		"furiten": _state.furiten_flags.duplicate(),
 		"seat_furiten": _seat_furiten_snapshot(),
@@ -180,6 +181,8 @@ func _did_mutate(ctx: SkillCtx, snap: Dictionary) -> bool:
 	if ctx.yakuman_force_seats.size() != int(snap.yakuman_size):
 		return true
 	if _state.revealed_tiles.size() != int(snap.revealed_count):
+		return true
+	if _state.tenpai_wait_reveals != snap.tenpai_wait_reveals:
 		return true
 	if _state.haitei_forced_seat != int(snap.haitei):
 		return true

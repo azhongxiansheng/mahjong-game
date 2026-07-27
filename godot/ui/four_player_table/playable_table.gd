@@ -2170,6 +2170,11 @@ func _apply_reward_views_only() -> void:
 	var inv_view: Dictionary = {}
 	_fill_reward_views(reward_view, inv_view)
 	_table.apply_reward_views(reward_view, inv_view)
+	if _table.has_method("apply_viewer_tenpai_waits_view"):
+		var tenpai_view: Dictionary = {}
+		if _public_reward_session != null and _public_reward_session.nbc != null:
+			tenpai_view = _public_reward_session.nbc.get_viewer_tenpai_waits_view()
+		_table.apply_viewer_tenpai_waits_view(tenpai_view)
 	if _table.has_method("apply_reward_utterances_display") and not reward_view.is_empty():
 		_table.apply_reward_utterances_display(reward_view)
 	_reward_apply_count += 1

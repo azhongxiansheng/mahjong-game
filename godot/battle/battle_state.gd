@@ -41,6 +41,10 @@ var scores: Array[int] = [STARTING_SCORE, STARTING_SCORE, STARTING_SCORE, STARTI
 var furiten_flags: Array[bool] = [false, false, false, false]
 var ron_cancelled: Array[bool] = [false, false, false, false]
 var revealed_tiles: Array = []
+# #346：稳定 13 张形态下的权威听牌跃迁，以及按 viewer→subject 授权的等待牌。
+# TENPAI_ENTERED 只公开跃迁事实；等待牌仅经 recipient optional module 投影。
+var tenpai_flags: Array[bool] = [false, false, false, false]
+var tenpai_wait_reveals: Dictionary = {}
 var haitei_forced_seat: int = -1
 # M7 ctx B2 — Dora 系：per-seat 额外 dora / red dora 计数（hook 通过
 # mark_extra_dora_for_seat / mark_red_dora_for_seat 累加，BattleController

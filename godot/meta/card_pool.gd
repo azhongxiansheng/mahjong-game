@@ -223,7 +223,7 @@ static func all_abilities() -> Array:
 		"海底/河底胡牌 +3 番 + 摸牌时墙顶 3 枚透视（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_koromo_passive_hook.gd"))
 	pool.append(_mk_ability(&"char_nodoka_passive_v1", "纪枢·概率圣裁",
-		"胡牌 +1 番 + 对手听牌时透视手牌 1 枚（角色被动）",
+		"胡牌 +1 番 + 对手首次进入听牌时查看真实等待牌（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_nodoka_passive_hook.gd"))
 	pool.append(_mk_ability(&"char_toki_passive_v1", "先示·四席窥运",
 		"开局时透视全 4 席下一摸（角色被动）",

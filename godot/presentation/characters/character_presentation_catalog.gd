@@ -73,6 +73,23 @@ static func active_profiles() -> Array:
 			"先示 · 四席窥运",
 		),
 		Profile.new(
+			&"ji_shu",
+			&"char_nodoka_passive_v1",
+			"📐 {skill_name}　对手进入听牌 · 等待牌已揭示",
+			Color("90d7ff"),
+			true,
+			"圣裁",
+			"",
+			&"",
+			"",
+			Color("90d7ff"),
+			{
+				&"TENPAI_ENTERED": "📐 {skill_name}　对手进入听牌 · 等待牌已揭示",
+				&"WIN_DECLARED_PRE": "📐 {skill_name}　和牌 +1 番",
+			},
+			Vector2(420, 84),
+		),
+		Profile.new(
 			&"hua_ling",
 			&"char_saki_passive_v1",
 			"✦ {skill_name}　+2 Dora",

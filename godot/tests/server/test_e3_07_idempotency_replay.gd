@@ -761,14 +761,15 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var server_tt := LocalLoopbackServer.new(cfg_tt, 0)
 	assert_true(server_tt.snapshot_registry.is_trash_talk_registry())
 	var keys_tt: Array = server_tt.snapshot_registry.registered_keys()
-	# #344/#345/#347：注册表含三个 optional viewer 模块；无私有信息时仍省略。
-	assert_eq(keys_tt.size(), 6)
+	# #344/#345/#346/#347：注册表含四个 optional viewer 模块；无私有信息时仍省略。
+	assert_eq(keys_tt.size(), 7)
 	assert_eq(str(keys_tt[0]), "core_table")
 	assert_eq(str(keys_tt[1]), "item_inventory")
 	assert_eq(str(keys_tt[2]), "reward_window")
 	assert_eq(str(keys_tt[3]), "viewer_next_draw")
 	assert_eq(str(keys_tt[4]), "viewer_seat_draw_forecast")
-	assert_eq(str(keys_tt[5]), "viewer_wall_top")
+	assert_eq(str(keys_tt[5]), "viewer_tenpai_waits")
+	assert_eq(str(keys_tt[6]), "viewer_wall_top")
 	assert_true(server_tt.start())
 	assert_true(server_tt.publish_snapshot())
 	var snap_tt: NetworkedEvent = null

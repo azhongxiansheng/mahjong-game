@@ -137,7 +137,7 @@ func test_nodoka_adds_1_han_on_self_win():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
-	var ab := _make_ability(&"char_nodoka_passive_v1", NodokaHook, [&"WIN_DECLARED_PRE", &"HAND_FORMED"])
+	var ab := _make_ability(&"char_nodoka_passive_v1", NodokaHook, [&"WIN_DECLARED_PRE", &"TENPAI_ENTERED"])
 	reg.register(ab, 0)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(int(out.han_deltas.get(0, 0)), 1, "nodoka +1 han on self win")
@@ -146,7 +146,7 @@ func test_nodoka_no_han_when_other_wins():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
-	var ab := _make_ability(&"char_nodoka_passive_v1", NodokaHook, [&"WIN_DECLARED_PRE", &"HAND_FORMED"])
+	var ab := _make_ability(&"char_nodoka_passive_v1", NodokaHook, [&"WIN_DECLARED_PRE", &"TENPAI_ENTERED"])
 	reg.register(ab, 0)
 	var out := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
 	assert_eq(int(out.han_deltas.get(0, 0)), 0, "nodoka: other seat wins = no bonus")

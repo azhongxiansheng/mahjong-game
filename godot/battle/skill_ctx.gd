@@ -47,6 +47,23 @@ func transfer_points(from_seat: int, to_seat: int, amount: int) -> void:
 func reveal_tile_to(tile: TileSkillAnchor, target_seat: int) -> void:
 	_state.revealed_tiles.append({"tile": tile, "visible_to": [target_seat]})
 
+
+func reveal_tenpai_waits_to(target_seat: int, viewer_seat: int) -> bool:
+	if target_seat < 0 or target_seat >= _state.seats.size() \
+			or viewer_seat < 0 or viewer_seat >= _state.seats.size():
+		return false
+	var target := _state.seats[target_seat] as Seat
+	if target == null or target.hand == null:
+		return false
+	var waits: Array = WaitCalculator.wait_tiles(target.hand, target.melds.all())
+	if waits.is_empty():
+		return false
+	waits.sort()
+	var by_subject: Dictionary = _state.tenpai_wait_reveals.get(viewer_seat, {})
+	by_subject[target_seat] = waits.duplicate()
+	_state.tenpai_wait_reveals[viewer_seat] = by_subject
+	return true
+
 # ---- 信息系 reveal API ----
 
 # 从 target_seat 手牌随机抽 1 张，标记为对 viewer_seat 可见。

@@ -207,3 +207,22 @@ func test_dropped_normal_voice_does_not_consume_variant() -> void:
 	assert_true(am.play_character_voice(&"qiu_jue", &"advantage", 10))
 	assert_true(String(am.current_character_voice_path()).ends_with("advantage_01.wav"))
 	am.stop_character_voice()
+
+
+func test_ji_shu_six_offline_categories_exist_and_ability_rotates() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"ji_shu", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_01.wav"))
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"ji_shu", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).ends_with("ability_02.wav"))
+	for kind in [&"entry", &"advantage", &"hurt", &"win", &"result_lose"]:
+		am.stop_character_voice()
+		assert_true(am.play_character_voice(&"ji_shu", kind, 20),
+			"纪枢离线语音缺少 %s" % kind)
+		assert_true(String(am.current_character_voice_path()).contains(
+			"/ji_shu/ja/%s_" % kind))
+	am.stop_character_voice()

@@ -8,6 +8,7 @@ const LABEL_W := 32.0
 const ROW_GAP := 3.0
 
 var _instances: Array = []
+var _tile_ids: Array = []
 var _panel: Panel = null
 var _label_text := "揭示"
 
@@ -20,9 +21,16 @@ func _ready() -> void:
 
 func set_tiles(instances: Array) -> void:
 	_instances = []
+	_tile_ids = []
 	for value in instances:
 		if value is TileSkillAnchor and (value as TileSkillAnchor).tile != null:
 			_instances.append(value)
+	_rebuild()
+
+
+func set_tile_ids(tile_ids: Array) -> void:
+	_instances = []
+	_tile_ids = tile_ids.duplicate()
 	_rebuild()
 
 
@@ -36,7 +44,7 @@ func label_text() -> String:
 
 
 func revealed_count() -> int:
-	return _instances.size()
+	return _instances.size() + _tile_ids.size()
 
 
 func revealed_instance_ids() -> Array:
@@ -51,13 +59,14 @@ func _rebuild() -> void:
 		remove_child(child)
 		child.queue_free()
 	_panel = null
-	if _instances.is_empty():
+	var display_count := revealed_count()
+	if display_count == 0:
 		visible = false
 		custom_minimum_size = Vector2.ZERO
 		size = Vector2.ZERO
 		return
-	var columns := mini(MAX_COLUMNS, _instances.size())
-	var rows := ceili(float(_instances.size()) / float(MAX_COLUMNS))
+	var columns := mini(MAX_COLUMNS, display_count)
+	var rows := ceili(float(display_count) / float(MAX_COLUMNS))
 	var content_w := columns * TILE_W + maxi(columns - 1, 0) * TILE_GAP
 	var content_h := rows * TILE_H + maxi(rows - 1, 0) * ROW_GAP
 	size = Vector2(LABEL_W + 8.0 + content_w + 6.0, content_h + 8.0)
@@ -83,8 +92,7 @@ func _rebuild() -> void:
 	label.add_theme_color_override("font_color", Color("b9d4ff"))
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(label)
-	for index in range(_instances.size()):
-		var instance := _instances[index] as TileSkillAnchor
+	for index in range(display_count):
 		var tile := CardTileBack.new()
 		var column := index % MAX_COLUMNS
 		var row := index / MAX_COLUMNS
@@ -95,5 +103,9 @@ func _rebuild() -> void:
 			TILE_W / float(CardTileBack.TILE_WIDTH),
 			TILE_H / float(CardTileBack.TILE_HEIGHT))
 		_panel.add_child(tile)
-		tile.set_face_up(instance.tile.id, instance.tile.is_red_dora)
+		if not _instances.is_empty():
+			var instance := _instances[index] as TileSkillAnchor
+			tile.set_face_up(instance.tile.id, instance.tile.is_red_dora)
+		else:
+			tile.set_face_up(int(_tile_ids[index]), false)
 		tile.set_clickable(false)

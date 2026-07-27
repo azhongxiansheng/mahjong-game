@@ -26,7 +26,7 @@ const EXPECTED_MAP: Array = [
 		"triggers": [&"HAITEI", &"HOUTEI", &"TILE_DRAWN"]},
 	{"id": &"ji_shu", "name": "纪枢", "ability": &"char_nodoka_passive_v1",
 		"title": "纪枢·概率圣裁", "primary": &"CALM", "secondary": &"CUNNING",
-		"triggers": [&"WIN_DECLARED_PRE", &"HAND_FORMED"]},
+		"triggers": [&"WIN_DECLARED_PRE", &"TENPAI_ENTERED"]},
 	{"id": &"xian_shi", "name": "先示", "ability": &"char_toki_passive_v1",
 		"title": "先示·四席窥运", "primary": &"MYSTIC", "secondary": &"CALM",
 		"triggers": [&"GAME_BEGIN"]},

@@ -246,12 +246,68 @@ func _emit(type: StringName, actor_seat: int, ti: TileSkillAnchor, extra: Dictio
 	if type in [&"WIN_DECLARED", &"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"]:
 		# 私有牌面只在当前局进行中有效；终局事件入 journal 前清空，避免末帧泄漏。
 		state.revealed_tiles.clear()
+		state.tenpai_flags = [false, false, false, false]
+		state.tenpai_wait_reveals.clear()
 	var ev := BattleEvent.make(type, actor_seat, ti, extra)
 	events.append(ev)
 	_last_event_type = type
 	var ctx := scheduler.emit_event(ev)
 	_append_skill_triggered_events(ctx, type)
 	return ctx
+
+
+func _refresh_tenpai_state(seat_id: int) -> void:
+	if state == null or seat_id < 0 or seat_id >= state.seats.size():
+		return
+	var seat := state.seats[seat_id] as Seat
+	if seat == null or seat.hand == null or seat.melds == null:
+		return
+	# 只在动作提交后形成的稳定 13 张等价形态判定；摸牌 14 张不清状态。
+	var melds: Array = seat.melds.all()
+	if seat.hand.size() + melds.size() * 3 != 13:
+		return
+	var was_tenpai := bool(state.tenpai_flags[seat_id])
+	if ShantenCalculator.calc(seat.hand, melds) != 0:
+		state.tenpai_flags[seat_id] = false
+		_remove_tenpai_wait_reveals_for_subject(seat_id)
+		return
+	state.tenpai_flags[seat_id] = true
+	if was_tenpai:
+		# 已授权 viewer 才需要完整枚举等待牌；领域跃迁只需权威向听数。
+		if _has_tenpai_wait_reveal_for_subject(seat_id):
+			var waits: Array = WaitCalculator.wait_tiles(seat.hand, melds)
+			waits.sort()
+			_update_tenpai_wait_reveals_for_subject(seat_id, waits)
+		return
+	_emit(&"TENPAI_ENTERED", seat_id, null, {})
+
+
+func _has_tenpai_wait_reveal_for_subject(seat_id: int) -> bool:
+	for by_subject_value in state.tenpai_wait_reveals.values():
+		if typeof(by_subject_value) == TYPE_DICTIONARY \
+				and (by_subject_value as Dictionary).has(seat_id):
+			return true
+	return false
+
+
+func _update_tenpai_wait_reveals_for_subject(seat_id: int, waits: Array) -> void:
+	for viewer_value in state.tenpai_wait_reveals.keys():
+		var viewer := int(viewer_value)
+		var by_subject: Dictionary = state.tenpai_wait_reveals.get(viewer, {})
+		if by_subject.has(seat_id):
+			by_subject[seat_id] = waits.duplicate()
+			state.tenpai_wait_reveals[viewer] = by_subject
+
+
+func _remove_tenpai_wait_reveals_for_subject(seat_id: int) -> void:
+	for viewer_value in state.tenpai_wait_reveals.keys().duplicate():
+		var viewer := int(viewer_value)
+		var by_subject: Dictionary = state.tenpai_wait_reveals.get(viewer, {})
+		by_subject.erase(seat_id)
+		if by_subject.is_empty():
+			state.tenpai_wait_reveals.erase(viewer)
+		else:
+			state.tenpai_wait_reveals[viewer] = by_subject
 
 
 func _prune_consumed_wall_top_reveals() -> void:
@@ -1352,6 +1408,7 @@ func _apply_discard_action(action: Action) -> ActionResolution:
 	})
 	var applied_ev: BattleEvent = _append_action_applied(action)
 	_emit(&"TILE_DISCARDED", action.seat, _wrap_tile(tile), {})
+	_refresh_tenpai_state(action.seat)
 	return _finish_resolution(events_before, applied_ev)
 
 
@@ -1377,6 +1434,7 @@ func _apply_riichi_action(action: Action) -> ActionResolution:
 	_emit(&"TILE_DISCARDED", action.seat, _wrap_tile(tile), {})
 	_emit(&"PLAYER_ACTION", action.seat, null, {"kind": "riichi"})
 	_emit(&"RIICHI_DECLARED", action.seat, null, {})
+	_refresh_tenpai_state(action.seat)
 	var applied_ev: BattleEvent = _append_action_applied(action)
 	return _finish_resolution(events_before, applied_ev)
 
@@ -1447,6 +1505,7 @@ func _apply_kan_action(action: Action) -> ActionResolution:
 			int((state.seats[actor] as Seat).last_drawn_instance_id))
 		_invalidate_window()
 		_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_instance_ids": ids.duplicate()})
+		_refresh_tenpai_state(actor)
 		var applied_a: BattleEvent = _append_action_applied(action)
 		return _finish_resolution(events_before, applied_a)
 	if kan_kind == "ADDED_KAN":
@@ -1664,6 +1723,7 @@ func _finalize_pending_added_kan_all_pass() -> bool:
 		"meld_id": meld_id,
 		"added_tile_instance_id": added_iid,
 	})
+	_refresh_tenpai_state(actor)
 	return true
 
 
@@ -1696,6 +1756,7 @@ func _execute_winning_claim(action: Action) -> int:
 				"kind": "pon",
 				"discarder_seat": discarder,
 			})
+			_refresh_tenpai_state(actor)
 			return DOMAIN_APPLIED
 		"CHI":
 			var comps_c: Array = action.payload.get("companion_tile_instance_ids", []) as Array
@@ -1711,6 +1772,7 @@ func _execute_winning_claim(action: Action) -> int:
 				"kind": "chi",
 				"discarder_seat": discarder,
 			})
+			_refresh_tenpai_state(actor)
 			return DOMAIN_APPLIED
 		"KAN":
 			var comps_k: Array = action.payload.get("companion_tile_instance_ids", []) as Array
@@ -1728,6 +1790,7 @@ func _execute_winning_claim(action: Action) -> int:
 				"kind": "minkan",
 				"discarder_seat": discarder,
 			})
+			_refresh_tenpai_state(actor)
 			return DOMAIN_APPLIED
 	return DOMAIN_FAILED
 
