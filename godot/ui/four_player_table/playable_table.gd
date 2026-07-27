@@ -10,6 +10,10 @@ class_name PlayableTable extends Control
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
+const CharacterPresentationCatalogScript := preload(
+	"res://presentation/characters/character_presentation_catalog.gd")
+const CharacterPresentationRouterScript := preload(
+	"res://presentation/characters/character_presentation_router.gd")
 
 # 高冲击 MomentBand：固定在牌河与操作带之间，1.3s 后卸载。
 const MOMENT_BAND_Y: float = 94.0
@@ -51,6 +55,8 @@ var _model_total_bytes: int = 0
 var _ptt_ui_state: StringName = &"idle"
 var _voice_capture: VoiceCapturePipeline = null
 var _voice_playback: VoicePlaybackRouter = null
+var _character_presentation_router = CharacterPresentationRouterScript.new(
+	CharacterPresentationCatalogScript.active_profiles())
 
 func _ready() -> void:
 	# 操作条位于 1600×900 舞台内，是 overlay，不额外增加 72px 高度。
@@ -212,6 +218,21 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	# 胡牌或流局后弹结算 overlay：玩家点继续才推进下一局
 	await _show_hand_result_overlay(result)
 	return result
+
+
+func bind_character_ids(character_ids: Array) -> void:
+	_character_presentation_router.bind_characters(character_ids)
+
+
+func on_match_scores_updated(scores: Array) -> void:
+	_play_character_voice_requests(
+		_character_presentation_router.voice_requests_for_scores(scores))
+
+
+func on_match_finished(summary: Dictionary) -> void:
+	var final_scores: Array = summary.get("final_scores", [])
+	_play_character_voice_requests(
+		_character_presentation_router.voice_requests_for_match_result(final_scores))
 
 
 # 同一张 PlayableTable 会连续跑多局；必须在新状态 bind 前清上局胜者翻牌，
@@ -1459,6 +1480,7 @@ func _polling_loop() -> void:
 				var ev: BattleEvent = _bc.events[i]
 				_handle_event_toast(ev)
 				_play_event_sfx(ev)
+				_handle_character_voice_event(ev)
 				_handle_event_dramatic(ev)
 				if ev != null and ev.type == &"TILE_DISCARDED" and int(ev.actor_seat) == 0:
 					player_discarded = true
@@ -1733,10 +1755,39 @@ func _play_event_sfx(ev: BattleEvent) -> void:
 	am.play(key, pitch_var)
 
 
+func _handle_character_voice_event(ev: BattleEvent) -> void:
+	_play_character_voice_requests(
+		_character_presentation_router.voice_requests_for_event(ev))
+
+
+func _play_character_voice_requests(requests: Array) -> void:
+	if requests.is_empty():
+		return
+	var am = get_node_or_null("/root/AudioManager")
+	if am == null:
+		return
+	for request_value in requests:
+		if not (request_value is Dictionary):
+			continue
+		var request := request_value as Dictionary
+		am.play_character_voice(
+			StringName(String(request.get("character_id", ""))),
+			StringName(String(request.get("event_kind", ""))),
+			int(request.get("priority", 0)))
+
+
 # 关键事件 → 顶部金色 toast,玩家不用盯 events 也能感知发生了什么。
 # 立直/自摸/荣和/流局/海底/河底 出现就闪 1.5 秒。
 func _handle_event_toast(ev: BattleEvent) -> void:
 	if ev == null:
+		return
+	var feedback: Dictionary = _character_presentation_router.feedback_for_event(ev)
+	if not feedback.is_empty():
+		var feedback_color: Color = feedback.get("color", Color(1, 0.88, 0.32))
+		_show_toast_text(
+			String(feedback.get("text", "")),
+			feedback_color,
+			bool(feedback.get("pulse", false)))
 		return
 	var text: String = _format_toast_text(ev)
 	if text == "":
@@ -1745,7 +1796,11 @@ func _handle_event_toast(ev: BattleEvent) -> void:
 
 
 # 任意文本 toast — 共用于 BC 事件 + 成就解锁等。
-func _show_toast_text(text: String) -> void:
+func _show_toast_text(
+	text: String,
+	font_color: Color = Color(1, 0.88, 0.32),
+	pulse: bool = false
+) -> void:
 	if text == "":
 		return
 	if _toast_label == null:
@@ -1755,20 +1810,26 @@ func _show_toast_text(text: String) -> void:
 		_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		_toast_label.add_theme_font_size_override("font_size", 26)
-		_toast_label.add_theme_color_override("font_color", Color(1, 0.88, 0.32))
 		_toast_label.add_theme_constant_override("shadow_offset_x", 2)
 		_toast_label.add_theme_constant_override("shadow_offset_y", 2)
 		_toast_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 		_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(_toast_label)
+	_toast_label.add_theme_color_override("font_color", font_color)
 	_toast_label.text = text
 	_toast_label.visible = true
 	# 淡入 0.18s,显示 1.4s,再淡出 0.35s — 比硬切更有质感,新事件压旧时立刻覆盖。
 	if _toast_tween and _toast_tween.is_valid():
 		_toast_tween.kill()
 	_toast_label.modulate = Color(1, 1, 1, 0)
+	_toast_label.pivot_offset = _toast_label.size * 0.5
+	_toast_label.scale = Vector2(0.96, 0.96) if pulse else Vector2.ONE
 	_toast_tween = get_tree().create_tween()
+	_toast_tween.set_parallel(pulse)
 	_toast_tween.tween_property(_toast_label, "modulate:a", 1.0, 0.18)
+	if pulse:
+		_toast_tween.tween_property(_toast_label, "scale", Vector2.ONE, 0.22)
+		_toast_tween.set_parallel(false)
 	_toast_tween.tween_interval(1.4)
 	_toast_tween.tween_property(_toast_label, "modulate:a", 0.0, 0.35)
 	var captured := _toast_tween
@@ -1817,6 +1878,9 @@ func _exit_tree() -> void:
 	_disconnect_public_transcript()
 	_public_reward_session = null
 	release_voice_runtime()
+	var am = get_node_or_null("/root/AudioManager")
+	if am != null and am.has_method("stop_character_voice"):
+		am.stop_character_voice()
 
 
 ## E4-01：生产绑定入口。STANDARD 的 voice_port=null → 不创建按钮/采集/播放。

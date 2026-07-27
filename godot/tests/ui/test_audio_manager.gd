@@ -104,3 +104,44 @@ func test_play_with_zero_volume_silent_short_circuit() -> void:
 	am.play("button_click")  # 应早出
 	am.sfx_volume = saved
 	assert_true(true)  # 主要确认不崩
+
+
+func test_character_voice_variants_rotate_deterministically() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"qiu_jue", &"entry", 10))
+	assert_true(String(am.current_character_voice_path()).ends_with("entry_01.wav"))
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"qiu_jue", &"entry", 10))
+	assert_true(String(am.current_character_voice_path()).ends_with("entry_02.wav"))
+	am.stop_character_voice()
+
+
+func test_high_priority_character_voice_interrupts_normal_and_queues_peer() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"qiu_jue", &"entry", 10))
+	assert_true(am.play_character_voice(&"qiu_jue", &"ability", 20))
+	assert_true(String(am.current_character_voice_path()).contains("ability_"))
+	assert_true(am.play_character_voice(&"qiu_jue", &"win", 20))
+	assert_eq(am.character_voice_pending_count(), 1)
+	am.stop_character_voice()
+	assert_eq(am.current_character_voice_path(), "")
+	assert_eq(am.character_voice_pending_count(), 0)
+
+
+func test_dropped_normal_voice_does_not_consume_variant() -> void:
+	var am: Node = _am()
+	if am == null:
+		return
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"qiu_jue", &"entry", 10))
+	assert_false(am.play_character_voice(&"qiu_jue", &"advantage", 10))
+	am.stop_character_voice()
+	assert_true(am.play_character_voice(&"qiu_jue", &"advantage", 10))
+	assert_true(String(am.current_character_voice_path()).ends_with("advantage_01.wav"))
+	am.stop_character_voice()

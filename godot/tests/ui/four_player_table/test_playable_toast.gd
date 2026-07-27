@@ -6,10 +6,11 @@ extends GutTest
 const PT := preload("res://ui/four_player_table/playable_table.gd")
 
 
-func _make_event(type: StringName, actor: int = -1) -> BattleEvent:
+func _make_event(type: StringName, actor: int = -1, extra: Dictionary = {}) -> BattleEvent:
 	var ev := BattleEvent.new()
 	ev.type = type
 	ev.actor_seat = actor
+	ev.extra = extra
 	return ev
 
 
@@ -51,6 +52,25 @@ func test_haitei_houtei_wait_for_confirmed_moment_band() -> void:
 
 func test_game_begin_toast() -> void:
 	assert_eq(PT._format_toast_text(_make_event(&"GAME_BEGIN")), "开局")
+
+
+func test_playable_table_does_not_embed_specific_character_ids() -> void:
+	var source := FileAccess.get_file_as_string(
+		"res://ui/four_player_table/playable_table.gd")
+	assert_false(source.contains("qiu_jue"), "牌桌不应认识具体 character_id")
+	assert_false(source.contains("char_kaiji_passive_v1"), "牌桌不应认识具体 ability_id")
+
+
+func test_profile_feedback_reaches_real_toast_handler() -> void:
+	var table = PT.new()
+	add_child_autofree(table)
+	table.bind_character_ids([&"qiu_jue", &"lin_yeche", &"bai_touli", &"hua_ling"])
+	table._handle_event_toast(_make_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_kaiji_passive_v1",
+		"skill_name": "裘绝·绝崖翻盘",
+	}))
+	assert_not_null(table._toast_label)
+	assert_eq(table._toast_label.text, "🔥 裘绝 · 绝崖翻盘　+2 番（点数 < 15000）")
 
 
 func test_unknown_event_returns_empty() -> void:

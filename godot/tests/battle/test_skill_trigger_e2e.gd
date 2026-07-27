@@ -128,6 +128,38 @@ func test_shichu_high_score_no_han():
 	assert_eq(int(ctx.han_deltas.get(0, 0)), 0, "高分时不增番")
 
 
+func test_qiu_jue_low_score_bonus_reaches_real_score_calc() -> void:
+	var compared := false
+	for seed_value in [42, 99, 200, 555, 1001]:
+		var baseline := BattleController.new(seed_value, 0, true)
+		baseline.state.scores = [10000, 10000, 10000, 10000]
+		var base_result: Dictionary = baseline.run_to_end()
+		var base_win: BattleEvent = null
+		for ev: BattleEvent in base_result.events:
+			if ev.type == &"WIN_DECLARED" and int(ev.extra.get("yakuman_multiplier", 0)) == 0:
+				base_win = ev
+				break
+		if base_win == null:
+			continue
+		var powered := BattleController.new(seed_value, 0, true)
+		powered.state.scores = [10000, 10000, 10000, 10000]
+		BossAbilityFactory.inject(
+			powered.registry, &"char_kaiji_passive_v1", int(base_win.actor_seat))
+		var powered_result: Dictionary = powered.run_to_end()
+		var powered_win: BattleEvent = null
+		for ev: BattleEvent in powered_result.events:
+			if ev.type == &"WIN_DECLARED":
+				powered_win = ev
+				break
+		if powered_win == null or powered_win.actor_seat != base_win.actor_seat:
+			continue
+		assert_eq(int(powered_win.extra.get("han", 0)), int(base_win.extra.get("han", 0)) + 2,
+			"绝崖的 +2 番必须进入真实 ScoreCalc 结果")
+		compared = true
+		break
+	assert_true(compared, "固定 seed 中应找到可比较的非役满真实和牌")
+
+
 # ============================================================
 # 第 7 组：seabed_hunter 海底强制自摸
 # ============================================================

@@ -1,0 +1,975 @@
+{
+  "version": 1,
+  "language": "ja",
+  "model": "fish-s2-pro",
+  "output_contract": {
+    "format": "wav",
+    "sample_rate_hz": 48000,
+    "channels": 1,
+    "sample_format": "pcm_s16le",
+    "integrated_lufs": -18.0,
+    "true_peak_dbtp_max": -1.5
+  },
+  "characters": {
+    "qiu_jue": {
+      "reference_id": "70bfc33f6e7842df8b35ad01a49773ad",
+      "reference_title": "熱血解説者",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "崖っぷちこそ、俺の席だ。さあ、始めようぜ。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "点棒が尽きるまで、勝負は終わらねえ。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "一万五千点を切ってからが本番だ。逆境、上等！"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "底まで落ちた。なら、あとは跳ね上がるだけだ！"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "いいぞ、その震えだ。流れがこっちへ燃え移ってる。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "まだ守る気か？一気にまくるぞ！"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "くっ……効いたな。だが、この痛みは燃料だ。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "持っていけ。次の一局で倍にして返す。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ！崖の底から、全部ひっくり返したぞ！"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "これが崖っぷちからの逆転だ。最後に立つのは俺だ！"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "負けは認める。だが、心までは折れてねえ。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "今日はここまでだ。次は、底から食い破る。"
+        }
+      ],
+      "display_name_zh": "裘绝",
+      "base_path": "res://assets/voice/characters/qiu_jue/ja"
+    },
+    "lin_yeche": {
+      "reference_id": "7e334489f5394184a32c667134be0221",
+      "reference_title": "冷静な男性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "牌の背は嘘をつかない。君の癖も、もう見えている。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "静かに打とう。余計な言葉ほど、手の内を漏らす。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "一枚だけで十分だ。次の選択まで読める。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "隠したつもりか。牌の背から、迷いが見える。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "河が語り始めた。もう逃げ道はない。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "その切り順、覚えた。次も同じだ。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "読みを外したか。修正する。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "なるほど。その一手は記憶しておこう。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。最後の一枚まで、予定通りだ。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "君が選ぶ前から、結末は見えていた。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今回は読ませてもらった。次は外さない。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "ノイズが多かった。それでも、答えは掴んだ。"
+        }
+      ],
+      "display_name_zh": "林夜彻",
+      "base_path": "res://assets/voice/characters/lin_yeche/ja"
+    },
+    "bai_touli": {
+      "reference_id": "a72b70ce6dd0402cb847b6a6b3cddb18",
+      "reference_title": "丁寧な女性ナレーター",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "どうぞ、お掛けください。あなたの手牌は、すでに透けています。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "ご安心を。痛みはありません。ただ、秘密がなくなるだけです。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "失礼。ほんの二枚、拝見いたしますね。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "伏せた牌も、私の前では飾りにすぎません。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "まあ、綺麗な迷い。次に切る牌まで見えますよ。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "隠すほど、輪郭は鮮明になります。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "お見事です。ですが、その傷も観察材料になります。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "少し曇りましたね。すぐに磨き直しましょう。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。透明な結末ほど、覆しにくいものです。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "ありがとうございました。あなたの全て、よく見えました。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今回は、私の視界が甘かったようです。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "曇りは認めます。次は、一片も残しません。"
+        }
+      ],
+      "display_name_zh": "白透璃",
+      "base_path": "res://assets/voice/characters/bai_touli/ja"
+    },
+    "hua_ling": {
+      "reference_id": "5161d41404314212af1254556477c17d",
+      "reference_title": "元気な女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "さあ、派手に咲かせましょう！今日の卓は私の舞台よ！"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "運は待つものじゃない。笑って、引き寄せるの！"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "花は満開！ドラもまとめて、私に味方しなさい！"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "見て、この輝き！ドラまで踊り出したわ！"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "流れは絶好調！もっと華やかにいくわよ！"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "その程度じゃ、私の花吹雪は止められない！"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "痛いじゃない！でも、そんな刺激も嫌いじゃないわ！"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "やるわね。次はもっと派手に返すから！"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ！満開の一局、これにてフィナーレ！"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "勝利の花は、いちばん高い場所で咲くのよ！"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今日は散っただけ。次の季節を楽しみにしてなさい。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "負けても笑うわ。運は、笑顔の方へ戻ってくるもの！"
+        }
+      ],
+      "display_name_zh": "华岭澄",
+      "base_path": "res://assets/voice/characters/hua_ling/ja"
+    },
+    "ying_li": {
+      "reference_id": "8959297db9e64ed888fbba4496f0bbd8",
+      "reference_title": "静かな女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "静かに。影が席についた。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "気づかなくていい。終わる瞬間まで。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "リーチ。影が消える前に、一発で終わらせる。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "音を立てないで。次の一撃がぶれる。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "もう背後にいる。振り向く必要はない。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "気配を消した。あとは落とすだけ。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "見つかったか。なら、また消える。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "浅い傷だ。影はまだ残っている。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。静かな一発ほど、深く刺さる。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "終わりだ。影を見た時には、もう遅い。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今日は輪郭を読まれた。次は残さない。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "退く。消えた影は、また別の場所に立つ。"
+        }
+      ],
+      "display_name_zh": "影立静",
+      "base_path": "res://assets/voice/characters/ying_li/ja"
+    },
+    "an_cheng": {
+      "reference_id": "0089dce5fefb4c6ba9b9f2f0debe1ddc",
+      "reference_title": "落ち着いた女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "風を静めましょう。澄んだ卓なら、答えは自然に見えます。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "急がなくて大丈夫。安全な道は、必ず残っています。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "濁りは消えました。振聴も、ここで終わりです。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "次の一枚まで、静かに見えています。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "呼吸を整えて。流れは、こちらへ澄んできました。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "危険牌は避けました。あとは穏やかに進むだけです。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "少し風が乱れましたね。立て直します。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "痛みは合図です。ここから、より慎重に。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。静かな水面に、答えが映りました。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "無風の一局でした。だからこそ、迷いません。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今日は読み切れませんでした。深呼吸して、次へ。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "負けも濁りの一つです。澄むまで待ちましょう。"
+        }
+      ],
+      "display_name_zh": "安澄青",
+      "base_path": "res://assets/voice/characters/an_cheng/ja"
+    },
+    "yuan_xi": {
+      "reference_id": "d571292a8c9940989f18e7aaf48e636b",
+      "reference_title": "ミステリアスな女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "潮は満ち、また引く。牌も同じです。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "深い場所ほど、最後の一枚がよく見えます。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "ハイテイの一枚は、私の掌へ帰ってくる。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "ホウテイに沈んだ運まで、掬い上げましょう。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "潮目が変わりました。あなたはもう、岸へ戻れない。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "静かな波ほど、深く卓をさらっていく。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "波が砕けましたか。なら、次の満潮を待ちます。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "冷たいですね。でも、深海には届きません。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。最後の潮が、私の手を満たしました。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "底に残った一枚まで、すべて私の海です。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "潮が遠かっただけ。海は消えません。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "今夜は引き潮。次は、満ちる時に会いましょう。"
+        }
+      ],
+      "display_name_zh": "渊汐",
+      "base_path": "res://assets/voice/characters/yuan_xi/ja"
+    },
+    "ji_shu": {
+      "reference_id": "09e5dbaa3fd441bbb1f1349abf5fc16e",
+      "reference_title": "知的なビジネス女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "初期条件を確認。対局を開始します。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "感情は変数です。ですが、誤差にはしません。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "テンパイ確率、更新。あなたの待ちは計算済みです。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "手牌形成を検出。情報差を補正します。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "期待値は上昇中。最適解を継続します。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "その選択、三巡前から予測範囲内です。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "誤差を確認。モデルを再計算します。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "損失は許容範囲です。次の式で回収します。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。計算終了、解は一つでした。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "勝率は百ではありません。今回は、十分高かっただけです。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "仮説が不十分でした。データを更新します。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "敗因を分解しました。同じ誤差は繰り返しません。"
+        }
+      ],
+      "display_name_zh": "纪枢",
+      "base_path": "res://assets/voice/characters/ji_shu/ja"
+    },
+    "xian_shi": {
+      "reference_id": "2072cf1e4e0a4b8aab33c9a6b6b68484",
+      "reference_title": "神秘的な女性の声",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "目を閉じても、次の巡目は見えています。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "まだ起きていない一局へ、ようこそ。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "四つの席、四つの次巡。未来はすでに並んでいる。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "まだ引いていない牌ほど、よく見えるものです。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "分岐が減りました。あなたの未来は、もう一本だけ。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "次の一手も、その次も、同じ場所へ続いています。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "この痛みも見えていました。避けなかっただけです。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "未来が揺れましたね。ですが、消えてはいません。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。これは予言ではなく、確認です。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "結末に追いつきました。ずっと先で待っていましたよ。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "見えた未来を、選び損ねました。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "今日は別の分岐でした。次は、正しい道を選びます。"
+        }
+      ],
+      "display_name_zh": "先示",
+      "base_path": "res://assets/voice/characters/xian_shi/ja"
+    },
+    "bao_luo": {
+      "reference_id": "cb81a549dc8c4ecfb269e00444f25e32",
+      "reference_title": "魅惑の大人女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "いらっしゃい。赤い糸で、卓ごと結んであげる。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "近くへどうぞ。逃げるほど、糸は強く締まるから。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "赤い糸が、赤ドラをこちらへ連れてくる。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "ほら、赤が増えた。ドラは私を選ぶの。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "もう絡まってる。切る牌まで、私の指先次第。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "その焦り、綺麗ね。もっと赤く染めてあげる。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "あら、糸を切ったつもり？まだ指に絡んでる。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "少し痛いわ。でも、これで結び目が深くなった。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。赤ドラも、あなたの運も、全部いただくわ。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "結び目は完成。もう、どこにも逃げられない。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今日は糸が緩んだだけ。縁は切れていないわ。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "逃がしてあげる。次は、もっと優しく縛るから。"
+        }
+      ],
+      "display_name_zh": "宝络绯",
+      "base_path": "res://assets/voice/characters/bao_luo/ja"
+    },
+    "lian_yao": {
+      "reference_id": "6f5ccc8c93374f7c829915ffe6a1e544",
+      "reference_title": "気の強い女性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "一局ずつ斬る。気づいた時には、十二連だ。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "勝ち筋は一本でいい。私はそれを、途切れさせない。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "一勝目。連斬は、ここから速くなる。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "二勝、三勝。刃はもう止まらない。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "連なった勝利は、一本の刃になる。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "まだ立つのか。次の一閃で数を増やす。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "一度止めた程度で、連斬は終わらない。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "その傷は覚えた。次の勝ちに重ねる。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。これでまた一つ、刃が連なった。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "斬って、重ねて、勝ち続ける。それが私だ。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "連なりは切れた。なら、一から斬り直す。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "敗北は区切りだ。終わりではない。"
+        }
+      ],
+      "display_name_zh": "连曜真",
+      "base_path": "res://assets/voice/characters/lian_yao/ja"
+    },
+    "ju_jin": {
+      "reference_id": "9600581739c44a9c8bd1401faae802ae",
+      "reference_title": "日本人渋い声の男性",
+      "clips": [
+        {
+          "event": "entry",
+          "index": 1,
+          "file": "entry_01.wav",
+          "text": "席につけ。勝負は積み重ねで決まる。"
+        },
+        {
+          "event": "entry",
+          "index": 2,
+          "file": "entry_02.wav",
+          "text": "一局の軽さで、私の階段を測るな。"
+        },
+        {
+          "event": "ability",
+          "index": 1,
+          "file": "ability_01.wav",
+          "text": "一段目。勝つたび、私の打点は昇る。"
+        },
+        {
+          "event": "ability",
+          "index": 2,
+          "file": "ability_02.wav",
+          "text": "二段、三段。階はまだ上だ。"
+        },
+        {
+          "event": "advantage",
+          "index": 1,
+          "file": "advantage_01.wav",
+          "text": "足元を見ろ。もう、私の階下にいる。"
+        },
+        {
+          "event": "advantage",
+          "index": 2,
+          "file": "advantage_02.wav",
+          "text": "積み上げた差は、一手では崩れん。"
+        },
+        {
+          "event": "hurt",
+          "index": 1,
+          "file": "hurt_01.wav",
+          "text": "一段落ちただけだ。また昇ればいい。"
+        },
+        {
+          "event": "hurt",
+          "index": 2,
+          "file": "hurt_02.wav",
+          "text": "その一撃は認めよう。だが、頂には届かん。"
+        },
+        {
+          "event": "win",
+          "index": 1,
+          "file": "win_01.wav",
+          "text": "ツモ。これでまた一段、頂へ近づいた。"
+        },
+        {
+          "event": "win",
+          "index": 2,
+          "file": "win_02.wav",
+          "text": "積み重ねた者だけが、最後に卓を見下ろす。"
+        },
+        {
+          "event": "result_lose",
+          "index": 1,
+          "file": "result_lose_01.wav",
+          "text": "今日は段を譲る。階段そのものは残っている。"
+        },
+        {
+          "event": "result_lose",
+          "index": 2,
+          "file": "result_lose_02.wav",
+          "text": "敗北も土台だ。次は、その上から始める。"
+        }
+      ],
+      "display_name_zh": "局进吾",
+      "base_path": "res://assets/voice/characters/ju_jin/ja"
+    }
+  }
+}

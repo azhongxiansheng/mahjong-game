@@ -9,7 +9,8 @@ const HAND_LIMIT: int = 60
 func run_async(
 	config: GameSessionConfig,
 	driver: GameDriver,
-	play_hand: Callable
+	play_hand: Callable,
+	after_hand: Callable = Callable()
 ) -> Dictionary:
 	if config == null or driver == null or not play_hand.is_valid():
 		return _summary(config, driver, 0, false, &"INVALID_INPUT")
@@ -25,6 +26,8 @@ func run_async(
 		var run_result: Dictionary = await play_hand.call(bc)
 		var events: Array = run_result.get("events", [])
 		var applied: Dictionary = driver.apply_result(events)
+		if after_hand.is_valid():
+			after_hand.call(driver.cumulative_scores.duplicate(), applied.duplicate(true))
 		if applied.get("kind", "") == "exhaustive_draw":
 			applied["tenpai_array"] = _detect_tenpai_array(bc)
 		driver.advance_or_finish(applied)

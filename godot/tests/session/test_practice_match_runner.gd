@@ -45,6 +45,7 @@ func _play_hand(bc: PlayableBattleController, winds: Array, player_actions: Arra
 func _run_match(round_kind: StringName, seed_value: int) -> Dictionary:
 	var winds: Array = []
 	var player_actions: Array = []
+	var score_updates: Array = []
 	var runner := PracticeMatchRunner.new()
 	var config := _config(round_kind, seed_value)
 	var driver := PracticeSessionLauncher.new().launch(config)
@@ -52,10 +53,13 @@ func _run_match(round_kind: StringName, seed_value: int) -> Dictionary:
 		config,
 		driver,
 		func(bc: PlayableBattleController):
-			return await _play_hand(bc, winds, player_actions)
+			return await _play_hand(bc, winds, player_actions),
+		func(scores: Array, _applied: Dictionary):
+			score_updates.append(scores.duplicate())
 	)
 	summary["observed_winds"] = winds
 	summary["player_actions"] = player_actions
+	summary["score_updates"] = score_updates
 	return summary
 
 
@@ -68,6 +72,8 @@ func test_fixed_seed_east_match_completes_with_real_rules() -> void:
 	assert_gt(summary.get("hand_count", 0), 0)
 	assert_lt(summary.get("hand_count", 0), 61)
 	assert_false(summary.get("player_actions", []).is_empty())
+	assert_eq(summary.get("score_updates", []).size(), summary.get("hand_count", 0),
+		"每局权威累计分更新后应通知一次表现层")
 	for wind in summary.get("observed_winds", []):
 		assert_eq(wind, TileId.E)
 
