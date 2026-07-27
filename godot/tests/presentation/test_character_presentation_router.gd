@@ -208,3 +208,49 @@ func test_ying_li_status_reads_authoritative_registered_skill_only_for_owner() -
 	bc.call("_emit", &"WIN_DECLARED_PRE", 0, null, {})
 	assert_true(router.status_for_registry(bc.registry, 0).is_empty(),
 		"真实消费后状态视图必须立即清除")
+
+
+func test_catalog_activates_bao_luo_red_feedback_and_six_voice_kinds_without_crossing() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"bao_luo", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	var entry: Array = router.voice_requests_for_event(_event(&"GAME_BEGIN", 0))
+	assert_eq(entry.size(), 1)
+	if entry.is_empty():
+		return
+	assert_eq(entry[0].event_kind, &"entry")
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_kuro_passive_v1",
+		"skill_name": "宝络绯·赤线缠宝",
+		"extra_red_dora_delta": 2,
+	})
+	var ability: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(ability.size(), 1)
+	assert_eq(ability[0].event_kind, &"ability")
+	assert_eq(ability[0].priority, 20)
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "♦ 宝络绯 · 赤线缠宝　+2 赤 Dora")
+	assert_eq(feedback.color, Color("ff5b6e"))
+	assert_true(feedback.pulse)
+	var win: Array = router.voice_requests_for_event(_event(&"WIN_DECLARED", 0, {
+		"is_tsumo": true,
+	}))
+	assert_eq(win.size(), 1)
+	if not win.is_empty():
+		assert_eq(win[0].event_kind, &"win")
+	var hurt: Array = router.voice_requests_for_event(_event(&"WIN_DECLARED", 2, {
+		"discarder_seat": 0, "is_tsumo": false,
+	})).filter(func(request): return request.character_id == &"bao_luo")
+	assert_eq(hurt.size(), 1)
+	if not hurt.is_empty():
+		assert_eq(hurt[0].event_kind, &"hurt")
+	var advantage: Array = router.voice_requests_for_scores([28000, 24000, 24000, 24000])
+	assert_eq(advantage.size(), 1)
+	if not advantage.is_empty():
+		assert_eq(advantage[0].event_kind, &"advantage")
+	var lose: Array = router.voice_requests_for_match_result([24000, 28000, 25000, 23000])
+	assert_eq(lose.size(), 1)
+	if not lose.is_empty():
+		assert_eq(lose[0].event_kind, &"result_lose")
+	assert_true(router.voice_requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
+		"skill_id": &"char_kuro_passive_v1",
+	})).is_empty(), "宝络绯能力与座位角色不匹配时不得串音")

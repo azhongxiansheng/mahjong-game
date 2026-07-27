@@ -140,6 +140,11 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 					- int(before_dora[seat])
 				if extra_dora_delta != 0:
 					triggered["extra_dora_delta"] = extra_dora_delta
+				var before_red_dora: Array = snap.extra_red_dora
+				var extra_red_dora_delta := int(_state.extra_red_dora_count[seat]) \
+					- int(before_red_dora[seat])
+				if extra_red_dora_delta != 0:
+					triggered["extra_red_dora_delta"] = extra_red_dora_delta
 			ctx.triggered_skills.append(triggered)
 	ctx.current_skill = null
 

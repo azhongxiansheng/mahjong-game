@@ -47,4 +47,11 @@ static func active_profiles() -> Array:
 			"消影一发 · 潜伏中",
 			Color("a9a1c8"),
 		),
+		Profile.new(
+			&"bao_luo",
+			&"char_kuro_passive_v1",
+			"♦ {skill_name}　+2 赤 Dora",
+			Color("ff5b6e"),
+			true,
+		),
 	]
