@@ -59,6 +59,8 @@ func test_playable_table_does_not_embed_specific_character_ids() -> void:
 		"res://ui/four_player_table/playable_table.gd")
 	assert_false(source.contains("qiu_jue"), "牌桌不应认识具体 character_id")
 	assert_false(source.contains("char_kaiji_passive_v1"), "牌桌不应认识具体 ability_id")
+	assert_false(source.contains("lin_yeche"), "新增角色不得回到牌桌硬编码")
+	assert_false(source.contains("char_akagi_passive_v1"), "新增能力不得回到牌桌硬编码")
 
 
 func test_profile_feedback_reaches_real_toast_handler() -> void:
@@ -71,6 +73,18 @@ func test_profile_feedback_reaches_real_toast_handler() -> void:
 	}))
 	assert_not_null(table._toast_label)
 	assert_eq(table._toast_label.text, "🔥 裘绝 · 绝崖翻盘　+2 番（点数 < 15000）")
+
+
+func test_lin_yeche_profile_feedback_reaches_real_toast_handler() -> void:
+	var table = PT.new()
+	add_child_autofree(table)
+	table.bind_character_ids([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	table._handle_event_toast(_make_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_akagi_passive_v1",
+		"skill_name": "林夜彻·脊读鬼神",
+	}))
+	assert_not_null(table._toast_label)
+	assert_eq(table._toast_label.text, "👁 林夜彻 · 脊读鬼神　透视下家手牌")
 
 
 func test_unknown_event_returns_empty() -> void:

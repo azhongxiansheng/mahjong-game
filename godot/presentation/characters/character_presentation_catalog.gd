@@ -13,4 +13,11 @@ static func active_profiles() -> Array:
 			Color("ffb347"),
 			true,
 		),
+		Profile.new(
+			&"lin_yeche",
+			&"char_akagi_passive_v1",
+			"👁 {skill_name}　透视下家手牌",
+			Color("8fb8ff"),
+			true,
+		),
 	]

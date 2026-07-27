@@ -47,22 +47,50 @@ func reveal_tile_to(tile: TileInstance, target_seat: int) -> void:
 # 从 target_seat 手牌随机抽 1 张，标记为对 viewer_seat 可见。
 # 用 _state 的 RNG 决定（保证决定性 sim）。target 手牌空时返 false。
 # 用途：xray_1w（看下家手牌 1 张）等。
-func reveal_random_from_seat(target_seat: int, viewer_seat: int) -> bool:
+func reveal_random_from_seat(
+	target_seat: int,
+	viewer_seat: int,
+	only_unseen: bool = false
+) -> bool:
 	if target_seat < 0 or target_seat >= _state.seats.size():
 		return false
 	var seat: Seat = _state.seats[target_seat]
 	if seat == null or seat.hand == null or seat.hand.size() == 0:
 		return false
+	var candidates: Array[Tile] = []
+	for tile in seat.hand._tiles:
+		if not only_unseen or not _is_revealed_to(tile, target_seat, viewer_seat):
+			candidates.append(tile)
+	if candidates.is_empty():
+		return false
 	# 用 event_chain_depth + 既有 turn_count 作 deterministic seed —— 不引入新
 	# RNG state，保证 sim 决定性
 	var rng := RandomNumberGenerator.new()
 	rng.seed = _state.turn_count * 17 + _state.event_chain_depth * 31 + target_seat
-	var idx: int = rng.randi_range(0, seat.hand.size() - 1)
-	var picked: Tile = seat.hand._tiles[idx]
+	var idx: int = rng.randi_range(0, candidates.size() - 1)
+	var picked: Tile = candidates[idx]
 	var ti: TileInstance = TileInstance.make(picked, target_seat)
 	ti.holder_seat = target_seat
 	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return true
+
+
+func _is_revealed_to(tile: Tile, holder_seat: int, viewer_seat: int) -> bool:
+	for value in _state.revealed_tiles:
+		if typeof(value) != TYPE_DICTIONARY:
+			continue
+		var record: Dictionary = value
+		var visible_to: Variant = record.get("visible_to", null)
+		if typeof(visible_to) != TYPE_ARRAY or not (visible_to as Array).has(viewer_seat):
+			continue
+		var instance_value: Variant = record.get("tile", null)
+		if not (instance_value is TileInstance):
+			continue
+		var instance := instance_value as TileInstance
+		if instance.holder_seat == holder_seat and instance.tile != null \
+				and instance.tile.instance_id == tile.instance_id:
+			return true
+	return false
 
 # 牌墙顶 n 张 reveal 给 viewer_seat。
 # 用途：yamagan（GAME_BEGIN reveal 顶 10 张顺序）。

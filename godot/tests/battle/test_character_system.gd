@@ -53,6 +53,28 @@ func test_akagi_passive_reveals_opponent_hand():
 	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
 	assert_gt(st.revealed_tiles.size(), 0, "读脊应 reveal 对手手牌")
 
+
+func test_akagi_passive_accumulates_only_new_live_tile_instances():
+	var reg := SkillRegistry.new()
+	var st := BattleState.for_east_round(340, 0, 1, 0, 0)
+	var sched := SkillScheduler.new(reg, st)
+	assert_true(BossAbilityFactory.inject(reg, &"char_akagi_passive_v1", 0))
+	for turn in range(13):
+		st.turn_count = turn * 4
+		sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+	assert_eq(st.revealed_tiles.size(), 13,
+		"下家仍有未揭示牌时，每次发动必须新增真实实体")
+	var ids: Dictionary = {}
+	for record in st.revealed_tiles:
+		var instance := (record as Dictionary).tile as TileInstance
+		ids[instance.tile.instance_id] = true
+	assert_eq(ids.size(), 13, "累计揭示不得重复同一 instance_id")
+	st.turn_count += 4
+	var exhausted_ctx := sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+	assert_eq(st.revealed_tiles.size(), 13)
+	assert_true(exhausted_ctx.triggered_skills.is_empty(),
+		"没有新信息时不得发 SKILL_TRIGGERED/ability 语音")
+
 func test_kaiji_passive_adds_han_when_low_score():
 	var reg := SkillRegistry.new()
 	var st := BattleState.new()
