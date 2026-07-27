@@ -63,6 +63,8 @@ func test_playable_table_does_not_embed_specific_character_ids() -> void:
 	assert_false(source.contains("char_akagi_passive_v1"), "新增能力不得回到牌桌硬编码")
 	assert_false(source.contains("bai_touli"), "白透璃不得回到牌桌硬编码")
 	assert_false(source.contains("char_washizu_passive_v1"), "白透璃能力不得回到牌桌硬编码")
+	assert_false(source.contains("hua_ling"), "华岭澄不得回到牌桌硬编码")
+	assert_false(source.contains("char_saki_passive_v1"), "华岭澄能力不得回到牌桌硬编码")
 
 
 func test_profile_feedback_reaches_real_toast_handler() -> void:
@@ -101,6 +103,21 @@ func test_bai_touli_profile_reaches_real_toast_and_reveal_strip_label() -> void:
 	assert_eq(table._toast_label.text, "🔮 白透璃 · 万透镜华　看破三家各两张手牌")
 	for panel in table._table.seat_panels:
 		assert_eq(panel.viewer_reveal_label(), "镜华")
+
+
+func test_hua_ling_profile_feedback_reaches_real_toast_handler() -> void:
+	var table = PT.new()
+	add_child_autofree(table)
+	table.bind_character_ids([&"hua_ling", &"qiu_jue", &"bai_touli", &"lin_yeche"])
+	table._handle_event_toast(_make_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_saki_passive_v1",
+		"skill_name": "华岭澄·宝华绽放",
+	}))
+	assert_not_null(table._toast_label)
+	if table._toast_label == null:
+		return
+	assert_eq(table._toast_label.text, "✦ 华岭澄 · 宝华绽放　+2 Dora")
+	assert_eq(table._toast_label.get_theme_color("font_color"), Color("7fe0c3"))
 
 
 func test_unknown_event_returns_empty() -> void:

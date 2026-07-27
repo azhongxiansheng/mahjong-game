@@ -29,4 +29,11 @@ static func active_profiles() -> Array:
 			true,
 			"镜华",
 		),
+		Profile.new(
+			&"hua_ling",
+			&"char_saki_passive_v1",
+			"✦ {skill_name}　+2 Dora",
+			Color("7fe0c3"),
+			true,
+		),
 	]

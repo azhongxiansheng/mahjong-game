@@ -124,3 +124,52 @@ func test_catalog_activates_bai_touli_feedback_voice_and_reveal_label() -> void:
 	assert_eq(feedback.text, "🔮 白透璃 · 万透镜华　看破三家各两张手牌")
 	router.bind_characters([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
 	assert_eq(router.reveal_label_for_local_character(), "读脊")
+
+
+func test_catalog_activates_hua_ling_feedback_and_six_voice_kinds_without_crossing() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"hua_ling", &"qiu_jue", &"bai_touli", &"lin_yeche"])
+	var entry: Array = router.voice_requests_for_event(_event(&"GAME_BEGIN", 0))
+	assert_eq(entry.size(), 1)
+	if entry.is_empty():
+		return
+	assert_eq(entry[0].character_id, &"hua_ling")
+	assert_eq(entry[0].event_kind, &"entry")
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_saki_passive_v1",
+		"skill_name": "华岭澄·宝华绽放",
+	})
+	var ability: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(ability.size(), 1)
+	if ability.is_empty():
+		return
+	assert_eq(ability[0].event_kind, &"ability")
+	assert_eq(ability[0].priority, 20)
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "✦ 华岭澄 · 宝华绽放　+2 Dora")
+	assert_eq(feedback.color, Color("7fe0c3"))
+	assert_true(feedback.pulse)
+	var win: Array = router.voice_requests_for_event(_event(&"WIN_DECLARED", 0, {
+		"is_tsumo": true,
+	}))
+	assert_eq(win.size(), 1)
+	assert_eq(win[0].event_kind, &"win")
+	var hurt: Array = router.voice_requests_for_event(_event(&"WIN_DECLARED", 2, {
+		"discarder_seat": 0,
+		"is_tsumo": false,
+	}))
+	assert_eq(hurt.size(), 2, "白透璃和牌与华岭澄受创均应各自产生合法请求")
+	var hua_hurt := hurt.filter(func(request):
+		return request.character_id == &"hua_ling")
+	assert_eq(hua_hurt.size(), 1)
+	if not hua_hurt.is_empty():
+		assert_eq(hua_hurt[0].event_kind, &"hurt")
+	var advantage: Array = router.voice_requests_for_scores([28000, 24000, 24000, 24000])
+	assert_eq(advantage.size(), 1)
+	assert_eq(advantage[0].event_kind, &"advantage")
+	var lose: Array = router.voice_requests_for_match_result([24000, 28000, 24000, 24000])
+	assert_eq(lose.size(), 1)
+	assert_eq(lose[0].event_kind, &"result_lose")
+	assert_true(router.voice_requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
+		"skill_id": &"char_saki_passive_v1",
+	})).is_empty(), "同能力 ID 也必须匹配华岭澄所在座位，防止跨角色串音")
