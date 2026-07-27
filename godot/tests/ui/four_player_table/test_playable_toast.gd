@@ -6,10 +6,11 @@ extends GutTest
 const PT := preload("res://ui/four_player_table/playable_table.gd")
 
 
-func _make_event(type: StringName, actor: int = -1) -> BattleEvent:
+func _make_event(type: StringName, actor: int = -1, extra: Dictionary = {}) -> BattleEvent:
 	var ev := BattleEvent.new()
 	ev.type = type
 	ev.actor_seat = actor
+	ev.extra = extra
 	return ev
 
 
@@ -51,6 +52,14 @@ func test_haitei_houtei_wait_for_confirmed_moment_band() -> void:
 
 func test_game_begin_toast() -> void:
 	assert_eq(PT._format_toast_text(_make_event(&"GAME_BEGIN")), "开局")
+
+
+func test_qiu_jue_skill_uses_character_specific_feedback() -> void:
+	var ev := _make_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_kaiji_passive_v1",
+		"skill_name": "裘绝·绝崖翻盘",
+	})
+	assert_eq(PT._format_toast_text(ev), "🔥 裘绝 · 绝崖翻盘　+2 番（点数 < 15000）")
 
 
 func test_unknown_event_returns_empty() -> void:

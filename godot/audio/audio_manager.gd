@@ -9,6 +9,8 @@ extends Node
 # 为 .import 同名文件(import_type=AudioStreamPCM),loop=false。
 
 const SFX_DIR := "res://assets/sfx/"
+const CharacterVoiceCatalogScript := preload("res://audio/character_voice_catalog.gd")
+const CHARACTER_VOICE_PRIORITY_HIGH := 20
 
 # 同时多少个 SFX 可重叠播放 — UI/对战节奏不会超过这个数
 const POOL_SIZE := 8
@@ -28,6 +30,12 @@ var bgm_volume: float = 0.6:
 		_sync_bgm_player_volume()
 
 var _bgm_player: AudioStreamPlayer = null
+var _character_voice_player: AudioStreamPlayer = null
+var _character_voice_catalog = CharacterVoiceCatalogScript.new()
+var _character_voice_cursors: Dictionary = {}
+var _character_voice_queue: Array = []
+var _character_voice_priority := -1
+var _character_voice_path := ""
 
 
 func _ready() -> void:
@@ -38,6 +46,7 @@ func _ready() -> void:
 		add_child(p)
 		_player_pool.append(p)
 	_ensure_bgm_player()
+	_ensure_character_voice_player()
 
 
 ## 播放本地 BGM。path 缺失时安全退化（不报错、不创建第二个 Player）。
@@ -116,6 +125,93 @@ func stop_all() -> void:
 	for p in _player_pool:
 		if p.playing:
 			p.stop()
+	stop_character_voice()
+
+
+func play_character_voice(
+	character_id: StringName,
+	event_kind: StringName,
+	priority: int
+) -> bool:
+	if sfx_volume <= 0.0:
+		return false
+	var paths: Array = _character_voice_catalog.clip_paths(character_id, event_kind)
+	if paths.is_empty():
+		return false
+	var cursor_key := "%s/%s" % [String(character_id), String(event_kind)]
+	var cursor := int(_character_voice_cursors.get(cursor_key, 0))
+	var request := {
+		"path": String(paths[cursor % paths.size()]),
+		"priority": priority,
+	}
+	_ensure_character_voice_player()
+	if _character_voice_player.playing:
+		if priority > _character_voice_priority:
+			_character_voice_queue.clear()
+			_start_character_voice(request)
+			_character_voice_cursors[cursor_key] = cursor + 1
+			return true
+		if priority >= CHARACTER_VOICE_PRIORITY_HIGH:
+			_character_voice_queue.append(request)
+			_character_voice_cursors[cursor_key] = cursor + 1
+			return true
+		return false
+	_start_character_voice(request)
+	_character_voice_cursors[cursor_key] = cursor + 1
+	return true
+
+
+func stop_character_voice() -> void:
+	_character_voice_queue.clear()
+	_character_voice_priority = -1
+	_character_voice_path = ""
+	if _character_voice_player != null:
+		if _character_voice_player.playing:
+			_character_voice_player.stop()
+		_character_voice_player.stream = null
+
+
+func current_character_voice_path() -> String:
+	return _character_voice_path
+
+
+func character_voice_pending_count() -> int:
+	return _character_voice_queue.size()
+
+
+func _ensure_character_voice_player() -> void:
+	if _character_voice_player != null and is_instance_valid(_character_voice_player):
+		return
+	_character_voice_player = AudioStreamPlayer.new()
+	_character_voice_player.name = "CharacterVoicePlayer"
+	_character_voice_player.bus = "Master"
+	add_child(_character_voice_player)
+	_character_voice_player.finished.connect(_on_character_voice_finished)
+
+
+func _start_character_voice(request: Dictionary) -> void:
+	var path := String(request.get("path", ""))
+	if not ResourceLoader.exists(path):
+		return
+	var stream := load(path) as AudioStream
+	if stream == null:
+		return
+	_character_voice_player.stop()
+	_character_voice_player.stream = stream
+	_character_voice_player.volume_db = linear_to_db(clamp(sfx_volume, 0.001, 1.0))
+	_character_voice_priority = int(request.get("priority", 0))
+	_character_voice_path = path
+	_character_voice_player.play()
+
+
+func _on_character_voice_finished() -> void:
+	_character_voice_priority = -1
+	_character_voice_path = ""
+	if _character_voice_queue.is_empty():
+		_character_voice_player.stream = null
+		return
+	var next_request: Dictionary = _character_voice_queue.pop_front()
+	_start_character_voice(next_request)
 
 
 # 内部:按 key 取 stream,缓存命中直接返。

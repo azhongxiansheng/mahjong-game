@@ -103,6 +103,9 @@ func present_settlement(
 			practice_failed.emit(&"TABLE_MOUNT_FAILED")
 			_teardown_to_idle()
 			return
+	if config != null:
+		_table.bind_character_ids(config.character_ids)
+	_table.on_match_finished(summary)
 	_phase = Phase.SETTLED
 	_running = true
 	_show_settlement_panel(summary)
@@ -175,11 +178,14 @@ func _execute_match(
 	_active_config = config
 	_active_driver = driver
 	practice_started.emit(config)
+	table.bind_character_ids(config.character_ids)
 	var summary: Dictionary = await PracticeMatchRunner.new().run_async(
 		config,
 		driver,
 		func(bc: PlayableBattleController):
-			return await table.play_hand_async(bc)
+			return await table.play_hand_async(bc),
+		func(scores: Array, _applied: Dictionary):
+			table.on_match_scores_updated(scores)
 	)
 	if gen != _generation:
 		return
