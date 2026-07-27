@@ -14,6 +14,8 @@ const CharacterPresentationCatalogScript := preload(
 	"res://presentation/characters/character_presentation_catalog.gd")
 const CharacterPresentationRouterScript := preload(
 	"res://presentation/characters/character_presentation_router.gd")
+const CharacterStatusBadgeScript := preload(
+	"res://ui/four_player_table/character_status_badge.gd")
 
 # 高冲击 MomentBand：固定在牌河与操作带之间，1.3s 后卸载。
 const MOMENT_BAND_Y: float = 94.0
@@ -57,6 +59,7 @@ var _voice_capture: VoiceCapturePipeline = null
 var _voice_playback: VoicePlaybackRouter = null
 var _character_presentation_router = CharacterPresentationRouterScript.new(
 	CharacterPresentationCatalogScript.active_profiles())
+var _character_status_badge: Control = null
 
 func _ready() -> void:
 	# 操作条位于 1600×900 舞台内，是 overlay，不额外增加 72px 高度。
@@ -105,6 +108,8 @@ func _build_layout() -> void:
 	add_child(_action_panel)
 
 	_build_top_bar()
+	_character_status_badge = CharacterStatusBadgeScript.new()
+	add_child(_character_status_badge)
 
 	_dora_widget = DoraWidget.new()
 	_dora_widget.position = Vector2(16, TableLayout.TOP_BAR_H + 6)
@@ -167,6 +172,7 @@ var _pending_discard_fly: Dictionary = {}  # {from: Vector2, tile_id: int, is_re
 
 func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_bc = bc
+	_sync_character_status()
 	if _use_3d:
 		_seat_panel_player = _table
 	elif _table.seat_panels.size() >= 1:
@@ -223,6 +229,7 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 func bind_character_ids(character_ids: Array) -> void:
 	_character_presentation_router.bind_characters(character_ids)
 	_sync_viewer_reveal_label()
+	_sync_character_status()
 
 
 func _sync_viewer_reveal_label() -> void:
@@ -1508,6 +1515,7 @@ func _polling_loop() -> void:
 				if ev != null and ev.type == &"TILE_DISCARDED" and int(ev.actor_seat) == 0:
 					player_discarded = true
 			_last_event_count = n
+			_sync_character_status()
 			if is_instance_valid(_table) and _bc.state != null:
 				_table.bind_battle_state(_bc.state, 0, 4)
 				# 玩家切牌后飞入河（rebind 后河末位已落地）。
@@ -1783,6 +1791,16 @@ func _handle_character_voice_event(ev: BattleEvent) -> void:
 		_character_presentation_router.voice_requests_for_event(ev))
 
 
+func _sync_character_status() -> void:
+	if _character_status_badge == null or not is_instance_valid(_character_status_badge):
+		return
+	var status: Dictionary = {}
+	if _bc != null and _bc.registry != null:
+		status = _character_presentation_router.status_for_registry(
+			_bc.registry, _reward_local_seat)
+	_character_status_badge.call("set_status", status)
+
+
 func _play_character_voice_requests(requests: Array) -> void:
 	if requests.is_empty():
 		return
@@ -1989,6 +2007,7 @@ func _begin_reward_source(epoch: String, seat: int, bootstrap_skip_history: bool
 	_reward_source_gen += 1
 	_reward_source_epoch = "%s|gen%d" % [String(epoch), _reward_source_gen]
 	_reward_local_seat = seat
+	_sync_character_status()
 	_reward_bootstrapped = false
 	_last_reward_head_seq = -1
 	_last_reward_view_sig = ""

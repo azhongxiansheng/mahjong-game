@@ -45,4 +45,16 @@ static func active_profiles() -> Array:
 			Color("7fe0c3"),
 			true,
 		),
+		Profile.new(
+			&"ying_li",
+			&"char_momoko_passive_v1",
+			"🌑 {skill_name}　潜伏解除 · +1 番",
+			Color("b8add8"),
+			true,
+			"",
+			"",
+			&"primed",
+			"消影一发 · 潜伏中",
+			Color("a9a1c8"),
+		),
 	]

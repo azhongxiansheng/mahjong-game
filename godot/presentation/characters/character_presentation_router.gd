@@ -91,6 +91,34 @@ func next_draw_label_for_local_character(local_seat: int = 0) -> String:
 	return ""
 
 
+func status_for_registry(registry: SkillRegistry, viewer_seat: int) -> Dictionary:
+	if registry == null or _character_at(viewer_seat) == &"":
+		return {}
+	for entry_value in registry.get_all_entries():
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			continue
+		var entry := entry_value as Dictionary
+		var anchor_value: Variant = entry.get("anchor", null)
+		if typeof(anchor_value) != TYPE_INT or int(anchor_value) != viewer_seat:
+			continue
+		var skill := entry.get("skill") as SkillResource
+		if skill == null:
+			continue
+		var profile_value: Variant = _profiles_by_ability.get(skill.id, null)
+		if not (profile_value is CharacterPresentationProfile):
+			continue
+		var profile := profile_value as CharacterPresentationProfile
+		if _character_at(viewer_seat) != profile.character_id \
+				or not profile.has_active_status(skill):
+			continue
+		return {
+			"character_id": profile.character_id,
+			"text": profile.status_text,
+			"color": profile.status_color,
+		}
+	return {}
+
+
 func _character_at(seat: int) -> StringName:
 	if seat < 0 or seat >= _character_ids.size():
 		return &""
