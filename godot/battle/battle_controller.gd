@@ -293,6 +293,8 @@ func _append_skill_triggered_events(ctx: SkillCtx, source_type: StringName) -> v
 			skill_extra["extra_dora_delta"] = int(entry.extra_dora_delta)
 		if entry.has("extra_red_dora_delta"):
 			skill_extra["extra_red_dora_delta"] = int(entry.extra_red_dora_delta)
+		if entry.has("han_delta"):
+			skill_extra["han_delta"] = int(entry.han_delta)
 		var skill_ev := BattleEvent.make(
 			&"SKILL_TRIGGERED", int(entry.beneficiary_seat), null, skill_extra)
 		events.append(skill_ev)
@@ -721,6 +723,10 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileSkillAnchor, winner_seat: int,
 		winner_seat, pre_ctxs)
 	result["ability_extra_red_dora_count"] = _sum_ability_extra_red_dora(
 		winner_seat, pre_ctxs)
+	result["ability_extra_han_sources"] = _ability_extra_han_sources(
+		winner_seat, pre_ctxs)
+	result["ability_extra_han_count"] = _sum_han_sources(
+		result["ability_extra_han_sources"] as Array)
 	# 给 UI 结算 overlay 用：抽出本次胡牌命中的役名 + han（已含 evaluator
 	# 的役満/普通飜判定;skill_han/extra_dora 等修正不在此列表内）。
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
@@ -780,6 +786,10 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 		state.current_seat, pre_ctxs)
 	result["ability_extra_red_dora_count"] = _sum_ability_extra_red_dora(
 		state.current_seat, pre_ctxs)
+	result["ability_extra_han_sources"] = _ability_extra_han_sources(
+		state.current_seat, pre_ctxs)
+	result["ability_extra_han_count"] = _sum_han_sources(
+		result["ability_extra_han_sources"] as Array)
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)
@@ -890,6 +900,44 @@ static func _sum_ability_extra_red_dora(winner_seat: int, ctxs: Array) -> int:
 					or not bool(entry.get("is_ability", false)):
 				continue
 			total += int(entry.get("extra_red_dora_delta", 0))
+	return total
+
+
+static func _ability_extra_han_sources(winner_seat: int, ctxs: Array) -> Array:
+	var sources: Array = []
+	var index_by_id: Dictionary = {}
+	for ctx in ctxs:
+		if ctx == null:
+			continue
+		for entry_value in ctx.triggered_skills:
+			if not (entry_value is Dictionary):
+				continue
+			var entry: Dictionary = entry_value
+			var delta := int(entry.get("han_delta", 0))
+			if int(entry.get("beneficiary_seat", -1)) != winner_seat \
+					or not bool(entry.get("is_ability", false)) or delta == 0:
+				continue
+			var ability_id := String(entry.get("skill_id", ""))
+			if index_by_id.has(ability_id):
+				var source_index: int = int(index_by_id[ability_id])
+				var existing: Dictionary = sources[source_index]
+				existing["han"] = int(existing.get("han", 0)) + delta
+				sources[source_index] = existing
+			else:
+				index_by_id[ability_id] = sources.size()
+				sources.append({
+					"ability_id": ability_id,
+					"ability_name": String(entry.get("skill_name", "")),
+					"han": delta,
+				})
+	return sources
+
+
+static func _sum_han_sources(sources: Array) -> int:
+	var total := 0
+	for source_value in sources:
+		if source_value is Dictionary:
+			total += int((source_value as Dictionary).get("han", 0))
 	return total
 
 # 多个 ctx 的 han_multipliers 累乘（×2 + ×1.5 = ×3 复合）

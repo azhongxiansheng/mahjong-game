@@ -7,16 +7,22 @@ var _profile: CharacterPresentationProfile
 var _character_ids: Array = []
 var _entry_played := false
 var _unique_leader_seat := -1
+var _local_seat := 0
 
 
 func _init(profile: CharacterPresentationProfile = null) -> void:
 	_profile = profile
 
 
-func bind_characters(character_ids: Array) -> void:
+func bind_characters(character_ids: Array, local_seat: int = 0) -> void:
 	_character_ids = character_ids.duplicate()
+	_local_seat = local_seat
 	_entry_played = false
 	_unique_leader_seat = -1
+
+
+func set_local_seat(local_seat: int) -> void:
+	_local_seat = local_seat
 
 
 func requests_for_event(event: BattleEvent) -> Array:
@@ -24,7 +30,7 @@ func requests_for_event(event: BattleEvent) -> Array:
 		return []
 	match event.type:
 		&"GAME_BEGIN":
-			if not _entry_played and _character_at(0) == _profile.character_id:
+			if not _entry_played and _character_at(_local_seat) == _profile.character_id:
 				_entry_played = true
 				return [_request(&"entry", PRIORITY_NORMAL)]
 		&"SKILL_TRIGGERED":
@@ -57,12 +63,13 @@ func requests_for_scores(scores: Array) -> Array:
 
 func requests_for_match_result(final_scores: Array) -> Array:
 	if _profile == null or not _profile.is_valid() \
-			or _character_at(0) != _profile.character_id or final_scores.size() < 4:
+			or _character_at(_local_seat) != _profile.character_id \
+			or final_scores.size() < 4:
 		return []
 	var top_score := int(final_scores[0])
 	for score in final_scores:
 		top_score = maxi(top_score, int(score))
-	if int(final_scores[0]) < top_score:
+	if int(final_scores[_local_seat]) < top_score:
 		return [_request(&"result_lose", PRIORITY_HIGH)]
 	return []
 

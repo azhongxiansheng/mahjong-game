@@ -11,6 +11,7 @@ var status_param: StringName
 var status_text: String
 var status_color: Color
 var feedback_templates_by_source: Dictionary
+var status_next_offset: int
 var feedback_position: Vector2
 
 
@@ -26,7 +27,8 @@ func _init(
 	p_status_text: String = "",
 	p_status_color: Color = Color(0.66, 0.63, 0.78),
 	p_feedback_templates_by_source: Dictionary = {},
-	p_feedback_position: Vector2 = Vector2(420, 12)
+	p_feedback_position: Vector2 = Vector2(420, 12),
+	p_status_next_offset: int = 0
 ) -> void:
 	character_id = p_character_id
 	ability_id = p_ability_id
@@ -39,6 +41,7 @@ func _init(
 	status_text = p_status_text
 	status_color = p_status_color
 	feedback_templates_by_source = p_feedback_templates_by_source.duplicate()
+	status_next_offset = p_status_next_offset
 	feedback_position = p_feedback_position
 
 
@@ -46,13 +49,17 @@ func is_valid() -> bool:
 	return character_id != &"" and ability_id != &"" and not feedback_template.is_empty()
 
 
-func format_feedback(skill_name: String, source_event: StringName = &"") -> String:
+func format_feedback(skill_name: String, extra: Dictionary = {}) -> String:
 	if not is_valid() or skill_name.is_empty():
 		return ""
+	var source_event := StringName(String(extra.get("source_event", "")))
 	var template := feedback_template
 	if feedback_templates_by_source.has(source_event):
 		template = String(feedback_templates_by_source[source_event])
-	return template.format({"skill_name": skill_name.replace("·", " · ")})
+	return template.format({
+		"skill_name": skill_name.replace("·", " · "),
+		"han_delta": int(extra.get("han_delta", 0)),
+	})
 
 
 func has_active_status(skill: SkillResource) -> bool:
@@ -63,4 +70,8 @@ func has_active_status(skill: SkillResource) -> bool:
 func format_status(skill: SkillResource) -> String:
 	if not has_active_status(skill):
 		return ""
-	return status_text.format({"value": skill.params.get(status_param, 0)})
+	var value := int(skill.params.get(status_param, 0))
+	return status_text.format({
+		"value": value,
+		"next": value + status_next_offset,
+	})

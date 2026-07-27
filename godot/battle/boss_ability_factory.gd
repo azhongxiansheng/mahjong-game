@@ -104,6 +104,11 @@ static func build(boss_id: StringName) -> SkillResource:
 	elif boss_id == &"char_teru_passive_v1":
 		s.params["_registry_linger_while_param"] = "streak"
 		s.params["_registry_linger_across_hands"] = true
+	elif boss_id == &"char_tetsuya_passive_v1":
+		s.params["_registry_linger_while_param"] = "wins"
+		s.params["_registry_linger_across_hands"] = true
+		# 整场状态跨局保留，但未武装时不留在 registry 接收和牌事件。
+		s.params["_registry_keep_registered_while_state"] = false
 	s.hook_script = hook_script
 	return s
 
