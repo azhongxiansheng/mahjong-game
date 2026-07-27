@@ -7,6 +7,8 @@ const CHARS := [&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"]
 const PARTS_ALL_H := [&"HUMAN", &"HUMAN", &"HUMAN", &"HUMAN"]
 const PARTS_MIX := [&"HUMAN", &"AI", &"AI", &"AI"]
 const ViewerRevealResolverScript := preload("res://battle/viewer_reveal_resolver.gd")
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
 
 
 func _cfg_tt(p_seed: int, sid: String, all_human: bool = true) -> GameSessionConfig:
@@ -453,3 +455,61 @@ func test_an_cheng_arm_once_clears_authoritative_furiten_and_reveals_private_nex
 		"下一摸只能授权给安澄青本人")
 	assert_true(bool(ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1").get("ok", false)))
 	assert_eq(bc.events.size(), before_events + 1, "同窗重复 arm 不得再次发动")
+
+
+func test_xian_shi_nonzero_slot_arms_once_through_real_reward_window_chain() -> void:
+	var bc := BattleController.new(347, 2, false, TileId.E, 5)
+	var config := GameSessionConfig.create_validated(
+		GameSessionConfig.ROOM_PRACTICE,
+		GameSessionConfig.ROUND_EAST,
+		GameSessionConfig.MODE_TRASH_TALK,
+		PARTS_MIX,
+		[&"qiu_jue", &"lin_yeche", &"xian_shi", &"hua_ling"],
+		347, "xian-shi-arm", "rv")
+	var bundle := ModeModuleBundle.from_config(config)
+	assert_not_null(bundle)
+	bc.bind_mode_modules(bundle)
+	var inv := bundle.item_inventory
+	inv.set_match_namespace("xian-shi-arm")
+	assert_true(bool(inv.grant_for_seat({
+		"seat": 2, "item_id": "iron_shield_v1", "window_id": "w0",
+		"hand_seq": 5, "score": 0, "rule_version": "rv", "assignment_version": "av",
+		"matched_rule_ids": [], "affinity_match": true, "next_window_id": "w1",
+	}).get("ok", false)))
+	var slots: Array = bundle.character_ability_slots
+	var slot := slots[2] as CharacterAbilitySlot
+	assert_eq(slot.character_id, &"xian_shi")
+	assert_eq(slot.ability_id, &"char_toki_passive_v1")
+	assert_not_null(slot.skill)
+	var expected: Array[Tile] = bc.state.wall.peek_top_n(4)
+	var before_events := bc.events.size()
+	var armed := ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1")
+	assert_true(bool(armed.get("ok", false)), str(armed))
+	assert_eq(bc.events.size(), before_events + 1)
+	var event := bc.events[-1] as BattleEvent
+	assert_eq(event.type, &"SKILL_TRIGGERED")
+	assert_eq(event.actor_seat, 2)
+	assert_eq(event.extra.get("skill_id"), &"char_toki_passive_v1")
+	assert_eq(event.extra.get("source_event"), &"GAME_BEGIN")
+	var predictions := SeatDrawForecastCoordinator.predictions_for_viewer(bc.state, 2)
+	assert_eq(predictions.size(), 4)
+	for index in range(4):
+		assert_eq(int((predictions[index] as Dictionary).target_seat), (2 + index) % 4)
+		assert_eq(
+			((predictions[index] as Dictionary).tile as TileSkillAnchor).tile.instance_id,
+			expected[index].instance_id)
+	assert_true(SeatDrawForecastCoordinator.predictions_for_viewer(
+		bc.state, 1).is_empty(), "其他 recipient 不得获得四席牌身份")
+	assert_true(bool(ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1").get("ok", false)))
+	assert_eq(bc.events.size(), before_events + 1, "同窗重复 arm 不得二次触发")
+	assert_true(bool(ItemAuthority.disarm_all_active(
+		bc, inv, slots, "w1").get("ok", false)))
+	assert_true(slot.registry_registered,
+		"奖励窗关闭后须保留预测协调所需注册，直到消费/终局/新局清理")
+	var dealer_prediction := predictions[0] as Dictionary
+	var expected_iid := (dealer_prediction.tile as TileSkillAnchor).tile.instance_id
+	bc._step_draw()
+	assert_eq((bc.state.seats[2] as Seat).last_drawn_instance_id, expected_iid)
+	assert_true(SeatDrawForecastCoordinator.predictions_for_viewer(
+		bc.state, 2).all(func(row): return int((row as Dictionary).target_seat) != 2),
+		"奖励窗关闭后真实摸牌仍须精确消费目标席")

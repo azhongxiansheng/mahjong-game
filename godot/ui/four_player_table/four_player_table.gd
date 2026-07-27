@@ -32,6 +32,10 @@ const ABILITY_BADGE_SCR := preload("res://ui/four_player_table/ability_badge.gd"
 const TABLE_ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
 const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
 const ViewerRevealStripScript := preload("res://ui/four_player_table/viewer_reveal_strip.gd")
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
+const SeatDrawForecastStripScript := preload(
+	"res://ui/four_player_table/seat_draw_forecast_strip.gd")
 
 signal inventory_use_requested(item_instance_id: String)
 
@@ -56,6 +60,7 @@ var ability_badge: Control = null
 var _inventory_btn: Button = null
 var _inventory_count_label: Label = null
 var _next_draw_reveal_strip: Control = null
+var _seat_draw_forecast_strip: Control = null
 var _local_seat: int = 0
 
 func _ready() -> void:
@@ -76,6 +81,11 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 			wall_top if not wall_top.is_empty() \
 			else ([predicted] if predicted != null else []))
 		_position_next_draw_reveal_strip()
+	if _seat_draw_forecast_strip != null:
+		_seat_draw_forecast_strip.set_predictions(
+			SeatDrawForecastCoordinator.predictions_for_viewer(state, _local_seat),
+			_local_seat)
+		_position_seat_draw_forecast_strip()
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
 		# 当前回合家显示名(「你」/AI persona 名)
@@ -258,6 +268,10 @@ func _build_layout() -> void:
 	_next_draw_reveal_strip.name = "NextDrawRevealStrip"
 	_next_draw_reveal_strip.z_index = 24
 	add_child(_next_draw_reveal_strip)
+	_seat_draw_forecast_strip = SeatDrawForecastStripScript.new()
+	_seat_draw_forecast_strip.name = "SeatDrawForecastStrip"
+	_seat_draw_forecast_strip.z_index = 24
+	add_child(_seat_draw_forecast_strip)
 
 	# E4-04：字幕覆盖层（鼠标穿透；不随 seat 旋转）
 	caption_overlay = SEAT_CAPTION_OVERLAY_SCR.new()
@@ -507,6 +521,31 @@ func set_next_draw_reveal_label(value: String) -> void:
 		_next_draw_reveal_strip.set_label_text(value)
 
 
+func set_seat_draw_forecast_label(value: String) -> void:
+	if _seat_draw_forecast_strip != null:
+		_seat_draw_forecast_strip.set_title(value)
+
+
+func seat_draw_forecast_count() -> int:
+	return int(_seat_draw_forecast_strip.prediction_count()) \
+		if _seat_draw_forecast_strip != null else 0
+
+
+func seat_draw_forecast_missing_count() -> int:
+	return int(_seat_draw_forecast_strip.missing_count()) \
+		if _seat_draw_forecast_strip != null else 0
+
+
+func seat_draw_forecast_slot_labels() -> Array:
+	return _seat_draw_forecast_strip.slot_labels() \
+		if _seat_draw_forecast_strip != null else []
+
+
+func seat_draw_forecast_slot_texts() -> Array:
+	return _seat_draw_forecast_strip.slot_texts() \
+		if _seat_draw_forecast_strip != null else []
+
+
 func next_draw_reveal_count() -> int:
 	if _next_draw_reveal_strip == null:
 		return 0
@@ -525,6 +564,14 @@ func _position_next_draw_reveal_strip() -> void:
 	_next_draw_reveal_strip.position = Vector2(
 		(TABLE_WIDTH - _next_draw_reveal_strip.size.x) / 2.0,
 		84.0)
+
+
+func _position_seat_draw_forecast_strip() -> void:
+	if _seat_draw_forecast_strip == null or not _seat_draw_forecast_strip.visible:
+		return
+	_seat_draw_forecast_strip.position = Vector2(
+		(TABLE_WIDTH - _seat_draw_forecast_strip.size.x) / 2.0,
+		TableLayout.HAND_HOST_RECTS[2].end.y + 8.0)
 
 
 func _on_inventory_btn_pressed() -> void:

@@ -69,17 +69,19 @@ func test_make_trash_talk_registry_keys_stable_sorted() -> void:
 	assert_true(reg.is_trash_talk_registry())
 	assert_false(reg.is_standard_only())
 	var keys: Array = reg.registered_keys()
-	assert_eq(keys.size(), 5)
+	assert_eq(keys.size(), 6)
 	assert_eq(str(keys[0]), "core_table")
 	assert_eq(str(keys[1]), "item_inventory")
 	assert_eq(str(keys[2]), "reward_window")
 	assert_eq(str(keys[3]), "viewer_next_draw")
-	assert_eq(str(keys[4]), "viewer_wall_top")
+	assert_eq(str(keys[4]), "viewer_seat_draw_forecast")
+	assert_eq(str(keys[5]), "viewer_wall_top")
 	assert_eq(int(reg.provider_for("reward_window").schema_version()),
 		RewardWindowModule.SCHEMA_VERSION)
 	assert_eq(int(reg.provider_for("item_inventory").schema_version()),
 		ItemInventoryModule.SCHEMA_VERSION)
 	assert_eq(int(reg.provider_for("viewer_next_draw").schema_version()), 1)
+	assert_eq(int(reg.provider_for("viewer_seat_draw_forecast").schema_version()), 1)
 	assert_eq(int(reg.provider_for("viewer_wall_top").schema_version()), 1)
 
 
@@ -88,6 +90,7 @@ func test_standard_registry_still_only_core_table() -> void:
 	assert_true(reg.is_standard_only())
 	assert_false(reg.has_module("reward_window"))
 	assert_false(reg.has_module("viewer_next_draw"))
+	assert_false(reg.has_module("viewer_seat_draw_forecast"))
 	assert_false(reg.has_module("viewer_wall_top"))
 
 

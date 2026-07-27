@@ -460,8 +460,8 @@ func test_twelve_character_passives_exact_triggers() -> void:
 		assert_eq(JSON.stringify(got), JSON.stringify(expected[aid]))
 
 
-## P2-3：道具 arm/disarm 不得统一改写 12 角色 SkillResource 的 params/consumed。
-func test_twelve_character_skills_params_consumed_stable_across_item_arm_disarm() -> void:
+## P2-3：道具 arm/disarm 不得吞并业务 params/consumed；先示可维护明确命名的私有运行态。
+func test_twelve_character_skill_business_params_stable_across_item_arm_disarm() -> void:
 	const ABILITIES := [
 		&"char_akagi_passive_v1", &"char_kaiji_passive_v1", &"char_washizu_passive_v1",
 		&"char_saki_passive_v1", &"char_teru_passive_v1", &"char_awai_passive_v1",
@@ -494,7 +494,6 @@ func test_twelve_character_skills_params_consumed_stable_across_item_arm_disarm(
 		# 预置非空 params + 未 consumed，确认 arm 不吞并
 		sk.params = {"probe": 1, "ability": String(aid)}
 		sk.consumed = false
-		var params_before: String = JSON.stringify(sk.params)
 		var consumed_before: bool = sk.consumed
 		var bc := BattleController.new(7, 0, false, TileId.E, 0)
 		var inv := ItemInventoryModule.new()
@@ -508,18 +507,29 @@ func test_twelve_character_skills_params_consumed_stable_across_item_arm_disarm(
 		var slots: Array = [slot, null, null, null]
 		var arm: Dictionary = ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1")
 		assert_true(bool(arm.get("ok", false)), "arm %s: %s" % [String(aid), str(arm)])
-		assert_eq(JSON.stringify(sk.params), params_before,
-			"arm 后 params 不得被统一改写 ability=%s" % String(aid))
+		assert_eq(int(sk.params.get("probe", -1)), 1,
+			"arm 后业务 params 不得被吞并 ability=%s" % String(aid))
+		assert_eq(str(sk.params.get("ability", "")), String(aid))
+		if aid == &"char_toki_passive_v1":
+			assert_true(bool(sk.params.get("seat_draw_forecast_active", false)))
+			assert_eq(int(sk.params.get("seat_draw_forecast_hand_seq", -1)), 0)
+			assert_eq(int(sk.params.get("seat_draw_forecast_viewer", -1)), 0)
+			assert_eq(sk.params.get("seat_draw_forecast_pending", []), [0, 1, 2, 3])
+		else:
+			assert_eq(sk.params.keys().size(), 2,
+				"非先示角色不得新增私有运行态 ability=%s" % String(aid))
 		assert_eq(sk.consumed, consumed_before,
 			"arm 后 consumed 不得被统一改写 ability=%s" % String(aid))
 		var dis: Dictionary = ItemAuthority.disarm_all_active(bc, inv, slots, "w1")
 		assert_true(bool(dis.get("ok", false)), "disarm %s" % String(aid))
-		assert_eq(JSON.stringify(sk.params), params_before,
-			"disarm 后 params 仍须稳定 ability=%s" % String(aid))
+		assert_eq(int(sk.params.get("probe", -1)), 1,
+			"disarm 后业务 params 仍须稳定 ability=%s" % String(aid))
+		assert_eq(str(sk.params.get("ability", "")), String(aid))
 		assert_eq(sk.consumed, consumed_before,
 			"disarm 后 consumed 仍须稳定 ability=%s" % String(aid))
 		assert_false(slot.armed)
-		assert_false(slot.registry_registered)
+		assert_eq(slot.registry_registered, aid == &"char_toki_passive_v1",
+			"仅仍有待消费预测的先示可在 disarm 后保留注册")
 
 
 ## P2-1：HeadlessRoomSession 与 Practice 同 seed 真实 FULL_GRANT + 无条件 ITEM_USE 字节一致。

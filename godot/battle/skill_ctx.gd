@@ -1,5 +1,8 @@
 class_name SkillCtx
 
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
+
 var _state: BattleState
 var _event: BattleEvent
 var han_deltas: Dictionary = {}
@@ -106,10 +109,12 @@ func reveal_wall_top_to(viewer_seat: int, n: int) -> int:
 	for value in _state.revealed_tiles:
 		var remove := false
 		if typeof(value) == TYPE_DICTIONARY:
-			var instance_value: Variant = (value as Dictionary).get("tile", null)
+			var record := value as Dictionary
+			var instance_value: Variant = record.get("tile", null)
 			if instance_value is TileSkillAnchor:
 				var instance := instance_value as TileSkillAnchor
-				remove = instance.holder_seat == -1 \
+				remove = not SeatDrawForecastCoordinator.is_forecast_record(record) \
+						and instance.holder_seat == -1 \
 						and instance.owner_seat == viewer_seat
 		if not remove:
 			retained.append(value)
@@ -164,6 +169,10 @@ func reveal_next_draw_for_seat(target_seat: int, viewer_seat: int) -> bool:
 	ti.holder_seat = -1
 	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return true
+
+
+func activate_seat_draw_forecast(viewer_seat: int) -> bool:
+	return SeatDrawForecastCoordinator.activate(_state, current_skill, viewer_seat)
 
 func clear_furiten(seat: int) -> void:
 	if seat < 0 or seat >= _state.furiten_flags.size():

@@ -2,6 +2,8 @@ class_name RecipientViewProjector
 extends RefCounted
 
 const ViewerRevealResolver := preload("res://battle/viewer_reveal_resolver.gd")
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
 
 # E2-02 / #232：按 recipient 生成严格 core_table 投影。
 # 本人可见完整 concealed TileView；他席默认仅 concealed_count，信息能力可附带
@@ -90,6 +92,31 @@ static func project_viewer_wall_top(state: Variant, recipient_seat: Variant) -> 
 		if tile_view == null:
 			return []
 		out.append(tile_view)
+	return out
+
+
+static func project_viewer_seat_draw_forecast(
+	state: Variant, recipient_seat: Variant
+) -> Variant:
+	if not (state is BattleState) or typeof(recipient_seat) != TYPE_INT:
+		return null
+	var rows := SeatDrawForecastCoordinator.predictions_for_viewer(
+		state as BattleState, int(recipient_seat))
+	if rows.is_empty():
+		return null
+	var out: Array = []
+	for value in rows:
+		var row := value as Dictionary
+		var anchor := row.get("tile", null) as TileSkillAnchor
+		if anchor == null or anchor.tile == null:
+			return null
+		var tile_view: Variant = ProtocolViewCodec.tile_view_from_tile(anchor.tile)
+		if tile_view == null:
+			return null
+		out.append({
+			"target_seat": int(row.get("target_seat", -1)),
+			"tile": tile_view,
+		})
 	return out
 
 

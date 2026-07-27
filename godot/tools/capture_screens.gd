@@ -203,6 +203,28 @@ func _capture_battle_with_state() -> void:
 	var yuan_reveal_img := root.get_texture().get_image()
 	yuan_reveal_img.save_png("/tmp/shot_battle_yuan_xi_wall_top.png")
 	print("[capture] saved /tmp/shot_battle_yuan_xi_wall_top.png")
+	# #347：先示独立四席条件预测条；四格按本地 viewer 映射，不复用 #344 单张模块。
+	var xian_bc := BattleController.new(347, 2, false, TileId.E, 3)
+	table._reward_local_seat = 2
+	table.bind_character_ids([&"qiu_jue", &"lin_yeche", &"xian_shi", &"hua_ling"])
+	table.set_player_persona("先示",
+		"res://assets/roguelike/characters/char_xian_shi.png")
+	BossAbilityFactory.inject(xian_bc.registry, &"char_toki_passive_v1", 2)
+	xian_bc.scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 2))
+	table._table.set_local_seat(2)
+	table._table.bind_battle_state(xian_bc.state, 0, 4)
+	table._handle_event_toast(BattleEvent.make(&"SKILL_TRIGGERED", 2, null, {
+		"skill_id": &"char_toki_passive_v1",
+		"skill_name": "先示·四席窥运",
+		"source_event": &"GAME_BEGIN",
+	}))
+	for _i in range(8):
+		await process_frame
+	var xian_forecast_img := root.get_texture().get_image()
+	xian_forecast_img.save_png("/tmp/shot_battle_xian_shi_forecast.png")
+	print("[capture] saved /tmp/shot_battle_xian_shi_forecast.png")
+	table._reward_local_seat = 0
+	table._table.set_local_seat(0)
 	table.bind_character_ids([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
 	table.set_player_persona("林夜彻",
 		"res://assets/roguelike/characters/char_lin_yeche.png")

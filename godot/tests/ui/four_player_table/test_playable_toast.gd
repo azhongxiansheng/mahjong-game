@@ -111,6 +111,44 @@ func test_bai_touli_profile_reaches_real_toast_and_reveal_strip_label() -> void:
 		assert_eq(panel.viewer_reveal_label(), "镜华")
 
 
+func test_xian_shi_game_begin_uses_strip_and_voice_without_duplicate_toast() -> void:
+	var bc := BattleController.new(347, 2, false, TileId.E, 3)
+	assert_true(BossAbilityFactory.inject(
+		bc.registry, &"char_toki_passive_v1", 2))
+	assert_eq(bc.scheduler.emit_event(
+		BattleEvent.make(&"GAME_BEGIN", 2)).triggered_skills.size(), 1)
+	var table = PT.new()
+	add_child_autofree(table)
+	table.set("_reward_local_seat", 2)
+	table.bind_character_ids(
+		[&"qiu_jue", &"lin_yeche", &"xian_shi", &"hua_ling"])
+	table._table.set_local_seat(2)
+	table._table.bind_battle_state(bc.state, 0, 4)
+	assert_eq(table._table.seat_draw_forecast_count(), 4,
+		"四席预测条必须继续承担完整真实可见反馈")
+	var event := _make_event(&"SKILL_TRIGGERED", 2, {
+		"skill_id": &"char_toki_passive_v1",
+		"skill_name": "先示·四席窥运",
+		"source_event": &"GAME_BEGIN",
+	})
+	var feedback: Dictionary = table._character_presentation_router.feedback_for_event(event)
+	assert_true(bool(feedback.get("suppress_toast", false)),
+		"GAME_BEGIN 四席 strip 已可见时必须抑制重复 toast")
+	assert_eq(table._character_presentation_router.voice_requests_for_event(
+		event).size(), 1, "抑制 toast 不得抑制 ability 高优先级语音")
+	table._handle_event_toast(event)
+	var toast_visible: bool = table._toast_label != null \
+		and table._toast_label.visible
+	assert_false(toast_visible, "先示 GAME_BEGIN 不得创建或显示重复 toast")
+	if toast_visible:
+		var toast_rect: Rect2 = table._toast_label.get_global_rect()
+		assert_false(toast_rect.intersects(TableLayout.HAND_HOST_RECTS[2]),
+			"任何可见 toast 不得遮挡对家手牌")
+		assert_false(toast_rect.intersects(
+			table._table._seat_draw_forecast_strip.get_global_rect()),
+			"任何可见 toast 不得覆盖四席预测条")
+
+
 func test_hua_ling_profile_feedback_reaches_real_toast_handler() -> void:
 	var table = PT.new()
 	add_child_autofree(table)

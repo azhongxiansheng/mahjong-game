@@ -173,6 +173,28 @@ func test_catalog_activates_yuan_xi_distinct_wall_and_last_tile_feedback() -> vo
 		"非渊汐席位不得冒用反馈或能力语音")
 
 
+func test_catalog_activates_xian_shi_feedback_voice_and_four_seat_label() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"qiu_jue", &"lin_yeche", &"xian_shi", &"hua_ling"])
+	assert_eq(router.seat_draw_forecast_label_for_local_character(2),
+		"先示 · 四席窥运")
+	assert_eq(router.next_draw_label_for_local_character(2), "",
+		"先示不得复用安澄青单张预知标签")
+	var ability_event := _event(&"SKILL_TRIGGERED", 2, {
+		"skill_id": &"char_toki_passive_v1",
+		"skill_name": "先示·四席窥运",
+	})
+	var voice: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(voice.size(), 1)
+	assert_eq(voice[0].character_id, &"xian_shi")
+	assert_eq(voice[0].event_kind, &"ability")
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "🔭 先示 · 四席窥运　四席下一摸已列示")
+	assert_true(router.voice_requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
+		"skill_id": &"char_toki_passive_v1",
+	})).is_empty(), "非先示座位不得串 ability 语音")
+
+
 func test_catalog_activates_hua_ling_feedback_and_six_voice_kinds_without_crossing() -> void:
 	var router = Router.new(Catalog.active_profiles())
 	router.bind_characters([&"hua_ling", &"qiu_jue", &"bai_touli", &"lin_yeche"])

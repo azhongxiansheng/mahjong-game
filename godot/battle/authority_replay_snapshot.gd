@@ -1,6 +1,9 @@
 class_name AuthorityReplaySnapshot
 extends RefCounted
 
+const REVEALED_PROJECTION_KIND_KEY := "projection_kind"
+const SEAT_DRAW_FORECAST_PROJECTION_KIND := "viewer_seat_draw_forecast@1"
+
 # E2-02 / #232：服务端内部权威恢复结构。
 # 完整捕获/恢复公共场继续执行所需状态；typed/严格 canonical + 稳定 SHA-256。
 # 绝不进入 NetworkedEvent envelope/payload/modules。
@@ -422,10 +425,26 @@ static func _validate_revealed_shapes(revealed: Array) -> bool:
 		if typeof(raw) != TYPE_DICTIONARY:
 			return false
 		var item: Dictionary = raw
-		if not _exact_keys(item, ["tile", "visible_to"]):
+		var has_projection_kind := item.has(REVEALED_PROJECTION_KIND_KEY)
+		var expected_keys := ["tile", "visible_to", REVEALED_PROJECTION_KIND_KEY] \
+			if has_projection_kind else ["tile", "visible_to"]
+		if not _exact_keys(item, expected_keys):
+			return false
+		if has_projection_kind and (
+			typeof(item[REVEALED_PROJECTION_KIND_KEY]) != TYPE_STRING \
+			or str(item[REVEALED_PROJECTION_KIND_KEY]) \
+					!= SEAT_DRAW_FORECAST_PROJECTION_KIND
+		):
 			return false
 		if typeof(item["tile"]) != TYPE_DICTIONARY or typeof(item["visible_to"]) != TYPE_ARRAY:
 			return false
+		if has_projection_kind:
+			var forecast_anchor := TileSkillAnchor.from_dict(item["tile"])
+			if forecast_anchor == null or forecast_anchor.holder_seat != -1 \
+					or forecast_anchor.owner_seat < 0 \
+					or forecast_anchor.owner_seat > 3 \
+					or (item["visible_to"] as Array).size() != 1:
+				return false
 		var seen: Dictionary = {}
 		for seat in item["visible_to"] as Array:
 			if typeof(seat) != TYPE_INT or seat < 0 or seat > 3 or seen.has(seat):
@@ -1161,7 +1180,11 @@ static func _revealed_norm(items: Array) -> Array:
 		var vis: Array = []
 		if d.get("visible_to") is Array:
 			vis = (d["visible_to"] as Array).duplicate()
-		out.append({"tile": tile_d, "visible_to": vis})
+		var normalized := {"tile": tile_d, "visible_to": vis}
+		if d.has(REVEALED_PROJECTION_KIND_KEY):
+			normalized[REVEALED_PROJECTION_KIND_KEY] = d.get(
+				REVEALED_PROJECTION_KIND_KEY)
+		out.append(normalized)
 	return out
 
 
@@ -1352,7 +1375,11 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 			var vis: Array = []
 			if idict.get("visible_to") is Array:
 				vis = (idict["visible_to"] as Array).duplicate()
-			st.revealed_tiles.append({"tile": ti, "visible_to": vis})
+			var restored_record := {"tile": ti, "visible_to": vis}
+			if idict.has(REVEALED_PROJECTION_KIND_KEY):
+				restored_record[REVEALED_PROJECTION_KIND_KEY] = idict.get(
+					REVEALED_PROJECTION_KIND_KEY)
+			st.revealed_tiles.append(restored_record)
 
 	# skills / registry
 	var reg: SkillRegistry = bc.get("registry") as SkillRegistry

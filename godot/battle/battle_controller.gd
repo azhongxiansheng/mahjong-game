@@ -1,5 +1,8 @@
 class_name BattleController extends IAuthoritativeBattleController
 
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
+
 const RIICHI_STICK_COST: int = 1000
 
 # 里程碑 2 + E2-02 — 端到端本地权威编排器。
@@ -109,7 +112,7 @@ func _impl_run_to_end() -> Dictionary:
 
 # ---- 步骤 ----
 
-func _step_draw() -> void:
+func _step_draw() -> bool:
 	# DRAW 只允许 server draw/事件；TSUMO/KAN 等由 TURN Action 选择。
 	var t: Tile = engine.draw_for_current()
 	if t == null:
@@ -119,8 +122,12 @@ func _step_draw() -> void:
 			_emit(&"NAGASHI_MANGAN", nm_winner, null,
 				{"winner_seat": nm_winner})
 		_settled = true
-		return
+		SeatDrawForecastCoordinator.clear_all(state, registry)
+		return false
+	var forecast_consumed := SeatDrawForecastCoordinator.consume_actual_draw(
+		state, registry, state.current_seat, t.instance_id)
 	_emit(&"TILE_DRAWN", state.current_seat, _wrap_tile(t), {})
+	return forecast_consumed
 
 
 func _step_turn() -> void:
@@ -494,14 +501,17 @@ func _check_and_emit_abortive_draws() -> void:
 	if DrawDetector.is_suufon_renda(state):
 		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suufon_renda"})
 		_settled = true
+		SeatDrawForecastCoordinator.clear_all(state, registry)
 		return
 	if DrawDetector.is_suucha_riichi(state):
 		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suucha_riichi"})
 		_settled = true
+		SeatDrawForecastCoordinator.clear_all(state, registry)
 		return
 	if DrawDetector.is_suukantsu_sanra(state):
 		_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "suukantsu_sanra"})
 		_settled = true
+		SeatDrawForecastCoordinator.clear_all(state, registry)
 		return
 
 func _step_draw_async() -> void:
@@ -733,6 +743,7 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileSkillAnchor, winner_seat: int,
 
 	_emit(&"WIN_DECLARED", winner_seat, ron_ti, result)
 	_settled = true
+	SeatDrawForecastCoordinator.clear_all(state, registry)
 
 func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = false, _is_rinshan: bool = false) -> void:
 	# 纯结算：TSUMO_DECLARED + engine.apply_tsumo 由 _apply_tsumo_action 在成功路径先完成
@@ -794,6 +805,7 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 
 	_emit(&"WIN_DECLARED", state.current_seat, ti, result)
 	_settled = true
+	SeatDrawForecastCoordinator.clear_all(state, registry)
 
 
 # 把 YakuEntries 转成 UI 结算 overlay 用的 [{name, han}] 数组。
@@ -1412,6 +1424,7 @@ func _apply_abortive_draw_action(action: Action) -> ActionResolution:
 		"reason": str(action.payload.get("reason", "")),
 	})
 	_settled = true
+	SeatDrawForecastCoordinator.clear_all(state, registry)
 	_invalidate_window()
 	var applied_ev: BattleEvent = _append_action_applied(action)
 	return _finish_resolution(events_before, applied_ev)
@@ -1429,6 +1442,9 @@ func _apply_kan_action(action: Action) -> ActionResolution:
 		var ids: Array = p.get("tile_instance_ids", []) as Array
 		if not engine.apply_ankan(actor, ids):
 			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
+		SeatDrawForecastCoordinator.branch_committed(
+			state, registry, actor,
+			int((state.seats[actor] as Seat).last_drawn_instance_id))
 		_invalidate_window()
 		_emit(&"PLAYER_ACTION", actor, null, {"kind": "ankan", "tile_instance_ids": ids.duplicate()})
 		var applied_a: BattleEvent = _append_action_applied(action)
@@ -1451,6 +1467,7 @@ func _apply_kan_action(action: Action) -> ActionResolution:
 			"meld_id": meld_id,
 			"added_iid": added_iid,
 		}
+		SeatDrawForecastCoordinator.suspend_for_unresolved_branch(state, registry)
 		_invalidate_window()
 		_emit(&"PLAYER_ACTION", actor, null, {
 			"kind": "added_kan_declare",
@@ -1538,6 +1555,7 @@ func _resolve_completed_window(win: DecisionWindow) -> bool:
 					_invalidate_window()
 					_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
 					_settled = true
+					SeatDrawForecastCoordinator.clear_all(state, registry)
 					return true
 				BattleActionResolver.OUTCOME_WINNER:
 					var winner: Action = outcome.get("winner", null) as Action
@@ -1571,6 +1589,7 @@ func _resolve_completed_window(win: DecisionWindow) -> bool:
 					_invalidate_window()
 					_emit(&"ABORTIVE_DRAW", -1, null, {"reason": "sancha_houra"})
 					_settled = true
+					SeatDrawForecastCoordinator.clear_all(state, registry)
 					return true
 				BattleActionResolver.OUTCOME_WINNER:
 					var w_ron: Action = outcome_r.get("winner", null) as Action
@@ -1636,6 +1655,9 @@ func _finalize_pending_added_kan_all_pass() -> bool:
 	if not engine.apply_added_kan(actor, meld_id, added_iid):
 		state.current_seat = seat_before
 		return false
+	SeatDrawForecastCoordinator.branch_committed(
+		state, registry, actor,
+		int((state.seats[actor] as Seat).last_drawn_instance_id))
 	_pending_added_kan = {}
 	_emit(&"PLAYER_ACTION", actor, null, {
 		"kind": "added_kan",
@@ -1662,6 +1684,7 @@ func _execute_winning_claim(action: Action) -> int:
 			var comps: Array = action.payload.get("companion_tile_instance_ids", []) as Array
 			if not engine.apply_pon(actor, discarded.instance_id, comps):
 				return DOMAIN_FAILED
+			SeatDrawForecastCoordinator.branch_committed(state, registry)
 			state.kuikae_restricted[actor] = ClaimValidator.kuikae_restricted_ids(
 				discarded.id, [], false)
 			_emit(&"PLAYER_ACTION", actor, null, {
@@ -1678,6 +1701,7 @@ func _execute_winning_claim(action: Action) -> int:
 			var comps_c: Array = action.payload.get("companion_tile_instance_ids", []) as Array
 			if not engine.apply_chi(actor, discarded.instance_id, comps_c):
 				return DOMAIN_FAILED
+			SeatDrawForecastCoordinator.branch_committed(state, registry)
 			_emit(&"PLAYER_ACTION", actor, null, {
 				"kind": "chi",
 				"tile_instance_id": discarded.instance_id,
@@ -1692,6 +1716,9 @@ func _execute_winning_claim(action: Action) -> int:
 			var comps_k: Array = action.payload.get("companion_tile_instance_ids", []) as Array
 			if not engine.apply_minkan(actor, discarded.instance_id, comps_k):
 				return DOMAIN_FAILED
+			SeatDrawForecastCoordinator.branch_committed(
+				state, registry, actor,
+				int((state.seats[actor] as Seat).last_drawn_instance_id))
 			_emit(&"PLAYER_ACTION", actor, null, {
 				"kind": "minkan",
 				"tile_instance_id": discarded.instance_id,

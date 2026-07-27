@@ -7,6 +7,7 @@ var feedback_color: Color
 var feedback_pulse: bool
 var viewer_reveal_label: String
 var next_draw_reveal_label: String
+var seat_draw_forecast_label: String
 var status_param: StringName
 var status_text: String
 var status_color: Color
@@ -28,7 +29,8 @@ func _init(
 	p_status_color: Color = Color(0.66, 0.63, 0.78),
 	p_feedback_templates_by_source: Dictionary = {},
 	p_feedback_position: Vector2 = Vector2(420, 12),
-	p_status_next_offset: int = 0
+	p_status_next_offset: int = 0,
+	p_seat_draw_forecast_label: String = ""
 ) -> void:
 	character_id = p_character_id
 	ability_id = p_ability_id
@@ -43,6 +45,7 @@ func _init(
 	feedback_templates_by_source = p_feedback_templates_by_source.duplicate()
 	status_next_offset = p_status_next_offset
 	feedback_position = p_feedback_position
+	seat_draw_forecast_label = p_seat_draw_forecast_label
 
 
 func is_valid() -> bool:

@@ -37,6 +37,17 @@ func _an_cheng_policy(ids: Array = [&"an_cheng", &"qiu_jue", &"lin_yeche", &"hua
 	return policy
 
 
+func _xian_shi_policy(ids: Array = [&"xian_shi", &"qiu_jue", &"lin_yeche", &"hua_ling"]):
+	var profile = null
+	for candidate in Catalog.active_profiles():
+		if candidate.character_id == &"xian_shi":
+			profile = candidate
+			break
+	var policy = Policy.new(profile)
+	policy.bind_characters(ids)
+	return policy
+
+
 func test_entry_plays_once_for_local_qiu_jue() -> void:
 	var policy = _policy()
 	var first: Array = policy.requests_for_event(_event(&"GAME_BEGIN", 2))
@@ -133,6 +144,27 @@ func test_an_cheng_six_offline_voice_categories_without_cross_talk() -> void:
 	assert_true(policy.requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
 		"skill_id": &"char_awai_passive_v1",
 	})).is_empty(), "非安澄青座位不得串 ability 语音")
+	assert_eq(policy.requests_for_scores([28000, 24000, 24000, 24000])[0].event_kind,
+		&"advantage")
+	assert_eq(policy.requests_for_event(_event(&"WIN_DECLARED", 1, {
+		"discarder_seat": 0, "is_tsumo": false,
+	}))[0].event_kind, &"hurt")
+	assert_eq(policy.requests_for_event(_event(&"WIN_DECLARED", 0, {
+		"discarder_seat": 2, "is_tsumo": false,
+	}))[0].event_kind, &"win")
+	assert_eq(policy.requests_for_match_result([24000, 27000, 25000, 24000])[0].event_kind,
+		&"result_lose")
+
+
+func test_xian_shi_six_offline_voice_categories_without_cross_talk() -> void:
+	var policy = _xian_shi_policy()
+	assert_eq(policy.requests_for_event(_event(&"GAME_BEGIN", 0))[0].event_kind, &"entry")
+	assert_eq(policy.requests_for_event(_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_toki_passive_v1",
+	}))[0].event_kind, &"ability")
+	assert_true(policy.requests_for_event(_event(&"SKILL_TRIGGERED", 1, {
+		"skill_id": &"char_toki_passive_v1",
+	})).is_empty())
 	assert_eq(policy.requests_for_scores([28000, 24000, 24000, 24000])[0].event_kind,
 		&"advantage")
 	assert_eq(policy.requests_for_event(_event(&"WIN_DECLARED", 1, {

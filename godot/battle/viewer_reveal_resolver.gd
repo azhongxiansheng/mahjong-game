@@ -1,5 +1,8 @@
 extends RefCounted
 
+const SeatDrawForecastCoordinator := preload(
+	"res://battle/seat_draw_forecast_coordinator.gd")
+
 # 将权威 BattleState.revealed_tiles 投影为某一 viewer 当前仍可见的真实手牌实体。
 # 本类不认识具体角色/能力，也不渲染 UI；服务端快照与本地牌桌共用同一过滤规则。
 
@@ -97,6 +100,8 @@ static func wall_top_for_viewer(
 			if typeof(value) != TYPE_DICTIONARY:
 				continue
 			var record := value as Dictionary
+			if SeatDrawForecastCoordinator.is_forecast_record(record):
+				continue
 			var visible_to: Variant = record.get("visible_to", null)
 			if typeof(visible_to) != TYPE_ARRAY \
 					or not _contains_seat(visible_to, viewer_seat):
