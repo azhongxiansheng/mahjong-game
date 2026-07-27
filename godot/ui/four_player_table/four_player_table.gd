@@ -69,8 +69,12 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 	var revealed_by_holder: Dictionary = ViewerRevealResolver.tiles_by_holder(
 		state, _local_seat)
 	var predicted := ViewerRevealResolver.next_draw_for_viewer(state, _local_seat)
+	var wall_top: Array = ViewerRevealResolver.wall_top_for_viewer(
+		state, _local_seat, 3)
 	if _next_draw_reveal_strip != null:
-		_next_draw_reveal_strip.set_tiles([predicted] if predicted != null else [])
+		_next_draw_reveal_strip.set_tiles(
+			wall_top if not wall_top.is_empty() \
+			else ([predicted] if predicted != null else []))
 		_position_next_draw_reveal_strip()
 	if center_info:
 		center_info.bind_state(state, hand_index, hands_per_round_arg)
@@ -520,7 +524,7 @@ func _position_next_draw_reveal_strip() -> void:
 		return
 	_next_draw_reveal_strip.position = Vector2(
 		(TABLE_WIDTH - _next_draw_reveal_strip.size.x) / 2.0,
-		TableLayout.TOP_BAR_H + 8.0)
+		84.0)
 
 
 func _on_inventory_btn_pressed() -> void:

@@ -100,9 +100,25 @@ func _is_revealed_to(tile: Tile, holder_seat: int, viewer_seat: int) -> bool:
 func reveal_wall_top_to(viewer_seat: int, n: int) -> int:
 	if _state.wall == null or n <= 0:
 		return 0
+	# 同一 viewer 仅保留当前一批 wall-top 序列；避免刷新重叠造成重复实体，
+	# 也让权威快照始终只含仍有效的当前批次。
+	var retained: Array = []
+	for value in _state.revealed_tiles:
+		var remove := false
+		if typeof(value) == TYPE_DICTIONARY:
+			var instance_value: Variant = (value as Dictionary).get("tile", null)
+			if instance_value is TileSkillAnchor:
+				var instance := instance_value as TileSkillAnchor
+				remove = instance.holder_seat == -1 \
+						and instance.owner_seat == viewer_seat
+		if not remove:
+			retained.append(value)
+	_state.revealed_tiles = retained
 	var tiles: Array[Tile] = _state.wall.peek_top_n(n)
 	for t in tiles:
-		var ti: TileSkillAnchor = TileSkillAnchor.make(t, -1)
+		# wall-top 序列用 owner_seat 标记授权 viewer；holder=-1 继续表示不在手牌。
+		# #344 viewer_next_draw 保持 owner=-1，因此两类 optional 私有投影可区分。
+		var ti: TileSkillAnchor = TileSkillAnchor.make(t, viewer_seat)
 		ti.holder_seat = -1
 		_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return tiles.size()

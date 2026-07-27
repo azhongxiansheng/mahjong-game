@@ -77,6 +77,22 @@ static func project_viewer_next_draw(state: Variant, recipient_seat: Variant) ->
 	return ProtocolViewCodec.tile_view_from_tile(predicted.tile)
 
 
+## Issue #345：独立 viewer_wall_top@1 的有序 TileView 数组。
+static func project_viewer_wall_top(state: Variant, recipient_seat: Variant) -> Array:
+	var out: Array = []
+	if not (state is BattleState) or typeof(recipient_seat) != TYPE_INT:
+		return out
+	var instances: Array = ViewerRevealResolver.wall_top_for_viewer(
+		state as BattleState, int(recipient_seat), 3)
+	for instance_value in instances:
+		var instance := instance_value as TileSkillAnchor
+		var tile_view: Variant = ProtocolViewCodec.tile_view_from_tile(instance.tile)
+		if tile_view == null:
+			return []
+		out.append(tile_view)
+	return out
+
+
 static func _project_seat(
 	st: BattleState,
 	seat_i: int,

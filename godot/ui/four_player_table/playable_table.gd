@@ -1832,11 +1832,14 @@ func _handle_event_toast(ev: BattleEvent) -> void:
 		return
 	var feedback: Dictionary = _character_presentation_router.feedback_for_event(ev)
 	if not feedback.is_empty():
+		if bool(feedback.get("suppress_toast", false)):
+			return
 		var feedback_color: Color = feedback.get("color", Color(1, 0.88, 0.32))
 		_show_toast_text(
 			String(feedback.get("text", "")),
 			feedback_color,
-			bool(feedback.get("pulse", false)))
+			bool(feedback.get("pulse", false)),
+			feedback.get("position", Vector2(420, 12)))
 		return
 	var text: String = _format_toast_text(ev)
 	if text == "":
@@ -1848,7 +1851,8 @@ func _handle_event_toast(ev: BattleEvent) -> void:
 func _show_toast_text(
 	text: String,
 	font_color: Color = Color(1, 0.88, 0.32),
-	pulse: bool = false
+	pulse: bool = false,
+	position: Vector2 = Vector2(420, 12)
 ) -> void:
 	if text == "":
 		return
@@ -1864,6 +1868,7 @@ func _show_toast_text(
 		_toast_label.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.85))
 		_toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(_toast_label)
+	_toast_label.position = position
 	_toast_label.add_theme_color_override("font_color", font_color)
 	_toast_label.text = text
 	_toast_label.visible = true

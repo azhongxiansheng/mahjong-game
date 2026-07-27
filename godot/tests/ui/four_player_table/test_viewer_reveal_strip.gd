@@ -38,6 +38,17 @@ func _state_with_an_cheng_prediction(viewer_seat: int = 0) -> BattleState:
 	return st
 
 
+func _state_with_yuan_wall_top(viewer_seat: int = 0) -> BattleState:
+	var st := BattleState.for_east_round(345, 0, 1, 0, 0)
+	var registry := SkillRegistry.new()
+	var scheduler := SkillScheduler.new(registry, st)
+	assert_true(BossAbilityFactory.inject(
+		registry, &"char_koromo_passive_v1", viewer_seat))
+	var ctx := scheduler.emit_event(BattleEvent.make(&"TILE_DRAWN", viewer_seat))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	return st
+
+
 func test_strip_renders_real_tile_instance_and_clears() -> void:
 	var st := _state_with_reveal()
 	var instance := st.revealed_tiles[0].tile as TileSkillAnchor
@@ -144,3 +155,32 @@ func test_an_cheng_prediction_reuses_top_reveal_strip_and_clears_after_draw() ->
 	assert_eq(st.wall.draw().instance_id, expected.instance_id)
 	table.bind_battle_state(st, 0, 4)
 	assert_eq(table.next_draw_reveal_count(), 0, "摸牌后预知条须清除")
+
+
+func test_yuan_wall_top_uses_three_tile_safe_gap_without_covering_hand_or_river() -> void:
+	var table = TABLE_SCENE.instantiate()
+	add_child_autofree(table)
+	var st := _state_with_yuan_wall_top(0)
+	table.set_local_seat(0)
+	table.set_next_draw_reveal_label("潮见")
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.next_draw_reveal_count(), 3)
+	var expected := st.wall.peek_top_n(3)
+	assert_eq(table.next_draw_revealed_instance_ids(), [
+		(expected[0] as Tile).instance_id,
+		(expected[1] as Tile).instance_id,
+		(expected[2] as Tile).instance_id,
+	])
+	var strip := table._next_draw_reveal_strip as Control
+	var rect := strip.get_global_rect()
+	assert_gte(rect.position.y, 84.0, "潮见条必须下移到对家手牌后的顶部空档")
+	assert_lte(rect.end.y, 134.0, "潮见条不得侵入 y=142 起的对家牌河安全区")
+	assert_false(rect.intersects(TableLayout.HAND_HOST_RECTS[2]),
+		"潮见条不得遮挡对家手牌")
+	for crowded in TableLayout.crowded_state_rects():
+		assert_false(rect.intersects(crowded), "潮见条不得遮挡任一牌河")
+	assert_false(rect.intersects(TableLayout.ACTION_BAR_RECT))
+	assert_false(rect.intersects(TableLayout.HAND_SAFE_RECT))
+	table.set_local_seat(1)
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.next_draw_reveal_count(), 0, "非 owner 本地 viewer 不得看到潮见")

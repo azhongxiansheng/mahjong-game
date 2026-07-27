@@ -411,6 +411,12 @@ static func _convert_room_snapshot_ints(payload: Dictionary) -> bool:
 			if typeof(md["payload"]) == TYPE_DICTIONARY \
 					and not _convert_viewer_next_draw_ints(md["payload"]):
 				return false
+		elif mkey == "viewer_wall_top" \
+				and typeof(md.get("schema_version")) == TYPE_INT \
+				and int(md["schema_version"]) == 1:
+			if typeof(md["payload"]) == TYPE_DICTIONARY \
+					and not _convert_viewer_wall_top_ints(md["payload"]):
+				return false
 		else:
 			var pl: Variant = md["payload"]
 			if typeof(pl) == TYPE_FLOAT:
@@ -464,6 +470,24 @@ static func _convert_viewer_next_draw_ints(payload: Dictionary) -> bool:
 		return false
 	if payload.has("tile") and typeof(payload["tile"]) == TYPE_DICTIONARY:
 		return _convert_tile_view_ints(payload["tile"])
+	return true
+
+
+static func _convert_viewer_wall_top_ints(payload: Dictionary) -> bool:
+	if not _set_int_field(payload, "recipient_seat") \
+			or not _set_int_field(payload, "hand_seq"):
+		return false
+	if not payload.has("tiles") or typeof(payload["tiles"]) != TYPE_ARRAY:
+		return true
+	for entry_value in payload["tiles"] as Array:
+		if typeof(entry_value) != TYPE_DICTIONARY:
+			continue
+		var entry := entry_value as Dictionary
+		if not _set_int_field(entry, "offset"):
+			return false
+		if entry.has("tile") and typeof(entry["tile"]) == TYPE_DICTIONARY \
+				and not _convert_tile_view_ints(entry["tile"]):
+			return false
 	return true
 
 

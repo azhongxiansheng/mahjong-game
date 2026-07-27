@@ -187,6 +187,22 @@ func _capture_battle_with_state() -> void:
 	var an_reveal_img := root.get_texture().get_image()
 	an_reveal_img.save_png("/tmp/shot_battle_an_cheng_prediction.png")
 	print("[capture] saved /tmp/shot_battle_an_cheng_prediction.png")
+	# #345：渊汐本人普通摸后显示 live wall 顶三张，并落在 y=84 顶部安全空档。
+	var yuan_bc := BattleController.new(345, 0, false, TileId.E)
+	if table._toast_label != null:
+		table._toast_label.visible = false
+	table.bind_character_ids([&"yuan_xi", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	table.set_player_persona("渊汐",
+		"res://assets/roguelike/characters/char_yuan_xi.png")
+	BossAbilityFactory.inject(yuan_bc.registry, &"char_koromo_passive_v1", 0)
+	yuan_bc._step_draw()
+	table._table.bind_battle_state(yuan_bc.state, 0, 4)
+	table._handle_event_toast(yuan_bc.events[-1] as BattleEvent)
+	for _i in range(8):
+		await process_frame
+	var yuan_reveal_img := root.get_texture().get_image()
+	yuan_reveal_img.save_png("/tmp/shot_battle_yuan_xi_wall_top.png")
+	print("[capture] saved /tmp/shot_battle_yuan_xi_wall_top.png")
 	table.bind_character_ids([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
 	table.set_player_persona("林夜彻",
 		"res://assets/roguelike/characters/char_lin_yeche.png")
