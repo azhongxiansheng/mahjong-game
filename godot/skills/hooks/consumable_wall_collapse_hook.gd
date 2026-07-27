@@ -1,3 +1,8 @@
-# 牌墙崩塌 — 战斗消耗品
-# 无运行时 hook — 权威效果在 ItemAuthority 即时 USE 内 Wall.draw() 结算。
 extends SkillHook
+
+const COLLAPSE_COUNT := 10
+
+
+func on_event(_skill: SkillResource, _event: BattleEvent, ctx: SkillCtx) -> void:
+	ctx.discard_wall_top(COLLAPSE_COUNT)
+	ctx.consume_self()

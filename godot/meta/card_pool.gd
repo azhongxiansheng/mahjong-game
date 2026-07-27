@@ -293,45 +293,14 @@ static func abilities_by_rarity(rarity: int) -> Array:
 
 static func all_relics() -> Array:
 	var pool: Array = []
-	pool.append(_mk_relic(&"relic_lucky_cat_v1", "招财猫",
-		"每次胡牌额外 +1 Dora",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_lucky_cat_hook.gd"))
-	pool.append(_mk_relic(&"relic_iron_will_v1", "铁壁意志",
-		"被荣胡时对手 -1 番",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_iron_will_hook.gd"))
-	pool.append(_mk_relic(&"relic_soul_mirror_v1", "魂镜",
-		"对手胡牌时偷取 10% 得分",
-		Rarity.Kind.EPIC, "res://skills/hooks/relic_soul_mirror_hook.gd"))
-	pool.append(_mk_relic(&"relic_wall_eye_v1", "墙眼",
-		"每次摸牌后预知下 1 张",
-		Rarity.Kind.LEGENDARY, "res://skills/hooks/relic_wall_eye_hook.gd"))
-
-	# M12 新增遗物
-	pool.append(_mk_relic(&"relic_red_string_v1", "红线",
-		"每次胡牌额外 +1 赤 Dora",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_red_string_hook.gd"))
-	pool.append(_mk_relic(&"relic_dragon_seal_v1", "龙印",
-		"胡牌时 +1 番（三元牌加成）",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_dragon_seal_hook.gd"))
-	pool.append(_mk_relic(&"relic_wind_charm_v1", "风铃",
-		"胡牌时 +1 番（风役加成）",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_wind_charm_hook.gd"))
-	pool.append(_mk_relic(&"relic_speed_demon_v1", "速攻鬼",
-		"巡数 < 8 时胡牌 +1 番",
-		Rarity.Kind.EPIC, "res://skills/hooks/relic_speed_demon_hook.gd"))
-	pool.append(_mk_relic(&"relic_patience_stone_v1", "忍石",
-		"流局时获得 +2000 点",
-		Rarity.Kind.UNCOMMON, "res://skills/hooks/relic_patience_stone_hook.gd"))
-	pool.append(_mk_relic(&"relic_han_crystal_v1", "番水晶",
-		"立直状态下胡牌 +1 番",
-		Rarity.Kind.EPIC, "res://skills/hooks/relic_han_crystal_hook.gd"))
-	pool.append(_mk_relic(&"relic_comeback_crown_v1", "逆转王冠",
-		"四家最低分时胡牌 +2 番",
-		Rarity.Kind.EPIC, "res://skills/hooks/relic_comeback_crown_hook.gd"))
-	pool.append(_mk_relic(&"relic_pity_breaker_v1", "天命打破",
-		"保底概率提升（被动 gacha 修改器）",
-		Rarity.Kind.LEGENDARY, "res://skills/hooks/relic_pity_breaker_hook.gd"))
-
+	for definition in ItemCatalog.relics():
+		var item_definition := definition as ItemDefinition
+		var item := RelicItem.new(item_definition.id, item_definition.rarity)
+		item.display_name = item_definition.display_name
+		item.description = item_definition.description
+		item.hook_resource_path = item_definition.hook_resource_path
+		item.icon_path = RelicItem.default_icon_path(item_definition.id)
+		pool.append(item)
 	return pool
 
 static func relics_by_rarity(rarity: int) -> Array:
@@ -345,53 +314,15 @@ static func relics_by_rarity(rarity: int) -> Array:
 
 static func all_consumables() -> Array:
 	var pool: Array = []
-
-	pool.append(_mk_consumable(&"iron_shield_v1", "铁盾",
-		"本局被荣胡时取消 1 次（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
-		"res://skills/hooks/consumable_iron_shield_hook.gd"))
-
-	pool.append(_mk_consumable(&"wall_peek_v1", "千里眼",
-		"开局 reveal 牌墙顶 5 张（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
-		"res://skills/hooks/consumable_wall_peek_hook.gd"))
-
-	pool.append(_mk_consumable(&"double_payout_v1", "倍率券",
-		"下次胡牌番数 ×2（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
-		"res://skills/hooks/consumable_double_payout_hook.gd"))
-
-	pool.append(_mk_consumable(&"dora_charm_v1", "宝牌护符",
-		"下次胡牌额外 +3 Dora（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
-		"res://skills/hooks/consumable_dora_charm_hook.gd"))
-
-	# M12 新增消耗品
-	pool.append(_mk_consumable(&"wall_collapse_v1", "牌墙崩塌",
-		"开局减少牌墙 10 张（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
-		"res://skills/hooks/consumable_wall_collapse_hook.gd"))
-	pool.append(_mk_consumable(&"dora_flip_v1", "翻宝牌",
-		"摸牌时额外 +1 Dora 并消耗（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.UNCOMMON,
-		"res://skills/hooks/consumable_dora_flip_hook.gd"))
-	pool.append(_mk_consumable(&"seat_swap_v1", "换座",
-		"开局交换座位（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
-		"res://skills/hooks/consumable_seat_swap_hook.gd"))
-	pool.append(_mk_consumable(&"furiten_bomb_v1", "振听炸弹",
-		"取消对手荣胡 1 次（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
-		"res://skills/hooks/consumable_furiten_bomb_hook.gd"))
-	pool.append(_mk_consumable(&"point_shield_v1", "点棒护盾",
-		"被荣胡时偷回 50% 点数（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.EPIC,
-		"res://skills/hooks/consumable_point_shield_hook.gd"))
-	pool.append(_mk_consumable(&"tsubame_v1", "燕返",
-		"开局手牌重洗（消耗品）",
-		ConsumableItem.Kind.BATTLE, Rarity.Kind.COMMON,
-		"res://skills/hooks/consumable_tsubame_hook.gd"))
-
+	for definition in ItemCatalog.consumables():
+		var item_definition := definition as ItemDefinition
+		var item := ConsumableItem.new(
+			item_definition.id, ConsumableItem.Kind.BATTLE, item_definition.rarity)
+		item.display_name = item_definition.display_name
+		item.description = item_definition.description
+		item.hook_resource_path = item_definition.hook_resource_path
+		item.icon_path = ConsumableItem.default_icon_path(item_definition.id)
+		pool.append(item)
 	return pool
 
 static func consumables_by_kind(kind: int) -> Array:
@@ -416,19 +347,3 @@ static func _mk_ability(id: StringName, name: String, desc: String, rarity: int,
 	a.description = desc
 	a.hook_resource_path = hook_path
 	return a
-
-static func _mk_relic(id: StringName, name: String, desc: String, rarity: int, hook_path: String) -> RelicItem:
-	var r := RelicItem.new(id, rarity)
-	r.display_name = name
-	r.description = desc
-	r.hook_resource_path = hook_path
-	r.icon_path = RelicItem.default_icon_path(id)
-	return r
-
-static func _mk_consumable(id: StringName, name: String, desc: String, kind: int, rarity: int, hook_path: String) -> ConsumableItem:
-	var c := ConsumableItem.new(id, kind, rarity)
-	c.display_name = name
-	c.description = desc
-	c.hook_resource_path = hook_path
-	c.icon_path = ConsumableItem.default_icon_path(id)
-	return c
