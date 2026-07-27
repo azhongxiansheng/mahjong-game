@@ -1,6 +1,6 @@
 extends GutTest
 
-# E2-02 Red：RecipientViewProjector.static project_core_table → core_table exact-13。
+# E2-02：RecipientViewProjector.static project_core_table → core_table@1 exact-12。
 # 无 server_seq/snapshot 包络；真实 BattleState。领域数组保序，禁 MeldView.tiles iid 重排。
 
 const PATH := "res://server/recipient_view_projector.gd"
@@ -9,7 +9,7 @@ const HAND_SEQ := 3
 const CORE_KEYS := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "viewer_next_draw", "seats",
+	"dora_indicators", "seats",
 ]
 const SEAT_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
@@ -192,7 +192,7 @@ func test_exact_schema_privacy_last_drawn() -> void:
 		assert_false(v.is_empty(), "recip=%d" % recip)
 		if v.is_empty():
 			return
-		assert_true(_exact(v, CORE_KEYS), "core exact 13 recip=%d" % recip)
+		assert_true(_exact(v, CORE_KEYS), "core exact 12 recip=%d" % recip)
 		assert_eq(int(v["recipient_seat"]), recip)
 		assert_eq(int(v["hand_seq"]), HAND_SEQ)
 		assert_eq(int(v["dealer_seat"]), st.dealer_seat)
@@ -349,15 +349,14 @@ func test_an_cheng_next_draw_projects_only_to_owner_and_expires_after_draw() -> 
 	var expected: Tile = st.wall.peek_next_draw()
 	var ctx := scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
 	assert_eq(ctx.triggered_skills.size(), 1)
-	var owner_view := _dict(_project(st, 0))
-	assert_true(owner_view.has("viewer_next_draw"))
-	assert_eq(int((owner_view.viewer_next_draw as Dictionary).instance_id), expected.instance_id)
-	var other_view := _dict(_project(st, 1))
-	assert_true((other_view.viewer_next_draw as Dictionary).is_empty(),
+	var owner_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 0)
+	assert_eq(int((owner_view as Dictionary).instance_id), expected.instance_id)
+	var other_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 1)
+	assert_null(other_view,
 		"未授权 recipient 不得收到墙顶牌身份")
 	assert_eq(st.wall.draw().instance_id, expected.instance_id)
-	var expired_view := _dict(_project(st, 0))
-	assert_true((expired_view.viewer_next_draw as Dictionary).is_empty(),
+	var expired_view: Variant = RecipientViewProjector.project_viewer_next_draw(st, 0)
+	assert_null(expired_view,
 		"目标牌被摸走后预知必须失效")
 
 

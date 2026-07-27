@@ -321,11 +321,11 @@ const ROOM_SNAPSHOT_TOP_KEYS := [
 	"snapshot_server_seq", "next_server_seq", "seat_view", "modules",
 ]
 const MODULE_ENTRY_KEYS := ["module_key", "schema_version", "payload"]
-# core_table.payload exact 13 键
+# core_table.payload exact 12 键
 const CORE_TABLE_KEYS := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "viewer_next_draw", "seats",
+	"dora_indicators", "seats",
 ]
 # SeatView exact 11 键（含 riichi_double）
 const SEAT_VIEW_KEYS := [
@@ -389,7 +389,7 @@ func _default_seats(recipient_seat: int = 0, hand_seq: int = 0) -> Array:
 	return seats
 
 
-## core_table.payload exact 13 键 fixture（非 ROOM_SNAPSHOT 顶层）。
+## core_table.payload exact 12 键 fixture（非 ROOM_SNAPSHOT 顶层）。
 func _core_table_payload(
 	recipient_seat: int = 0,
 	hand_seq: int = 0,
@@ -415,7 +415,6 @@ func _core_table_payload(
 		"riichi_sticks": 0,
 		"live_wall_count": 70,
 		"dora_indicators": dora_list.duplicate(true),
-		"viewer_next_draw": {},
 		"seats": seat_list.duplicate(true),
 	}
 
@@ -1439,7 +1438,7 @@ func test_room_snapshot_core_only_exact_keys_seq_hash_order_and_deep_copy() -> v
 	assert_eq(typeof(mod0["payload"]), TYPE_DICTIONARY)
 
 	var core_out: Dictionary = mod0["payload"]
-	assert_true(_exact_keys(core_out, CORE_TABLE_KEYS), "core_table.payload exact 13 键")
+	assert_true(_exact_keys(core_out, CORE_TABLE_KEYS), "core_table.payload exact 12 键")
 	assert_eq(int(core_out["recipient_seat"]), recipient)
 	assert_eq(int(core_out["recipient_seat"]), int(out["seat_view"]),
 		"top seat_view 必须等于 core recipient_seat")
@@ -1872,7 +1871,7 @@ func test_room_snapshot_rejects_core_privacy_type_range_and_seat_cross() -> void
 	assert_not_null(NetworkedEvent.from_dict(_room_snapshot_event(seq, full)),
 		"最小合法 core-only 正例")
 
-	# core exact 13：缺 / 隐私泄漏多余键
+	# core exact 12：缺 / 隐私泄漏多余键
 	for key in CORE_TABLE_KEYS:
 		var miss_core := full.duplicate(true)
 		var core_miss: Dictionary = (

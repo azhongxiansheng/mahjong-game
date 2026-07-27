@@ -67,8 +67,9 @@ const MODULE_ENTRY_KEYS := ["module_key", "schema_version", "payload"]
 const CORE_TABLE_KEYS := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "viewer_next_draw", "seats",
+	"dora_indicators", "seats",
 ]
+const VIEWER_NEXT_DRAW_KEYS := ["recipient_seat", "hand_seq", "tile"]
 const SEAT_VIEW_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
 	"last_drawn_tile_instance_id", "river", "melds", "riichi_declared",
@@ -1239,6 +1240,7 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 	var prev_key: String = ""
 	var has_prev := false
 	var core_count := 0
+	var core_hand_seq := -1
 
 	for item in raw_mods:
 		if typeof(item) != TYPE_DICTIONARY:
@@ -1276,6 +1278,14 @@ static func _validate_room_snapshot(p: Dictionary) -> Variant:
 			if typeof(pl_raw) != TYPE_DICTIONARY:
 				return null
 			pl_out = _validate_core_table(pl_raw as Dictionary, seat_view_i)
+			if pl_out == null:
+				return null
+			core_hand_seq = int((pl_out as Dictionary)["hand_seq"])
+		elif mkey == "viewer_next_draw" and sver == 1:
+			if typeof(pl_raw) != TYPE_DICTIONARY:
+				return null
+			pl_out = _validate_viewer_next_draw(
+				pl_raw as Dictionary, seat_view_i, core_hand_seq)
 			if pl_out == null:
 				return null
 		else:
@@ -1369,15 +1379,6 @@ static func _validate_core_table(p: Dictionary, seat_view: int) -> Variant:
 			return null
 		dora_out.append(tv)
 
-	if typeof(p["viewer_next_draw"]) != TYPE_DICTIONARY:
-		return null
-	var viewer_next_draw: Dictionary = {}
-	if not (p["viewer_next_draw"] as Dictionary).is_empty():
-		var predicted: Variant = ProtocolViewCodec.tile_view_from_dict(p["viewer_next_draw"])
-		if predicted == null:
-			return null
-		viewer_next_draw = predicted as Dictionary
-
 	if typeof(p["seats"]) != TYPE_ARRAY:
 		return null
 	var seats_raw: Array = p["seats"]
@@ -1414,10 +1415,6 @@ static func _validate_core_table(p: Dictionary, seat_view: int) -> Variant:
 		var did: int = int((dora_tv as Dictionary)["instance_id"])
 		if not _collect_visible_tile_id(visible_ids, did, hs):
 			return null
-	if not viewer_next_draw.is_empty():
-		var predicted_id := int(viewer_next_draw["instance_id"])
-		if not _collect_visible_tile_id(visible_ids, predicted_id, hs):
-			return null
 	for svd2 in seats_out:
 		var seat_d: Dictionary = svd2
 		for ct in seat_d["concealed_tiles"]:
@@ -1447,8 +1444,32 @@ static func _validate_core_table(p: Dictionary, seat_view: int) -> Variant:
 		"riichi_sticks": int(sticks),
 		"live_wall_count": int(live),
 		"dora_indicators": dora_out,
-		"viewer_next_draw": viewer_next_draw,
 		"seats": seats_out,
+	}
+
+
+static func _validate_viewer_next_draw(
+	p: Dictionary, seat_view: int, core_hand_seq: int
+) -> Variant:
+	if not _has_exact_keys(p, VIEWER_NEXT_DRAW_KEYS):
+		return null
+	var recipient: Variant = _require_seat(p["recipient_seat"])
+	if recipient == null or int(recipient) != seat_view:
+		return null
+	if typeof(p["hand_seq"]) != TYPE_INT:
+		return null
+	var hand_seq := int(p["hand_seq"])
+	if hand_seq < 0 or hand_seq != core_hand_seq:
+		return null
+	var tile: Variant = ProtocolViewCodec.tile_view_from_dict(p["tile"])
+	if tile == null:
+		return null
+	if not _is_instance_id_in_hand_namespace(int((tile as Dictionary)["instance_id"]), hand_seq):
+		return null
+	return {
+		"recipient_seat": int(recipient),
+		"hand_seq": hand_seq,
+		"tile": tile,
 	}
 
 

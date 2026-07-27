@@ -11,7 +11,7 @@ const MOD_KEYS := ["module_key", "schema_version", "payload"]
 const CORE_KEYS := [
 	"recipient_seat", "hand_seq", "dealer_seat", "current_seat", "phase",
 	"round_wind", "hand_number", "honba", "riichi_sticks", "live_wall_count",
-	"dora_indicators", "viewer_next_draw", "seats",
+	"dora_indicators", "seats",
 ]
 const SEAT_KEYS := [
 	"seat", "seat_wind", "score", "concealed_tiles", "concealed_count",
@@ -82,8 +82,7 @@ func _core(recip := 0, phase: String = "DRAW", wall: int = 70) -> Dictionary:
 		"recipient_seat": recip, "hand_seq": 0, "dealer_seat": 0, "current_seat": 0,
 		"phase": phase, "round_wind": TileId.E, "hand_number": 1, "honba": 0,
 		"riichi_sticks": 0, "live_wall_count": wall,
-		"dora_indicators": [_tile(TileId.W5, 0, true)],
-		"viewer_next_draw": {}, "seats": seats,
+		"dora_indicators": [_tile(TileId.W5, 0, true)], "seats": seats,
 	}
 	assert_true(_exact(p, CORE_KEYS))
 	return p
