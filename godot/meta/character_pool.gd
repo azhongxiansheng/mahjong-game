@@ -75,7 +75,7 @@ static func all() -> Array:
 		&"char_toki_passive_v1", &"MYSTIC", &"CALM",
 		4, 20, &"starter_fast", 400))
 	pool.append(_mk(&"bao_luo", "宝络绯",
-		"虚席馆「宝络」席。胡牌时 +2 extra Dora。宝牌像红线缠上手腕。",
+		"虚席馆「宝络」席。胡牌时 +2 能力赤 Dora（不生成实体赤五）。宝牌像红线缠上手腕。",
 		&"char_kuro_passive_v1", &"PASSION", &"MYSTIC",
 		5, 0, &"starter_aggro", 400))
 

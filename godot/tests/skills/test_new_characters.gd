@@ -71,7 +71,7 @@ func test_koromo_tile_drawn_reveals_wall():
 
 # ---- Kuro ドラの愛 ----
 
-func test_kuro_adds_2_extra_dora_on_win():
+func test_kuro_adds_2_ability_red_dora_on_win():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var st: BattleState = ctx[1]
@@ -79,7 +79,8 @@ func test_kuro_adds_2_extra_dora_on_win():
 	var ab := _make_ability(&"char_kuro_passive_v1", KuroHook, [&"WIN_DECLARED_PRE"])
 	reg.register(ab, 2)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 2))
-	assert_eq(int(st.extra_dora_count[2]), 2, "kuro +2 extra dora")
+	assert_eq(int(st.extra_dora_count[2]), 0, "kuro 不得写入普通 extra dora")
+	assert_eq(int(st.extra_red_dora_count[2]), 2, "kuro +2 ability red dora")
 
 func test_kuro_no_dora_when_other_wins():
 	var ctx := _setup()
@@ -91,6 +92,8 @@ func test_kuro_no_dora_when_other_wins():
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
 	assert_eq(int(st.extra_dora_count[2]), 0, "kuro: other seat wins = no dora")
 	assert_eq(int(st.extra_dora_count[0]), 0)
+	assert_eq(int(st.extra_red_dora_count[2]), 0)
+	assert_eq(int(st.extra_red_dora_count[0]), 0)
 
 # ---- Tetsuya 玄人技 ----
 

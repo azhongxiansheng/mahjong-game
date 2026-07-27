@@ -229,7 +229,7 @@ static func all_abilities() -> Array:
 		"开局时透视全 4 席下一摸（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_toki_passive_hook.gd"))
 	pool.append(_mk_ability(&"char_kuro_passive_v1", "宝络绯·赤线缠宝",
-		"胡牌时 +2 extra Dora（角色被动）",
+		"胡牌时 +2 能力赤 Dora，不生成实体赤五（角色被动）",
 		Rarity.Kind.LEGENDARY, "res://skills/hooks/char_kuro_passive_hook.gd"))
 	pool.append(_mk_ability(&"char_momoko_passive_v1", "影立静·消影一发",
 		"立直后下一次自胡 +1 番（角色被动）",

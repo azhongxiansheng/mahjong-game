@@ -1,11 +1,11 @@
 # 宝络绯 — 角色被动「赤线缠宝」
 # ability_id: char_kuro_passive_v1（语义冻结）
-# 效果：WIN_DECLARED_PRE 自胡时 +2 extra Dora。
+# 效果：WIN_DECLARED_PRE 自胡时 +2 能力赤 Dora；不生成实体赤五。
 extends SkillHook
 
-const EXTRA_DORA: int = 2
+const EXTRA_RED_DORA: int = 2
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
 	if event.actor_seat != ctx.beneficiary_seat:
 		return
-	ctx.mark_extra_dora_for_seat(ctx.beneficiary_seat, EXTRA_DORA)
+	ctx.mark_red_dora_for_seat(ctx.beneficiary_seat, EXTRA_RED_DORA)

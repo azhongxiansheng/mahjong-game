@@ -263,6 +263,8 @@ func _append_skill_triggered_events(ctx: SkillCtx, source_type: StringName) -> v
 		}
 		if entry.has("extra_dora_delta"):
 			skill_extra["extra_dora_delta"] = int(entry.extra_dora_delta)
+		if entry.has("extra_red_dora_delta"):
+			skill_extra["extra_red_dora_delta"] = int(entry.extra_red_dora_delta)
 		var skill_ev := BattleEvent.make(
 			&"SKILL_TRIGGERED", int(entry.beneficiary_seat), null, skill_extra)
 		events.append(skill_ev)
@@ -689,6 +691,8 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileSkillAnchor, winner_seat: int,
 	result["dora_count"] = int(score_yaku_list.dora_count)
 	result["ability_extra_dora_count"] = _sum_ability_extra_dora(
 		winner_seat, pre_ctxs)
+	result["ability_extra_red_dora_count"] = _sum_ability_extra_red_dora(
+		winner_seat, pre_ctxs)
 	# 给 UI 结算 overlay 用：抽出本次胡牌命中的役名 + han（已含 evaluator
 	# 的役満/普通飜判定;skill_han/extra_dora 等修正不在此列表内）。
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
@@ -745,6 +749,8 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	result["points_won"] = int(result.get("winner_total", 0))
 	result["dora_count"] = int(score_yaku_list.dora_count)
 	result["ability_extra_dora_count"] = _sum_ability_extra_dora(
+		state.current_seat, pre_ctxs)
+	result["ability_extra_red_dora_count"] = _sum_ability_extra_red_dora(
 		state.current_seat, pre_ctxs)
 	result["yaku_names"] = _extract_yaku_names(yaku_list)
 
@@ -840,6 +846,22 @@ static func _sum_ability_extra_dora(winner_seat: int, ctxs: Array) -> int:
 					or not bool(entry.get("is_ability", false)):
 				continue
 			total += int(entry.get("extra_dora_delta", 0))
+	return total
+
+
+static func _sum_ability_extra_red_dora(winner_seat: int, ctxs: Array) -> int:
+	var total := 0
+	for ctx in ctxs:
+		if ctx == null:
+			continue
+		for entry_value in ctx.triggered_skills:
+			if not (entry_value is Dictionary):
+				continue
+			var entry: Dictionary = entry_value
+			if int(entry.get("beneficiary_seat", -1)) != winner_seat \
+					or not bool(entry.get("is_ability", false)):
+				continue
+			total += int(entry.get("extra_red_dora_delta", 0))
 	return total
 
 # 多个 ctx 的 han_multipliers 累乘（×2 + ×1.5 = ×3 复合）
