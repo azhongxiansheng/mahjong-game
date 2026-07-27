@@ -227,7 +227,7 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 
 
 func bind_character_ids(character_ids: Array) -> void:
-	_character_presentation_router.bind_characters(character_ids)
+	_character_presentation_router.bind_characters(character_ids, _reward_local_seat)
 	_sync_viewer_reveal_label()
 	_sync_character_status()
 
@@ -1110,6 +1110,29 @@ static func _result_bonus_rows(result: Dictionary, yaku_names: Array) -> Array:
 		})
 	var other_bonus := maxi(
 		int(result.get("han", 0)) - named_han - dora_count, 0)
+	var ability_han_count := clampi(
+		int(result.get("ability_extra_han_count", 0)), 0, other_bonus)
+	var remaining_ability_han := ability_han_count
+	var ability_sources: Variant = result.get("ability_extra_han_sources", [])
+	if ability_sources is Array:
+		for source_value in ability_sources as Array:
+			if not (source_value is Dictionary) or remaining_ability_han <= 0:
+				continue
+			var source := source_value as Dictionary
+			var source_han := mini(
+				maxi(int(source.get("han", 0)), 0), remaining_ability_han)
+			if source_han <= 0:
+				continue
+			var source_name := String(source.get("ability_name", "")).strip_edges()
+			rows.append({
+				"name": "能力加番" if source_name.is_empty() \
+					else "能力加番（%s）" % source_name,
+				"han": source_han,
+			})
+			remaining_ability_han -= source_han
+	if remaining_ability_han > 0:
+		rows.append({"name": "能力加番", "han": remaining_ability_han})
+	other_bonus -= ability_han_count
 	if other_bonus > 0:
 		rows.append({"name": "附加番", "han": other_bonus})
 	return rows
@@ -1858,7 +1881,6 @@ func _show_toast_text(
 		return
 	if _toast_label == null:
 		_toast_label = Label.new()
-		_toast_label.position = Vector2(420, 12)
 		_toast_label.size = Vector2(440, 44)
 		_toast_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_toast_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -2020,6 +2042,7 @@ func _begin_reward_source(epoch: String, seat: int, bootstrap_skip_history: bool
 	_reward_source_gen += 1
 	_reward_source_epoch = "%s|gen%d" % [String(epoch), _reward_source_gen]
 	_reward_local_seat = seat
+	_character_presentation_router.set_local_seat(seat)
 	_sync_character_status()
 	_reward_bootstrapped = false
 	_last_reward_head_seq = -1

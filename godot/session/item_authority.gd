@@ -496,6 +496,9 @@ static func disarm_all_active(
 static func _should_linger_character_registration(slot: CharacterAbilitySlot) -> bool:
 	if slot == null or slot.skill == null:
 		return false
+	if not bool(slot.skill.params.get(
+			"_registry_keep_registered_while_state", true)):
+		return false
 	var state_param := String(slot.skill.params.get("_registry_linger_while_param", ""))
 	return not state_param.is_empty() and bool(slot.skill.params.get(state_param, false))
 

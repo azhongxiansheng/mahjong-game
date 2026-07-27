@@ -7,6 +7,7 @@ var _profiles_by_ability: Dictionary = {}
 var _registered_characters: Dictionary = {}
 var _policies: Array = []
 var _character_ids: Array = []
+var _local_seat := 0
 
 
 func _init(profiles: Array = []) -> void:
@@ -22,10 +23,17 @@ func _init(profiles: Array = []) -> void:
 		_policies.append(CharacterVoicePolicyScript.new(profile))
 
 
-func bind_characters(character_ids: Array) -> void:
+func bind_characters(character_ids: Array, local_seat: int = 0) -> void:
 	_character_ids = character_ids.duplicate()
+	_local_seat = local_seat
 	for policy in _policies:
-		policy.bind_characters(_character_ids)
+		policy.bind_characters(_character_ids, _local_seat)
+
+
+func set_local_seat(local_seat: int) -> void:
+	_local_seat = local_seat
+	for policy in _policies:
+		policy.set_local_seat(_local_seat)
 
 
 func voice_requests_for_event(event: BattleEvent) -> Array:
@@ -62,7 +70,7 @@ func feedback_for_event(event: BattleEvent) -> Dictionary:
 	var source_event := StringName(String(event.extra.get("source_event", "")))
 	var text := profile.format_feedback(
 		String(event.extra.get("skill_name", "")),
-		source_event)
+		event.extra)
 	if text.is_empty():
 		if profile.feedback_templates_by_source.has(source_event):
 			return {"text": "", "suppress_toast": true}

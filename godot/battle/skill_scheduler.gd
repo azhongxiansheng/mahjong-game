@@ -134,6 +134,11 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 				"is_ability": c.skill.is_ability,
 			}
 			var seat := int(c.beneficiary_seat)
+			var before_han: Dictionary = snap.han_deltas
+			var han_delta := int(ctx.han_deltas.get(seat, 0)) \
+				- int(before_han.get(seat, 0))
+			if han_delta != 0:
+				triggered["han_delta"] = han_delta
 			if seat >= 0 and seat < _state.extra_dora_count.size():
 				var before_dora: Array = snap.extra_dora
 				var extra_dora_delta := int(_state.extra_dora_count[seat]) \
@@ -150,7 +155,7 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 
 func _snapshot_before(ctx: SkillCtx) -> Dictionary:
 	return {
-		"han_deltas_size": ctx.han_deltas.size(),
+		"han_deltas": ctx.han_deltas.duplicate(),
 		"han_multipliers_size": ctx.han_multipliers.size(),
 		"mangan_size": ctx.mangan_floor_seats.size(),
 		"yakuman_size": ctx.yakuman_force_seats.size(),
@@ -166,7 +171,7 @@ func _snapshot_before(ctx: SkillCtx) -> Dictionary:
 	}
 
 func _did_mutate(ctx: SkillCtx, snap: Dictionary) -> bool:
-	if ctx.han_deltas.size() != int(snap.han_deltas_size):
+	if ctx.han_deltas != snap.han_deltas:
 		return true
 	if ctx.han_multipliers.size() != int(snap.han_multipliers_size):
 		return true
