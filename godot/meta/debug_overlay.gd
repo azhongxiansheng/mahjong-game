@@ -132,7 +132,7 @@ func _refresh() -> void:
 		lines.append("riichi_sticks: %d" % int(s.riichi_sticks))
 		if s.wall:
 			lines.append("wall_live: %d" % int(s.wall.live_wall_size()))
-		lines.append("dora_indicators: %d" % s.dora_indicators.visible.size())
+		lines.append("dora_indicators: %d" % s.dora_indicators.visible_count())
 		lines.append("event_chain_depth: %d" % int(s.event_chain_depth))
 		lines.append("scores: %s" % str(s.scores))
 	else:

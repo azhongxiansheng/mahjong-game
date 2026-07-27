@@ -28,7 +28,7 @@ func test_chambo_refunds_50_percent_when_owner_is_discarder():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.E), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.E), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, ti,
 		{"discarder_seat": 0, "points_won": 8000}))
@@ -42,7 +42,7 @@ func test_chambo_no_refund_when_owner_is_not_discarder():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.E), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.E), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, ti,
 		{"discarder_seat": 2, "points_won": 8000}))
@@ -56,7 +56,7 @@ func test_chambo_no_refund_when_points_won_zero_or_missing():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.E), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.E), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, ti,
 		{"discarder_seat": 0}))  # 无 points_won

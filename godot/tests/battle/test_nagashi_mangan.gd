@@ -7,9 +7,9 @@ extends GutTest
 
 # Helper:把指定 tile_id 列表塞到 seat 弃牌堆
 func _set_discards(state: BattleState, seat: int, tile_ids: Array) -> void:
-	state.discards_per_seat[seat].clear()
+	state.seats[seat].river.restore([])
 	for tid in tile_ids:
-		state.discards_per_seat[seat].append(Tile.new(tid))
+		state.seats[seat].river.append_discard(Tile.new(tid))
 
 
 # Helper:构造 GameDriver,seat 0 是 dealer
@@ -54,7 +54,7 @@ func test_nagashi_seat_not_detected_when_called() -> void:
 	# seat 1 melds 中有一个 from_seat=0(模拟 seat 1 鸣了 seat 0 的弃牌)
 	var meld := Meld.make_pon(
 		[Tile.new(TileId.T5), Tile.new(TileId.T5), Tile.new(TileId.T5)], 0)
-	driver.battle.state.seats[1].melds.append(meld)
+	driver.battle.state.seats[1].melds.add_existing(meld)
 	var s: int = NagashiMangan.detect_winner_seat(driver.battle.state)
 	assert_eq(s, -1, "被鸣过 → 不命中")
 

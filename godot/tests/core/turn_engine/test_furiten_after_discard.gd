@@ -20,7 +20,7 @@ func _tile(tid: int, iid: int) -> Tile:
 func test_standard_furiten_after_discard_into_own_pile() -> void:
 	var bc := _make_bc()
 	var seat: Seat = bc.state.seats[0]
-	seat.hand._tiles.clear()
+	var tiles: Array[Tile] = []
 	# 14 张:6 对 + W8 + W8 → 弃 1 张 W8 后 13 张听 W8 単騎(七対子)
 	var iids := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 	var ids := [
@@ -29,7 +29,8 @@ func test_standard_furiten_after_discard_into_own_pile() -> void:
 		TileId.W8, TileId.W8,
 	]
 	for i in range(14):
-		seat.hand.add(_tile(ids[i], iids[i]))
+		tiles.append(_tile(ids[i], iids[i]))
+	assert_true(seat.hand.restore_tiles(tiles))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.DISCARD
 	# 弃一张 W8（iid=13）→ 自家弃牌堆 [W8],hand 13 张听 W8
@@ -43,7 +44,7 @@ func test_standard_furiten_after_discard_into_own_pile() -> void:
 func test_no_furiten_when_wait_not_in_own_discards() -> void:
 	var bc := _make_bc()
 	var seat: Seat = bc.state.seats[0]
-	seat.hand._tiles.clear()
+	var tiles: Array[Tile] = []
 	# 14 张:听 W9,弃 W1(W9 待牌不在自家弃牌)
 	var iids := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
 	var ids := [
@@ -52,7 +53,8 @@ func test_no_furiten_when_wait_not_in_own_discards() -> void:
 		TileId.W7, TileId.W9,  # m1 m2m2 m3m3 m4m4 m5m5 m6m6 m7m7 m9
 	]
 	for i in range(14):
-		seat.hand.add(_tile(ids[i], iids[i]))
+		tiles.append(_tile(ids[i], iids[i]))
+	assert_true(seat.hand.restore_tiles(tiles))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.DISCARD
 	assert_true(bc.engine.discard(1))  # W1 iid=1

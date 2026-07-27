@@ -66,7 +66,7 @@ func test_akagi_passive_accumulates_only_new_live_tile_instances():
 		"下家仍有未揭示牌时，每次发动必须新增真实实体")
 	var ids: Dictionary = {}
 	for record in st.revealed_tiles:
-		var instance := (record as Dictionary).tile as TileInstance
+		var instance := (record as Dictionary).tile as TileSkillAnchor
 		ids[instance.tile.instance_id] = true
 	assert_eq(ids.size(), 13, "累计揭示不得重复同一 instance_id")
 	st.turn_count += 4

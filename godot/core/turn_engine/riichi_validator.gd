@@ -15,7 +15,7 @@ static func can_declare_riichi(seat: Seat, wall_remaining: int) -> bool:
 		return false
 	if wall_remaining < MIN_WALL_REMAINING:
 		return false
-	return WaitCalculator.wait_tiles(seat.hand, seat.melds).size() > 0
+	return WaitCalculator.wait_tiles(seat.hand, seat.melds.all()).size() > 0
 
 
 # 批量：返回弃后听牌的 physical instance_id（与 oracle 集合等价）。
@@ -27,7 +27,7 @@ static func tenpai_discard_instance_ids(hand: Hand, called_melds: Array = []) ->
 	counts.resize(34)
 	counts.fill(0)
 	var ordered: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if t == null:
 			continue
 		counts[t.id] += 1
@@ -56,7 +56,7 @@ static func tenpai_discard_instance_ids(hand: Hand, called_melds: Array = []) ->
 
 # 完整 RIICHI discard options：含门清 / 点数 / 墙 / 已立直门槛。
 # 返回 Array[{"tile_instance_id": int}]，与 BattleController offers 同形。
-# 顺序与 hand._tiles 物理顺序一致（仅保留可立直切牌）。
+# 顺序与 hand.tiles() 物理顺序一致（仅保留可立直切牌）。
 static func riichi_discard_options(seat: Seat, wall_remaining: int) -> Array:
 	if seat.riichi.declared:
 		return []
@@ -67,6 +67,6 @@ static func riichi_discard_options(seat: Seat, wall_remaining: int) -> Array:
 	if wall_remaining < MIN_WALL_REMAINING:
 		return []
 	var out: Array = []
-	for iid in tenpai_discard_instance_ids(seat.hand, seat.melds):
+	for iid in tenpai_discard_instance_ids(seat.hand, seat.melds.all()):
 		out.append({"tile_instance_id": iid})
 	return out

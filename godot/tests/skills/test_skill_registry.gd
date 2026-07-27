@@ -30,7 +30,7 @@ func test_unregister_removes_first_match():
 
 func test_register_with_tile_instance_anchor():
 	var reg := SkillRegistry.new()
-	var ti := TileInstance.make(Tile.new(TileId.W5), 0)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W5), 0)
 	reg.register(_make_skill(&"tile_skill"), ti)
 	var entry = reg.get_all_entries()[0]
 	assert_eq(entry.anchor, ti)

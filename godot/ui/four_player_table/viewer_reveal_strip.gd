@@ -20,7 +20,7 @@ func _ready() -> void:
 func set_tiles(instances: Array) -> void:
 	_instances = []
 	for value in instances:
-		if value is TileInstance and (value as TileInstance).tile != null:
+		if value is TileSkillAnchor and (value as TileSkillAnchor).tile != null:
 			_instances.append(value)
 	_rebuild()
 
@@ -32,7 +32,7 @@ func revealed_count() -> int:
 func revealed_instance_ids() -> Array:
 	var out: Array = []
 	for instance in _instances:
-		out.append(int((instance as TileInstance).tile.instance_id))
+		out.append(int((instance as TileSkillAnchor).tile.instance_id))
 	return out
 
 
@@ -74,7 +74,7 @@ func _rebuild() -> void:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_panel.add_child(label)
 	for index in range(_instances.size()):
-		var instance := _instances[index] as TileInstance
+		var instance := _instances[index] as TileSkillAnchor
 		var tile := CardTileBack.new()
 		var column := index % MAX_COLUMNS
 		var row := index / MAX_COLUMNS

@@ -277,11 +277,11 @@ func bind_battle_state(state: BattleState, hand_index: int = 0, _hpr: int = 4) -
 	_rebuild_player_hand(state.seats[0], animate_draw)
 	_prev_hand_count = hand_n
 	for s in range(4):
-		var river: Array = state.discards_per_seat[s]
+		var river: Array = state.seats[s].river.tiles()
 		var animate_disc: bool = _prev_river_count[s] >= 0 and river.size() == _prev_river_count[s] + 1
-		_rebuild_river(s, river, state.seats[s].riichi.riichi_discard_index, animate_disc)
+		_rebuild_river(s, river, state.seats[s].river.riichi_discard_index(), animate_disc)
 		_prev_river_count[s] = river.size()
-		_rebuild_melds(s, state.seats[s].melds)
+		_rebuild_melds(s, state.seats[s].melds.all())
 	for s in range(1, 4):
 		_rebuild_opponent_backs(s, state.seats[s].hand.size())
 	_rebuild_dora(state)
@@ -647,8 +647,8 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var drawn_iid: int = seat.last_drawn_instance_id
 	var found_drawn := false
 	if Tile.is_valid_instance_id(drawn_iid):
-		for i in range(seat.hand._tiles.size()):
-			var t: Tile = seat.hand._tiles[i]
+		for i in range(seat.hand.tiles().size()):
+			var t: Tile = seat.hand.tiles()[i]
 			if t.instance_id == drawn_iid and not found_drawn:
 				drawn_tiles.append(t)
 				found_drawn = true
@@ -658,11 +658,11 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 			# instance 不在 hand → 不拆
 			sorted_entries.clear()
 			drawn_tiles.clear()
-			for i in range(seat.hand._tiles.size()):
-				sorted_entries.append({"tile": seat.hand._tiles[i], "original_index": i})
+			for i in range(seat.hand.tiles().size()):
+				sorted_entries.append({"tile": seat.hand.tiles()[i], "original_index": i})
 	else:
-		for i in range(seat.hand._tiles.size()):
-			sorted_entries.append({"tile": seat.hand._tiles[i], "original_index": i})
+		for i in range(seat.hand.tiles().size()):
+			sorted_entries.append({"tile": seat.hand.tiles()[i], "original_index": i})
 	sorted_entries.sort_custom(func(a, b) -> bool:
 		var ta: Tile = a["tile"]
 		var tb: Tile = b["tile"]
@@ -858,7 +858,7 @@ func _rebuild_dora(state: BattleState) -> void:
 		return
 	var y: float = Tile3D.TILE_D * 0.5 + 0.004
 	var i := 0
-	for ti in state.dora_indicators.visible:
+	for ti in state.dora_indicators.visible_tiles():
 		if ti == null:
 			continue
 		var tile := Tile3D.new()

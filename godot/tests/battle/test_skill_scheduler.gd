@@ -33,8 +33,8 @@ func _make_skill(
 	s.hook_script = SpyHook
 	return s
 
-func _attach_tile(skill: SkillResource, owner_seat: int, holder_seat: int = -1) -> TileInstance:
-	var ti := TileInstance.make(Tile.new(TileId.W5), owner_seat, skill)
+func _attach_tile(skill: SkillResource, owner_seat: int, holder_seat: int = -1) -> TileSkillAnchor:
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W5), owner_seat, skill)
 	ti.holder_seat = holder_seat
 	return ti
 

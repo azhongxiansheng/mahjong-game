@@ -1,5 +1,5 @@
 extends GutTest
-## TileInstance internal DTO 契约冻结（非公开 TileView）。
+## TileSkillAnchor internal DTO 契约冻结（非公开 TileView）。
 ## exact keys 六个；skill 绝不序列化。
 
 const EXPECTED_KEYS: Array[String] = [
@@ -43,13 +43,13 @@ func _assert_exact_six_keys(d: Dictionary, label: String) -> void:
 
 
 func _assert_from_dict_rejects(input: Variant, label: String) -> void:
-	var result = TileInstance.from_dict(input)
+	var result = TileSkillAnchor.from_dict(input)
 	assert_null(result, label)
 
 
-func _make_positive_ti(skill: SkillResource = null) -> TileInstance:
+func _make_positive_ti(skill: SkillResource = null) -> TileSkillAnchor:
 	var tile := Tile.new(TileId.W5, true, 2, 987654321)
-	var ti: TileInstance = TileInstance.make(tile, 3, skill)
+	var ti: TileSkillAnchor = TileSkillAnchor.make(tile, 3, skill)
 	ti.holder_seat = 1
 	return ti
 
@@ -97,7 +97,7 @@ func test_from_dict_roundtrip_preserves_identity_and_nulls_skill() -> void:
 	assert_ne(ti.skill, null, "构造时 skill 非 null（前置）")
 
 	var d: Dictionary = ti.to_dict()
-	var restored: TileInstance = TileInstance.from_dict(d)
+	var restored: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 
 	assert_not_null(restored, "roundtrip from_dict 成功")
 	if restored == null:
@@ -131,7 +131,7 @@ func test_to_dict_output_mutation_does_not_pollute_object() -> void:
 
 func test_from_dict_copy_on_read_source_mutation_safe() -> void:
 	var src := _valid_dict()
-	var restored: TileInstance = TileInstance.from_dict(src)
+	var restored: TileSkillAnchor = TileSkillAnchor.from_dict(src)
 	assert_not_null(restored, "copy-on-read: from_dict 成功")
 	if restored == null:
 		return
@@ -157,7 +157,7 @@ func test_from_dict_copy_on_read_source_mutation_safe() -> void:
 
 func test_instance_id_boundary_negative_one() -> void:
 	var d := _valid_dict(TileId.W5, false, -1, -1, -1, -1)
-	var ti: TileInstance = TileInstance.from_dict(d)
+	var ti: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 	assert_not_null(ti, "instance_id=-1 合法")
 	if ti == null:
 		return
@@ -166,7 +166,7 @@ func test_instance_id_boundary_negative_one() -> void:
 
 func test_instance_id_boundary_zero() -> void:
 	var d := _valid_dict(TileId.W1, false, 0, 0, 0, 0)
-	var ti: TileInstance = TileInstance.from_dict(d)
+	var ti: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 	assert_not_null(ti, "instance_id=0 合法")
 	if ti == null:
 		return
@@ -177,7 +177,7 @@ func test_instance_id_boundary_max_safe() -> void:
 	var d := _valid_dict(
 		TileId.S1, false, 1, Tile.MAX_SAFE_INSTANCE_ID, 1, 2
 	)
-	var ti: TileInstance = TileInstance.from_dict(d)
+	var ti: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 	assert_not_null(ti, "instance_id=MAX 合法")
 	if ti == null:
 		return
@@ -341,7 +341,7 @@ func test_from_dict_accepts_red_true_on_w5_t5_s5() -> void:
 	]
 	for c in fives:
 		var d := _valid_dict(c[1], true, 0, 0, 0, 0)
-		var ti: TileInstance = TileInstance.from_dict(d)
+		var ti: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 		assert_not_null(ti, c[0])
 		if ti == null:
 			continue
@@ -368,7 +368,7 @@ func test_from_dict_rejects_seat_out_of_range() -> void:
 func test_from_dict_accepts_seat_boundary_neg1_to_3() -> void:
 	for seat in [-1, 0, 1, 2, 3]:
 		var d := _valid_dict(TileId.W1, false, seat, 0, seat, seat)
-		var ti: TileInstance = TileInstance.from_dict(d)
+		var ti: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 		assert_not_null(ti, "accept:seat:%d" % seat)
 		if ti == null:
 			continue

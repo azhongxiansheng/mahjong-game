@@ -7,7 +7,7 @@ class_name NagashiMangan
 # 扫 BattleState 4 座位,首个满足条件的返回 seat_id;无则 -1。
 static func detect_winner_seat(state: BattleState) -> int:
 	for s in range(4):
-		var discards: Array = state.discards_per_seat[s]
+		var discards: Array = state.seats[s].river.tiles()
 		if discards.is_empty():
 			continue
 		var all_yaochu: bool = true
@@ -19,7 +19,7 @@ static func detect_winner_seat(state: BattleState) -> int:
 			continue
 		var called: bool = false
 		for other_seat in state.seats:
-			for m in other_seat.melds:
+			for m in other_seat.melds.all():
 				if m != null and int(m.from_seat) == s:
 					called = true
 					break

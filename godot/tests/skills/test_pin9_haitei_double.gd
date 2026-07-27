@@ -27,7 +27,7 @@ func test_haitei_doubles_han_when_holder_self_tsumos():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.T9), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T9), 0, sk)
 	ti.holder_seat = 0
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HAITEI", 0))
@@ -39,7 +39,7 @@ func test_houtei_also_triggers():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.T9), 1, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T9), 1, sk)
 	ti.holder_seat = 1
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HOUTEI", 1))
@@ -50,7 +50,7 @@ func test_no_effect_when_actor_is_not_holder():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.T9), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.T9), 0, sk)
 	ti.holder_seat = 0
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"HAITEI", 2))

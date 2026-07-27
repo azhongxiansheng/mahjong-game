@@ -50,7 +50,7 @@ func _run(seed: int) -> void:
 		_log.append_text("%s actor=%d%s\n" % [
 			ev.type,
 			ev.actor_seat,
-			(" tile=%s" % _tile_str(ev.tile_instance.tile)) if ev.tile_instance != null else "",
+			(" tile=%s" % _tile_str(ev.tile_anchor.tile)) if ev.tile_anchor != null else "",
 		])
 
 	_summary.text = "最末事件: %s | 事件总数: %d | scores: %s" % [
@@ -61,7 +61,7 @@ func _run(seed: int) -> void:
 
 func _hand_str(hand: Hand) -> String:
 	var parts: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		parts.append(_tile_str(t))
 	return " ".join(parts)
 

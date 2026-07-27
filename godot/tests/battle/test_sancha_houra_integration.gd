@@ -24,7 +24,7 @@ func _setup_three_w5_tenpai() -> BattleController:
 	var discarded := Tile.new(TileId.W5, false, Tile.NO_OWNER, 50)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	bc.state.seats[1].hand = _build_w5_tanki_hand(TileId.S5, TileId.S6, TileId.S7, 10)
 	bc.state.seats[2].hand = _build_w5_tanki_hand(TileId.S6, TileId.S7, TileId.S8, 30)
 	bc.state.seats[3].hand = _build_w5_tanki_hand(TileId.T5, TileId.T6, TileId.T7, 50)
@@ -72,13 +72,13 @@ func test_two_ron_one_pass_not_sancha() -> void:
 func test_zero_ron_no_abortive() -> void:
 	var bc := BattleController.new(42, 0, false, TileId.E)
 	for s in bc.state.seats:
-		s.hand._tiles.clear()
+		assert_true(s.hand.restore_tiles([]))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
 	var discarded := Tile.new(TileId.W5, false, Tile.NO_OWNER, 50)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	for s in [1, 2, 3]:
 		var ctx: DecisionContext = bc.decision_context_for_seat(s)
 		assert_not_null(ctx)

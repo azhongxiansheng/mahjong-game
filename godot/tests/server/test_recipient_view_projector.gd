@@ -89,21 +89,21 @@ func _build_state() -> BattleState:
 	for i in range(4):
 		st.seats[i].points = int(st.scores[i]) + 1111 * (i + 1)
 		assert_ne(int(st.scores[i]), int(st.seats[i].points), "fixture scores≠points seat=%d" % i)
-	var d0: Tile = st.seats[0].hand._tiles[0]
+	var d0: Tile = st.seats[0].hand.tiles()[0]
 	assert_true(st.seats[0].hand.take_by_instance_id(d0.instance_id) != null)
-	st.discards_per_seat[0].append(d0)
+	st.seats[0].river.append_discard(d0)
 	# 占用集合：当前 dora/ura + 已有 river，禁止拿进副露（可见实体全局唯一）
 	var reserved: Dictionary = {}
-	for t in st.dora_indicators.visible:
+	for t in st.dora_indicators.visible_tiles():
 		reserved[int(t.instance_id)] = true
-	for t in st.dora_indicators.hidden_uradora:
+	for t in st.dora_indicators.uradora_tiles():
 		reserved[int(t.instance_id)] = true
-	for seat_river in st.discards_per_seat:
-		for rt in seat_river:
+	for state_seat in st.seats:
+		for rt in state_seat.river.tiles():
 			reserved[int(rt.instance_id)] = true
-	# 从 st.wall._tiles 按同 tile_id 取 3 张真实本局实体（禁 new Tile / 伪造 iid）
+	# 从 st.wall.authority_tiles() 按同 tile_id 取 3 张真实本局实体（禁 new Tile / 伪造 iid）
 	var by_tid: Dictionary = {}
-	for wt in st.wall._tiles:
+	for wt in st.wall.authority_tiles():
 		if wt == null or not (wt is Tile):
 			continue
 		var cand: Tile = wt as Tile
@@ -144,30 +144,29 @@ func _build_state() -> BattleState:
 	assert_ne(JSON.stringify(domain_iids), JSON.stringify(iid_asc), "fixture 领域序≠iid 升序")
 	assert_eq(int(domain[0].id), int(domain[1].id))
 	assert_eq(int(domain[1].id), int(domain[2].id))
-	# called 属于三张；from_seat 合法（≠ holder seat1）；meld_id 用 allocate_meld_id
+	# called 属于三张；from_seat 合法（≠ holder seat1）；集合分配 meld_id
 	var called: Tile = domain[0]
 	var from_seat: int = 0
 	assert_ne(from_seat, 1, "PON from_seat 不得等于 holder")
-	var pon: Meld = Meld.make_pon(domain, from_seat, st.seats[1].allocate_meld_id(), called)
+	var pon: Meld = st.seats[1].melds.add_pon(domain, from_seat, called)
 	assert_not_null(pon)
 	assert_eq(pon.kind, Meld.Kind.PON)
 	assert_eq(_iids(pon.tiles), domain_iids)
 	assert_eq(int(pon.called_tile_instance_id), int(called.instance_id))
 	assert_eq(int(pon.from_seat), from_seat)
 	assert_true(Meld.is_valid_meld_id(pon.meld_id))
-	st.seats[1].melds.append(pon)
 	if st.seats[0].hand.size() > 0:
-		st.seats[0].last_drawn_instance_id = st.seats[0].hand._tiles[0].instance_id
+		st.seats[0].last_drawn_instance_id = st.seats[0].hand.tiles()[0].instance_id
 	if st.seats[2].hand.size() > 0:
-		st.seats[2].last_drawn_instance_id = st.seats[2].hand._tiles[0].instance_id
-	var r3: Tile = st.seats[3].hand._tiles[0]
+		st.seats[2].last_drawn_instance_id = st.seats[2].hand.tiles()[0].instance_id
+	var r3: Tile = st.seats[3].hand.tiles()[0]
 	assert_true(st.seats[3].hand.take_by_instance_id(r3.instance_id) != null)
-	st.discards_per_seat[3].append(r3)
+	st.seats[3].river.append_discard(r3)
 	st.seats[3].riichi.declare(1, true)
-	st.seats[3].riichi.riichi_discard_index = 0
+	assert_true(st.seats[3].river.restore(st.seats[3].river.tiles(), 0))
 	assert_true(st.wall.live_wall_size() > 0)
-	assert_true(st.dora_indicators.visible.size() > 0)
-	assert_true(st.dora_indicators.hidden_uradora.size() > 0)
+	assert_true(st.dora_indicators.visible_tiles().size() > 0)
+	assert_true(st.dora_indicators.uradora_tiles().size() > 0)
 	return st
 
 
@@ -218,7 +217,7 @@ func test_exact_schema_privacy_last_drawn() -> void:
 			var ri = st.seats[i].riichi
 			var dec: bool = ri.declared if ri else false
 			var dbl: bool = ri.double_riichi if ri else false
-			var ridx: int = ri.riichi_discard_index if ri else -1
+			var ridx: int = st.seats[i].river.riichi_discard_index() if ri else -1
 			assert_eq(bool(sv["riichi_declared"]), dec)
 			assert_eq(bool(sv["riichi_double"]), dbl)
 			assert_eq(int(sv["riichi_discard_index"]), ridx)
@@ -231,7 +230,7 @@ func test_exact_schema_privacy_last_drawn() -> void:
 			if i == recip:
 				var tiles: Array = sv["concealed_tiles"]
 				assert_eq(tiles.size(), n)
-				assert_eq(JSON.stringify(tiles), JSON.stringify(_tvs(st.seats[i].hand._tiles)))
+				assert_eq(JSON.stringify(tiles), JSON.stringify(_tvs(st.seats[i].hand.tiles())))
 				var ld: int = st.seats[i].last_drawn_instance_id
 				var vld: int = int(sv["last_drawn_tile_instance_id"])
 				if Tile.is_valid_instance_id(ld):
@@ -256,14 +255,14 @@ func test_public_order_codec_riichi_no_leak() -> void:
 	if v.is_empty():
 		return
 	assert_eq(JSON.stringify(v["dora_indicators"]),
-		JSON.stringify(_tvs(st.dora_indicators.visible)), "dora 保序")
+		JSON.stringify(_tvs(st.dora_indicators.visible_tiles())), "dora 保序")
 	for d in v["dora_indicators"]:
 		assert_not_null(ProtocolViewCodec.tile_view_from_dict(d))
 	var s0: Dictionary = (v["seats"] as Array)[0]
 	assert_eq(JSON.stringify((s0["river"] as Array)[0]),
-		JSON.stringify(ProtocolViewCodec.tile_view_from_tile(st.discards_per_seat[0][0])))
+		JSON.stringify(ProtocolViewCodec.tile_view_from_tile(st.seats[0].river.tiles()[0])))
 	# MeldView.tiles 严格保持领域 meld.tiles 顺序；不得按 iid 排序
-	var dm: Meld = st.seats[1].melds[0]
+	var dm: Meld = st.seats[1].melds.all()[0]
 	var domain_iids := _iids(dm.tiles)
 	var iid_asc := domain_iids.duplicate()
 	iid_asc.sort()
@@ -292,8 +291,8 @@ func test_authorized_reveal_uses_existing_concealed_tiles_without_cross_seat_lea
 	var st := _build_state()
 	if st == null:
 		return
-	var target_tile: Tile = st.seats[1].hand._tiles[0]
-	var instance := TileInstance.make(target_tile, 1)
+	var target_tile: Tile = st.seats[1].hand.first()
+	var instance := TileSkillAnchor.make(target_tile, 1)
 	instance.holder_seat = 1
 	st.revealed_tiles = [{"tile": instance, "visible_to": [0]}]
 	var owner_view := _dict(_project(st, 0))
@@ -334,7 +333,7 @@ func test_deep_copy_and_invalid() -> void:
 		return
 	var wall_n: int = st.wall.live_wall_size()
 	var hand_n: int = st.seats[0].hand.size()
-	var ura_n: int = st.dora_indicators.hidden_uradora.size()
+	var ura_n: int = st.dora_indicators.uradora_tiles().size()
 	var v1 := _dict(_project(st, 0))
 	assert_false(v1.is_empty())
 	if v1.is_empty():
@@ -346,7 +345,7 @@ func test_deep_copy_and_invalid() -> void:
 	(v1["dora_indicators"] as Array).clear()
 	assert_eq(st.wall.live_wall_size(), wall_n)
 	assert_eq(st.seats[0].hand.size(), hand_n)
-	assert_eq(st.dora_indicators.hidden_uradora.size(), ura_n)
+	assert_eq(st.dora_indicators.uradora_tiles().size(), ura_n)
 	assert_eq(JSON.stringify(_dict(_project(st, 0))), snap)
 	assert_null(_project(null, 0))
 	assert_null(_project(st, -1))

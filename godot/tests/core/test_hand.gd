@@ -65,11 +65,11 @@ func test_clone_preserves_owner_seat():
 	var c := h.clone()
 	assert_eq(c.size(), 3)
 	# 内部顺序保留
-	assert_eq(c._tiles[0].owner_seat, 0)
-	assert_eq(c._tiles[1].owner_seat, 2)
-	assert_eq(c._tiles[2].owner_seat, 1)
+	assert_eq(c.tile_at(0).owner_seat, 0)
+	assert_eq(c.tile_at(1).owner_seat, 2)
+	assert_eq(c.tile_at(2).owner_seat, 1)
 	# 赤 dora 也保留
-	assert_true(c._tiles[2].is_red_dora)
+	assert_true(c.tile_at(2).is_red_dora)
 
 func test_to_owner_array_in_internal_order():
 	var h := Hand.new()

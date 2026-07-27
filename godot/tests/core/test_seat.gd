@@ -1,7 +1,7 @@
 extends GutTest
 
 # Seat (spec §5)：一座位的数据 + 简单 helper。
-# 弃牌河不存这（由 BattleState.discards_per_seat 单独维护，risk plan §风险 #4）。
+# Seat 作为聚合根同时持有手牌、牌河与副露。
 # deck_owner 字段属于卡组系统（里程碑 4），0e 不实装。
 
 func test_factory_defaults():
@@ -48,14 +48,14 @@ func test_is_concealed_hand_with_ankan_still_concealed():
 	var ankan := Meld.make_ankan([
 		Tile.new(TileId.W1), Tile.new(TileId.W1),
 		Tile.new(TileId.W1), Tile.new(TileId.W1)])
-	s.melds.append(ankan)
+	s.melds.add_existing(ankan)
 	assert_true(s.is_concealed_hand(), "暗杠不破坏门清")
 
 func test_is_concealed_hand_with_pon_breaks():
 	var s := Seat.new(0, TileId.E)
 	var pon := Meld.make_pon(
 		[Tile.new(TileId.W1), Tile.new(TileId.W1), Tile.new(TileId.W1)], 1)
-	s.melds.append(pon)
+	s.melds.add_existing(pon)
 	assert_false(s.is_concealed_hand(), "pon 破坏门清")
 
 func test_adjust_points():
@@ -73,9 +73,19 @@ func test_meld_ids_are_unique_across_all_seats_and_monotonic_per_seat() -> void:
 	var first_ids: Array = []
 	var second_ids: Array = []
 	for seat in seats:
-		first_ids.append(seat.allocate_meld_id())
+		var first: Meld = seat.melds.add_ankan([
+			Tile.new(TileId.W1), Tile.new(TileId.W1),
+			Tile.new(TileId.W1), Tile.new(TileId.W1),
+		])
+		assert_not_null(first)
+		first_ids.append(first.meld_id)
 	for seat in seats:
-		second_ids.append(seat.allocate_meld_id())
+		var second: Meld = seat.melds.add_ankan([
+			Tile.new(TileId.W2), Tile.new(TileId.W2),
+			Tile.new(TileId.W2), Tile.new(TileId.W2),
+		])
+		assert_not_null(second)
+		second_ids.append(second.meld_id)
 	assert_eq(first_ids, [0, 1, 2, 3], "首个副露 ID 按座位唯一")
 	assert_eq(second_ids, [4, 5, 6, 7], "同座下一副露跨过四席且保持全局唯一")
 	var all_ids: Array = first_ids + second_ids
@@ -97,7 +107,7 @@ func _tile(tid: int, iid: int, red: bool = false, p_owner: int = Tile.NO_OWNER) 
 func _hand_snapshot(seat: Seat) -> Array:
 	# 有序实体指纹：id / instance_id / is_red_dora / owner_seat
 	var out: Array = []
-	for t in seat.hand._tiles:
+	for t in seat.hand.tiles():
 		out.append({
 			"id": t.id,
 			"instance_id": t.instance_id,
@@ -150,8 +160,8 @@ func test_discard_from_hand_does_not_fallback_to_tile_id() -> void:
 
 	assert_true(s.discard_from_hand(TileId.W5), "参数是 instance_id，值=TileId.W5 时命中 W3 实体")
 	assert_eq(s.hand.size(), 1)
-	assert_eq(s.hand._tiles[0].id, TileId.W5, "W5 实体必须保留（无 tile_id fallback）")
-	assert_eq(s.hand._tiles[0].instance_id, 200)
+	assert_eq(s.hand.tiles()[0].id, TileId.W5, "W5 实体必须保留（无 tile_id fallback）")
+	assert_eq(s.hand.tiles()[0].instance_id, 200)
 
 
 func test_discard_from_hand_invalid_or_missing_instance_id_returns_false_zero_mod() -> void:

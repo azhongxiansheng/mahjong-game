@@ -60,7 +60,7 @@ func _collect(event: BattleEvent) -> Array:
 				"reg_order": entry.reg_order,
 			})
 		else:
-			var ti: TileInstance = entry.anchor
+			var ti: TileSkillAnchor = entry.anchor
 			if skill.owner_triggers.has(event.type):
 				candidates.append({
 					"group": _GROUP_OWNER,

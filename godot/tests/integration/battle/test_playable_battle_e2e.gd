@@ -17,7 +17,7 @@ const SCRIPTED_DECISION_PORT := preload("res://tests/_fixtures/scripted_decision
 func _respond(kind: StringName, _context: Dictionary, bc: PlayableBattleController) -> Dictionary:
 	match kind:
 		&"discard":
-			var hand_tiles: Array[Tile] = bc.state.seats[0].hand._tiles
+			var hand_tiles: Array[Tile] = bc.state.seats[0].hand.tiles()
 			if not hand_tiles.is_empty():
 				return {
 					"action": "discard",

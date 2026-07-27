@@ -27,7 +27,7 @@ func test_iron_wall_subtracts_1_han_when_owner_is_discarder():
 	var reg: SkillRegistry = arr[0]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W9), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W9), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(
 		BattleEvent.make(&"RON_DECLARED", 1, ti, {"discarder_seat": 0})
@@ -40,7 +40,7 @@ func test_iron_wall_does_nothing_when_owner_is_not_discarder():
 	var reg: SkillRegistry = arr[0]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W9), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W9), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(
 		BattleEvent.make(&"RON_DECLARED", 1, ti, {"discarder_seat": 2})
@@ -53,7 +53,7 @@ func test_iron_wall_does_nothing_when_discarder_seat_missing():
 	var reg: SkillRegistry = arr[0]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W9), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W9), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, ti))
 	assert_eq(int(out_ctx.han_deltas.get(1, 0)), 0, "缺 discarder_seat → 当不触发处理")

@@ -20,21 +20,21 @@ func _set_hand(seat: Seat, tiles: Array) -> void:
 
 func _hand_iids(seat: Seat) -> Array:
 	var out: Array = []
-	for t in seat.hand._tiles:
+	for t in seat.hand.tiles():
 		out.append(t.instance_id)
 	return out
 
 
 func _river_iids(state: BattleState, seat_id: int) -> Array:
 	var out: Array = []
-	for t in state.discards_per_seat[seat_id]:
+	for t in state.seats[seat_id].river.tiles():
 		out.append(t.instance_id)
 	return out
 
 
 func _meld_snapshot(seat: Seat) -> Array:
 	var out: Array = []
-	for m in seat.melds:
+	for m in seat.melds.all():
 		var tile_iids: Array = []
 		for t in m.tiles:
 			tile_iids.append(t.instance_id)
@@ -92,9 +92,9 @@ func test_discard_by_instance_id_selects_exact_entity() -> void:
 
 	assert_true(e.discard(302))
 	assert_eq(_hand_iids(e.state.seats[0]), [301, 303])
-	assert_eq(e.state.discards_per_seat[0].size(), 1)
-	assert_eq(e.state.discards_per_seat[0][0].instance_id, 302)
-	assert_true(e.state.discards_per_seat[0][0].is_red_dora)
+	assert_eq(e.state.seats[0].river.size(), 1)
+	assert_eq(e.state.seats[0].river.tiles()[0].instance_id, 302)
+	assert_true(e.state.seats[0].river.tiles()[0].is_red_dora)
 	assert_eq(e.state.seats[0].last_drawn_instance_id, Tile.INVALID_INSTANCE_ID)
 	assert_eq(e.state.phase, BattlePhase.Kind.CLAIM)
 
@@ -111,7 +111,7 @@ func test_discard_rejects_invalid_and_missing_zero_mod() -> void:
 	assert_false(e.discard(Tile.INVALID_INSTANCE_ID))
 	assert_false(e.discard(9999))
 	assert_eq(_hand_iids(e.state.seats[0]), hand_snap)
-	assert_eq(e.state.discards_per_seat[0].size(), 0)
+	assert_eq(e.state.seats[0].river.size(), 0)
 	assert_eq(e.state.phase, phase)
 
 
@@ -141,7 +141,7 @@ func test_declare_riichi_and_discard_atomic_success() -> void:
 	assert_eq(e.state.riichi_sticks, 1)
 	assert_eq(e.state.seats[0].hand.size(), 13)
 	assert_null(e.state.seats[0].hand.find_by_instance_id(900))
-	assert_eq(e.state.discards_per_seat[0][-1].instance_id, 900)
+	assert_eq(e.state.seats[0].river.tiles()[-1].instance_id, 900)
 	assert_eq(e.state.phase, BattlePhase.Kind.CLAIM)
 	assert_eq(e.state.seats[0].last_drawn_instance_id, Tile.INVALID_INSTANCE_ID)
 
@@ -168,7 +168,7 @@ func test_declare_riichi_and_discard_fail_not_tenpai_zero_mod() -> void:
 	assert_false(e.declare_riichi_and_discard(0, 1))
 	assert_false(e.state.seats[0].riichi.declared)
 	assert_eq(_hand_iids(e.state.seats[0]), hand_snap)
-	assert_eq(e.state.discards_per_seat[0].size(), 0)
+	assert_eq(e.state.seats[0].river.size(), 0)
 	assert_eq(e.state.seats[0].points, points)
 	assert_eq(e.state.riichi_sticks, sticks)
 	assert_eq(e.state.phase, phase)
@@ -186,7 +186,7 @@ func test_declare_riichi_and_discard_fail_invalid_id_zero_mod() -> void:
 	assert_false(e.declare_riichi_and_discard(0, 9999))
 	assert_false(e.state.seats[0].riichi.declared)
 	assert_eq(_hand_iids(e.state.seats[0]), hand_snap)
-	assert_eq(e.state.discards_per_seat[0].size(), 0)
+	assert_eq(e.state.seats[0].river.size(), 0)
 	assert_eq(e.state.seats[0].points, points)
 	assert_eq(e.state.riichi_sticks, sticks)
 
@@ -251,14 +251,14 @@ func test_apply_chi_uses_explicit_entities() -> void:
 
 	assert_true(e.apply_chi(1, 500, [501, 502]))
 	assert_eq(e.state.seats[1].melds.size(), 1)
-	var m: Meld = e.state.seats[1].melds[0]
+	var m: Meld = e.state.seats[1].melds.all()[0]
 	assert_eq(m.kind, Meld.Kind.CHI)
 	assert_ne(m.meld_id, Tile.INVALID_INSTANCE_ID)
 	assert_eq(m.called_tile_instance_id, 500)
 	assert_eq(m.called_tile.instance_id, 500)
 	assert_eq(m.from_seat, 0)
 	assert_eq(e.state.seats[1].hand.size(), 0)
-	assert_eq(e.state.discards_per_seat[0].size(), 0)
+	assert_eq(e.state.seats[0].river.size(), 0)
 	assert_eq(e.state.current_seat, 1)
 
 
@@ -312,7 +312,7 @@ func test_apply_pon_uses_explicit_entities_and_illegal_zero_mod() -> void:
 	assert_eq(e.state.current_seat, 0)
 
 	assert_true(e.apply_pon(2, 600, [601, 602]))
-	var m: Meld = e.state.seats[2].melds[0]
+	var m: Meld = e.state.seats[2].melds.all()[0]
 	assert_eq(m.kind, Meld.Kind.PON)
 	assert_eq(m.called_tile_instance_id, 600)
 	assert_true(m.called_tile.is_red_dora)
@@ -342,9 +342,9 @@ func test_apply_minkan_explicit_entities_illegal_zero_mod() -> void:
 	assert_eq(e.state.seats[2].melds.size(), 0)
 
 	assert_true(e.apply_minkan(2, 700, [701, 702, 703]))
-	assert_eq(e.state.seats[2].melds[0].kind, Meld.Kind.MINKAN)
-	assert_eq(e.state.seats[2].melds[0].called_tile_instance_id, 700)
-	assert_eq(e.state.seats[2].melds[0].tiles.size(), 4)
+	assert_eq(e.state.seats[2].melds.all()[0].kind, Meld.Kind.MINKAN)
+	assert_eq(e.state.seats[2].melds.all()[0].called_tile_instance_id, 700)
+	assert_eq(e.state.seats[2].melds.all()[0].tiles.size(), 4)
 
 
 func test_apply_ankan_explicit_entities_illegal_zero_mod() -> void:
@@ -368,9 +368,9 @@ func test_apply_ankan_explicit_entities_illegal_zero_mod() -> void:
 	assert_eq(e.state.phase, phase)
 
 	assert_true(e.apply_ankan(0, [801, 802, 803, 804]))
-	assert_eq(e.state.seats[0].melds[0].kind, Meld.Kind.ANKAN)
-	assert_eq(e.state.seats[0].melds[0].tiles.size(), 4)
-	assert_eq(e.state.seats[0].melds[0].from_seat, Meld.NO_SOURCE_SEAT)
+	assert_eq(e.state.seats[0].melds.all()[0].kind, Meld.Kind.ANKAN)
+	assert_eq(e.state.seats[0].melds.all()[0].tiles.size(), 4)
+	assert_eq(e.state.seats[0].melds.all()[0].from_seat, Meld.NO_SOURCE_SEAT)
 	assert_ne(e.state.seats[0].last_drawn_instance_id, Tile.INVALID_INSTANCE_ID)
 
 
@@ -387,7 +387,7 @@ func test_apply_added_kan_preserves_meld_identity() -> void:
 		_tile(TileId.W5, 901, false), _tile(TileId.W5, 902, false),
 	])
 	assert_true(e.apply_pon(1, 900, [901, 902]))
-	var m0: Meld = e.state.seats[1].melds[0]
+	var m0: Meld = e.state.seats[1].melds.all()[0]
 	var keep_meld_id: int = m0.meld_id
 	var keep_called: int = m0.called_tile_instance_id
 	var keep_from: int = m0.from_seat
@@ -402,7 +402,7 @@ func test_apply_added_kan_preserves_meld_identity() -> void:
 
 	assert_true(e.apply_added_kan(1, keep_meld_id, 903))
 	assert_eq(e.state.seats[1].melds.size(), 1)
-	var m1: Meld = e.state.seats[1].melds[0]
+	var m1: Meld = e.state.seats[1].melds.all()[0]
 	assert_eq(m1.kind, Meld.Kind.ADDED_KAN)
 	assert_eq(m1.meld_id, keep_meld_id, "加杠保留原 meld_id")
 	assert_eq(m1.called_tile_instance_id, keep_called, "保留 called")
@@ -429,7 +429,7 @@ func test_apply_added_kan_illegal_zero_mod() -> void:
 		_tile(TileId.W5, 901), _tile(TileId.W5, 902),
 	])
 	assert_true(e.apply_pon(1, 900, [901, 902]))
-	var meld_id: int = e.state.seats[1].melds[0].meld_id
+	var meld_id: int = e.state.seats[1].melds.all()[0].meld_id
 	var fourth := _tile(TileId.W5, 903)
 	var junk := _tile(TileId.S1, 904)
 	e.state.seats[1].hand.add(fourth)
@@ -464,8 +464,8 @@ func test_apply_ron_rejects_invalid_accepts_river_entity() -> void:
 	_set_hand(e.state.seats[2], _standard_tenpai_waiting_w5(2000))
 	# 契约：ClaimValidator 认定可荣
 	assert_true(ClaimValidator.can_ron(
-		e.state.seats[2].hand, e.state.seats[2].melds,
-		e.state.discards_per_seat[0][-1], e.state.seats[2].furiten))
+		e.state.seats[2].hand, e.state.seats[2].melds.all(),
+		e.state.seats[0].river.tiles()[-1], e.state.seats[2].furiten))
 	var phase := e.state.phase
 	var cur := e.state.current_seat
 
@@ -487,8 +487,8 @@ func test_apply_ron_rejects_non_winning_identity_ok_zero_mod() -> void:
 	assert_true(e.discard(1050))
 	_set_hand(e.state.seats[2], _standard_tenpai_waiting_w5(2100))
 	assert_false(ClaimValidator.can_ron(
-		e.state.seats[2].hand, e.state.seats[2].melds,
-		e.state.discards_per_seat[0][-1], e.state.seats[2].furiten),
+		e.state.seats[2].hand, e.state.seats[2].melds.all(),
+		e.state.seats[0].river.tiles()[-1], e.state.seats[2].furiten),
 		"白板不完成此型")
 
 	var phase := e.state.phase
@@ -517,8 +517,8 @@ func test_apply_ron_rejects_furiten_permanent_zero_mod() -> void:
 	_set_hand(e.state.seats[2], _standard_tenpai_waiting_w5(2200))
 	e.state.seats[2].furiten.permanent = true
 	assert_false(ClaimValidator.can_ron(
-		e.state.seats[2].hand, e.state.seats[2].melds,
-		e.state.discards_per_seat[0][-1], e.state.seats[2].furiten))
+		e.state.seats[2].hand, e.state.seats[2].melds.all(),
+		e.state.seats[0].river.tiles()[-1], e.state.seats[2].furiten))
 
 	var phase := e.state.phase
 	var cur := e.state.current_seat
@@ -546,8 +546,8 @@ func test_apply_ron_rejects_furiten_temporary_zero_mod() -> void:
 	_set_hand(e.state.seats[2], _standard_tenpai_waiting_w5(2300))
 	e.state.seats[2].furiten.temporary = true
 	assert_false(ClaimValidator.can_ron(
-		e.state.seats[2].hand, e.state.seats[2].melds,
-		e.state.discards_per_seat[0][-1], e.state.seats[2].furiten))
+		e.state.seats[2].hand, e.state.seats[2].melds.all(),
+		e.state.seats[0].river.tiles()[-1], e.state.seats[2].furiten))
 
 	var phase := e.state.phase
 	var cur := e.state.current_seat
@@ -649,13 +649,13 @@ func test_apply_tsumo_rejects_non_winning_last_drawn_zero_mod() -> void:
 	e.state.seats[0].last_drawn_instance_id = drawn_iid
 	# 契约：14 张中去掉 last_drawn 后 + last_drawn 不是和牌
 	var without := Hand.new()
-	for t in e.state.seats[0].hand._tiles:
+	for t in e.state.seats[0].hand.tiles():
 		if t.instance_id != drawn_iid:
 			without.add(t)
 	var drawn: Tile = e.state.seats[0].hand.find_by_instance_id(drawn_iid)
 	assert_not_null(drawn)
 	assert_eq(without.size(), 13)
-	assert_false(ClaimValidator.can_tsumo(without, e.state.seats[0].melds, drawn))
+	assert_false(ClaimValidator.can_tsumo(without, e.state.seats[0].melds.all(), drawn))
 
 	var phase := e.state.phase
 	var cur := e.state.current_seat

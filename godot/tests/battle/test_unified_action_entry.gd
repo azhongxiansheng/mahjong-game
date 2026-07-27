@@ -103,7 +103,7 @@ func _ctx(bc: Object, seat: int) -> DecisionContext:
 	return raw as DecisionContext
 func _hand_iids(seat: Seat) -> Array:
 	var out: Array = []
-	for t in seat.hand._tiles:
+	for t in seat.hand.tiles():
 		out.append(int(t.instance_id))
 	return out
 func _domain_fixture(bc: Object, focus_seat: int) -> Dictionary:
@@ -111,12 +111,12 @@ func _domain_fixture(bc: Object, focus_seat: int) -> Dictionary:
 	var seat: Seat = state.seats[focus_seat]
 	var current_discard_iid: int = -1
 	var river_iids: Array = []
-	for t in state.discards_per_seat[focus_seat]:
+	for t in state.seats[focus_seat].river.tiles():
 		river_iids.append(int((t as Tile).instance_id))
 	for s in range(4):
-		var river: Array = state.discards_per_seat[s]
+		var river: DiscardRiver = state.seats[s].river
 		if not river.is_empty():
-			current_discard_iid = int((river[-1] as Tile).instance_id)
+			current_discard_iid = int(river.last_tile().instance_id)
 	return {
 		"phase": int(state.phase), "current_seat": int(state.current_seat),
 		"hand_seq": int(state.hand_seq), "focus_hand_iids": _hand_iids(seat),
@@ -311,7 +311,7 @@ func test_reject_stable_codes_domain_zero_mod() -> void:
 	var good: int = int(offers[0])
 	var missing_from_hand := Tile.INVALID_INSTANCE_ID
 	var actor_seat: Seat = (bc.get("state") as BattleState).seats[seat] as Seat
-	for tile in (bc.get("state") as BattleState).wall._tiles:
+	for tile in (bc.get("state") as BattleState).wall.authority_tiles():
 		var candidate_iid: int = int((tile as Tile).instance_id)
 		if actor_seat.hand.find_by_instance_id(candidate_iid) == null:
 			missing_from_hand = candidate_iid

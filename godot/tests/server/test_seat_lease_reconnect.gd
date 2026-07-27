@@ -419,15 +419,15 @@ func _count_kind_session(session: HeadlessRoomSession, seat: int, kind: String) 
 ## 七对听 + 摸 W9 进入可 TSUMO 的 DISCARD 相位（实体来自真实 Wall）。
 func _force_seat0_tsumo_ready(bc: BattleController) -> void:
 	var used: Dictionary = {}
-	var draw_floor: int = int(bc.state.wall._draw_index)
+	var draw_floor: int = int(bc.state.wall.draw_index())
 	for s in range(4):
 		var seat: Seat = bc.state.seats[s]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.furiten = FuritenState.new()
-		bc.state.discards_per_seat[s] = []
-	bc.state.wall._draw_index = 0
+		bc.state.seats[s].river.restore([])
+	bc.state.wall.set_draw_index(0)
 	var ids := [
 		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
 		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
@@ -448,7 +448,7 @@ func _force_seat0_tsumo_ready(bc: BattleController) -> void:
 	bc.state.phase = BattlePhase.Kind.DISCARD
 	bc.set("_settled", false)
 	bc.set("_active_window", null)
-	bc.state.wall._draw_index = maxi(draw_floor, int(bc.state.wall._draw_index))
+	bc.state.wall.set_draw_index(maxi(draw_floor, int(bc.state.wall.draw_index())))
 	var ctx: DecisionContext = bc.decision_context_for_seat(0)
 	assert_not_null(ctx)
 	assert_true(ctx.has_kind("TSUMO"), "fixture 须 offer TSUMO")
@@ -456,10 +456,10 @@ func _force_seat0_tsumo_ready(bc: BattleController) -> void:
 
 func _draw_live_tid_local(bc: BattleController, tid: int, used: Dictionary) -> Tile:
 	var w: Wall = bc.state.wall
-	var end_i: int = w._tiles.size() - w._dead_wall_size
+	var end_i: int = w.authority_tiles().size() - w.dead_wall_size()
 	var live_idx := -1
-	for i in range(w._draw_index, end_i):
-		var t: Tile = w._tiles[i]
+	for i in range(w.draw_index(), end_i):
+		var t: Tile = w.authority_tiles()[i]
 		if t == null or int(t.id) != tid:
 			continue
 		if used.has(int(t.instance_id)):
@@ -469,10 +469,8 @@ func _draw_live_tid_local(bc: BattleController, tid: int, used: Dictionary) -> T
 	assert_true(live_idx >= 0, "live 区无 id=%d" % tid)
 	if live_idx < 0:
 		return null
-	if live_idx != w._draw_index:
-		var tmp: Tile = w._tiles[w._draw_index]
-		w._tiles[w._draw_index] = w._tiles[live_idx]
-		w._tiles[live_idx] = tmp
+	if live_idx != w.draw_index():
+		assert_true(w.move_live_index_to_top(live_idx))
 	var drawn: Tile = w.draw()
 	if drawn != null:
 		used[int(drawn.instance_id)] = true

@@ -17,12 +17,13 @@ func before_each() -> void:
 
 func _set_hand(seat: Seat, ids: Array, start_serial: int = 10) -> void:
 	# hand_seq=0 命名空间 serial 仅 0..135
-	seat.hand._tiles.clear()
+	var tiles: Array[Tile] = []
 	var serial: int = start_serial
 	for id in ids:
 		assert_true(serial <= 135, "fixture serial 必须落在 hand_seq 命名空间")
-		seat.hand.add(Tile.new(id, false, 0, serial))
+		tiles.append(Tile.new(id, false, 0, serial))
 		serial += 1
+	assert_true(seat.hand.restore_tiles(tiles))
 
 
 func test_player_ankan_via_turn_action_does_not_end_hand() -> void:
@@ -35,7 +36,7 @@ func test_player_ankan_via_turn_action_does_not_end_hand() -> void:
 	])
 	_bc.state.current_seat = 0
 	_bc.state.phase = BattlePhase.Kind.DISCARD
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	var ctx: DecisionContext = _bc.decision_context_for_seat(0)
 	assert_not_null(ctx)
 	assert_true(ctx.has_kind("KAN"))
@@ -54,8 +55,8 @@ func test_player_ankan_via_turn_action_does_not_end_hand() -> void:
 	var resp: ActionResolution = _bc.apply_action(act, ActionSource.HUMAN)
 	assert_true(resp.accepted)
 	assert_eq(seat.melds.size(), 1)
-	assert_eq(seat.melds[0].kind, Meld.Kind.ANKAN)
-	assert_eq(seat.melds[0].tiles.size(), 4)
+	assert_eq(seat.melds.all()[0].kind, Meld.Kind.ANKAN)
+	assert_eq(seat.melds.all()[0].tiles.size(), 4)
 	assert_false(_bc._settled, "暗杠后本局不应结束")
 	assert_eq(_bc.action_journal().size(), 1)
 
@@ -74,11 +75,11 @@ func test_player_added_kan_two_phase_via_action() -> void:
 		Tile.new(TileId.W5, false, 0, 1),
 		Tile.new(TileId.W5, false, 0, 2),
 		Tile.new(TileId.W5, false, 0, 3),
-	], 1, 1)
-	seat.melds = [pon]
+	], 1, 0)
+	seat.melds.restore([pon], 1)
 	_bc.state.current_seat = 0
 	_bc.state.phase = BattlePhase.Kind.DISCARD
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	var ctx: DecisionContext = _bc.decision_context_for_seat(0)
 	var pay: Dictionary = {}
 	for offer in ctx.allowed_actions:
@@ -90,13 +91,13 @@ func test_player_added_kan_two_phase_via_action() -> void:
 	assert_false(pay.is_empty())
 	assert_eq(int(pay.get("meld_id", -1)), pon.meld_id)
 	var added_iid: int = int(pay.get("added_tile_instance_id", -1))
-	assert_eq(added_iid, seat.hand._tiles[0].instance_id)
+	assert_eq(added_iid, seat.hand.tiles()[0].instance_id)
 	assert_true(_bc.apply_action(Action.kan(
 		0, pay, "local", "550e8400-e29b-41d4-a716-000000000002",
 		ctx.decision_id, 0, 1
 	), ActionSource.HUMAN).accepted)
 	# ROB 前 domain 零升级
-	assert_eq(seat.melds[0].kind, Meld.Kind.PON)
+	assert_eq(seat.melds.all()[0].kind, Meld.Kind.PON)
 	assert_not_null(seat.hand.find_by_instance_id(added_iid))
 	# 全 PASS
 	for s in [1, 2, 3]:
@@ -105,8 +106,8 @@ func test_player_added_kan_two_phase_via_action() -> void:
 			s, "local", "550e8400-e29b-41d4-a716-00000000001%d" % s,
 			rctx.decision_id, 0, s + 1
 		), ActionSource.HUMAN).accepted)
-	assert_eq(seat.melds[0].kind, Meld.Kind.ADDED_KAN, "全 PASS 后升级")
-	assert_eq(seat.melds[0].added_tile_instance_id, added_iid)
+	assert_eq(seat.melds.all()[0].kind, Meld.Kind.ADDED_KAN, "全 PASS 后升级")
+	assert_eq(seat.melds.all()[0].added_tile_instance_id, added_iid)
 
 
 func test_async_turn_player_ankan_scripted() -> void:
@@ -119,7 +120,7 @@ func test_async_turn_player_ankan_scripted() -> void:
 	])
 	_bc.state.current_seat = 0
 	_bc.state.phase = BattlePhase.Kind.DISCARD
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	var done := {}
 	var runner := func():
 		await _bc._step_turn_async()
@@ -128,7 +129,7 @@ func test_async_turn_player_ankan_scripted() -> void:
 	_port.submit({"action": "ankan"})
 	await wait_physics_frames(3)
 	assert_eq(seat.melds.size(), 1, "暗杠 meld 应成立")
-	assert_eq(seat.melds[0].kind, Meld.Kind.ANKAN)
+	assert_eq(seat.melds.all()[0].kind, Meld.Kind.ANKAN)
 	assert_false(_bc._settled)
 	assert_true(done.has("finished"), "TURN 步在 Action 接受后完成")
 
@@ -141,7 +142,7 @@ func test_discard_choice_requires_tile_instance_id() -> void:
 	])
 	_bc.state.current_seat = 0
 	_bc.state.phase = BattlePhase.Kind.DISCARD
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	var done := {}
 	var runner := func():
 		await _bc._step_turn_async()
@@ -151,8 +152,8 @@ func test_discard_choice_requires_tile_instance_id() -> void:
 	_port.submit({"action": "discard", "tile_id": TileId.W2})
 	await wait_physics_frames(2)
 	assert_false(done.has("finished"), "tile_id fallback 已删除")
-	var iid: int = seat.hand._tiles[0].instance_id
+	var iid: int = seat.hand.tiles()[0].instance_id
 	_port.submit({"action": "discard", "tile_instance_id": iid})
 	await wait_physics_frames(3)
 	assert_true(done.has("finished"))
-	assert_eq(_bc.state.discards_per_seat[0][0].instance_id, iid)
+	assert_eq(_bc.state.seats[0].river.tiles()[0].instance_id, iid)

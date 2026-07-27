@@ -1,13 +1,13 @@
 extends GutTest
 
-# T5(spec 2026-06-11 G5-b)— DiscardRiver 增量渲染。
+# T5(spec 2026-06-11 G5-b)— DiscardRiverView 增量渲染。
 # 关键不变量:前缀不变只 append(旧节点实例存活,入场动画不被打断);
 # dora 只更新现有节点金边；缩水/立直回溯走全量 rebuild 兜底。
 
-var _river: DiscardRiver
+var _river: DiscardRiverView
 
 func before_each() -> void:
-	_river = DiscardRiver.new()
+	_river = DiscardRiverView.new()
 	add_child_autofree(_river)
 
 func _tiles(ids: Array) -> Array:

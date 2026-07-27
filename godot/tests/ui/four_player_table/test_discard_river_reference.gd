@@ -3,11 +3,11 @@ extends GutTest
 # 公开 bundle `tV` + `.river` 的等价契约：固定容器/四行、按可见索引排位、
 # 整牌根节点 spring 入场、一次性 latest glow，以及四向伪 3D 侧面渐变。
 
-var _river: DiscardRiver
+var _river: DiscardRiverView
 
 
 func before_each() -> void:
-	_river = DiscardRiver.new()
+	_river = DiscardRiverView.new()
 	add_child_autofree(_river)
 
 
@@ -202,7 +202,7 @@ func test_four_seats_use_exact_reference_side_gradients() -> void:
 	var top_green := PackedColorArray([
 		Color("3e8254"), Color("4c9564"), Color("57a271")])
 	for seat_id in range(4):
-		var river := DiscardRiver.new()
+		var river := DiscardRiverView.new()
 		add_child_autofree(river)
 		river.set_seat_id(seat_id)
 		river.set_tiles(_tiles(1))

@@ -28,7 +28,7 @@ func test_mirror_clears_furiten_when_owner_riichis():
 	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W_WIND), 2, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W_WIND), 2, sk)
 	reg.register(sk, ti)
 	assert_true(st.furiten_flags[2], "前置：owner 振听中")
 	sched.emit_event(BattleEvent.make(&"RIICHI_DECLARED", 2))
@@ -41,7 +41,7 @@ func test_mirror_no_effect_when_other_seat_riichis():
 	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W_WIND), 2, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W_WIND), 2, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"RIICHI_DECLARED", 1))
 	assert_true(st.furiten_flags[2], "别人立直时 owner 振听不应被清除")
@@ -54,7 +54,7 @@ func test_mirror_safe_when_owner_not_in_furiten():
 	var sched: SkillScheduler = ctx[2]
 	st.furiten_flags[2] = false  # 重置
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W_WIND), 2, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W_WIND), 2, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"RIICHI_DECLARED", 2))
 	assert_false(st.furiten_flags[2], "本来就非振听，调用后仍非振听")

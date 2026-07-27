@@ -1,12 +1,12 @@
-class_name TileInstance
+class_name TileSkillAnchor
 
 var tile: Tile
 var owner_seat: int
 var holder_seat: int = -1
 var skill: SkillResource
 
-static func make(p_tile: Tile, p_owner: int, p_skill: SkillResource = null) -> TileInstance:
-	var ti := TileInstance.new()
+static func make(p_tile: Tile, p_owner: int, p_skill: SkillResource = null) -> TileSkillAnchor:
+	var ti := TileSkillAnchor.new()
 	ti.tile = p_tile
 	ti.owner_seat = p_owner
 	ti.skill = p_skill
@@ -33,7 +33,7 @@ func to_dict() -> Dictionary:
 		# skill 不序列化（见类注释）
 	}
 
-static func from_dict(d: Variant) -> TileInstance:
+static func from_dict(d: Variant) -> TileSkillAnchor:
 	if typeof(d) != TYPE_DICTIONARY:
 		return null
 	var dict: Dictionary = d
@@ -44,32 +44,14 @@ static func from_dict(d: Variant) -> TileInstance:
 			or not dict.has("owner_seat") or not dict.has("holder_seat"):
 		return null
 
-	var raw_tid: Variant = dict["tile_id"]
-	if typeof(raw_tid) != TYPE_INT:
-		return null
-	var tid: int = raw_tid
-	if not TileId.ALL.has(tid):
-		return null
-
-	var raw_red: Variant = dict["is_red_dora"]
-	if typeof(raw_red) != TYPE_BOOL:
-		return null
-	var red: bool = raw_red
-	if red and tid != TileId.W5 and tid != TileId.T5 and tid != TileId.S5:
-		return null
-
-	var raw_tile_owner: Variant = dict["tile_owner_seat"]
-	if typeof(raw_tile_owner) != TYPE_INT:
-		return null
-	var tile_owner: int = raw_tile_owner
-	if tile_owner < -1 or tile_owner > 3:
-		return null
-
-	var raw_iid: Variant = dict["tile_instance_id"]
-	if typeof(raw_iid) != TYPE_INT:
-		return null
-	var iid: int = raw_iid
-	if iid != Tile.INVALID_INSTANCE_ID and not Tile.is_valid_instance_id(iid):
+	var tile_dict := {
+		"id": dict["tile_id"],
+		"is_red_dora": dict["is_red_dora"],
+		"owner_seat": dict["tile_owner_seat"],
+		"instance_id": dict["tile_instance_id"],
+	}
+	var t: Tile = Tile.from_dict(tile_dict)
+	if t == null:
 		return null
 
 	var raw_owner: Variant = dict["owner_seat"]
@@ -86,8 +68,7 @@ static func from_dict(d: Variant) -> TileInstance:
 	if p_holder < -1 or p_holder > 3:
 		return null
 
-	var t := Tile.new(tid, red, tile_owner, iid)
-	var ti := TileInstance.new()
+	var ti := TileSkillAnchor.new()
 	ti.tile = t
 	ti.owner_seat = p_owner
 	ti.holder_seat = p_holder

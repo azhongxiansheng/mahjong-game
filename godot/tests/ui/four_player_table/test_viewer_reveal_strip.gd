@@ -18,7 +18,7 @@ func _state_with_reveal(viewer_seat: int = 0) -> BattleState:
 
 func test_strip_renders_real_tile_instance_and_clears() -> void:
 	var st := _state_with_reveal()
-	var instance := st.revealed_tiles[0].tile as TileInstance
+	var instance := st.revealed_tiles[0].tile as TileSkillAnchor
 	var strip = Strip.new()
 	add_child_autofree(strip)
 	strip.set_tiles([instance])
@@ -33,8 +33,8 @@ func test_strip_renders_real_tile_instance_and_clears() -> void:
 func test_thirteen_reveals_wrap_without_crossing_safe_compact_size() -> void:
 	var st := BattleState.for_east_round(341, 0, 1, 0, 0)
 	var instances: Array = []
-	for tile in st.seats[1].hand._tiles:
-		var instance := TileInstance.make(tile, 1)
+	for tile in st.seats[1].hand.tiles():
+		var instance := TileSkillAnchor.make(tile, 1)
 		instance.holder_seat = 1
 		instances.append(instance)
 	var strip = Strip.new()
@@ -63,8 +63,8 @@ func test_three_opponent_positions_keep_reveal_strips_screen_upright_and_in_boun
 	add_child_autofree(table)
 	var st := BattleState.for_east_round(342, 0, 1, 0, 0)
 	for holder in [1, 2, 3]:
-		var tile: Tile = st.seats[holder].hand._tiles[0]
-		var instance := TileInstance.make(tile, holder)
+		var tile: Tile = st.seats[holder].hand.first()
+		var instance := TileSkillAnchor.make(tile, holder)
 		instance.holder_seat = holder
 		st.revealed_tiles.append({"tile": instance, "visible_to": [0]})
 	table.set_local_seat(0)

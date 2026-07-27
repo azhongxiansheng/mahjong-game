@@ -1321,7 +1321,7 @@ func _build_resolved_payload(action: Action, discarded_tile: Tile, discard_sourc
 				tile_v = ProtocolViewCodec.tile_view_from_tile(discarded_tile)
 			if tile_v == null:
 				# 兜底：从河取最后一张
-				var river: Array = _bc.state.discards_per_seat[action.seat]
+				var river: Array = _bc.state.seats[action.seat].river.tiles()
 				if not river.is_empty():
 					tile_v = ProtocolViewCodec.tile_view_from_tile(river[river.size() - 1])
 			if tile_v == null:
@@ -1366,7 +1366,7 @@ func _build_resolved_payload(action: Action, discarded_tile: Tile, discard_sourc
 				var meld_id: int = int(action.payload.get("meld_id", -1))
 				var added_iid: int = int(action.payload.get("added_tile_instance_id", -1))
 				var target: Meld = null
-				for existing in actor_seat.melds:
+				for existing in actor_seat.melds.all():
 					if existing is Meld and int((existing as Meld).meld_id) == meld_id:
 						target = existing as Meld
 						break
@@ -1397,7 +1397,7 @@ func _build_resolved_payload(action: Action, discarded_tile: Tile, discard_sourc
 			# 其它鸣牌已在领域提交，取 actor 最新副露。
 			if actor_seat.melds.is_empty():
 				return {}
-			var meld: Meld = actor_seat.melds[actor_seat.melds.size() - 1] as Meld
+			var meld: Meld = actor_seat.melds.last()
 			var mv: Variant = ProtocolViewCodec.meld_view_from_meld(meld)
 			if mv == null:
 				return {}
@@ -1540,7 +1540,7 @@ func _build_turn_prompt_payload(ctx: DecisionContext, seat: int) -> Dictionary:
 	if seat_obj == null:
 		return {}
 	var hand_out: Array = []
-	for t in seat_obj.hand._tiles:
+	for t in seat_obj.hand.tiles():
 		var tv: Variant = ProtocolViewCodec.tile_view_from_tile(t)
 		if tv == null:
 			return {}

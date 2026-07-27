@@ -1,21 +1,21 @@
 extends GutTest
 
-# 麻将王 — M10 net foundation: BattleEvent / TileInstance 序列化 + 决定性 smoke test
+# 麻将王 — M10 net foundation: BattleEvent / TileSkillAnchor 序列化 + 决定性 smoke test
 #
 # spec §4.3 Phase 2 联机：所有对局副作用走 event bus → 事件能序列化 + 回放
 # 是 "server 权威 + client 重放" 架构的硬前提。本测试锁住三件事：
-# 1. BattleEvent / TileInstance roundtrip 不丢字段
+# 1. BattleEvent / TileSkillAnchor roundtrip 不丢字段
 # 2. 同 seed 跑两次 BattleController.run_to_end() 产生 byte-identical 事件序列
 # 3. 序列化后的 dict 是 JSON 友好的（无 GDScript 专属对象）
 
-# ---- TileInstance roundtrip ----
+# ---- TileSkillAnchor roundtrip ----
 
 func test_tile_instance_roundtrip_preserves_all_fields():
 	var t := Tile.new(TileId.W5, true, 2)
-	var ti := TileInstance.make(t, 3)
+	var ti := TileSkillAnchor.make(t, 3)
 	ti.holder_seat = 1
 	var d: Dictionary = ti.to_dict()
-	var ti2: TileInstance = TileInstance.from_dict(d)
+	var ti2: TileSkillAnchor = TileSkillAnchor.from_dict(d)
 	assert_eq(ti2.tile.id, TileId.W5)
 	assert_true(ti2.tile.is_red_dora)
 	assert_eq(ti2.tile.owner_seat, 2)
@@ -26,12 +26,12 @@ func test_tile_instance_to_dict_does_not_serialize_skill():
 	var t := Tile.new(TileId.HAKU)
 	var sk := SkillResource.new()
 	sk.id = &"test_skill"
-	var ti := TileInstance.make(t, 0, sk)
+	var ti := TileSkillAnchor.make(t, 0, sk)
 	var d: Dictionary = ti.to_dict()
 	assert_false(d.has("skill"), "skill 不进 dict（server 权威下 client 反查）")
 
 func test_tile_instance_from_dict_empty_returns_null():
-	assert_null(TileInstance.from_dict({}))
+	assert_null(TileSkillAnchor.from_dict({}))
 
 # ---- BattleEvent roundtrip ----
 
@@ -41,17 +41,17 @@ func test_event_roundtrip_simple():
 	var ev2: BattleEvent = BattleEvent.from_dict(d)
 	assert_eq(String(ev2.type), "TILE_DRAWN")
 	assert_eq(ev2.actor_seat, 2)
-	assert_null(ev2.tile_instance, "无 tile 时 from_dict 不重建 TileInstance")
+	assert_null(ev2.tile_anchor, "无 tile 时 from_dict 不重建 TileSkillAnchor")
 
 func test_event_roundtrip_with_tile():
 	# 赤宝仅 5m/5p/5s 合法；S7 用非赤 + 合法 instance_id
-	var ti := TileInstance.make(Tile.new(TileId.S7, false, 1, 7), 1)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.S7, false, 1, 7), 1)
 	var ev := BattleEvent.make(&"TILE_DISCARDED", 1, ti, {})
 	var d: Dictionary = ev.to_dict()
 	var ev2: BattleEvent = BattleEvent.from_dict(d)
-	assert_not_null(ev2.tile_instance)
-	assert_eq(ev2.tile_instance.tile.id, TileId.S7)
-	assert_eq(ev2.tile_instance.tile.owner_seat, 1)
+	assert_not_null(ev2.tile_anchor)
+	assert_eq(ev2.tile_anchor.tile.id, TileId.S7)
+	assert_eq(ev2.tile_anchor.tile.owner_seat, 1)
 
 func test_event_roundtrip_with_extra():
 	var ev := BattleEvent.make(&"WIN_DECLARED", 0, null, {
@@ -78,7 +78,7 @@ func test_event_roundtrip_with_chain_id():
 
 func test_event_dict_is_json_serializable():
 	# spec §4.3 网络层将走 JSON / msgpack；BattleEvent.to_dict 不应含 Object 引用
-	var ti := TileInstance.make(Tile.new(TileId.W3), 0)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W3), 0)
 	var ev := BattleEvent.make(&"TILE_DRAWN", 0, ti, {"k": "v"})
 	var d: Dictionary = ev.to_dict()
 	var json_str: String = JSON.stringify(d)

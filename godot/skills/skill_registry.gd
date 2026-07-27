@@ -2,7 +2,7 @@ class_name SkillRegistry
 
 # 内部 entry: {skill, anchor, hook, reg_order}
 # anchor:
-#   - is_ability=false 时:  TileInstance(scheduler 通过 anchor.owner_seat / anchor.holder_seat 派发)
+#   - is_ability=false 时:  TileSkillAnchor(scheduler 通过 anchor.owner_seat / anchor.holder_seat 派发)
 #   - is_ability=true  时:  int(座位号 0..3,owner==holder==此座位)
 var _entries: Array = []
 var _next_order: int = 0

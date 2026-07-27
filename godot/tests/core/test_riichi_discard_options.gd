@@ -25,7 +25,7 @@ func _seat_from_ids(ids: Array, start_iid: int = 1000, points: int = 25000) -> S
 ## Oracle：对每个物理 Tile 实例 clone → take_by_instance_id → wait_tiles 非空。
 func _oracle_tenpai_discard_iids(hand: Hand, melds: Array) -> Array:
 	var out: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if t == null:
 			continue
 		var sim: Hand = hand.clone()
@@ -137,7 +137,7 @@ func test_duplicate_type_distinct_instance_ids() -> void:
 	var hand: Hand = _hand_from_ids(ids, 5000)
 	# 收集 S2 的两个 iid
 	var s2_iids: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if t.id == TileId.S2:
 			s2_iids.append(t.instance_id)
 	assert_eq(s2_iids.size(), 2, "应有两张 S2")
@@ -196,7 +196,7 @@ func test_gate_points_wall_already_riichi() -> void:
 	var s: Seat = _seat_from_ids(_standard_14_ids(), 7000, 25000)
 	# 正常应有 options
 	var ok_opts: Array = RiichiValidator.riichi_discard_options(s, 50)
-	var oracle_iids: Array = _oracle_tenpai_discard_iids(s.hand, s.melds)
+	var oracle_iids: Array = _oracle_tenpai_discard_iids(s.hand, s.melds.all())
 	_assert_iid_set_eq(_iids_from_options(ok_opts), oracle_iids, "gate_ok")
 	assert_true(ok_opts.size() > 0, "points/wall 合法时应有 options")
 
@@ -218,7 +218,7 @@ func test_gate_points_wall_already_riichi() -> void:
 
 	# 有明副露破门清
 	var s_open: Seat = _seat_from_ids(_standard_14_ids(), 7400, 25000)
-	s_open.melds.append(Meld.make_pon([
+	s_open.melds.add_existing(Meld.make_pon([
 		Tile.new(TileId.W5), Tile.new(TileId.W5), Tile.new(TileId.W5),
 	], 1))
 	var open_opts: Array = RiichiValidator.riichi_discard_options(s_open, 50)
@@ -242,8 +242,8 @@ func test_fixed_seeds_battle_state_hands_0_to_9() -> void:
 			seat.add_to_hand(drawn)
 			assert_eq(seat.hand.size(), 14, "seed=%d seat=%d 14 张" % [battle_seed, seat_id])
 
-			var oracle: Array = _oracle_tenpai_discard_iids(seat.hand, seat.melds)
-			var api: Array = RiichiValidator.tenpai_discard_instance_ids(seat.hand, seat.melds)
+			var oracle: Array = _oracle_tenpai_discard_iids(seat.hand, seat.melds.all())
+			var api: Array = RiichiValidator.tenpai_discard_instance_ids(seat.hand, seat.melds.all())
 			var g: Array = _sorted_iids(api)
 			var e: Array = _sorted_iids(oracle)
 			total_comparisons += 1
@@ -271,13 +271,13 @@ func test_shanten_zero_matches_wait_oracle_for_400_dealt_hands() -> void:
 		for seat_id in range(4):
 			var seat: Seat = state.seats[seat_id]
 			var expected: bool = not WaitCalculator.wait_tiles(
-				seat.hand, seat.melds).is_empty()
-			var actual: bool = ShantenCalculator.calc(seat.hand, seat.melds) == 0
+				seat.hand, seat.melds.all()).is_empty()
+			var actual: bool = ShantenCalculator.calc(seat.hand, seat.melds.all()) == 0
 			if actual != expected:
 				mismatches += 1
 				fail_test("shanten/wait mismatch seed=%d seat=%d shanten=%d waits=%s" % [
 					rng_seed, seat_id,
-					ShantenCalculator.calc(seat.hand, seat.melds),
-					str(WaitCalculator.wait_tiles(seat.hand, seat.melds)),
+					ShantenCalculator.calc(seat.hand, seat.melds.all()),
+					str(WaitCalculator.wait_tiles(seat.hand, seat.melds.all())),
 				])
 	assert_eq(mismatches, 0, "400 手牌 shanten==0 与 WaitCalculator 听牌真值一致")

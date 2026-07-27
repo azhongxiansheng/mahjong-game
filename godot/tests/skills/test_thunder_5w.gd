@@ -24,7 +24,7 @@ func test_thunder_adds_2_han_when_owner_is_actor():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W5), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W5), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 2)
@@ -34,7 +34,7 @@ func test_thunder_does_not_add_han_when_actor_is_not_owner():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W5), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W5), 0, sk)
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
 	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0)

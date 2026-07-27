@@ -18,9 +18,10 @@ class TrackingAi extends SimpleAi:
 
 
 func _seed_w5_pair(seat: Seat) -> void:
-	seat.hand._tiles.clear()
-	seat.hand.add(Tile.new(TileId.W5, false, 0, 10))  # 黑 5 iid10
-	seat.hand.add(Tile.new(TileId.W5, true, 0, 11))   # 赤 5 iid11
+	assert_true(seat.hand.restore_tiles([
+		Tile.new(TileId.W5, false, 0, 10),  # 黑 5 iid10
+		Tile.new(TileId.W5, true, 0, 11),   # 赤 5 iid11
+	]))
 
 
 # a) 已立直 + last_drawn_instance_id=11 → 强制摸切实体 11，不调 AI

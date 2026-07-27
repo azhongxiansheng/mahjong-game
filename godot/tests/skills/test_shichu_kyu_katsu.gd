@@ -28,7 +28,7 @@ func test_shichu_adds_2_han_when_score_below_5000():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var ab := _make_ability()
-	reg.register(ab, 2)  # 角色能力直接 register seat（无 TileInstance）
+	reg.register(ab, 2)  # 角色能力直接 register seat（无 TileSkillAnchor）
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
 	assert_eq(int(out_ctx.han_deltas.get(2, 0)), 2, "点棒 4500 < 5000 → +2 番")
 

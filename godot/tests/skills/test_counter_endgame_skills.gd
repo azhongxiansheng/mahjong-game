@@ -27,7 +27,7 @@ func _make_tile_skill(id: StringName, hook: GDScript, tile_id: int, triggers: Ar
 	return s
 
 func _register_owned_by(reg: SkillRegistry, sk: SkillResource, owner_seat: int) -> void:
-	var ti := TileInstance.make(Tile.new(sk.attached_tile), owner_seat, sk)
+	var ti := TileSkillAnchor.make(Tile.new(sk.attached_tile), owner_seat, sk)
 	reg.register(sk, ti)
 
 # NOTE: east_mirror_chambo 单测移到 tests/skills/test_east_mirror_chambo.gd

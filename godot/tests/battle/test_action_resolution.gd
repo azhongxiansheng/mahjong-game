@@ -206,7 +206,7 @@ func _assert_no_object_values(value: Variant, path: String = "root") -> void:
 
 func _hand_iids(seat: Seat) -> Array:
 	var out: Array = []
-	for t in seat.hand._tiles:
+	for t in seat.hand.tiles():
 		out.append(int(t.instance_id))
 	return out
 

@@ -22,6 +22,98 @@ var _draw_index: int = 0
 var _dead_wall_size: int = 0
 var _rinshan_taken: int = 0
 
+func authority_tiles() -> Array[Tile]:
+	return _tiles.duplicate()
+
+func draw_index() -> int:
+	return _draw_index
+
+func dead_wall_size() -> int:
+	return _dead_wall_size
+
+func rinshan_taken() -> int:
+	return _rinshan_taken
+
+func live_end_index() -> int:
+	return _tiles.size() - _dead_wall_size
+
+func authority_tile_at(index: int) -> Tile:
+	if index < 0 or index >= _tiles.size():
+		return null
+	return _tiles[index]
+
+func set_draw_index(index: int) -> bool:
+	if index < 0 or index > live_end_index():
+		return false
+	_draw_index = index
+	return true
+
+func set_rinshan_taken(count: int) -> bool:
+	if count < 0 or count > mini(4, _dead_wall_size):
+		return false
+	_rinshan_taken = count
+	return true
+
+func restore_authority_state(p_tiles: Array[Tile], p_draw_index: int,
+		p_dead_wall_size: int, p_rinshan_taken: int) -> bool:
+	if p_tiles.size() != Tile.TILES_PER_HAND:
+		return false
+	if p_draw_index < 0 or p_dead_wall_size < 0 or p_rinshan_taken < 0 \
+			or p_rinshan_taken > mini(4, p_dead_wall_size) \
+			or p_dead_wall_size > p_tiles.size() \
+			or p_draw_index > p_tiles.size() - p_dead_wall_size:
+		return false
+	var seen: Dictionary = {}
+	for tile in p_tiles:
+		if tile == null or not tile.is_valid() \
+				or not Tile.is_valid_instance_id(tile.instance_id) \
+				or seen.has(tile.instance_id):
+			return false
+		seen[tile.instance_id] = true
+	_tiles = p_tiles.duplicate()
+	_draw_index = p_draw_index
+	_dead_wall_size = p_dead_wall_size
+	_rinshan_taken = p_rinshan_taken
+	return true
+
+# 将 live wall 中指定实体移动到下一摸位置；不允许碰已摸区或 dead wall。
+# 供确定性规则夹具及未来牌山操控技能使用。
+func move_live_tile_to_top(instance_id: Variant) -> bool:
+	if not Tile.is_valid_instance_id(instance_id):
+		return false
+	var live_end := _tiles.size() - _dead_wall_size
+	for i in range(_draw_index, live_end):
+		if _tiles[i].instance_id != instance_id:
+			continue
+		var tmp := _tiles[_draw_index]
+		_tiles[_draw_index] = _tiles[i]
+		_tiles[i] = tmp
+		return true
+	return false
+
+func move_live_index_to_top(index: int) -> bool:
+	if index < _draw_index or index >= live_end_index():
+		return false
+	return move_live_tile_to_top(_tiles[index].instance_id)
+
+# 权威恢复/确定性夹具入口：允许在未消费区内重排，包括与 dead wall 交换槽位；
+# 不改变游标和 dead wall 大小，标准对局逻辑不得调用。
+func move_unconsumed_index_to_top(index: int) -> bool:
+	if index < _draw_index or index >= _tiles.size():
+		return false
+	var tmp := _tiles[_draw_index]
+	_tiles[_draw_index] = _tiles[index]
+	_tiles[index] = tmp
+	return true
+
+func swap_live_indices(a: int, b: int) -> bool:
+	if a < _draw_index or b < _draw_index or a >= live_end_index() or b >= live_end_index():
+		return false
+	var tmp := _tiles[a]
+	_tiles[a] = _tiles[b]
+	_tiles[b] = tmp
+	return true
+
 static func new_full_set(hand_seq: int = 0) -> Wall:
 	if hand_seq < 0 or hand_seq > MAX_HAND_SEQ:
 		return null
@@ -77,9 +169,12 @@ func draw() -> Tile:
 
 # ---- 0e: dead wall API ----
 
-func reserve_dead_wall(count: int = 14) -> void:
+func reserve_dead_wall(count: int = 14) -> bool:
 	# 必须在 shuffle 后调用；此后 size()/draw() 自动避开 dead wall
+	if count < 0 or count > _tiles.size() or _rinshan_taken > mini(4, count):
+		return false
 	_dead_wall_size = count
+	return true
 
 func take_rinshan() -> Tile:
 	# 从 dead wall 末端依次取岭上：第 1 次返 _tiles[-1]，第 2 次 _tiles[-2]，最多 4 次

@@ -11,9 +11,10 @@ var _used_wall_iids: Dictionary = {}
 
 func _make_seat_with_hand(ids: Array, points: int = 25000) -> Seat:
 	var s := Seat.new(0, TileId.E, points)
-	s.hand._tiles.clear()
+	var tiles: Array[Tile] = []
 	for tid in ids:
-		s.hand.add(Tile.new(tid))
+		tiles.append(Tile.new(tid))
+	assert_true(s.hand.restore_tiles(tiles))
 	return s
 
 
@@ -27,7 +28,7 @@ func _chiitoi_tenpai_hand() -> Array:
 
 
 func _live_end(w: Wall) -> int:
-	return w._tiles.size() - w._dead_wall_size
+	return w.authority_tiles().size() - w.dead_wall_size()
 
 
 ## 清空四席 hand/meld/river/last_drawn/furiten，draw_index 回 0；不改 dead wall。
@@ -35,12 +36,14 @@ func _prepare_live_fixture(bc: BattleController) -> void:
 	for s in range(4):
 		var seat: Seat = bc.state.seats[s]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.last_draw_is_rinshan = false
 		seat.furiten = FuritenState.new()
-		bc.state.discards_per_seat[s] = []
-	bc.state.wall._draw_index = 0
+		bc.state.seats[s].river.restore([])
+	var wall := bc.state.wall
+	assert_true(wall.restore_authority_state(
+		wall.authority_tiles(), 0, wall.dead_wall_size(), wall.rinshan_taken()))
 	_used_wall_iids.clear()
 
 
@@ -51,12 +54,12 @@ func _assert_iid_absent_from_active_zones(
 		if s == except_seat:
 			continue
 		var seat: Seat = bc.state.seats[s]
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			if t == null:
 				continue
 			assert_ne(int(t.instance_id), iid,
 				"iid=%d 不得仍在 seat%d hand" % [iid, s])
-		for m in seat.melds:
+		for m in seat.melds.all():
 			if m == null:
 				continue
 			for t2 in m.tiles:
@@ -64,7 +67,7 @@ func _assert_iid_absent_from_active_zones(
 					continue
 				assert_ne(int(t2.instance_id), iid,
 					"iid=%d 不得仍在 seat%d meld" % [iid, s])
-		for t3 in bc.state.discards_per_seat[s]:
+		for t3 in bc.state.seats[s].river.tiles():
 			if t3 == null:
 				continue
 			assert_ne(int(t3.instance_id), iid,
@@ -73,8 +76,9 @@ func _assert_iid_absent_from_active_zones(
 
 func _find_live_index(w: Wall, tid: int) -> int:
 	var end_i: int = _live_end(w)
-	for i in range(w._draw_index, end_i):
-		var t: Tile = w._tiles[i]
+	var tiles := w.authority_tiles()
+	for i in range(w.draw_index(), end_i):
+		var t: Tile = tiles[i]
 		if t == null or int(t.id) != int(tid):
 			continue
 		var iid: int = int(t.instance_id)
@@ -85,13 +89,10 @@ func _find_live_index(w: Wall, tid: int) -> int:
 
 
 func _swap_live_to_draw_index(w: Wall, live_idx: int) -> void:
-	assert_gte(live_idx, w._draw_index)
+	assert_gte(live_idx, w.draw_index())
 	assert_lt(live_idx, _live_end(w))
-	if live_idx == w._draw_index:
-		return
-	var tmp: Tile = w._tiles[w._draw_index]
-	w._tiles[w._draw_index] = w._tiles[live_idx]
-	w._tiles[live_idx] = tmp
+	var selected: Tile = w.authority_tiles()[live_idx]
+	assert_true(w.move_live_tile_to_top(selected.instance_id))
 
 
 ## live 未摸区找 tid → swap 到 draw_index → 真实 wall.draw() 消费。
@@ -103,7 +104,7 @@ func _draw_from_live(bc: BattleController, tid: int) -> Tile:
 	var live_idx: int = _find_live_index(w, tid)
 	assert_true(live_idx >= 0, "live 未摸区无剩余 id=%d 的 canonical 实体" % tid)
 	_swap_live_to_draw_index(w, live_idx)
-	var selected: Tile = w._tiles[w._draw_index]
+	var selected: Tile = w.authority_tiles()[w.draw_index()]
 	assert_not_null(selected)
 	var iid: int = int(selected.instance_id)
 	assert_true(Tile.is_instance_id_in_hand_seq(iid, bc.state.hand_seq),
@@ -181,10 +182,10 @@ func test_battle_controller_emits_riichi_declared_when_tenpai_and_heuristic():
 	]
 	var seat0: Seat = bc.state.seats[0]
 	seat0.hand = _hand_from_live(bc, hand_ids)
-	assert_eq(seat0.hand._tiles.size(), 14)
+	assert_eq(seat0.hand.tiles().size(), 14)
 
 	var e_iid: int = -1
-	for t in seat0.hand._tiles:
+	for t in seat0.hand.tiles():
 		assert_true(Tile.is_instance_id_in_hand_seq(t.instance_id, bc.state.hand_seq),
 			"hand iid 必须属于 hand_seq")
 		# seat0 持有后，其它席 hand/river/meld 不得再持同 iid

@@ -44,7 +44,7 @@ func _prepare_reference_draw_state() -> PlayableBattleController:
 		called_chi,
 		Tile.new(TileId.W4, false, Tile.NO_OWNER, 1002),
 	], 3, 0, called_chi)
-	bc.state.seats[0].melds = [open_chi]
+	bc.state.seats[0].melds.restore([open_chi], 1)
 	_replace_hand(bc.state.seats[0], [
 		TileId.T2, TileId.T3, TileId.T4,
 		TileId.S2, TileId.S3, TileId.S4,
@@ -125,7 +125,7 @@ func test_exhaustive_draw_uses_real_snapshot_and_mounts_after_500ms() -> void:
 		assert_true(snapshots[2]["hand"][0] is Tile,
 			"快照须保留真实 Tile，不得只拼假文本")
 		assert_eq(snapshots[2]["melds"].size(), 1)
-		assert_ne(snapshots[2]["melds"][0], bc.state.seats[0].melds[0],
+		assert_ne(snapshots[2]["melds"][0], bc.state.seats[0].melds.all()[0],
 			"meld 必须复制成快照，不能留下一局会突变的活引用")
 
 	_pt._show_hand_result_overlay({"last_event": "EXHAUSTIVE_DRAW"})

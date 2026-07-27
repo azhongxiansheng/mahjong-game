@@ -12,7 +12,7 @@ func _init(seed: int = 0) -> void:
 
 # 在 seat 的手牌里随机挑一张返回。手牌为空时返 null（异常路径，不应在正常流程触发）。
 func decide_discard(seat: Seat) -> Tile:
-	var hand_tiles: Array = seat.hand._tiles
+	var hand_tiles: Array = seat.hand.tiles()
 	if hand_tiles.is_empty():
 		return null
 	var idx: int = _rng.randi_range(0, hand_tiles.size() - 1)

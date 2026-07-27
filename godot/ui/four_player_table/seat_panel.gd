@@ -818,7 +818,7 @@ func bind_seat(seat: Seat) -> void:
 	_meld_count = seat.melds.size()
 	_riichi = seat.riichi.declared
 	_furiten = seat.furiten.is_furiten() if seat.furiten else false
-	# discards 数量需外部传入（Seat 自身不持，BattleState.discards_per_seat[i] 持）
+	# 牌河由 Seat 聚合持有；数量仍由牌桌绑定时传入。
 	if is_inside_tree():
 		if _force_reveal_hand and _revealed_hand != null:
 			_rebuild_revealed_hand_row(_revealed_hand)
@@ -868,7 +868,7 @@ func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
 	var i := 0
 	for tid in ids:
 		var is_red := false
-		for t in hand._tiles:
+		for t in hand.tiles():
 			if t.id == int(tid) and t.is_red_dora:
 				is_red = true
 				break
@@ -1400,8 +1400,8 @@ func _rebuild_player_hand_row_with_drawn(hand: Hand, drawn_instance_id: int) -> 
 # Hand._tiles 原始下标，确保同值普通牌/赤黑牌的剩余相对顺序确定（禁止 instance_id tie-break）。
 static func split_hand_for_display(hand: Hand, drawn_instance_id: int) -> Dictionary:
 	var entries: Array = []  # Array[{id, red, iid, original_index}]
-	for i in range(hand._tiles.size()):
-		var t: Tile = hand._tiles[i]
+	for i in range(hand.tiles().size()):
+		var t: Tile = hand.tiles()[i]
 		entries.append({
 			"id": t.id,
 			"red": t.is_red_dora,

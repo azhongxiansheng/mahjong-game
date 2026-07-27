@@ -261,17 +261,15 @@ func test_added_kan_declaration_builds_serializable_candidate_meld_view() -> voi
 	var bc: BattleController = server._bc
 	var seat: Seat = bc.state.seats[0]
 	var copies: Array = []
-	for tile in bc.state.wall._tiles:
+	for tile in bc.state.wall.authority_tiles():
 		if tile is Tile and tile.id == TileId.W5:
 			copies.append(tile)
 	assert_eq(copies.size(), 4, "真实牌墙须有四张 W5")
 	if copies.size() != 4:
 		return
-	seat.hand._tiles.clear()
-	seat.melds.clear()
-	seat.melds.append(Meld.make_pon(
-		[copies[0], copies[1], copies[2]], 1, 0, copies[0]))
-	assert_true(seat.hand.add(copies[3]))
+	assert_true(seat.hand.restore_tiles([copies[3]]))
+	assert_true(seat.melds.restore([Meld.make_pon(
+		[copies[0], copies[1], copies[2]], 1, 0, copies[0])], 1))
 
 	var action: Action = Action.kan(0, {
 		"kan_kind": "ADDED_KAN",
@@ -282,7 +280,7 @@ func test_added_kan_declaration_builds_serializable_candidate_meld_view() -> voi
 	var resolved: Dictionary = server._build_resolved_payload(action, null, "HAND")
 	assert_eq(str(resolved.get("meld", {}).get("kind", "")), "ADDED_KAN",
 		"声明阶段应投影候选 ADDED_KAN，领域 PON 仍不升级")
-	assert_eq((seat.melds[0] as Meld).kind, Meld.Kind.PON,
+	assert_eq((seat.melds.all()[0] as Meld).kind, Meld.Kind.PON,
 		"构造网络结果不得提前修改领域状态")
 
 	var event: NetworkedEvent = NetworkedEvent.make(
@@ -393,15 +391,15 @@ func test_publish_snapshot_projector_fail_no_fallback_atomic() -> void:
 	assert_not_null(dora, "dora_indicators 须非 null")
 	if dora == null:
 		return
-	assert_gt(dora.visible.size(), 0, "须有可见 dora 指示牌")
-	if dora.visible.is_empty():
+	assert_gt(dora.visible_count(), 0, "须有可见 dora 指示牌")
+	if dora.visible_count() == 0:
 		return
-	var tile: Tile = dora.visible[0] as Tile
+	var tile: Tile = dora.visible_tiles()[0] as Tile
 	assert_not_null(tile, "visible dora[0] 须为 Tile")
 	if tile == null:
 		return
 	# 污染 owner_seat → ProtocolViewCodec / RecipientViewProjector 真实 fail
-	tile.owner_seat = 99
+	tile._owner_seat = 99  # 测试专用：绕过只读 API 注入损坏领域态
 	assert_eq(tile.owner_seat, 99)
 	# 真实 projector 须 fail-closed（null）；禁止 mock
 	var proj: Variant = RecipientViewProjector.project_core_table(bc.state, 0)
@@ -2220,15 +2218,15 @@ class FailingHandSettledServer extends LocalLoopbackServer:
 ## 供 fixture 从同一真实 Wall 取 canonical 实体。
 ## 组牌完成后、打开 DecisionWindow/submit 前必须 _seal_live_wall_draw_index。
 func _prep_live(bc: BattleController) -> int:
-	var draw_floor: int = int(bc.state.wall._draw_index)
+	var draw_floor: int = int(bc.state.wall.draw_index())
 	for s in range(4):
 		var seat: Seat = bc.state.seats[s]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.furiten = FuritenState.new()
-		bc.state.discards_per_seat[s] = []
-	bc.state.wall._draw_index = 0
+		bc.state.seats[s].river.restore([])
+	bc.state.wall.set_draw_index(0)
 	return draw_floor
 
 
@@ -2236,17 +2234,17 @@ func _prep_live(bc: BattleController) -> int:
 ## 不放宽协议；实体仍来自真实 Wall（canonical / 唯一 instance_id）。
 func _seal_live_wall_draw_index(bc: BattleController, draw_floor: int) -> void:
 	var w: Wall = bc.state.wall
-	w._draw_index = maxi(int(draw_floor), int(w._draw_index))
+	w.set_draw_index(maxi(int(draw_floor), int(w.draw_index())))
 
 
 func _live_end_wall(w: Wall) -> int:
-	return w._tiles.size() - w._dead_wall_size
+	return w.authority_tiles().size() - w.dead_wall_size()
 
 
 func _find_live_idx(w: Wall, tid: int, used: Dictionary) -> int:
 	var end_i: int = _live_end_wall(w)
-	for i in range(w._draw_index, end_i):
-		var t: Tile = w._tiles[i]
+	for i in range(w.draw_index(), end_i):
+		var t: Tile = w.authority_tiles()[i]
 		if t == null or int(t.id) != int(tid):
 			continue
 		if used.has(int(t.instance_id)):
@@ -2261,10 +2259,8 @@ func _draw_live_tid(bc: BattleController, tid: int, used: Dictionary) -> Tile:
 	assert_true(live_idx >= 0, "live 区无 id=%d" % tid)
 	if live_idx < 0:
 		return null
-	if live_idx != w._draw_index:
-		var tmp: Tile = w._tiles[w._draw_index]
-		w._tiles[w._draw_index] = w._tiles[live_idx]
-		w._tiles[live_idx] = tmp
+	if live_idx != w.draw_index():
+		assert_true(w.move_live_index_to_top(live_idx))
 	var drawn: Tile = w.draw()
 	assert_not_null(drawn)
 	if drawn != null:
@@ -2531,7 +2527,7 @@ func test_hand_settled_ron_real_payout_and_outcome() -> void:
 	# seat1 14 张含 W9，真实 DISCARD → CLAIM RON
 	bc.state.seats[1].hand = _hand_live(bc, _noise_14_with(TileId.W9), used)
 	var disc: Tile = null
-	for t in bc.state.seats[1].hand._tiles:
+	for t in bc.state.seats[1].hand.tiles():
 		if t != null and int(t.id) == TileId.W9:
 			disc = t
 			break
@@ -2753,7 +2749,7 @@ func test_hand_settled_exhaustive_draw_real_outcome() -> void:
 	# 直接让 AI/推进路径在 DRAW 无牌时 settle。全 HUMAN：手动把 wall 耗尽后
 	# 调引擎路径触发 EXHAUSTIVE，再经 _emit_settled_if_needed 发布。
 	var w: Wall = bc.state.wall
-	w._draw_index = _live_end_wall(w)
+	w.set_draw_index(_live_end_wall(w))
 	bc.state.phase = BattlePhase.Kind.DRAW
 	bc.state.current_seat = 0
 	bc.set("_settled", false)
@@ -2817,7 +2813,7 @@ func test_arm_pass_empty_live_wall_exhaustive_draw_hand_settled_via_submit() -> 
 	if wall == null:
 		return
 	# 最后 PASS 前：live wall 精确耗尽；下一次 seat0 DRAW 应触发真实 EXHAUSTIVE_DRAW
-	wall._draw_index = _live_end_wall(wall)
+	wall.set_draw_index(_live_end_wall(wall))
 
 	var pr := _prompt(server)
 	assert_not_null(pr, "PASS 前须有 CLAIM_WINDOW prompt")

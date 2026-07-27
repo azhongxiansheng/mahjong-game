@@ -203,11 +203,11 @@ func test_result_hand_tiles_keep_readable_modal_size() -> void:
 func test_win_result_reuses_flat_meld_with_34x45_tiles() -> void:
 	var bc := PlayableBattleController.new(20260720)
 	var called := Tile.new(TileId.W3, false, Tile.NO_OWNER, 3001)
-	bc.state.seats[0].melds = [Meld.make_chi([
+	assert_true(bc.state.seats[0].melds.add_existing(Meld.make_chi([
 		Tile.new(TileId.W2, false, Tile.NO_OWNER, 3000),
 		called,
 		Tile.new(TileId.W4, false, Tile.NO_OWNER, 3002),
-	], 3, 0, called)]
+	], 3, 0, called)))
 	bc.state.seats[0].hand = Hand.new()
 	for id in [
 		TileId.T2, TileId.T3, TileId.T4,
@@ -240,7 +240,7 @@ func test_win_result_reuses_flat_meld_with_34x45_tiles() -> void:
 
 func test_win_result_waits_for_continue_before_score_roll() -> void:
 	var bc := PlayableBattleController.new(20260720)
-	var win_tile := TileInstance.make(Tile.new(TileId.W1), 0)
+	var win_tile := TileSkillAnchor.make(Tile.new(TileId.W1), 0)
 	var win := BattleEvent.make(&"WIN_DECLARED", 0, win_tile, {
 		"han": 3,
 		"fu": 40,

@@ -31,7 +31,7 @@ This repo contains **two unrelated trees** that share a directory but not a buil
    - `ui/lobby/` — 生产大厅入口壳；`PracticeMatchCoordinator` 消费练习 intent，`PublicMatchCoordinator` 消费公共匹配 intent 并发布无 token 的只读 UI state/view
    - `ui/four_player_table/` — 日麻 4 人桌对战 UI（`PlayableTable` / `SeatPanel` / `CardTileBack` 等）
    - `core/` — pure-logic 日麻 engine：
-     - `core/tile/` — `Tile` / `TileId` / `Hand` / `Meld` / `Wall`（含 dead wall API）
+     - `core/tile/` — `Tile` / `TileId` / `Hand` / `DiscardRiver` / `Meld` / `MeldCollection` / `Wall`（含 dead wall API）
      - `core/rules_japanese/` — 和牌、听牌、振听、Dora、流局；`fu/` `score/` `yaku/`（约 38 役）
      - `core/turn_engine/` — `TurnEngine` + `ClaimValidator` / `RiichiValidator` / `DrawDetector`
    - `battle/` — 对战运行时：`BattleState`、`Seat`、`PlayableBattleController`、`SkillScheduler` 等
@@ -180,6 +180,16 @@ scripts/e7_257_whisper_model_download_smoke.sh
 
 ### 道具领域（active）
 `items/item_catalog.gd` 统一登记当前 10 个战斗消耗品与 12 个遗物；`CardPool`、`ConsumableFactory`、`RelicFactory`、`ItemInventoryModule`、`ItemAuthority` 和牌桌 UI 只消费该目录，不再维护各自的具体 ID 白名单。`seat_swap_v1` / `tsubame_v1` 保留为已知但不可发放、不可使用；协议 DTO、`ItemInstance` 状态与 `ITEM_*` 事件仍由 `session/` 权威链维护。
+
+### 麻将牌领域模型
+
+- `Tile` 是一张物理牌：`id` / `is_red_dora` / `owner_seat` / `instance_id` 均只读；`TileId` 承担 34 种牌的纯规则映射。
+- `Seat` 是席位聚合根，持有 `Hand`、`DiscardRiver`、`MeldCollection`；业务代码只通过集合 API 读写，`tiles()` / `all()` 返回副本。
+- `DiscardRiver` 原子维护弃牌顺序和立直弃牌索引；被鸣牌必须使用 `claim_last()`。
+- `MeldCollection` 按 `local_index * 4 + seat_id` 分配 `meld_id`，负责副露结构、实体与 PON → ADDED_KAN 升级校验；行动合法性仍由 `ClaimValidator` / `TurnEngine` 负责。
+- `Wall` 封装 136 张权威牌、摸牌游标、王牌区和岭上游标；`DoraIndicators` 仅以 `reveal_pair()` 成对推进表/里指示牌。
+- 技能锚点类型为 `TileSkillAnchor`，指向真实物理 `Tile`；其六键序列化结构保持协议兼容。
+- 权威快照恢复先完整验证，再通过 staging 一次提交；wire schema、公开快照字段与隐私边界不随内部领域对象变化。
 
 ### Class_name
 全局 `class_name` **不可重复**。新增前 `grep -rn 'class_name <Name>' godot/`。

@@ -37,7 +37,7 @@ func test_consume_self_marks_skill_consumed():
 	var reg: SkillRegistry = arr[0]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill(_ConsumeOnFireHook)
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	assert_false(sk.consumed, "fire 前未消耗")
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
@@ -50,7 +50,7 @@ func test_consumed_skill_does_not_fire_again():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill(_ConsumeOnFireHook)
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	# 模拟"重置外部状态"以确认第 2 次 emit 不再触发 hook
@@ -66,7 +66,7 @@ func test_current_skill_resets_after_dispatch():
 	var reg: SkillRegistry = arr[0]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill(_NoopHook)
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
 	assert_null(ctx.current_skill, "dispatch 结束后 current_skill 必须清空")

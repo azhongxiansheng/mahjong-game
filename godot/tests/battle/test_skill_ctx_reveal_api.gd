@@ -22,11 +22,11 @@ func test_reveal_random_from_seat_appends_one_visible_to_viewer():
 func test_reveal_random_from_seat_picks_real_tile_holder():
 	var ctx := _setup_ctx()
 	ctx.reveal_random_from_seat(2, 0)
-	var ti: TileInstance = ctx._state.revealed_tiles[0]["tile"]
+	var ti: TileSkillAnchor = ctx._state.revealed_tiles[0]["tile"]
 	assert_eq(ti.holder_seat, 2, "tile.holder_seat = target seat 2")
 	# 真实存在 — 来自 seat 2 起手 13 张之一
 	var seat_2_ids: Array = []
-	for t in ctx._state.seats[2].hand._tiles:
+	for t in ctx._state.seats[2].hand.tiles():
 		seat_2_ids.append(t.id)
 	assert_true(ti.tile.id in seat_2_ids, "reveal 的 id 在 seat 2 真手牌内")
 
@@ -65,7 +65,7 @@ func test_reveal_dora_indicator_to_first():
 	var ctx := _setup_ctx()
 	var ok: bool = ctx.reveal_dora_indicator_to(0, 0)
 	assert_true(ok)
-	var ti: TileInstance = ctx._state.revealed_tiles[0]["tile"]
+	var ti: TileSkillAnchor = ctx._state.revealed_tiles[0]["tile"]
 	# wall.peek_dora_indicator(0) 应等于此牌
 	assert_eq(ti.tile.id, ctx._state.wall.peek_dora_indicator(0).id,
 		"reveal 的 id 与 peek_dora_indicator(0) 一致")
@@ -83,5 +83,5 @@ func test_reveal_next_draw_for_seat_returns_top_of_wall():
 	var expected: Tile = ctx._state.wall.peek_next_draw()
 	var ok: bool = ctx.reveal_next_draw_for_seat(0, 0)
 	assert_true(ok)
-	var ti: TileInstance = ctx._state.revealed_tiles[0]["tile"]
+	var ti: TileSkillAnchor = ctx._state.revealed_tiles[0]["tile"]
 	assert_eq(ti.tile.id, expected.id, "reveal 的 id 等于 next_draw")

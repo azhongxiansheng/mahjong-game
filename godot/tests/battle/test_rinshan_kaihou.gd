@@ -37,7 +37,7 @@ func test_apply_minkan_sets_rinshan_flag() -> void:
 	bc.state.seats[1].hand.add(_tile(TileId.W5, 703))
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [_tile(TileId.W5, 700)]
+	bc.state.seats[0].river.restore([_tile(TileId.W5, 700)])
 	var ok: bool = bc.engine.apply_minkan(1, 700, [701, 702, 703])
 	assert_true(ok, "minkan 应成立")
 	assert_true(bc.state.seats[1].last_draw_is_rinshan,

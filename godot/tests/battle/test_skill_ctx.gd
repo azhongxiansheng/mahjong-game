@@ -29,7 +29,7 @@ func test_steal_score_transfers_fraction():
 
 func test_reveal_tile_to_appends_entry():
 	var st := _make_state()
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0)
 	var ctx := SkillCtx.new(st, _make_event())
 	ctx.reveal_tile_to(ti, 1)
 	assert_eq(st.revealed_tiles.size(), 1)

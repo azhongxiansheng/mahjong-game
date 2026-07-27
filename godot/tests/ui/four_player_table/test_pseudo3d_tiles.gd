@@ -111,7 +111,7 @@ func test_reference_tile_sizes_are_exact() -> void:
 		"右家走 bundle q0/aw SVG 立方体 Q3 包围盒")
 	assert_eq(SeatPanel.opponent_hand_tile_size(3), Vector2(46.71, 66.63),
 		"左家只镜像同一 SVG 立方体")
-	assert_eq(Vector2(DiscardRiver.TILE_W, DiscardRiver.TILE_H), Vector2(39, 52),
+	assert_eq(Vector2(DiscardRiverView.TILE_W, DiscardRiverView.TILE_H), Vector2(39, 52),
 		"河牌覆盖参考 .river .tile--sm")
 	assert_eq(Vector2(MeldArea.TILE_W, MeldArea.TILE_H), Vector2(40, 53),
 		"副露覆盖参考 .melds .tile--sm")
@@ -468,7 +468,7 @@ func test_player_drawn_hand_and_pon_reflow_match_reference() -> void:
 	add_child_autofree(panel)
 	await get_tree().process_frame
 	var seat := _seat_with_tiles(0, 14)
-	seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[-1].instance_id
 	panel.bind_seat(seat)
 	panel.apply_reference_hand_layout()
 	await wait_seconds(0.22)
@@ -500,7 +500,7 @@ func test_opponent_drawn_visual_slots_fill_reserved_hand_hosts() -> void:
 		add_child_autofree(panel)
 		await get_tree().process_frame
 		var seat := _seat_with_tiles(seat_id, 14)
-		seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
+		seat.last_drawn_instance_id = seat.hand.tiles()[-1].instance_id
 		panel.bind_seat(seat)
 		panel.apply_reference_hand_layout()
 		await get_tree().process_frame
@@ -645,7 +645,7 @@ func test_side_hand_drawn_tile_uses_reference_reserved_end_slot() -> void:
 		add_child_autofree(panel)
 		await get_tree().process_frame
 		var seat := _seat_with_tiles(seat_id, 14)
-		seat.last_drawn_instance_id = seat.hand._tiles[-1].instance_id
+		seat.last_drawn_instance_id = seat.hand.tiles()[-1].instance_id
 		panel.bind_seat(seat)
 		assert_eq(panel._hand_tile_row.get_child_count(), 14,
 			"有摸牌时 q0 仍是固定 14 槽且全部可见")
@@ -713,7 +713,7 @@ func test_river_depth_layers_follow_all_four_seat_directions() -> void:
 			"sharp": Vector2(7, 0), "soft": Vector2(9, 0)},
 	}
 	for seat_id in range(4):
-		var river := DiscardRiver.new()
+		var river := DiscardRiverView.new()
 		add_child_autofree(river)
 		river.set_seat_id(seat_id)
 		river._spawn_tile(_face_texture(), 0, 0, false, false, false, false, TileId.W1)
@@ -761,5 +761,5 @@ func test_four_player_table_propagates_seat_to_depth_renderers() -> void:
 	assert_eq(table.discard_rivers.size(), 4)
 	assert_eq(table.meld_areas.size(), 4)
 	for seat_id in range(4):
-		assert_eq((table.discard_rivers[seat_id] as DiscardRiver)._seat_id, seat_id)
+		assert_eq((table.discard_rivers[seat_id] as DiscardRiverView)._seat_id, seat_id)
 		assert_eq((table.meld_areas[seat_id] as MeldArea)._seat_id, seat_id)

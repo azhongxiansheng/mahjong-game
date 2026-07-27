@@ -124,7 +124,7 @@ func decide_riichi(seat: Seat, wall_live_size: int) -> bool:
 var use_shanten_aware_discard: bool = false
 
 func decide_discard(seat: Seat) -> Tile:
-	var hand_tiles: Array = seat.hand._tiles
+	var hand_tiles: Array = seat.hand.tiles()
 	if hand_tiles.is_empty():
 		return null
 	# GAP-2：defense mode — 对家立直时且自家未立直，优先弃安全牌。
@@ -144,7 +144,7 @@ func decide_discard(seat: Seat) -> Tile:
 
 # 13 暗 - 3*melds 是均衡态；+1 = 刚抽完待弃。
 static func _is_post_draw_state(seat: Seat) -> bool:
-	var hand_size: int = seat.hand._tiles.size()
+	var hand_size: int = seat.hand.tiles().size()
 	var meld_count: int = seat.melds.size() if seat.melds != null else 0
 	return hand_size == 14 - 3 * meld_count
 
@@ -185,8 +185,8 @@ static func _decide_discard_retention(hand_tiles: Array) -> Tile:
 # 同 shanten 时 tie-break 用 retention（弃孤立 / 字牌 / 单张）。
 # 注：shanten 越小越接近 tenpai；弃 = 暂从 hand 抽走 1 张算剩 13 张的 shanten。
 func _decide_discard_shanten(seat: Seat) -> Tile:
-	var hand_tiles: Array = seat.hand._tiles
-	var melds: Array = seat.melds
+	var hand_tiles: Array = seat.hand.tiles()
+	var melds: Array = seat.melds.all()
 	# 预算 retention 分（fallback / tie-break）
 	var counts: Dictionary = {}
 	for t in hand_tiles:
@@ -271,7 +271,7 @@ func decide_self_kan(seat: Seat) -> Dictionary:
 	var ankan_ids: Array = ClaimValidator.ankan_candidates(seat.hand)
 	if not ankan_ids.is_empty():
 		return {"kind": "ankan", "tile_id": ankan_ids[0]}
-	for m in seat.melds:
+	for m in seat.melds.all():
 		if m.kind == Meld.Kind.PON:
 			var tid: int = m.tiles[0].id
 			if seat.hand.count_of(tid) >= 1:

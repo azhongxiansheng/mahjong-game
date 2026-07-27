@@ -10,14 +10,14 @@ func _tile(tid: int, iid: int, red: bool = false, p_owner: int = Tile.NO_OWNER) 
 
 func _hand_iids(h: Hand) -> Array:
 	var out: Array = []
-	for t in h._tiles:
+	for t in h.tiles():
 		out.append(t.instance_id)
 	return out
 
 
 func _hand_red_flags(h: Hand) -> Array:
 	var out: Array = []
-	for t in h._tiles:
+	for t in h.tiles():
 		out.append(t.is_red_dora)
 	return out
 
@@ -78,16 +78,16 @@ func test_battle_state_hand_seq_defaults_to_zero() -> void:
 
 func test_wall_assigns_canonical_serial_instance_ids_before_shuffle() -> void:
 	var w := Wall.new_full_set(0)
-	assert_eq(w._tiles.size(), 136)
+	assert_eq(w.authority_tiles().size(), 136)
 	for i in range(136):
-		assert_eq(w._tiles[i].instance_id, i,
+		assert_eq(w.authority_tiles()[i].instance_id, i,
 			"hand_seq=0 时 canonical serial i → instance_id=i (i=%d)" % i)
 
 
 func test_wall_instance_ids_unique_and_stable_across_shuffle() -> void:
 	var w := Wall.new_full_set(0)
 	var before: Array = []
-	for t in w._tiles:
+	for t in w.authority_tiles():
 		before.append(t.instance_id)
 	before.sort()
 	assert_eq(before.size(), 136)
@@ -99,7 +99,7 @@ func test_wall_instance_ids_unique_and_stable_across_shuffle() -> void:
 
 	w.shuffle(42)
 	var after: Array = []
-	for t in w._tiles:
+	for t in w.authority_tiles():
 		after.append(t.instance_id)
 	after.sort()
 	assert_eq(after, before, "shuffle 只重排，不改写 instance_id")
@@ -113,12 +113,12 @@ func test_wall_hand_seq_namespaces_do_not_overlap() -> void:
 	var ids1: Dictionary = {}
 	var ids2: Dictionary = {}
 	for i in range(136):
-		assert_eq(w0._tiles[i].instance_id, 0 * 136 + i)
-		assert_eq(w1._tiles[i].instance_id, 1 * 136 + i)
-		assert_eq(w2._tiles[i].instance_id, 2 * 136 + i)
-		ids0[w0._tiles[i].instance_id] = true
-		ids1[w1._tiles[i].instance_id] = true
-		ids2[w2._tiles[i].instance_id] = true
+		assert_eq(w0.authority_tiles()[i].instance_id, 0 * 136 + i)
+		assert_eq(w1.authority_tiles()[i].instance_id, 1 * 136 + i)
+		assert_eq(w2.authority_tiles()[i].instance_id, 2 * 136 + i)
+		ids0[w0.authority_tiles()[i].instance_id] = true
+		ids1[w1.authority_tiles()[i].instance_id] = true
+		ids2[w2.authority_tiles()[i].instance_id] = true
 	for k in ids0.keys():
 		assert_false(ids1.has(k), "hand_seq 0/1 不得重叠 id=%s" % str(k))
 		assert_false(ids2.has(k), "hand_seq 0/2 不得重叠")
@@ -132,13 +132,13 @@ func test_for_east_round_assigns_unique_valid_instance_ids() -> void:
 	var seen: Dictionary = {}
 	var count := 0
 	for seat in s.seats:
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			assert_ne(t.instance_id, Tile.INVALID_INSTANCE_ID)
 			assert_false(seen.has(t.instance_id), "发牌后 instance_id 重复 %d" % t.instance_id)
 			seen[t.instance_id] = true
 			count += 1
 	# 剩余 live + dead 墙内未摸牌
-	for t in s.wall._tiles:
+	for t in s.wall.authority_tiles():
 		if seen.has(t.instance_id):
 			continue
 		assert_ne(t.instance_id, Tile.INVALID_INSTANCE_ID)
@@ -154,7 +154,7 @@ func test_hand_clone_preserves_instance_ids() -> void:
 	h.add(_tile(TileId.W2, 6, false, 3))
 	var c := h.clone()
 	assert_eq(_hand_iids(c), [5, 6])
-	assert_eq(c._tiles[1].owner_seat, 3)
+	assert_eq(c.tile_at(1).owner_seat, 3)
 	# 独立性
 	c.take_by_instance_id(5)
 	assert_eq(h.size(), 2, "clone 后 take 不影响原 hand")

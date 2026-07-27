@@ -39,7 +39,7 @@ func transfer_points(from_seat: int, to_seat: int, amount: int) -> void:
 	_state.scores[from_seat] -= amount
 	_state.scores[to_seat] += amount
 
-func reveal_tile_to(tile: TileInstance, target_seat: int) -> void:
+func reveal_tile_to(tile: TileSkillAnchor, target_seat: int) -> void:
 	_state.revealed_tiles.append({"tile": tile, "visible_to": [target_seat]})
 
 # ---- 信息系 reveal API ----
@@ -58,7 +58,7 @@ func reveal_random_from_seat(
 	if seat == null or seat.hand == null or seat.hand.size() == 0:
 		return false
 	var candidates: Array[Tile] = []
-	for tile in seat.hand._tiles:
+	for tile in seat.hand.tiles():
 		if not only_unseen or not _is_revealed_to(tile, target_seat, viewer_seat):
 			candidates.append(tile)
 	if candidates.is_empty():
@@ -69,7 +69,7 @@ func reveal_random_from_seat(
 	rng.seed = _state.turn_count * 17 + _state.event_chain_depth * 31 + target_seat
 	var idx: int = rng.randi_range(0, candidates.size() - 1)
 	var picked: Tile = candidates[idx]
-	var ti: TileInstance = TileInstance.make(picked, target_seat)
+	var ti: TileSkillAnchor = TileSkillAnchor.make(picked, target_seat)
 	ti.holder_seat = target_seat
 	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return true
@@ -84,9 +84,9 @@ func _is_revealed_to(tile: Tile, holder_seat: int, viewer_seat: int) -> bool:
 		if typeof(visible_to) != TYPE_ARRAY or not (visible_to as Array).has(viewer_seat):
 			continue
 		var instance_value: Variant = record.get("tile", null)
-		if not (instance_value is TileInstance):
+		if not (instance_value is TileSkillAnchor):
 			continue
-		var instance := instance_value as TileInstance
+		var instance := instance_value as TileSkillAnchor
 		if instance.holder_seat == holder_seat and instance.tile != null \
 				and instance.tile.instance_id == tile.instance_id:
 			return true
@@ -100,7 +100,7 @@ func reveal_wall_top_to(viewer_seat: int, n: int) -> int:
 		return 0
 	var tiles: Array[Tile] = _state.wall.peek_top_n(n)
 	for t in tiles:
-		var ti: TileInstance = TileInstance.make(t, -1)
+		var ti: TileSkillAnchor = TileSkillAnchor.make(t, -1)
 		ti.holder_seat = -1
 		_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return tiles.size()
@@ -126,7 +126,7 @@ func reveal_dora_indicator_to(viewer_seat: int, n: int) -> bool:
 	var t: Tile = _state.wall.peek_dora_indicator(n)
 	if t == null:
 		return false
-	var ti: TileInstance = TileInstance.make(t, -1)
+	var ti: TileSkillAnchor = TileSkillAnchor.make(t, -1)
 	ti.holder_seat = -1
 	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return true
@@ -142,7 +142,7 @@ func reveal_next_draw_for_seat(target_seat: int, viewer_seat: int) -> bool:
 	var t: Tile = _state.wall.peek_next_draw()
 	if t == null:
 		return false
-	var ti: TileInstance = TileInstance.make(t, -1)
+	var ti: TileSkillAnchor = TileSkillAnchor.make(t, -1)
 	ti.holder_seat = -1
 	_state.revealed_tiles.append({"tile": ti, "visible_to": [viewer_seat]})
 	return true

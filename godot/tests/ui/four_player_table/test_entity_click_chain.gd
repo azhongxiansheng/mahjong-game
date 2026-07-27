@@ -44,10 +44,10 @@ func test_card_tile_back_click_emits_instance_id_not_tile_id() -> void:
 	await get_tree().process_frame
 	watch_signals(card)
 
-	# 现有 API 建实体：Tile.instance_id → TileInstance → set_tile_instance
+	# 现有 API 建实体：Tile.instance_id → TileSkillAnchor → set_tile_instance
 	# 禁止静态 3 参 set_face_up（生产尚未扩参 → parse error）
 	var tile := Tile.new(TileId.W5, false, 0, 9001)
-	var ti := TileInstance.make(tile, 0)
+	var ti := TileSkillAnchor.make(tile, 0)
 	card.set_tile_instance(ti)
 	assert_eq(card._tile_id, TileId.W5, "tile_id 仍可保存供渲染")
 	var stored_iid: Variant = card.get("tile_instance_id")
@@ -445,7 +445,7 @@ func test_clone_result_tile_preserves_entity_fields_and_is_independent() -> void
 	assert_true(cloned.is_red_dora, "保留 red")
 	assert_eq(cloned.owner_seat, 2, "保留 owner")
 	# 独立性：改源不得影响 clone
-	src.id = TileId.W1
+	src._id = TileId.W1  # 测试专用：验证 clone 与源对象解耦
 	assert_eq(cloned.id, TileId.S5)
 
 
@@ -561,7 +561,7 @@ func test_clone_result_meld_added_kan_fail_closed_promote_fails() -> void:
 	var fourth := Tile.new(TileId.W5, false, 0, 53)
 	assert_true(src.promote_to_added_kan(fourth))
 	assert_eq(src.tiles.size(), 4)
-	src.tiles[3].id = TileId.W1  # 破坏 added 牌 id，使 promote 条件失败
+	src.tiles[3]._id = TileId.W1  # 测试专用：注入损坏态，使 promote 条件失败
 	var cloned: Meld = PlayableTable._clone_result_meld(src)
 	assert_null(cloned, "promote 失败必须 fail-closed 返回 null，禁止静默 PON")
 

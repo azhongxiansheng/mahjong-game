@@ -12,7 +12,8 @@ func _make_seat_with_hand(ids: Array, melds: Array = []) -> Seat:
 	s.hand = Hand.new()
 	for tid in ids:
 		s.hand.add(Tile.new(tid))
-	s.melds = melds
+	for meld in melds:
+		assert_true(s.melds.add_existing(meld))
 	return s
 
 # ---- 默认关闭：行为同 M7 ----

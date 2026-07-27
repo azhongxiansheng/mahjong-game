@@ -17,9 +17,9 @@ static func tiles_by_holder(state: BattleState, viewer_seat: int) -> Dictionary:
 		if typeof(visible_to) != TYPE_ARRAY or not _contains_seat(visible_to, viewer_seat):
 			continue
 		var instance_value: Variant = record.get("tile", null)
-		if not (instance_value is TileInstance):
+		if not (instance_value is TileSkillAnchor):
 			continue
-		var instance := instance_value as TileInstance
+		var instance := instance_value as TileSkillAnchor
 		if instance.tile == null or not Tile.is_valid_instance_id(instance.tile.instance_id):
 			continue
 		var holder := int(instance.holder_seat)
@@ -36,7 +36,7 @@ static func tiles_by_holder(state: BattleState, viewer_seat: int) -> Dictionary:
 		if seen_instance_ids.has(iid):
 			continue
 		seen_instance_ids[iid] = true
-		var live_instance := TileInstance.make(live_tile, holder)
+		var live_instance := TileSkillAnchor.make(live_tile, holder)
 		live_instance.holder_seat = holder
 		if not grouped.has(holder):
 			grouped[holder] = []
@@ -53,5 +53,5 @@ static func _contains_seat(values: Array, seat: int) -> bool:
 	return false
 
 
-static func _instance_before(a: TileInstance, b: TileInstance) -> bool:
+static func _instance_before(a: TileSkillAnchor, b: TileSkillAnchor) -> bool:
 	return a.tile.instance_id < b.tile.instance_id

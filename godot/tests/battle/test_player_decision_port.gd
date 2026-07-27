@@ -20,8 +20,8 @@ class FakeDecisionPort extends PlayerDecisionPort:
 
 
 func _first_hand_tile(seat: Seat) -> Tile:
-	assert_gt(seat.hand._tiles.size(), 0)
-	return seat.hand._tiles[0]
+	assert_gt(seat.hand.tiles().size(), 0)
+	return seat.hand.tiles()[0]
 
 
 func _seed_riichi_turn(bc: PlayableBattleController) -> int:
@@ -36,12 +36,13 @@ func _seed_riichi_turn(bc: PlayableBattleController) -> int:
 		TileId.S5, TileId.S5,
 		TileId.W3,
 	]
-	assert_eq(seat.hand._tiles.size(), ids.size())
+	assert_eq(seat.hand.tiles().size(), ids.size())
+	var replacement: Array[Tile] = []
 	for i in range(ids.size()):
-		var tile: Tile = seat.hand._tiles[i]
-		tile.id = ids[i]
-		tile.is_red_dora = false
-	var discard: Tile = seat.hand._tiles[-1]
+		var tile: Tile = seat.hand.tiles()[i]
+		replacement.append(Tile.new(ids[i], false, tile.owner_seat, tile.instance_id))
+	assert_true(seat.hand.restore_tiles(replacement))
+	var discard: Tile = seat.hand.tile_at(seat.hand.size() - 1)
 	assert_eq(discard.id, TileId.W3)
 	return discard.instance_id
 

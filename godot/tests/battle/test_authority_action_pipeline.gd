@@ -76,7 +76,7 @@ func _take_wall_tile(bc: BattleController, tid: int) -> Tile:
 	assert_not_null(bc)
 	assert_not_null(bc.state)
 	assert_not_null(bc.state.wall)
-	for t in bc.state.wall._tiles:
+	for t in bc.state.wall.authority_tiles():
 		if t == null or int(t.id) != int(tid):
 			continue
 		var iid: int = int(t.instance_id)
@@ -119,7 +119,7 @@ func _domain_snap(bc: BattleController, focus: int = -1) -> Dictionary:
 	var seats_hand_iids: Array = []
 	for s in range(4):
 		var mids: Array = []
-		for m in bc.state.seats[s].melds:
+		for m in bc.state.seats[s].melds.all():
 			mids.append({
 				"meld_id": (m as Meld).meld_id,
 				"kind": int((m as Meld).kind),
@@ -127,13 +127,13 @@ func _domain_snap(bc: BattleController, focus: int = -1) -> Dictionary:
 			})
 		seats_melds.append(mids)
 		var iids: Array = []
-		for t in bc.state.seats[s].hand._tiles:
+		for t in bc.state.seats[s].hand.tiles():
 			iids.append(int(t.instance_id))
 		seats_hand_iids.append(iids)
 	return {
 		"phase": int(bc.state.phase),
 		"current_seat": int(bc.state.current_seat),
-		"dora_n": bc.state.dora_indicators.visible.size(),
+		"dora_n": bc.state.dora_indicators.visible_tiles().size(),
 		"live_wall": bc.state.wall.live_wall_size(),
 		"rinshan": bool(bc.state.seats[focus if focus >= 0 else 0].last_draw_is_rinshan) if focus >= 0 else false,
 		"pending_empty": bc._pending_added_kan.is_empty(),
@@ -179,7 +179,7 @@ func test_pon_offer_enumerates_all_physical_companion_pairs() -> void:
 	_reset_wall_usage()
 	var red_five: Tile = null
 	var black_fives: Array[Tile] = []
-	for tile in bc.state.wall._tiles:
+	for tile in bc.state.wall.authority_tiles():
 		if tile.id != TileId.W5:
 			continue
 		if tile.is_red_dora:
@@ -202,7 +202,7 @@ func test_pon_offer_enumerates_all_physical_companion_pairs() -> void:
 	bc.state.seats[2].hand = claimant_hand
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
 
@@ -229,7 +229,7 @@ func test_chi_offer_enumerates_red_and_black_physical_choices() -> void:
 	_reset_wall_usage()
 	var red_five: Tile = null
 	var black_five: Tile = null
-	for tile in bc.state.wall._tiles:
+	for tile in bc.state.wall.authority_tiles():
 		if tile.id != TileId.W5:
 			continue
 		if tile.is_red_dora:
@@ -252,10 +252,10 @@ func test_chi_offer_enumerates_red_and_black_physical_choices() -> void:
 	bc.state.seats[1].hand = claimant_hand
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.CLAIM
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	var w6: Tile = claimant_hand._tiles[0]
+	var w6: Tile = claimant_hand.tiles()[0]
 	assert_eq(w6.id, TileId.W6)
 
 	var offers: Array = bc._build_claim_offers(1, discarded, 0)
@@ -363,7 +363,7 @@ func test_turn_offers_include_tsumo_when_winning() -> void:
 		TileId.T1, TileId.T1,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 0)
-	var last: Tile = seat.hand._tiles[seat.hand._tiles.size() - 1]
+	var last: Tile = seat.hand.tiles()[seat.hand.tiles().size() - 1]
 	seat.last_drawn_instance_id = last.instance_id
 	var win: Dictionary = bc._check_tsumo(last)
 	assert_true(bool(win.get("is_winning", false)), "fixture 必须真实可自摸")
@@ -386,7 +386,7 @@ func test_turn_offers_include_ankan_when_four_in_hand() -> void:
 		TileId.S1, TileId.S2, TileId.S3, TileId.S5,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 0)
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	var ctx: DecisionContext = bc.decision_context_for_seat(1)
 	assert_not_null(ctx)
 	assert_true(_has_offer_kind(ctx, "KAN"), "四枚必须 offer KAN")
@@ -418,15 +418,15 @@ func test_turn_offers_include_added_kan_when_pon_plus_fourth() -> void:
 		TileId.S5, TileId.S6, TileId.S7, TileId.E,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 10)
-	var added: Tile = seat.hand._tiles[0]
+	var added: Tile = seat.hand.tiles()[0]
 	seat.last_drawn_instance_id = added.instance_id
 	var pon_tiles: Array[Tile] = [
 		_tile(TileId.W5, hs, 1), _tile(TileId.W5, hs, 2), _tile(TileId.W5, hs, 3),
 	]
-	var pon: Meld = Meld.make_pon(pon_tiles, 0, _ns(hs, 1))
+	var pon: Meld = Meld.make_pon(pon_tiles, 0, 2)
 	assert_not_null(pon)
-	seat.melds = [pon]
-	assert_true(ClaimValidator.can_added_kan(seat.melds, seat.hand, TileId.W5))
+	seat.melds.restore([pon], 1)
+	assert_true(ClaimValidator.can_added_kan(seat.melds.all(), seat.hand, TileId.W5))
 	var ctx: DecisionContext = bc.decision_context_for_seat(2)
 	assert_not_null(ctx)
 	assert_true(_has_offer_kind(ctx, "KAN"), "加杠条件必须 offer KAN")
@@ -458,7 +458,7 @@ func test_turn_offers_declare_abortive_draw_on_kyuusyu() -> void:
 		TileId.W2, TileId.W3, TileId.T2, TileId.T3,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 0)
-	seat.last_drawn_instance_id = seat.hand._tiles[0].instance_id
+	seat.last_drawn_instance_id = seat.hand.tiles()[0].instance_id
 	assert_true(AbortiveDraw.is_kyuusyu_kyuuhai(seat.hand.to_id_array()),
 		"fixture 必须真实九种九牌")
 	var ctx: DecisionContext = bc.decision_context_for_seat(0)
@@ -482,12 +482,12 @@ func _setup_added_kan_ready(bc: BattleController, actor: int = 1) -> Dictionary:
 		TileId.S5, TileId.S6, TileId.S7, TileId.E,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 20)
-	var added: Tile = seat.hand.find_by_instance_id(seat.hand._tiles[0].instance_id)
+	var added: Tile = seat.hand.find_by_instance_id(seat.hand.tiles()[0].instance_id)
 	seat.last_drawn_instance_id = added.instance_id
 	var pon: Meld = Meld.make_pon([
 		_tile(TileId.W5, hs, 1), _tile(TileId.W5, hs, 2), _tile(TileId.W5, hs, 3),
 	], 0, _ns(hs, 1))
-	seat.melds = [pon]
+	seat.melds.restore([pon], 1)
 	return {
 		"actor": actor, "added": added, "meld_id": pon.meld_id, "hs": hs,
 	}
@@ -503,8 +503,8 @@ func test_added_kan_accepted_opens_rob_kan_without_domain_upgrade() -> void:
 		"meld_id": fx["meld_id"],
 		"added_tile_instance_id": (fx["added"] as Tile).instance_id,
 	}, 1)
-	var dora_before: int = bc.state.dora_indicators.visible.size()
-	var meld_kind_before: int = (bc.state.seats[1].melds[0] as Meld).kind
+	var dora_before: int = bc.state.dora_indicators.visible_tiles().size()
+	var meld_kind_before: int = (bc.state.seats[1].melds.all()[0] as Meld).kind
 	var hand_size_before: int = bc.state.seats[1].hand.size()
 	var wall_before: int = bc.state.wall.live_wall_size()
 	var resp: ActionResolution = bc.apply_action(act, ActionSource.HUMAN)
@@ -512,11 +512,11 @@ func test_added_kan_accepted_opens_rob_kan_without_domain_upgrade() -> void:
 	assert_eq(_count_events(resp.events, "ACTION_APPLIED"), 1)
 	assert_eq(bc.action_journal().size(), 1)
 	# domain 零升级
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, meld_kind_before, "仍为 PON")
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, Meld.Kind.PON)
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, meld_kind_before, "仍为 PON")
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, Meld.Kind.PON)
 	assert_eq(bc.state.seats[1].hand.size(), hand_size_before, "加杠牌仍在手")
 	assert_not_null(bc.state.seats[1].hand.find_by_instance_id((fx["added"] as Tile).instance_id))
-	assert_eq(bc.state.dora_indicators.visible.size(), dora_before, "不翻 dora")
+	assert_eq(bc.state.dora_indicators.visible_tiles().size(), dora_before, "不翻 dora")
 	assert_eq(bc.state.wall.live_wall_size(), wall_before, "不摸岭上")
 	# ROB_KAN 窗
 	var rob0: DecisionContext = bc.decision_context_for_seat(0)
@@ -548,7 +548,7 @@ func test_added_kan_all_pass_then_upgrades_domain() -> void:
 		"added_tile_instance_id": (fx["added"] as Tile).instance_id,
 	}, 1)
 	assert_true(bc.apply_action(act, ActionSource.HUMAN).accepted)
-	var dora_before: int = bc.state.dora_indicators.visible.size()
+	var dora_before: int = bc.state.dora_indicators.visible_tiles().size()
 	var seq := 2
 	for seat_id in [0, 2, 3]:
 		var rctx: DecisionContext = bc.decision_context_for_seat(seat_id)
@@ -558,14 +558,14 @@ func test_added_kan_all_pass_then_upgrades_domain() -> void:
 		var r: ActionResolution = bc.apply_action(pass_act, ActionSource.HUMAN)
 		assert_true(r.accepted, "PASS seat %d" % seat_id)
 	# 全 PASS 后升级
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, Meld.Kind.ADDED_KAN,
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, Meld.Kind.ADDED_KAN,
 		"全 PASS 后才 promote 加杠")
 	assert_null(bc.state.seats[1].hand.find_by_instance_id((fx["added"] as Tile).instance_id),
 		"加杠牌离手")
-	assert_gt(bc.state.dora_indicators.visible.size(), dora_before - 1)
+	assert_gt(bc.state.dora_indicators.visible_tiles().size(), dora_before - 1)
 	# 至少 dora 翻了或岭上摸了（实现可先翻 dora 再摸）
 	assert_true(
-		bc.state.dora_indicators.visible.size() >= dora_before
+		bc.state.dora_indicators.visible_tiles().size() >= dora_before
 		or bc.state.seats[1].last_draw_is_rinshan,
 		"全 PASS 后应翻 dora 或摸岭上"
 	)
@@ -591,7 +591,7 @@ func test_chankan_ron_never_upgrades_added_kan() -> void:
 		], 0, 90 + s * 13)
 	var ron_tile: Tile = fx["added"] as Tile
 	var can: bool = ClaimValidator.can_ron(
-		bc.state.seats[2].hand, bc.state.seats[2].melds, ron_tile, bc.state.seats[2].furiten)
+		bc.state.seats[2].hand, bc.state.seats[2].melds.all(), ron_tile, bc.state.seats[2].furiten)
 	assert_true(can, "seat2 必须真实可抢杠")
 	var ctx: DecisionContext = bc.decision_context_for_seat(1)
 	var act: Action = _act("KAN", 1, 0, ctx.decision_id, {
@@ -600,7 +600,7 @@ func test_chankan_ron_never_upgrades_added_kan() -> void:
 		"added_tile_instance_id": ron_tile.instance_id,
 	}, 1)
 	assert_true(bc.apply_action(act, ActionSource.HUMAN).accepted)
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, Meld.Kind.PON, "抢杠前不升级")
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, Meld.Kind.PON, "抢杠前不升级")
 	# seat2 RON，其余 PASS
 	var seq := 2
 	for seat_id in [0, 2, 3]:
@@ -614,7 +614,7 @@ func test_chankan_ron_never_upgrades_added_kan() -> void:
 			a = _act("PASS", seat_id, 0, rctx.decision_id, {}, seq)
 		seq += 1
 		assert_true(bc.apply_action(a, ActionSource.HUMAN).accepted)
-	assert_eq((bc.state.seats[1].melds[0] as Meld).kind, Meld.Kind.PON,
+	assert_eq((bc.state.seats[1].melds.all()[0] as Meld).kind, Meld.Kind.PON,
 		"抢杠成立后永不升级")
 	assert_not_null(bc.state.seats[1].hand.find_by_instance_id(ron_tile.instance_id),
 		"抢杠后加杠牌仍在杠家手（未 upgrade）或已结算；meld 不得变 KAN")
@@ -704,7 +704,7 @@ func test_integration_two_ron_discarder_3_seat0_beats_seat2() -> void:
 	var discarded := _tile(TileId.W5, hs, 50)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 3
-	bc.state.discards_per_seat[3] = [discarded]
+	bc.state.seats[3].river.restore([discarded])
 	# 两家 tanyao tanki W5
 	for s in [0, 2]:
 		bc.state.seats[s].hand = _hand_from_ids([
@@ -721,7 +721,7 @@ func test_integration_two_ron_discarder_3_seat0_beats_seat2() -> void:
 	], hs, 100)
 	for s in [0, 2]:
 		assert_true(ClaimValidator.can_ron(
-			bc.state.seats[s].hand, bc.state.seats[s].melds, discarded, bc.state.seats[s].furiten),
+			bc.state.seats[s].hand, bc.state.seats[s].melds.all(), discarded, bc.state.seats[s].furiten),
 			"seat%d 必须可荣" % s)
 	# 提交 intents：0 RON, 1 PASS, 2 RON
 	for s in [0, 1, 2]:
@@ -759,7 +759,7 @@ func test_integration_three_can_win_but_one_pass_not_sancha() -> void:
 	var discarded := _tile(TileId.W5, hs, 60)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	for s in [1, 2, 3]:
 		bc.state.seats[s].hand = _hand_from_ids([
 			TileId.W2, TileId.W3, TileId.W4,
@@ -770,7 +770,7 @@ func test_integration_three_can_win_but_one_pass_not_sancha() -> void:
 		], hs, 10 + s * 20)
 		bc.state.seats[s].furiten = FuritenState.new()
 		assert_true(ClaimValidator.can_ron(
-			bc.state.seats[s].hand, bc.state.seats[s].melds, discarded, bc.state.seats[s].furiten))
+			bc.state.seats[s].hand, bc.state.seats[s].melds.all(), discarded, bc.state.seats[s].furiten))
 	# 1 RON, 2 RON, 3 PASS → 非 sancha
 	for s in [1, 2, 3]:
 		var ctx: DecisionContext = bc.decision_context_for_seat(s)
@@ -796,7 +796,7 @@ func test_integration_three_actual_ron_intents_sancha() -> void:
 	var discarded := _tile(TileId.W5, hs, 61)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = 0
-	bc.state.discards_per_seat[0] = [discarded]
+	bc.state.seats[0].river.restore([discarded])
 	for s in [1, 2, 3]:
 		bc.state.seats[s].hand = _hand_from_ids([
 			TileId.W2, TileId.W3, TileId.W4,
@@ -859,7 +859,7 @@ func test_tsumo_only_via_apply_action_not_draw_bypass() -> void:
 		TileId.T1, TileId.T1,
 	]
 	seat.hand = _hand_from_ids(ids, hs, 0)
-	var last: Tile = seat.hand._tiles[seat.hand._tiles.size() - 1]
+	var last: Tile = seat.hand.tiles()[seat.hand.tiles().size() - 1]
 	seat.last_drawn_instance_id = last.instance_id
 	assert_true(bool(bc._check_tsumo(last).get("is_winning", false)))
 	# 直接 draw 路径不应在未 apply TSUMO 时 settle
@@ -920,7 +920,7 @@ func test_tsumo_engine_reject_never_settles_or_emits_win() -> void:
 		TileId.S2, TileId.S3, TileId.S4,
 		TileId.T1, TileId.T1,
 	])
-	var last: Tile = seat.hand._tiles[seat.hand._tiles.size() - 1]
+	var last: Tile = seat.hand.tiles()[seat.hand.tiles().size() - 1]
 	seat.last_drawn_instance_id = last.instance_id
 	assert_true(bool(bc._check_tsumo(last).get("is_winning", false)),
 		"seat0 必须真实可自摸")
@@ -987,7 +987,7 @@ func _river_iids(bc: BattleController) -> Array:
 	var out: Array = []
 	for s in range(4):
 		var row: Array = []
-		for t in bc.state.discards_per_seat[s]:
+		for t in bc.state.seats[s].river.tiles():
 			if t is Tile:
 				row.append(int((t as Tile).instance_id))
 			else:
@@ -1015,7 +1015,7 @@ func test_claim_last_pon_domain_precheck_fail_rejects_without_register_or_action
 	assert_not_null(discarded)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = discarder
-	bc.state.discards_per_seat[discarder] = [discarded]
+	bc.state.seats[discarder].river.restore([discarded])
 
 	# claimant：对子 W5 可碰；万子序数填充（全局 W5≤3，无超 4 枚）
 	bc.state.seats[claimant].hand = _hand_from_wall(bc, [
@@ -1132,7 +1132,7 @@ func test_claim_last_pon_domain_precheck_fail_rejects_without_register_or_action
 	assert_eq(int(after["phase"]), BattlePhase.Kind.CLAIM)
 	assert_eq(int(after["current_seat"]), int(before["current_seat"]))
 	assert_eq(int(after["current_seat"]), discarder)
-	assert_eq(_river_iids(bc), river_before, "河（discards_per_seat iid）零修改")
+	assert_eq(_river_iids(bc), river_before, "牌河实体零修改")
 	assert_eq(after["melds"], before["melds"], "四座 melds 零修改")
 	assert_eq(after["hands"], before["hands"], "四座 hand iid 零修改（含 sabotage 后状态）")
 	assert_eq(int(after["dora_n"]), int(before["dora_n"]))
@@ -1210,7 +1210,7 @@ func test_claim_ron_cancel_fallback_to_next_winner_not_failed() -> void:
 	assert_not_null(discarded)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = discarder
-	bc.state.discards_per_seat[discarder] = [discarded]
+	bc.state.seats[discarder].river.restore([discarded])
 
 	# seat1/2：T234 S234 T678 W6W6 W3W4（听 W5 断幺九）
 	var tenpai_ids: Array = [
@@ -1224,7 +1224,7 @@ func test_claim_ron_cancel_fallback_to_next_winner_not_failed() -> void:
 		bc.state.seats[s].hand = _hand_from_wall(bc, tenpai_ids)
 		bc.state.seats[s].furiten = FuritenState.new()
 		assert_true(ClaimValidator.can_ron(
-			bc.state.seats[s].hand, bc.state.seats[s].melds, discarded, bc.state.seats[s].furiten),
+			bc.state.seats[s].hand, bc.state.seats[s].melds.all(), discarded, bc.state.seats[s].furiten),
 			"seat%d 必须真实可荣" % s)
 
 	# seat3：无听 W5，仅 PASS
@@ -1350,7 +1350,7 @@ func test_rob_kan_ron_cancel_completes_added_kan_not_failed() -> void:
 		TileId.E,
 	])
 	var added: Tile = null
-	for t in seat_a.hand._tiles:
+	for t in seat_a.hand.tiles():
 		if int(t.id) == TileId.W5:
 			added = t
 			break
@@ -1361,10 +1361,10 @@ func test_rob_kan_ron_cancel_completes_added_kan_not_failed() -> void:
 		var wt: Tile = _take_wall_tile(bc, TileId.W5)
 		assert_not_null(wt)
 		pon_tiles.append(wt)
-	var pon: Meld = Meld.make_pon(pon_tiles, 0, _ns(0, 25))
+	var pon: Meld = Meld.make_pon(pon_tiles, 0, actor)
 	assert_not_null(pon)
-	seat_a.melds = [pon]
-	assert_true(ClaimValidator.can_added_kan(seat_a.melds, seat_a.hand, TileId.W5),
+	seat_a.melds.restore([pon], 1)
+	assert_true(ClaimValidator.can_added_kan(seat_a.melds.all(), seat_a.hand, TileId.W5),
 		"fixture 必须真实可加杠")
 
 	# seat2：听 W5（断幺九），可抢杠
@@ -1377,15 +1377,15 @@ func test_rob_kan_ron_cancel_completes_added_kan_not_failed() -> void:
 	])
 	bc.state.seats[2].furiten = FuritenState.new()
 	assert_true(ClaimValidator.can_ron(
-		bc.state.seats[2].hand, bc.state.seats[2].melds, added, bc.state.seats[2].furiten),
+		bc.state.seats[2].hand, bc.state.seats[2].melds.all(), added, bc.state.seats[2].furiten),
 		"seat2 必须真实可抢杠 added W5")
 
 	# 下一岭上实体不得与 fixture 占用 iid 冲突（seed 冲突时换 seed）
 	var next_rinshan_iid: int = -1
-	if bc.state.wall._tiles.size() > 0:
-		var ridx: int = bc.state.wall._tiles.size() - 1 - int(bc.state.wall._rinshan_taken)
-		if ridx >= 0 and ridx < bc.state.wall._tiles.size():
-			var rt: Tile = bc.state.wall._tiles[ridx]
+	if bc.state.wall.authority_tiles().size() > 0:
+		var ridx: int = bc.state.wall.authority_tiles().size() - 1 - int(bc.state.wall.rinshan_taken())
+		if ridx >= 0 and ridx < bc.state.wall.authority_tiles().size():
+			var rt: Tile = bc.state.wall.authority_tiles()[ridx]
 			if rt != null:
 				next_rinshan_iid = int(rt.instance_id)
 	assert_true(next_rinshan_iid < 0 or not _used_wall_iids.has(next_rinshan_iid),
@@ -1417,12 +1417,12 @@ func test_rob_kan_ron_cancel_completes_added_kan_not_failed() -> void:
 	var r_kan: ActionResolution = bc.apply_action(kan_act, ActionSource.HUMAN)
 	assert_true(r_kan.accepted, "ADDED_KAN 声明应 accepted")
 	assert_false(bc._pending_added_kan.is_empty(), "pending 非空")
-	assert_eq((bc.state.seats[actor].melds[0] as Meld).kind, Meld.Kind.PON, "声明后仍为 PON")
+	assert_eq((bc.state.seats[actor].melds.all()[0] as Meld).kind, Meld.Kind.PON, "声明后仍为 PON")
 	assert_not_null(bc.state.seats[actor].hand.find_by_instance_id(added.instance_id),
 		"added 仍在手")
 
-	var dora_after_decl: int = bc.state.dora_indicators.visible.size()
-	var rinshan_after_decl: int = int(bc.state.wall._rinshan_taken)
+	var dora_after_decl: int = bc.state.dora_indicators.visible_tiles().size()
+	var rinshan_after_decl: int = int(bc.state.wall.rinshan_taken())
 	var hand_size_after_decl: int = bc.state.seats[actor].hand.size()
 
 	# 真实 ROB_KAN：seat0 PASS → seat2 RON → seat3 PASS 收窗
@@ -1467,13 +1467,13 @@ func test_rob_kan_ron_cancel_completes_added_kan_not_failed() -> void:
 	assert_false(bc._settled, "cancel 后不得 settled（应完成加杠非胡）")
 	assert_eq(bc.state.current_seat, actor, "current_seat 回到杠家")
 	assert_eq(bc.state.phase, BattlePhase.Kind.DISCARD, "加杠完成后 phase=DISCARD")
-	assert_eq((bc.state.seats[actor].melds[0] as Meld).kind, Meld.Kind.ADDED_KAN,
+	assert_eq((bc.state.seats[actor].melds.all()[0] as Meld).kind, Meld.Kind.ADDED_KAN,
 		"cancel 后应 promote 为 ADDED_KAN")
 	assert_null(bc.state.seats[actor].hand.find_by_instance_id(added.instance_id),
 		"added 必须离手")
-	assert_eq(bc.state.dora_indicators.visible.size(), dora_after_decl + 1,
+	assert_eq(bc.state.dora_indicators.visible_tiles().size(), dora_after_decl + 1,
 		"加杠完成应翻 1 张 dora")
-	assert_eq(int(bc.state.wall._rinshan_taken), rinshan_after_decl + 1,
+	assert_eq(int(bc.state.wall.rinshan_taken()), rinshan_after_decl + 1,
 		"加杠完成应摸 1 张岭上")
 	assert_true(bc.state.seats[actor].last_draw_is_rinshan, "last_draw_is_rinshan")
 	assert_eq(bc.state.seats[actor].hand.size(), hand_size_after_decl,
@@ -1536,7 +1536,7 @@ func test_claim_ron_engine_reject_never_settles_or_emits_win() -> void:
 	assert_not_null(discarded)
 	bc._last_discarded_tile = discarded
 	bc._last_discarder_seat = discarder
-	bc.state.discards_per_seat[discarder] = [discarded]
+	bc.state.seats[discarder].river.restore([discarded])
 
 	# seat1：T234 S234 T678 W6W6 W3W4（听 W5）
 	bc.state.seats[1].hand = _hand_from_wall(bc, [
@@ -1548,7 +1548,7 @@ func test_claim_ron_engine_reject_never_settles_or_emits_win() -> void:
 	])
 	bc.state.seats[1].furiten = FuritenState.new()
 	assert_true(ClaimValidator.can_ron(
-		bc.state.seats[1].hand, bc.state.seats[1].melds, discarded, bc.state.seats[1].furiten),
+		bc.state.seats[1].hand, bc.state.seats[1].melds.all(), discarded, bc.state.seats[1].furiten),
 		"seat1 必须真实可荣")
 
 	# seat2/3：canonical 非听 hand，真实仅 PASS；禁止 new Tile

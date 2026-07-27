@@ -323,7 +323,7 @@ static func _validate_battle_event_shape(event: Dictionary) -> bool:
 	if typeof(event["tile"]) != TYPE_DICTIONARY or typeof(event["extra"]) != TYPE_DICTIONARY:
 		return false
 	var tile: Dictionary = event["tile"] as Dictionary
-	return tile.is_empty() or TileInstance.from_dict(tile) != null
+	return tile.is_empty() or TileSkillAnchor.from_dict(tile) != null
 
 
 static func _validate_seat_shapes(seats: Array) -> bool:
@@ -620,7 +620,7 @@ static func _validate_wall_tile_canonical(t: Tile, hs: int) -> bool:
 ## 活动区：seats 四席 hand/river/meld.tiles + revealed 真实 tile + skill tile-anchor。
 ## 共用 seen_active：全局活动位置 iid 唯一。
 ## seats hand/river/meld：Dictionary + Tile.from_dict、iid∈by_iid、四字段与 wall 一致。
-## revealed：支持 TileInstance 六键或 Tile 四键；真实 iid∈by_iid 且 id/red/owner/iid 与 wall 一致。
+## revealed：支持 TileSkillAnchor 六键或 Tile 四键；真实 iid∈by_iid 且 id/red/owner/iid 与 wall 一致。
 ## skills：须 Array、每项 Dictionary；只接受 int / tile / virtual_tile 三种锚点。
 ## tile 的 anchor/owner/holder 严格 TYPE_INT，iid∈by_iid，且不得与其它活动区重复。
 ## virtual_tile 保存完整 Tile 字典，instance_id 必须为 INVALID_INSTANCE_ID；不占实体活动区。
@@ -744,7 +744,7 @@ static func _validate_active_tile_list(
 	return true
 
 
-## revealed.tile：TileInstance 六键（tile_instance_id / tile_id / tile_owner_seat）
+## revealed.tile：TileSkillAnchor 六键（tile_instance_id / tile_id / tile_owner_seat）
 ## 或 Tile 四键（instance_id / id / owner_seat）。iid∈by_iid 且底层四字段与 wall 一致。
 ## #253：揭示是可见性投影，可引用已在 hand/river 的活动牌；不得因「二次占用」失败。
 ## 仅当 iid 尚未出现在活动区时才写入 seen_active（墙顶 peek 等独占引用）。
@@ -756,7 +756,7 @@ static func _validate_revealed_tile_ref(
 	var red: bool = false
 	var owner: int = Tile.NO_OWNER
 	if td.has("tile_instance_id"):
-		# TileInstance 六键结构（capture 自 TileInstance.to_dict）
+		# TileSkillAnchor 六键结构（capture 自 TileSkillAnchor.to_dict）
 		if typeof(td.get("tile_instance_id")) != TYPE_INT:
 			return false
 		if typeof(td.get("tile_id")) != TYPE_INT:
@@ -851,20 +851,20 @@ static func _commit_staged_controller(target: Object, staging: BattleController)
 static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 	var wall: Wall = st.wall
 	var wall_tiles: Array = []
-	for t in wall._tiles:
+	for t in wall.authority_tiles():
 		wall_tiles.append(_tile_dict(t as Tile))
 
 	var seats_out: Array = []
 	for si in range(4):
 		var seat: Seat = st.seats[si] as Seat
 		var hand_tiles: Array = []
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			hand_tiles.append(_tile_dict(t as Tile))
 		var river_tiles: Array = []
-		for t in st.discards_per_seat[si]:
+		for t in seat.river.tiles():
 			river_tiles.append(_tile_dict(t as Tile))
 		var melds_out: Array = []
-		for m in seat.melds:
+		for m in seat.melds.all():
 			melds_out.append(_meld_dict(m as Meld))
 		var ri: RiichiState = seat.riichi
 		var fu: FuritenState = seat.furiten
@@ -874,7 +874,7 @@ static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 			"hand": hand_tiles,
 			"river": river_tiles,
 			"melds": melds_out,
-			"next_meld_id": int(seat.next_meld_id),
+			"next_meld_id": int(seat.melds.next_local_index()),
 			"last_draw": int(seat.last_drawn_instance_id),
 			"rinshan": bool(seat.last_draw_is_rinshan),
 			"points": int(seat.points),
@@ -884,7 +884,7 @@ static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 				"ippatsu": bool(ri.ippatsu_window),
 				"stick": bool(ri.riichi_stick_paid),
 				"double": bool(ri.double_riichi),
-				"discard_index": int(ri.riichi_discard_index),
+				"discard_index": int(seat.river.riichi_discard_index()),
 			},
 			"furiten": {
 				"permanent": bool(fu.permanent),
@@ -894,10 +894,10 @@ static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 		})
 
 	var dora_out: Array = []
-	for t in st.dora_indicators.visible:
+	for t in st.dora_indicators.visible_tiles():
 		dora_out.append(_tile_dict(t as Tile))
 	var ura_out: Array = []
-	for t in st.dora_indicators.hidden_uradora:
+	for t in st.dora_indicators.uradora_tiles():
 		ura_out.append(_tile_dict(t as Tile))
 
 	var reg: SkillRegistry = bc.get("registry") as SkillRegistry
@@ -984,9 +984,9 @@ static func _capture_dict(bc: Object, st: BattleState) -> Dictionary:
 		"momentum_scores": mom_scores,
 		"wall": {
 			"tiles": wall_tiles,
-			"draw_index": int(wall.get("_draw_index")),
-			"dead_size": int(wall.get("_dead_wall_size")),
-			"rinshan_taken": int(wall.get("_rinshan_taken")),
+			"draw_index": wall.draw_index(),
+			"dead_size": wall.dead_wall_size(),
+			"rinshan_taken": wall.rinshan_taken(),
 			"live": int(wall.live_wall_size()),
 		},
 		"dora": dora_out,
@@ -1072,14 +1072,14 @@ static func _skill_entry_dict(e: Dictionary) -> Dictionary:
 	var anchor_holder: int = -1
 	if typeof(anchor) == TYPE_INT:
 		anchor_val = int(anchor)
-	elif anchor is TileInstance and (anchor as TileInstance).tile != null:
-		var ti: TileInstance = anchor as TileInstance
+	elif anchor is TileSkillAnchor and (anchor as TileSkillAnchor).tile != null:
+		var ti: TileSkillAnchor = anchor as TileSkillAnchor
 		if int(ti.tile.instance_id) == Tile.INVALID_INSTANCE_ID:
 			anchor_kind = "virtual_tile"
 			anchor_val = ti.tile.to_dict()
 		else:
 			anchor_kind = "tile"
-			# 底层真实 wall tile iid + TileInstance owner/holder
+			# 底层真实 wall tile iid + TileSkillAnchor owner/holder
 			anchor_val = int(ti.tile.instance_id)
 		anchor_owner = int(ti.owner_seat)
 		anchor_holder = int(ti.holder_seat)
@@ -1152,8 +1152,8 @@ static func _revealed_norm(items: Array) -> Array:
 		var d: Dictionary = item
 		var tile_d := {}
 		var t = d.get("tile", null)
-		if t is TileInstance:
-			tile_d = (t as TileInstance).to_dict()
+		if t is TileSkillAnchor:
+			tile_d = (t as TileSkillAnchor).to_dict()
 		elif t is Tile:
 			tile_d = (t as Tile).to_dict()
 		elif typeof(t) == TYPE_DICTIONARY:
@@ -1185,10 +1185,13 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 			return false
 		new_tiles.append(t)
 		by_iid[int(t.instance_id)] = t
-	wall._tiles = new_tiles
-	wall.set("_draw_index", int(wall_d.get("draw_index", 0)))
-	wall.set("_dead_wall_size", int(wall_d.get("dead_size", 0)))
-	wall.set("_rinshan_taken", int(wall_d.get("rinshan_taken", 0)))
+	if not wall.restore_authority_state(
+		new_tiles,
+		int(wall_d.get("draw_index", 0)),
+		int(wall_d.get("dead_size", 0)),
+		int(wall_d.get("rinshan_taken", 0))
+	):
+		return false
 
 	# 2) scalar state
 	st.hand_seq = int(d.get("hand_seq", 0))
@@ -1261,16 +1264,20 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 	# dora / ura：引用 wall map 中同 iid 实体
 	if st.dora_indicators == null:
 		st.dora_indicators = DoraIndicators.new()
-	st.dora_indicators.visible.clear()
-	st.dora_indicators.hidden_uradora.clear()
+	var visible_dora: Array[Tile] = []
+	var hidden_dora: Array[Tile] = []
 	for td in d.get("dora", []) as Array:
 		var t2: Tile = _resolve_tile(td, by_iid)
-		if t2 != null:
-			st.dora_indicators.add_visible(t2)
+		if t2 == null:
+			return false
+		visible_dora.append(t2)
 	for td in d.get("ura", []) as Array:
 		var t3: Tile = _resolve_tile(td, by_iid)
-		if t3 != null:
-			st.dora_indicators.add_hidden_uradora(t3)
+		if t3 == null:
+			return false
+		hidden_dora.append(t3)
+	if not st.dora_indicators.restore_pairs(visible_dora, hidden_dora):
+		return false
 
 	# seats
 	var seats_raw: Array = d.get("seats", []) as Array
@@ -1282,7 +1289,6 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 		seat.seat_id = int(sd.get("seat_id", si))
 		seat.seat_wind = int(sd.get("seat_wind", seat.seat_wind))
 		seat.points = int(sd.get("points", 25000))
-		seat.next_meld_id = int(sd.get("next_meld_id", 0))
 		seat.last_drawn_instance_id = int(sd.get("last_draw", Tile.INVALID_INSTANCE_ID))
 		seat.last_draw_is_rinshan = bool(sd.get("rinshan", false))
 		# hand
@@ -1297,21 +1303,25 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 			var rt: Tile = _resolve_tile(td, by_iid)
 			if rt != null:
 				river.append(rt)
-		st.discards_per_seat[si] = river
+		var ri_d: Dictionary = sd.get("riichi", {}) as Dictionary
+		var discard_index := int(ri_d.get("discard_index", -1))
+		if not seat.river.restore(river, discard_index):
+			return false
 		# melds
-		seat.melds = []
+		var restored_melds: Array[Meld] = []
 		for md in sd.get("melds", []) as Array:
 			var meld: Meld = _restore_meld(md as Dictionary, by_iid)
-			if meld != null:
-				seat.melds.append(meld)
+			if meld == null:
+				return false
+			restored_melds.append(meld)
+		if not seat.melds.restore(restored_melds, int(sd.get("next_meld_id", 0))):
+			return false
 		# riichi / furiten
-		var ri_d: Dictionary = sd.get("riichi", {}) as Dictionary
 		seat.riichi.declared = bool(ri_d.get("declared", false))
 		seat.riichi.declared_turn = int(ri_d.get("declared_turn", -1))
 		seat.riichi.ippatsu_window = bool(ri_d.get("ippatsu", false))
 		seat.riichi.riichi_stick_paid = bool(ri_d.get("stick", false))
 		seat.riichi.double_riichi = bool(ri_d.get("double", false))
-		seat.riichi.riichi_discard_index = int(ri_d.get("discard_index", -1))
 		var fu_d: Dictionary = sd.get("furiten", {}) as Dictionary
 		seat.furiten.permanent = bool(fu_d.get("permanent", false))
 		seat.furiten.temporary = bool(fu_d.get("temporary", false))
@@ -1324,15 +1334,20 @@ static func _restore_dict(bc: Object, st: BattleState, d: Dictionary) -> bool:
 			continue
 		var idict: Dictionary = item
 		var tile_raw = idict.get("tile", {})
-		var ti: TileInstance = null
+		var ti: TileSkillAnchor = null
 		if typeof(tile_raw) == TYPE_DICTIONARY:
 			var tdict: Dictionary = tile_raw
 			if tdict.has("tile_instance_id"):
-				ti = TileInstance.from_dict(tdict)
+				var parsed: TileSkillAnchor = TileSkillAnchor.from_dict(tdict)
+				if parsed != null and parsed.tile != null \
+						and by_iid.has(parsed.tile.instance_id):
+					var canonical: Tile = by_iid[parsed.tile.instance_id] as Tile
+					ti = TileSkillAnchor.make(canonical, parsed.owner_seat, null)
+					ti.holder_seat = parsed.holder_seat
 			elif tdict.has("instance_id"):
 				var tile_ent: Tile = _resolve_tile(tdict, by_iid)
 				if tile_ent != null:
-					ti = TileInstance.make(tile_ent, int(tdict.get("owner_seat", 0)), null)
+					ti = TileSkillAnchor.make(tile_ent, int(tdict.get("owner_seat", 0)), null)
 		if ti != null:
 			var vis: Array = []
 			if idict.get("visible_to") is Array:
@@ -1557,7 +1572,7 @@ static func _restore_skill_entry(sk_d: Dictionary, by_iid: Dictionary, reg: Skil
 		var owner_seat: int = int(sk_d.get("anchor_owner", 0))
 		var holder_seat: int = int(sk_d.get("anchor_holder", -1))
 		# make 恢复 skill 引用；再写 holder_seat
-		var ti: TileInstance = TileInstance.make(at, owner_seat, sk)
+		var ti: TileSkillAnchor = TileSkillAnchor.make(at, owner_seat, sk)
 		ti.holder_seat = holder_seat
 		anchor = ti
 	elif anchor_kind == "virtual_tile":
@@ -1567,7 +1582,7 @@ static func _restore_skill_entry(sk_d: Dictionary, by_iid: Dictionary, reg: Skil
 			return {}
 		var virtual_owner: int = int(sk_d.get("anchor_owner", 0))
 		var virtual_holder: int = int(sk_d.get("anchor_holder", -1))
-		var virtual_anchor := TileInstance.make(virtual_tile, virtual_owner, sk)
+		var virtual_anchor := TileSkillAnchor.make(virtual_tile, virtual_owner, sk)
 		virtual_anchor.holder_seat = virtual_holder
 		anchor = virtual_anchor
 	elif anchor_kind == "int":

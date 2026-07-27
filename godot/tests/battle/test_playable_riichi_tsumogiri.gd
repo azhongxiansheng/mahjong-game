@@ -46,12 +46,14 @@ func test_auto_tsumogiri_discard_uses_exact_drawn_instance() -> void:
 	var bc := PlayableBattleController.new(3, 0, false)
 	bc.set_ai_think_delay(0.0)
 	var seat: Seat = bc.state.seats[0]
-	seat.hand._tiles.clear()
-	seat.hand.add(Tile.new(TileId.W5, false, 0, 10))
-	seat.hand.add(Tile.new(TileId.W5, true, 0, 11))  # 刚摸赤
+	var tiles: Array[Tile] = [
+		Tile.new(TileId.W5, false, 0, 10),
+		Tile.new(TileId.W5, true, 0, 11),  # 刚摸赤
+	]
 	for tid in [TileId.W1, TileId.W2, TileId.W3, TileId.T1, TileId.T2, TileId.T3,
 			TileId.S1, TileId.S2, TileId.S3, TileId.E, TileId.S_WIND, TileId.N]:
-		seat.hand.add(Tile.new(tid, false, 0, 100 + tid))
+		tiles.append(Tile.new(tid, false, 0, 100 + tid))
+	assert_true(seat.hand.restore_tiles(tiles))
 	seat.riichi.declared = true
 	seat.last_drawn_instance_id = 11
 

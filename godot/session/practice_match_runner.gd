@@ -42,7 +42,7 @@ static func _detect_tenpai_array(bc: IAuthoritativeBattleController) -> Array:
 	for seat_index in range(4):
 		var seat: Seat = bc.state.seats[seat_index]
 		var melds: Array[Meld] = []
-		for meld in seat.melds:
+		for meld in seat.melds.all():
 			melds.append(meld)
 		result.append(not WaitCalculator.wait_tiles(seat.hand, melds).is_empty())
 	return result

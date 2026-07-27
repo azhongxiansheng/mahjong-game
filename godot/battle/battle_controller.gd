@@ -233,7 +233,7 @@ func _step_rob_kan_collect() -> void:
 # ---- 事件 emit ----
 
 # 把一次 emit 集中到此 helper：登记 log + 调 scheduler。
-func _emit(type: StringName, actor_seat: int, ti: TileInstance, extra: Dictionary) -> SkillCtx:
+func _emit(type: StringName, actor_seat: int, ti: TileSkillAnchor, extra: Dictionary) -> SkillCtx:
 	var ev := BattleEvent.make(type, actor_seat, ti, extra)
 	events.append(ev)
 	_last_event_type = type
@@ -247,14 +247,14 @@ func _emit(type: StringName, actor_seat: int, ti: TileInstance, extra: Dictionar
 		events.append(skill_ev)
 	return ctx
 
-# 把 Tile 包成 TileInstance 以喂事件 payload。
+# 把 Tile 包成 TileSkillAnchor 以喂事件 payload。
 # Tile 当前没有 owner_seat 字段（main 合并冲突里 commit 2b87929 的字段被丢掉，是 main 旧债，
 # 不在里程碑 2 修复范围）。本里程碑 owner_seat 默认 -1；路径 C/D 涉及 owner 归属时由
-# BattleController 在专用 fixture 入口（_register_skill_for_tile）显式塞 TileInstance 到映射表。
-func _wrap_tile(t: Tile) -> TileInstance:
+# BattleController 在专用 fixture 入口（_register_skill_for_tile）显式塞 TileSkillAnchor 到映射表。
+func _wrap_tile(t: Tile) -> TileSkillAnchor:
 	if t == null:
 		return null
-	return TileInstance.make(t, -1, null)
+	return TileSkillAnchor.make(t, -1, null)
 
 # ---- 胡牌结算 ----
 #
@@ -271,7 +271,7 @@ func _wrap_tile(t: Tile) -> TileInstance:
 func _hand_minus_instance(hand: Hand, instance_id: int) -> Hand:
 	var copy := Hand.new()
 	var skipped := false
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if not skipped and t.instance_id == instance_id:
 			skipped = true
 			continue
@@ -286,10 +286,7 @@ func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false
 	var hand_13: Hand = _hand_minus_instance(seat.hand, drawn.instance_id)
 	if hand_13 == null:
 		return {"is_winning": false}
-	# Seat.melds 是 untyped Array，转成 Array[Meld] 喂规则引擎
-	var typed_melds: Array[Meld] = []
-	for m in seat.melds:
-		typed_melds.append(m)
+	var typed_melds: Array[Meld] = seat.melds.all()
 	var wp: Dictionary = WinPattern.detect(hand_13, typed_melds, drawn)
 	if not wp.is_winning:
 		return {"is_winning": false}
@@ -312,9 +309,7 @@ func _check_tsumo(drawn: Tile, is_haitei: bool = false, is_rinshan: bool = false
 # winner.hand 是 13 张听牌期手（不含 ron_tile）；ron_tile 由对家弃牌补上。
 func _check_ron(ron_tile: Tile, winner_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> Dictionary:
 	var winner: Seat = state.seats[winner_seat]
-	var typed_melds: Array[Meld] = []
-	for m in winner.melds:
-		typed_melds.append(m)
+	var typed_melds: Array[Meld] = winner.melds.all()
 	var wp: Dictionary = WinPattern.detect(winner.hand, typed_melds, ron_tile)
 	if not wp.is_winning:
 		return {"is_winning": false}
@@ -358,7 +353,7 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 				continue
 			if state.seats[i].riichi.declared:
 				riichi_seats.append(i)
-			for d in state.discards_per_seat[i]:
+			for d in state.seats[i].river.tiles():
 				if d != null:
 					discards_flat.append(d.id)
 		ai.set_defense_context(riichi_seats, discards_flat)
@@ -366,7 +361,7 @@ func _get_discard_decision(seat: Seat, actor: int) -> Tile:
 	if pick != null and not state.kuikae_restricted[actor].is_empty():
 		var restricted: Array = state.kuikae_restricted[actor]
 		if restricted.has(pick.id):
-			for t in seat.hand._tiles:
+			for t in seat.hand.tiles():
 				if not restricted.has(t.id):
 					return t
 	return pick
@@ -584,7 +579,7 @@ func _select_rob_kan_action_async(candidate: int) -> Action:
 # 私有：荣和结算 helper（外部一律 Action.ron → apply_action）。
 # 返 DOMAIN_APPLIED / DOMAIN_CANCELLED / DOMAIN_FAILED。
 func _apply_ron_private(winner_seat: int, ron_tile: Tile, discarder_seat: int, is_houtei: bool = false, is_chankan: bool = false) -> int:
-	var ron_ti := TileInstance.make(ron_tile, discarder_seat, null)
+	var ron_ti := TileSkillAnchor.make(ron_tile, discarder_seat, null)
 	# 每次尝试前 reset，避免同 hand 多次 ron 时旧 cancel 粘连
 	state.ron_cancelled[winner_seat] = false
 	# 规则先判：不成立则 FAILED，且不 emit（技能无机会 consume）
@@ -611,7 +606,7 @@ func _apply_ron_private(winner_seat: int, ron_tile: Tile, discarder_seat: int, i
 	return DOMAIN_APPLIED
 
 # 不可失败：调用方已完成 engine/state 权威提交，此处仅计分与事件结算。
-func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int,
+func _settle_ron(ron_tile: Tile, ron_ti: TileSkillAnchor, winner_seat: int,
 		discarder_seat: int, wp: Dictionary, yaku_list,
 		is_houtei: bool = false, is_chankan: bool = false) -> void:
 	var winner: Seat = state.seats[winner_seat]
@@ -627,12 +622,10 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileInstance, winner_seat: int,
 	score_ctx.honba = state.honba
 	score_ctx.riichi_sticks = state.riichi_sticks
 
-	var melds_arr: Array = []
-	for m in winner.melds:
-		melds_arr.append(m)
+	var melds_arr: Array = winner.melds.all()
 	# Ron 路径:winner.hand 是 13 张,胡牌手需含 ron_tile → 拼 14 张 Hand
 	var win_hand_ron := Hand.new()
-	for t in winner.hand._tiles:
+	for t in winner.hand.tiles():
 		win_hand_ron.add(t)
 	win_hand_ron.add(ron_tile)
 	var score_yaku_list := _adapt_yaku_list(
@@ -695,9 +688,7 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	score_ctx.honba = state.honba
 	score_ctx.riichi_sticks = state.riichi_sticks
 
-	var melds_arr: Array = []
-	for m in seat.melds:
-		melds_arr.append(m)
+	var melds_arr: Array = seat.melds.all()
 
 	# Tsumo 路径:engine.draw_for_current 已把摸的牌加进 seat.hand,所以
 	# seat.hand 此时就是 14 张胡牌手,直接传给 _adapt_yaku_list 数 dora。
@@ -764,7 +755,7 @@ func _adapt_yaku_list(eval_list: YakuEntries, win_hand: Hand = null, win_melds: 
 		sc.dora_count = state.dora_indicators.count_total_dora(win_hand, win_melds, include_uradora)
 	else:
 		# 旧 API 兼容(其它 caller 临时):仍按 indicator 张数估,虽然不准。
-		sc.dora_count = state.dora_indicators.visible.size()
+		sc.dora_count = state.dora_indicators.visible_count()
 	# YakuEntry.yaku_id 是 int (YakuId 常量)，但 YakuList.is_pinfu / is_chiitoi
 	# 走 has_yaku(&"pinfu") / has_yaku(&"chiitoitsu") StringName 比较。
 	# 这里把 PINFU / CHIITOITSU 转 StringName，让 FuCalculator 正确识别特殊符。
@@ -983,7 +974,7 @@ func _build_game_ctx(seat: Seat, is_tsumo: bool, is_haitei: bool = false, is_hou
 	ctx.is_rinshan = is_rinshan and is_tsumo
 	ctx.is_dealer_first_hand = is_tenhou and is_tsumo
 	ctx.is_non_dealer_first_draw = is_chiihou and is_tsumo
-	ctx.dora_count = state.dora_indicators.visible.size()
+	ctx.dora_count = state.dora_indicators.visible_count()
 	return ctx
 
 
@@ -1309,14 +1300,10 @@ func _apply_kan_action(action: Action) -> ActionResolution:
 		var added_tile: Tile = seat_ak.hand.find_by_instance_id(added_iid)
 		if added_tile == null:
 			return ActionResolution.rejected(ActionResolution.ENTITY_NOT_FOUND)
-		var target: Meld = null
-		for m in seat_ak.melds:
-			if m.meld_id == meld_id:
-				target = m
-				break
+		var target: Meld = seat_ak.melds.find_by_id(meld_id)
 		if target == null or target.kind != Meld.Kind.PON:
 			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
-		if not ClaimValidator.can_added_kan(seat_ak.melds, seat_ak.hand, added_tile.id):
+		if not ClaimValidator.can_added_kan(seat_ak.melds.all(), seat_ak.hand, added_tile.id):
 			return ActionResolution.rejected(ActionResolution.RULE_REJECTED)
 		_pending_added_kan = {
 			"seat": actor,
@@ -1756,7 +1743,7 @@ func _open_rob_kan_window() -> void:
 func _build_rob_kan_offers(seat_id: int, kan_tile: Tile) -> Array:
 	var offers: Array = []
 	var seat: Seat = state.seats[seat_id]
-	if ClaimValidator.can_ron(seat.hand, seat.melds, kan_tile, seat.furiten):
+	if ClaimValidator.can_ron(seat.hand, seat.melds.all(), kan_tile, seat.furiten):
 		var ron_check: Dictionary = _check_ron(kan_tile, seat_id, false, true)
 		if bool(ron_check.get("is_winning", false)):
 			offers.append({"kind": "RON", "payload_options": [{}]})
@@ -1773,7 +1760,7 @@ func _build_turn_offers(seat: Seat) -> Array:
 		if drawn != null:
 			disc_opts.append({"tile_instance_id": drawn.instance_id})
 	else:
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			if t == null:
 				continue
 			if not state.kuikae_restricted[seat.seat_id].is_empty():
@@ -1781,7 +1768,7 @@ func _build_turn_offers(seat: Seat) -> Array:
 					continue
 			disc_opts.append({"tile_instance_id": t.instance_id})
 		if disc_opts.is_empty():
-			for t in seat.hand._tiles:
+			for t in seat.hand.tiles():
 				if t != null:
 					disc_opts.append({"tile_instance_id": t.instance_id})
 	if not disc_opts.is_empty():
@@ -1797,7 +1784,7 @@ func _build_turn_offers(seat: Seat) -> Array:
 		if drawn != null:
 			var is_haitei: bool = (state.wall.live_wall_size() == 0)
 			var first_draw: bool = state.first_round_active \
-				and state.discards_per_seat[seat.seat_id].is_empty()
+				and seat.river.is_empty()
 			var is_tenhou: bool = first_draw and seat.seat_id == state.dealer_seat
 			var is_chiihou: bool = first_draw and seat.seat_id != state.dealer_seat
 			var win: Dictionary = _check_tsumo(
@@ -1814,13 +1801,13 @@ func _build_turn_offers(seat: Seat) -> Array:
 					"kan_kind": "ANKAN",
 					"tile_instance_ids": iids.slice(0, 4),
 				})
-		for m in seat.melds:
+		for m in seat.melds.all():
 			if m.kind != Meld.Kind.PON or m.tiles.is_empty():
 				continue
 			var tid_p: int = m.tiles[0].id
-			if not ClaimValidator.can_added_kan(seat.melds, seat.hand, tid_p):
+			if not ClaimValidator.can_added_kan(seat.melds.all(), seat.hand, tid_p):
 				continue
-			for t in seat.hand._tiles:
+			for t in seat.hand.tiles():
 				if t.id != tid_p:
 					continue
 				kan_opts.append({
@@ -1838,10 +1825,10 @@ func _build_turn_offers(seat: Seat) -> Array:
 				"kind": "DECLARE_ABORTIVE_DRAW",
 				"payload_options": [{"reason": "KYUUSYU_KYUUHAI"}],
 			})
-	if offers.is_empty() and not seat.riichi.declared and not seat.hand._tiles.is_empty():
+	if offers.is_empty() and not seat.riichi.declared and not seat.hand.tiles().is_empty():
 		offers.append({
 			"kind": "DISCARD",
-			"payload_options": [{"tile_instance_id": seat.hand._tiles[0].instance_id}],
+			"payload_options": [{"tile_instance_id": seat.hand.tiles()[0].instance_id}],
 		})
 	return offers
 
@@ -1873,7 +1860,7 @@ func _build_claim_offers(seat_id: int, discarded: Tile, discarder: int) -> Array
 			offers.append({"kind": "KAN", "payload_options": [
 				{"kan_kind": "MINKAN", "companion_tile_instance_ids": kan_iids},
 			]})
-	if ClaimValidator.can_ron(seat.hand, seat.melds, discarded, seat.furiten):
+	if ClaimValidator.can_ron(seat.hand, seat.melds.all(), discarded, seat.furiten):
 		var ron_check: Dictionary = _check_ron(discarded, seat_id, state.wall.live_wall_size() == 0)
 		if ron_check.is_winning:
 			offers.append({"kind": "RON", "payload_options": [{}]})
@@ -1952,7 +1939,7 @@ func _build_action_for_tile(seat: Seat, actor: int, to_discard: Tile) -> Action:
 			# 独立 Seat 规则视图：不改 live seat.hand。
 			var seat_after := Seat.new(seat.seat_id, seat.seat_wind, seat.points)
 			seat_after.hand = sim
-			seat_after.melds = seat.melds
+			seat_after.melds = seat.melds.clone()
 			seat_after.riichi = seat.riichi
 			should_riichi = bool(ai.decide_riichi(
 				seat_after, state.wall.live_wall_size()))
@@ -1972,7 +1959,7 @@ func _build_action_for_tile(seat: Seat, actor: int, to_discard: Tile) -> Action:
 
 func _hand_iids_of_type(hand: Hand, tile_type_id: int) -> Array:
 	var out: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		if t.id == tile_type_id:
 			out.append(t.instance_id)
 	return out
@@ -1981,7 +1968,7 @@ func _hand_iids_of_type(hand: Hand, tile_type_id: int) -> Array:
 func _match_type_iids(hand: Hand, type_ids: Array) -> Array:
 	var remaining: Array = type_ids.duplicate()
 	var iids: Array = []
-	for t in hand._tiles:
+	for t in hand.tiles():
 		for j in range(remaining.size()):
 			if int(remaining[j]) == t.id:
 				iids.append(t.instance_id)
@@ -1999,7 +1986,7 @@ func _match_type_iid_combinations(hand: Hand, type_ids: Array) -> Array:
 	for raw_type_id in type_ids:
 		var expanded_partials: Array = []
 		for partial in partials:
-			for tile in hand._tiles:
+			for tile in hand.tiles():
 				if tile == null or tile.id != int(raw_type_id):
 					continue
 				if (partial as Array).has(tile.instance_id):

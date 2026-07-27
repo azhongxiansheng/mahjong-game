@@ -11,7 +11,7 @@ class _ForcePickAi extends SimpleAi:
 		super(0)
 		_target_id = target_id
 	func decide_discard(seat: Seat) -> Tile:
-		var hand_tiles: Array = seat.hand._tiles
+		var hand_tiles: Array = seat.hand.tiles()
 		if hand_tiles.is_empty():
 			return null
 		if _target_id >= 0:
@@ -32,33 +32,31 @@ func _prepare_live_fixture() -> void:
 	for seat_id in range(4):
 		var seat: Seat = _bc.state.seats[seat_id]
 		seat.hand = Hand.new()
-		seat.melds = []
+		seat.melds.restore([], 0)
 		seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 		seat.furiten = FuritenState.new()
-		_bc.state.discards_per_seat[seat_id] = []
-	_bc.state.wall._draw_index = 0
+		_bc.state.seats[seat_id].river.restore([])
+	_bc.state.wall.set_draw_index(0)
 	_bc.state.current_seat = 0
 	_bc.state.phase = BattlePhase.Kind.DRAW
 	_bc.state.first_round_active = false
 
 
 func _live_end() -> int:
-	return _bc.state.wall._tiles.size() - _bc.state.wall._dead_wall_size
+	return _bc.state.wall.authority_tiles().size() - _bc.state.wall.dead_wall_size()
 
 
 func _take_live(tid: int) -> Tile:
 	var wall: Wall = _bc.state.wall
 	var found := -1
-	for i in range(wall._draw_index, _live_end()):
-		if int((wall._tiles[i] as Tile).id) == tid:
+	for i in range(wall.draw_index(), _live_end()):
+		if int((wall.authority_tiles()[i] as Tile).id) == tid:
 			found = i
 			break
-	assert_gte(found, wall._draw_index, "live 区须存在 tile_id=%d" % tid)
-	if found < wall._draw_index:
+	assert_gte(found, wall.draw_index(), "live 区须存在 tile_id=%d" % tid)
+	if found < wall.draw_index():
 		return null
-	var tmp: Tile = wall._tiles[wall._draw_index]
-	wall._tiles[wall._draw_index] = wall._tiles[found]
-	wall._tiles[found] = tmp
+	assert_true(wall.move_live_index_to_top(found))
 	var tile: Tile = wall.draw()
 	assert_not_null(tile)
 	assert_true(Tile.is_instance_id_in_hand_seq(tile.instance_id, _bc.state.hand_seq))
@@ -67,12 +65,10 @@ func _take_live(tid: int) -> Tile:
 
 func _take_any_except(excluded_ids: Array) -> Tile:
 	var wall: Wall = _bc.state.wall
-	for i in range(wall._draw_index, _live_end()):
-		var tile: Tile = wall._tiles[i]
+	for i in range(wall.draw_index(), _live_end()):
+		var tile: Tile = wall.authority_tiles()[i]
 		if not excluded_ids.has(int(tile.id)):
-			var tmp: Tile = wall._tiles[wall._draw_index]
-			wall._tiles[wall._draw_index] = tile
-			wall._tiles[i] = tmp
+			assert_true(wall.move_live_index_to_top(i))
 			return wall.draw()
 	return null
 
@@ -125,17 +121,15 @@ func _chiitoi_t_tenpai() -> Array:
 func _set_next_draw_w9() -> Tile:
 	var wall: Wall = _bc.state.wall
 	var found := -1
-	for i in range(wall._draw_index, _live_end()):
-		if int((wall._tiles[i] as Tile).id) == TileId.W9:
+	for i in range(wall.draw_index(), _live_end()):
+		if int((wall.authority_tiles()[i] as Tile).id) == TileId.W9:
 			found = i
 			break
-	assert_gte(found, wall._draw_index, "须保留一张真实 W9 供 seat0 下一摸")
-	if found < wall._draw_index:
+	assert_gte(found, wall.draw_index(), "须保留一张真实 W9 供 seat0 下一摸")
+	if found < wall.draw_index():
 		return null
-	var tmp: Tile = wall._tiles[wall._draw_index]
-	wall._tiles[wall._draw_index] = wall._tiles[found]
-	wall._tiles[found] = tmp
-	return wall._tiles[wall._draw_index]
+	assert_true(wall.move_live_index_to_top(found))
+	return wall.authority_tiles()[wall.draw_index()]
 
 
 ## winners: seat → 13 张听牌 ids；其余对手设永久振听，避免 fixture 偶然抢胡。
@@ -160,9 +154,7 @@ func _drain_live_until_only_next_w9() -> void:
 	if next == null:
 		return
 	var last_live := _live_end() - 1
-	var tmp: Tile = wall._tiles[last_live]
-	wall._tiles[last_live] = next
-	wall._tiles[wall._draw_index] = tmp
+	assert_true(wall.swap_live_indices(last_live, wall.draw_index()))
 	while wall.live_wall_size() > 1:
 		assert_not_null(wall.draw())
 	assert_eq(wall.live_wall_size(), 1)

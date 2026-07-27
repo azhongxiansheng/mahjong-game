@@ -26,7 +26,7 @@ func draw_for_current() -> Tile:
 	state.phase = BattlePhase.Kind.DISCARD
 	return t
 
-# 当前 seat 弃指定实体；从 hand 移到 discards_per_seat；phase → CLAIM。
+# 当前 seat 弃指定实体；从 hand 移到本席牌河；phase → CLAIM。
 # 注意：此方法不推进 current_seat（等鸣牌窗口）；调用方在窗口结束后调 advance。
 # instance_id: Variant — 比较/查找前严格 is_valid_instance_id（无 int 静默强转）。
 func discard(instance_id: Variant) -> bool:
@@ -40,10 +40,13 @@ func discard(instance_id: Variant) -> bool:
 	if found_tile == null:
 		return false
 	# 提交
+	var hand_before: Array[Tile] = seat.hand.tiles()
 	var taken: Tile = seat.hand.take_by_instance_id(iid)
 	if taken == null:
 		return false
-	state.discards_per_seat[state.current_seat].append(taken)
+	if not seat.river.append_discard(taken):
+		seat.hand.restore_tiles(hand_before)
+		return false
 	seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 	# 日麻 §5 振听规则:每次自家弃牌后,(1)重算 waits;(2)若任一 wait tile
 	# 已在自家弃牌堆 → permanent furiten(不能荣胡)。立直振听同样走这条
@@ -61,16 +64,16 @@ func _recompute_self_furiten(seat: Seat) -> void:
 		return
 	# 向听数大于 0 时不可能存在听张；先走一次计数 DP，避免普通巡目仍枚举
 	# 34 种和牌候选。真正听牌时继续由 WaitCalculator 给出权威 waits。
-	if ShantenCalculator.calc(seat.hand, seat.melds) > 0:
+	if ShantenCalculator.calc(seat.hand, seat.melds.all()) > 0:
 		seat.furiten.update_waits([])
 		seat.furiten.permanent = false
 		return
-	var waits: Array = WaitCalculator.wait_tiles(seat.hand, seat.melds)
+	var waits: Array = WaitCalculator.wait_tiles(seat.hand, seat.melds.all())
 	seat.furiten.update_waits(waits)
 	# 判断自家弃牌中是否含任一 wait
 	var hit: bool = false
 	if not waits.is_empty():
-		for tile in state.discards_per_seat[seat.seat_id]:
+		for tile in seat.river.tiles():
 			if tile != null and waits.has(tile.id):
 				hit = true
 				break
@@ -114,19 +117,21 @@ func declare_riichi_and_discard(seat_id: Variant, instance_id: Variant) -> bool:
 	var sim := seat.hand.clone()
 	if sim.take_by_instance_id(iid) == null:
 		return false
-	if WaitCalculator.wait_tiles(sim, seat.melds).is_empty():
+	if WaitCalculator.wait_tiles(sim, seat.melds.all()).is_empty():
 		return false
 	# 提交：先弃再立直（riichi_discard_index = 河末位）
+	var hand_before: Array[Tile] = seat.hand.tiles()
 	var taken: Tile = seat.hand.take_by_instance_id(iid)
 	if taken == null:
 		return false
-	state.discards_per_seat[sid].append(taken)
+	if not seat.river.append_discard(taken, true):
+		seat.hand.restore_tiles(hand_before)
+		return false
 	seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 	_recompute_self_furiten(seat)
 	state.phase = BattlePhase.Kind.CLAIM
 	var is_double: bool = state.first_round_active and state.turn_count == 0
 	seat.riichi.declare(state.turn_count, is_double)
-	seat.riichi.riichi_discard_index = state.discards_per_seat[sid].size() - 1
 	seat.adjust_points(-1000)
 	seat.riichi.pay_stick()
 	state.riichi_sticks += 1
@@ -168,6 +173,7 @@ func apply_chi(claimant_seat: Variant, claimed_instance_id: Variant,
 	if not _companions_form_valid_chi(claimed.id, companion_tiles):
 		return false
 	# 提交：先取牌 → 再分配 meld_id → 再构造 Meld（不直接写 identity 字段）
+	var hand_before: Array[Tile] = claimant.hand.tiles()
 	var taken: Variant = claimant.hand.take_many_by_instance_ids(companion_instance_ids)
 	if taken == null:
 		return false
@@ -175,9 +181,10 @@ func apply_chi(claimant_seat: Variant, claimed_instance_id: Variant,
 	for t in taken:
 		meld_tiles.append(t)
 	meld_tiles.sort_custom(func(a, b): return a.id < b.id)
-	var mid: int = claimant.allocate_meld_id()
-	var meld: Meld = Meld.make_chi(meld_tiles, discarder_seat, mid, claimed)
-	claimant.melds.append(meld)
+	var meld: Meld = claimant.melds.add_chi(meld_tiles, discarder_seat, claimed)
+	if meld == null:
+		claimant.hand.restore_tiles(hand_before)
+		return false
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(cs)
 	_clear_all_ippatsu_windows()
@@ -211,15 +218,17 @@ func apply_pon(claimant_seat: Variant, claimed_instance_id: Variant,
 		var ct: Tile = claimant.hand.find_by_instance_id(raw)
 		if ct == null or ct.id != claimed.id:
 			return false
+	var hand_before: Array[Tile] = claimant.hand.tiles()
 	var taken: Variant = claimant.hand.take_many_by_instance_ids(companion_instance_ids)
 	if taken == null:
 		return false
 	var meld_tiles: Array[Tile] = [claimed]
 	for t in taken:
 		meld_tiles.append(t)
-	var mid: int = claimant.allocate_meld_id()
-	var meld: Meld = Meld.make_pon(meld_tiles, discarder_seat, mid, claimed)
-	claimant.melds.append(meld)
+	var meld: Meld = claimant.melds.add_pon(meld_tiles, discarder_seat, claimed)
+	if meld == null:
+		claimant.hand.restore_tiles(hand_before)
+		return false
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_after_claim(cs)
 	_clear_all_ippatsu_windows()
@@ -253,15 +262,17 @@ func apply_minkan(claimant_seat: Variant, claimed_instance_id: Variant,
 		var ct: Tile = claimant.hand.find_by_instance_id(raw)
 		if ct == null or ct.id != claimed.id:
 			return false
+	var hand_before: Array[Tile] = claimant.hand.tiles()
 	var taken: Variant = claimant.hand.take_many_by_instance_ids(companion_instance_ids)
 	if taken == null:
 		return false
 	var meld_tiles: Array[Tile] = [claimed]
 	for t in taken:
 		meld_tiles.append(t)
-	var mid: int = claimant.allocate_meld_id()
-	var meld: Meld = Meld.make_minkan(meld_tiles, discarder_seat, mid, claimed)
-	claimant.melds.append(meld)
+	var meld: Meld = claimant.melds.add_minkan(meld_tiles, discarder_seat, claimed)
+	if meld == null:
+		claimant.hand.restore_tiles(hand_before)
+		return false
 	_pop_discard_clearing_riichi_index(discarder_seat)
 	_reveal_new_dora()
 	_take_rinshan_to(claimant)
@@ -298,15 +309,17 @@ func apply_ankan(seat_id: Variant, instance_ids: Array) -> bool:
 		tiles_found.append(t)
 	if seat.hand.count_of(tile_id) < 4:
 		return false
+	var hand_before: Array[Tile] = seat.hand.tiles()
 	var taken: Variant = seat.hand.take_many_by_instance_ids(instance_ids)
 	if taken == null:
 		return false
 	var meld_tiles: Array[Tile] = []
 	for t in taken:
 		meld_tiles.append(t)
-	var mid: int = seat.allocate_meld_id()
-	var meld: Meld = Meld.make_ankan(meld_tiles, mid)
-	seat.melds.append(meld)
+	var meld: Meld = seat.melds.add_ankan(meld_tiles)
+	if meld == null:
+		seat.hand.restore_tiles(hand_before)
+		return false
 	_reveal_new_dora()
 	_take_rinshan_to(seat)
 	state.phase = BattlePhase.Kind.DISCARD
@@ -332,10 +345,7 @@ func apply_added_kan(seat_id: Variant, meld_id: Variant, added_instance_id: Vari
 	var mid: int = meld_id
 	var seat: Seat = state.seats[sid]
 	var target: Meld = null
-	for m in seat.melds:
-		if m.meld_id == mid:
-			target = m
-			break
+	target = seat.melds.find_by_id(mid)
 	if target == null or target.kind != Meld.Kind.PON:
 		return false
 	var fourth: Tile = seat.hand.find_by_instance_id(added_iid)
@@ -343,14 +353,15 @@ func apply_added_kan(seat_id: Variant, meld_id: Variant, added_instance_id: Vari
 		return false
 	if target.tiles.is_empty() or fourth.id != target.tiles[0].id:
 		return false
-	if not ClaimValidator.can_added_kan(seat.melds, seat.hand, fourth.id):
+	if not ClaimValidator.can_added_kan(seat.melds.all(), seat.hand, fourth.id):
 		return false
+	var hand_before: Array[Tile] = seat.hand.tiles()
 	var taken: Tile = seat.hand.take_by_instance_id(added_iid)
 	if taken == null:
 		return false
-	if not target.promote_to_added_kan(taken):
+	if not seat.melds.promote_pon(mid, taken):
 		# 理论预检后不应失败；失败时回滚手牌保证零修改语义
-		seat.hand.add(taken)
+		seat.hand.restore_tiles(hand_before)
 		return false
 	_reveal_new_dora()
 	_take_rinshan_to(seat)
@@ -377,7 +388,7 @@ func apply_ron(claimant_seat: Variant, claimed_instance_id: Variant) -> bool:
 		return false
 	var claimant: Seat = state.seats[cs]
 	# 真实签名：can_ron(hand, melds, discarded_tile, furiten_state)
-	if not ClaimValidator.can_ron(claimant.hand, claimant.melds, claimed, claimant.furiten):
+	if not ClaimValidator.can_ron(claimant.hand, claimant.melds.all(), claimed, claimant.furiten):
 		return false
 	state.current_seat = cs
 	state.phase = BattlePhase.Kind.SETTLE
@@ -405,7 +416,7 @@ func apply_tsumo(seat_id: Variant, claimed_last_drawn_instance_id: Variant) -> b
 	var without: Hand = seat.hand.clone()
 	if without.take_by_instance_id(claimed_iid) == null:
 		return false
-	if not ClaimValidator.can_tsumo(without, seat.melds, drawn):
+	if not ClaimValidator.can_tsumo(without, seat.melds.all(), drawn):
 		return false
 	state.current_seat = sid
 	state.phase = BattlePhase.Kind.SETTLE
@@ -421,10 +432,7 @@ func _is_valid_seat(seat: Variant) -> bool:
 	return s >= 0 and s < state.seats.size()
 
 func _last_discard_tile() -> Tile:
-	var river: Array = state.discards_per_seat[state.current_seat]
-	if river.is_empty():
-		return null
-	return river[river.size() - 1]
+	return state.seats[state.current_seat].river.last_tile()
 
 # fail-closed：禁止 int(raw) 静默强转。
 func _ids_invalid_or_duplicate(ids: Array) -> bool:
@@ -466,15 +474,13 @@ func _after_claim(claimant_seat: int) -> void:
 	state.seats[claimant_seat].last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
 
 func _reveal_new_dora() -> void:
-	var n: int = state.dora_indicators.visible.size()
+	var n: int = state.dora_indicators.visible_count()
 	var indicator: Tile = state.wall.peek_dora_indicator(n)
-	if indicator != null:
-		state.dora_indicators.add_visible(indicator)
 	# 加杠/暗杠时同时预置对应裏 dora 指示牌(立直胡时翻出)。日麻规则:
 	# 每翻 1 张明 dora,对应位置的裏 dora 同步存在 — 等立直胡牌时一起亮。
 	var ura: Tile = state.wall.peek_uradora_indicator(n)
-	if ura != null:
-		state.dora_indicators.add_hidden_uradora(ura)
+	if indicator != null and ura != null:
+		state.dora_indicators.reveal_pair(indicator, ura)
 
 func _take_rinshan_to(seat: Seat) -> void:
 	var t: Tile = state.wall.take_rinshan()
@@ -494,13 +500,9 @@ func _clear_all_ippatsu_windows() -> void:
 			seat.riichi.consume_ippatsu()
 
 
-# pop discarder 最后一张弃牌;若它是 riichi 宣告牌(== riichi_discard_index 末位)
-# 则同步把 riichi_discard_index 清 -1。否则 DiscardRiver 渲染时会把
-# discarder 的"新位置末位"错旋转 — 因为索引固定但底层 Array 元素已替换。
+# 移除 discarder 河末实体；DiscardRiver 同步维护立直牌索引。
 func _pop_discard_clearing_riichi_index(discarder_seat: int) -> void:
-	var seat: Seat = state.seats[discarder_seat]
-	var last_idx: int = state.discards_per_seat[discarder_seat].size() - 1
-	state.discards_per_seat[discarder_seat].pop_back()
-	# 立直牌被鸣 → riichi 旋转标记丢弃(牌已不在弃牌堆)
-	if seat.riichi.declared and seat.riichi.riichi_discard_index == last_idx:
-		seat.riichi.riichi_discard_index = -1
+	var river: DiscardRiver = state.seats[discarder_seat].river
+	var last: Tile = river.last_tile()
+	if last != null:
+		river.claim_last(last.instance_id)

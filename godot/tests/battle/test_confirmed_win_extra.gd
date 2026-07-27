@@ -46,8 +46,8 @@ func test_chankan_ron_action_reaches_confirmed_win_extra() -> void:
 		Tile.new(TileId.T1, false, 0, 1),
 		Tile.new(TileId.T1, false, 0, 2),
 		Tile.new(TileId.T1, false, 0, 3),
-	], 2, 1)
-	bc.state.seats[0].melds = [pon]
+	], 2, 0)
+	bc.state.seats[0].melds.restore([pon], 1)
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.DISCARD
 	bc.state.seats[0].last_drawn_instance_id = added.instance_id
@@ -90,7 +90,7 @@ func test_tsumo_action_confirmed_win_extra_is_explicit() -> void:
 	bc.state.current_seat = 0
 	bc.state.phase = BattlePhase.Kind.DISCARD
 	bc.state.seats[0].hand = _make_t1_tanki_hand(true, 0)
-	var drawn: Tile = bc.state.seats[0].hand._tiles[bc.state.seats[0].hand._tiles.size() - 1]
+	var drawn: Tile = bc.state.seats[0].hand.tiles()[bc.state.seats[0].hand.tiles().size() - 1]
 	bc.state.seats[0].last_drawn_instance_id = drawn.instance_id
 	var checked: Dictionary = bc._check_tsumo(drawn)
 	assert_true(bool(checked.get("is_winning", false)), "测试手牌必须真实自摸成立")

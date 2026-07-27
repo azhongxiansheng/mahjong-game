@@ -26,13 +26,13 @@ func test_xray_reveals_to_owner_when_owner_draws():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
 	assert_eq(st.revealed_tiles.size(), 1)
 	assert_true(st.revealed_tiles[0]["visible_to"].has(0))
 	# M10 升级验证：reveal 的 tile 来自下家（seat 1）真手牌，holder_seat=1
-	var revealed_ti: TileInstance = st.revealed_tiles[0]["tile"]
+	var revealed_ti: TileSkillAnchor = st.revealed_tiles[0]["tile"]
 	assert_eq(revealed_ti.holder_seat, 1, "tile 来自下家手牌")
 
 func test_xray_does_not_fire_for_other_seats_draw():
@@ -41,7 +41,7 @@ func test_xray_does_not_fire_for_other_seats_draw():
 	var st: BattleState = arr[1]
 	var sched: SkillScheduler = arr[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.W1), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.W1), 0, sk)
 	reg.register(sk, ti)
 	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 2))
 	assert_eq(st.revealed_tiles.size(), 0)

@@ -2,8 +2,8 @@ class_name Tile
 
 # 0e 扩展：owner_seat 字段，默认 NO_OWNER。卡组系统（里程碑 6）真正接入时填实际座位；
 # v1 (M3 收尾) 由 Wall.new_full_set 按 copy_index 给每张牌做"卡组合并"占位分配。
-# spec §5 设计了 TileInstance 含 owner_seat / skill / is_revealed_to —— 0e 阶段
-# 仅引入 owner_seat，其余字段在里程碑 1 技能框架时由 TileInstance 包装。
+# spec §5 设计了 TileSkillAnchor 含 owner_seat / skill / is_revealed_to —— 0e 阶段
+# 仅引入 owner_seat，其余字段在里程碑 1 技能框架时由 TileSkillAnchor 包装。
 #
 # E2-02 / #232：instance_id 是牌实体 identity；owner_seat 不承担 identity。
 # 纯规则 fixture 可用 INVALID_INSTANCE_ID；正式墙由 Wall 按 hand_seq 命名空间分配。
@@ -16,20 +16,34 @@ const MAX_SAFE_INSTANCE_ID: int = 9007199254740991
 # 一局实体命名空间：instance_id = hand_seq * TILES_PER_HAND + serial(0..135)
 const TILES_PER_HAND: int = 136
 
-var id: int
-var is_red_dora: bool
-var owner_seat: int
+var _id: int
+var id: int:
+	get:
+		return _id
+var _is_red_dora: bool
+var is_red_dora: bool:
+	get:
+		return _is_red_dora
+var _owner_seat: int
+var owner_seat: int:
+	get:
+		return _owner_seat
 var _instance_id: int = INVALID_INSTANCE_ID
 var instance_id: int:
 	get:
 		return _instance_id
+var _valid: bool = false
 
 func _init(p_id: int, p_red: bool = false, p_owner: int = NO_OWNER,
 		p_instance_id: int = INVALID_INSTANCE_ID) -> void:
-	id = p_id
-	is_red_dora = p_red
-	owner_seat = p_owner
+	_id = p_id
+	_is_red_dora = p_red
+	_owner_seat = p_owner
 	_instance_id = p_instance_id
+	_valid = is_valid_definition(p_id, p_red, p_owner, p_instance_id)
+
+func is_valid() -> bool:
+	return _valid
 
 # 仅 TYPE_INT 且 0..MAX_SAFE_INSTANCE_ID 为合法；String/float/bool/负数/超界全拒。
 static func is_valid_instance_id(value: Variant) -> bool:
@@ -37,6 +51,18 @@ static func is_valid_instance_id(value: Variant) -> bool:
 		return false
 	var v: int = value
 	return v >= 0 and v <= MAX_SAFE_INSTANCE_ID
+
+static func is_valid_definition(p_id: Variant, p_red: Variant,
+		p_owner: Variant, p_instance_id: Variant) -> bool:
+	if typeof(p_id) != TYPE_INT or not TileId.ALL.has(p_id):
+		return false
+	if typeof(p_red) != TYPE_BOOL:
+		return false
+	if p_red and p_id != TileId.W5 and p_id != TileId.T5 and p_id != TileId.S5:
+		return false
+	if typeof(p_owner) != TYPE_INT or p_owner < NO_OWNER or p_owner > 3:
+		return false
+	return p_instance_id == INVALID_INSTANCE_ID or is_valid_instance_id(p_instance_id)
 
 
 ## hand_seq 命名空间：iid 必须落在 [hs*136, hs*136+135]。
@@ -83,25 +109,19 @@ static func from_dict(d: Variant) -> Tile:
 	if typeof(raw_id) != TYPE_INT:
 		return null
 	var tid: int = raw_id
-	if not TileId.ALL.has(tid):
-		return null
 	var raw_red: Variant = dict["is_red_dora"]
 	if typeof(raw_red) != TYPE_BOOL:
 		return null
 	var red: bool = raw_red
-	if red and tid != TileId.W5 and tid != TileId.T5 and tid != TileId.S5:
-		return null
 	var raw_owner: Variant = dict["owner_seat"]
 	if typeof(raw_owner) != TYPE_INT:
 		return null
 	var owner: int = raw_owner
-	if owner < NO_OWNER or owner > 3:
-		return null
 	var raw_iid: Variant = dict["instance_id"]
 	if typeof(raw_iid) != TYPE_INT:
 		return null
 	var iid: int = raw_iid
-	if iid != INVALID_INSTANCE_ID and not is_valid_instance_id(iid):
+	if not is_valid_definition(tid, red, owner, iid):
 		return null
 	return Tile.new(tid, red, owner, iid)
 

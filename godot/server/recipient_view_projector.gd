@@ -36,7 +36,7 @@ static func project_core_table(state: Variant, recipient_seat: Variant) -> Varia
 		return null
 
 	var dora_out: Array = []
-	for t in st.dora_indicators.visible:
+	for t in st.dora_indicators.visible_tiles():
 		var tv: Variant = ProtocolViewCodec.tile_view_from_tile(t)
 		if tv == null:
 			return null
@@ -79,7 +79,7 @@ static func _project_seat(
 	var concealed_tiles: Array = []
 	var last_drawn: int = -1
 	if seat_i == recip:
-		for t in seat.hand._tiles:
+		for t in seat.hand.tiles():
 			var tv: Variant = ProtocolViewCodec.tile_view_from_tile(t)
 			if tv == null:
 				return null
@@ -91,16 +91,14 @@ static func _project_seat(
 			last_drawn = -1
 	elif revealed_by_holder.has(seat_i):
 		for instance_value in revealed_by_holder[seat_i] as Array:
-			var instance := instance_value as TileInstance
+			var instance := instance_value as TileSkillAnchor
 			var tv: Variant = ProtocolViewCodec.tile_view_from_tile(instance.tile)
 			if tv == null:
 				return null
 			concealed_tiles.append(tv)
 
 	var river_out: Array = []
-	var river_src: Array = []
-	if seat_i < st.discards_per_seat.size():
-		river_src = st.discards_per_seat[seat_i] as Array
+	var river_src: Array = seat.river.tiles()
 	for t in river_src:
 		var rtv: Variant = ProtocolViewCodec.tile_view_from_tile(t)
 		if rtv == null:
@@ -108,7 +106,7 @@ static func _project_seat(
 		river_out.append(rtv)
 
 	var melds_out: Array = []
-	for m in seat.melds:
+	for m in seat.melds.all():
 		if not (m is Meld):
 			return null
 		var mv: Variant = _meld_view_preserve_order(m as Meld)
@@ -119,7 +117,7 @@ static func _project_seat(
 	var ri = seat.riichi
 	var declared: bool = ri.declared if ri else false
 	var dbl: bool = ri.double_riichi if ri else false
-	var ridx: int = ri.riichi_discard_index if ri else -1
+	var ridx: int = seat.river.riichi_discard_index()
 	if not declared:
 		ridx = -1
 

@@ -399,10 +399,10 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 				int(win_event.extra.get("winner_total", 0)), total_delay)
 
 	var hand_strip: Control = null
-	if win_event != null and win_event.tile_instance != null and win_event.tile_instance.tile != null:
+	if win_event != null and win_event.tile_anchor != null and win_event.tile_anchor.tile != null:
 		var is_tsumo := bool(win_event.extra.get("is_tsumo", false))
 		hand_strip = _render_winning_hand_strip(panel, win_event.actor_seat,
-			win_event.tile_instance.tile.id, is_tsumo, 96)
+			win_event.tile_anchor.tile.id, is_tsumo, 96)
 	var draw_list: Control = null
 	if last_event == "EXHAUSTIVE_DRAW" and not draw_snapshots.is_empty():
 		draw_list = _build_draw_result_list(panel, draw_snapshots)
@@ -577,7 +577,7 @@ func _build_exhaustive_draw_snapshots() -> Array:
 	var tenpai_array: Array = []
 	for seat_id in range(4):
 		var seat: Seat = _bc.state.seats[seat_id]
-		tenpai_array.append(WaitCalculator.is_tenpai(seat.hand, seat.melds))
+		tenpai_array.append(WaitCalculator.is_tenpai(seat.hand, seat.melds.all()))
 	var payments := ExhaustiveDraw.noten_payout(tenpai_array)
 	var snapshots: Array = []
 	var dealer := int(_bc.state.dealer_seat)
@@ -585,14 +585,14 @@ func _build_exhaustive_draw_snapshots() -> Array:
 		var seat_id := (dealer + offset) % 4
 		var seat: Seat = _bc.state.seats[seat_id]
 		var hand_snapshot: Array[Tile] = []
-		for tile in seat.hand._tiles:
+		for tile in seat.hand.tiles():
 			hand_snapshot.append(_clone_result_tile(tile))
 		hand_snapshot.sort_custom(func(a: Tile, b: Tile) -> bool:
 			if a.id == b.id:
 				return int(a.is_red_dora) < int(b.is_red_dora)
 			return a.id < b.id)
 		var meld_snapshots: Array[Meld] = []
-		for meld in seat.melds:
+		for meld in seat.melds.all():
 			meld_snapshots.append(_clone_result_meld(meld))
 		snapshots.append({
 			"seat": seat_id,
@@ -1297,7 +1297,7 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 		return null
 	# 保留 is_red_dora：用 Tile 列表而非 to_id_array
 	var concealed: Array = []  # Array[Tile]
-	for t in winner.hand._tiles:
+	for t in winner.hand.tiles():
 		concealed.append(t)
 	var win_red: bool = false
 	if is_tsumo:
@@ -1332,7 +1332,7 @@ func _render_winning_hand_strip(parent: Control, winner_seat: int,
 	win_tiles.add_child(_make_overlay_tile(winning_tile_id, true, win_red))
 	if not winner.melds.is_empty():
 		strip.add_child(_build_flat_result_melds(
-			winner.melds, RESULT_WIN_TILE_SM_SIZE, "FlatMelds"))
+			winner.melds.all(), RESULT_WIN_TILE_SM_SIZE, "FlatMelds"))
 	return strip
 
 
@@ -1497,7 +1497,7 @@ func _polling_loop() -> void:
 				# 宝牌指示窗同步(内部按 key 去重,无变化零开销)
 				if _dora_widget and _bc.state.dora_indicators:
 					var ind_ids: Array = []
-					for ti in _bc.state.dora_indicators.visible:
+					for ti in _bc.state.dora_indicators.visible_tiles():
 						if ti != null:
 							ind_ids.append(ti.id)
 					_dora_widget.update_indicators(ind_ids)
@@ -1546,8 +1546,8 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# T2:玩家自摸时和牌张心跳脉冲。必须在 rebind 之后标
 			# (rebind 全量重建手牌行会清掉),挂 pending 由 polling loop 应用。
 			if ev.type == &"TSUMO_DECLARED" and int(ev.actor_seat) == 0 \
-					and ev.tile_instance != null and ev.tile_instance.tile != null:
-				_pending_win_tile_id = ev.tile_instance.tile.id
+					and ev.tile_anchor != null and ev.tile_anchor.tile != null:
+				_pending_win_tile_id = ev.tile_anchor.tile.id
 		&"WIN_DECLARED":
 			var winner_seat := int(ev.actor_seat)
 			_play_call_announce(
@@ -2596,7 +2596,7 @@ func _input(event: InputEvent) -> void:
 	match k.keycode:
 		KEY_D:
 			if _bc != null and _decision_adapter != null:
-				var hand_tiles: Array = _bc.state.seats[0].hand._tiles
+				var hand_tiles: Array = _bc.state.seats[0].hand.tiles()
 				if hand_tiles.size() > 0:
 					_decision_adapter.on_hand_tile_clicked(
 						(hand_tiles[0] as Tile).instance_id)

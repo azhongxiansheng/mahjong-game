@@ -37,7 +37,7 @@ func _register_skill() -> void:
 	var ot: Array[StringName] = [&"WIN_DECLARED"]
 	_thunder.owner_triggers = ot
 	_thunder.hook_script = ThunderHook
-	var ti_thunder := TileInstance.make(Tile.new(TileId.W5), 0, _thunder)
+	var ti_thunder := TileSkillAnchor.make(Tile.new(TileId.W5), 0, _thunder)
 	ti_thunder.holder_seat = 0
 	_registry.register(_thunder, ti_thunder)
 
@@ -49,7 +49,7 @@ func _register_skill() -> void:
 	var ht: Array[StringName] = [&"WIN_DECLARED"]
 	_soul_drain.holder_triggers = ht
 	_soul_drain.hook_script = SoulDrainHook
-	var ti_drain := TileInstance.make(Tile.new(TileId.HATSU), 3, _soul_drain)
+	var ti_drain := TileSkillAnchor.make(Tile.new(TileId.HATSU), 3, _soul_drain)
 	ti_drain.holder_seat = 2
 	_registry.register(_soul_drain, ti_drain)
 

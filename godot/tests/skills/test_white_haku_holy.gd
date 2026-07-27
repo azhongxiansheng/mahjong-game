@@ -27,7 +27,7 @@ func test_holy_adds_2_han_when_holder_is_winner():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HAKU), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HAKU), 0, sk)
 	ti.holder_seat = 2
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 2))
@@ -39,7 +39,7 @@ func test_holy_no_han_when_holder_not_winner():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HAKU), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HAKU), 0, sk)
 	ti.holder_seat = 2
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
@@ -52,7 +52,7 @@ func test_holy_no_han_when_no_holder_set():
 	var reg: SkillRegistry = ctx[0]
 	var sched: SkillScheduler = ctx[2]
 	var sk := _make_skill()
-	var ti := TileInstance.make(Tile.new(TileId.HAKU), 0, sk)
+	var ti := TileSkillAnchor.make(Tile.new(TileId.HAKU), 0, sk)
 	ti.holder_seat = -1  # 没人持
 	reg.register(sk, ti)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0))
