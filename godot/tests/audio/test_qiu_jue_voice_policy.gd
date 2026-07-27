@@ -1,6 +1,8 @@
 extends GutTest
 
-const Policy := preload("res://audio/qiu_jue_voice_policy.gd")
+const Catalog := preload(
+	"res://presentation/characters/character_presentation_catalog.gd")
+const Policy := preload("res://presentation/characters/character_voice_policy.gd")
 
 
 func _event(type: StringName, actor: int, extra: Dictionary = {}) -> BattleEvent:
@@ -8,7 +10,7 @@ func _event(type: StringName, actor: int, extra: Dictionary = {}) -> BattleEvent
 
 
 func _policy(ids: Array = [&"qiu_jue", &"lin_yeche", &"bai_touli", &"hua_ling"]):
-	var policy = Policy.new()
+	var policy = Policy.new(Catalog.active_profiles()[0])
 	policy.bind_characters(ids)
 	return policy
 
