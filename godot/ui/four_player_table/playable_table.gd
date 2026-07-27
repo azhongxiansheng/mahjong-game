@@ -222,6 +222,14 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 
 func bind_character_ids(character_ids: Array) -> void:
 	_character_presentation_router.bind_characters(character_ids)
+	_sync_viewer_reveal_label()
+
+
+func _sync_viewer_reveal_label() -> void:
+	if _table != null and _table.has_method("set_viewer_reveal_label"):
+		_table.set_viewer_reveal_label(
+			_character_presentation_router.reveal_label_for_local_character(
+				_reward_local_seat))
 
 
 func on_match_scores_updated(scores: Array) -> void:
@@ -1912,6 +1920,7 @@ func _bind_reward_feedback_from_battle(bc: PlayableBattleController) -> void:
 	_reward_local_seat = 0
 	if _table.has_method("set_local_seat"):
 		_table.set_local_seat(0)
+	_sync_viewer_reveal_label()
 	var room := "practice"
 	if bc.has_meta("local_authority"):
 		var auth = bc.get_meta("local_authority")
@@ -1939,6 +1948,7 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_reward_local_seat = seat
 	if _table != null and _table.has_method("set_local_seat"):
 		_table.set_local_seat(seat)
+	_sync_viewer_reveal_label()
 	_begin_reward_source("public|%s|seat%d" % [room, seat], seat, true)
 	_ensure_reward_sync_loop()
 

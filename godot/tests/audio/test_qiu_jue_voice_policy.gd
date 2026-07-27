@@ -15,6 +15,17 @@ func _policy(ids: Array = [&"qiu_jue", &"lin_yeche", &"bai_touli", &"hua_ling"])
 	return policy
 
 
+func _bai_policy(ids: Array = [&"bai_touli", &"qiu_jue", &"lin_yeche", &"hua_ling"]):
+	var profile = null
+	for candidate in Catalog.active_profiles():
+		if candidate.character_id == &"bai_touli":
+			profile = candidate
+			break
+	var policy = Policy.new(profile)
+	policy.bind_characters(ids)
+	return policy
+
+
 func test_entry_plays_once_for_local_qiu_jue() -> void:
 	var policy = _policy()
 	var first: Array = policy.requests_for_event(_event(&"GAME_BEGIN", 2))
@@ -79,3 +90,24 @@ func test_result_lose_only_applies_to_local_qiu_jue_without_first_place() -> voi
 	assert_eq(lose.size(), 1)
 	assert_eq(lose[0].event_kind, &"result_lose")
 	assert_true(policy.requests_for_match_result([28000, 27000, 25000, 20000]).is_empty())
+
+
+func test_bai_touli_six_offline_voice_categories_and_match_reset() -> void:
+	var policy = _bai_policy()
+	assert_eq(policy.requests_for_event(_event(&"GAME_BEGIN", 0))[0].event_kind, &"entry")
+	assert_eq(policy.requests_for_event(_event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_washizu_passive_v1",
+	}))[0].event_kind, &"ability")
+	assert_eq(policy.requests_for_scores([28000, 24000, 24000, 24000])[0].event_kind,
+		&"advantage")
+	assert_eq(policy.requests_for_event(_event(&"WIN_DECLARED", 1, {
+		"discarder_seat": 0, "is_tsumo": false,
+	}))[0].event_kind, &"hurt")
+	assert_eq(policy.requests_for_event(_event(&"WIN_DECLARED", 0, {
+		"discarder_seat": 2, "is_tsumo": false,
+	}))[0].event_kind, &"win")
+	assert_eq(policy.requests_for_match_result([24000, 27000, 25000, 24000])[0].event_kind,
+		&"result_lose")
+	policy.bind_characters([&"bai_touli", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	assert_eq(policy.requests_for_event(_event(&"GAME_BEGIN", 0)).size(), 1,
+		"新一场重新绑定后 entry 可再次播放")

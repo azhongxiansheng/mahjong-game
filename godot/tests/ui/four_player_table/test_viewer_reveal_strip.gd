@@ -16,6 +16,17 @@ func _state_with_reveal(viewer_seat: int = 0) -> BattleState:
 	return st
 
 
+func _state_with_bai_touli_reveal(viewer_seat: int = 0) -> BattleState:
+	var st := BattleState.for_east_round(341, 0, 1, 0, 0)
+	var registry := SkillRegistry.new()
+	var scheduler := SkillScheduler.new(registry, st)
+	assert_true(BossAbilityFactory.inject(
+		registry, &"char_washizu_passive_v1", viewer_seat))
+	var ctx := scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", viewer_seat))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	return st
+
+
 func test_strip_renders_real_tile_instance_and_clears() -> void:
 	var st := _state_with_reveal()
 	var instance := st.revealed_tiles[0].tile as TileSkillAnchor
@@ -56,6 +67,23 @@ func test_real_table_only_shows_reveal_to_local_viewer() -> void:
 	table.bind_battle_state(st, 0, 4)
 	assert_eq(table.seat_panels[1].viewer_reveal_count(), 0,
 		"切到未授权本地 viewer 后必须清除显示")
+
+
+func test_bai_touli_real_table_shows_two_per_opponent_and_expires_on_tile_leave() -> void:
+	var table = TABLE_SCENE.instantiate()
+	add_child_autofree(table)
+	var st := _state_with_bai_touli_reveal(0)
+	table.set_local_seat(0)
+	table.bind_battle_state(st, 0, 4)
+	for holder in [1, 2, 3]:
+		assert_eq(table.seat_panels[holder].viewer_reveal_count(), 2)
+	var revealed := st.revealed_tiles[0] as Dictionary
+	var instance := revealed.tile as TileSkillAnchor
+	var holder := int(instance.holder_seat)
+	assert_not_null(st.seats[holder].hand.take_by_instance_id(instance.tile.instance_id))
+	table.bind_battle_state(st, 0, 4)
+	assert_eq(table.seat_panels[holder].viewer_reveal_count(), 1,
+		"牌离开目标手牌后对应揭示必须失效")
 
 
 func test_three_opponent_positions_keep_reveal_strips_screen_upright_and_in_bounds() -> void:

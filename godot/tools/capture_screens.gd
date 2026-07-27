@@ -158,6 +158,24 @@ func _capture_battle_with_state() -> void:
 	print("[capture] saved /tmp/shot_battle_lin_reveal.png")
 	bc.state.revealed_tiles.clear()
 	table._table.bind_battle_state(bc.state, 0, 4)
+	# #341：同一通用揭示组件由白透璃 profile 提供“镜华”标签；真实 hook
+	# 在三个对手座位各投影两张，不复制第二套 UI。
+	var bai_bc := BattleController.new(341, 0, false, TileId.E)
+	table.bind_character_ids([&"bai_touli", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	table.set_player_persona("白透璃",
+		"res://assets/roguelike/characters/char_bai_touli.png")
+	BossAbilityFactory.inject(bai_bc.registry, &"char_washizu_passive_v1", 0)
+	bai_bc.scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	table._table.bind_battle_state(bai_bc.state, 0, 4)
+	for _i in range(8):
+		await process_frame
+	var bai_reveal_img := root.get_texture().get_image()
+	bai_reveal_img.save_png("/tmp/shot_battle_bai_touli_reveal.png")
+	print("[capture] saved /tmp/shot_battle_bai_touli_reveal.png")
+	table.bind_character_ids([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	table.set_player_persona("林夜彻",
+		"res://assets/roguelike/characters/char_lin_yeche.png")
+	table._table.bind_battle_state(bc.state, 0, 4)
 	# 状态 B/方案1：真实 PlayableTable 的固定仪式带 + 真实手牌候选/禁用层。
 	var player := table._table.seat_panels[0] as SeatPanel
 	var allowed: Array = []

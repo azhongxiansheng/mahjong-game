@@ -33,6 +33,34 @@ func emit_event(event: BattleEvent) -> SkillCtx:
 	_state.event_chain_depth -= 1
 	return ctx
 
+
+# 奖励窗等价触发单个已确定的角色技能；复用正常 dispatch 的 mutation 判定，
+# 避免重新广播 GAME_BEGIN 而误触发同窗其他角色。
+func emit_single_skill_event(
+	event: BattleEvent,
+	skill: SkillResource,
+	beneficiary_seat: int
+) -> SkillCtx:
+	event.chain_id = _next_chain_id
+	_next_chain_id += 1
+	_state.event_chain_depth += 1
+	var ctx := SkillCtx.new(_state, event)
+	if _state.event_chain_depth > BattleState.MAX_EVENT_CHAIN_DEPTH:
+		_state.event_chain_depth -= 1
+		return ctx
+	if skill == null or skill.consumed or skill.hook_script == null:
+		_state.event_chain_depth -= 1
+		return ctx
+	var hook = skill.hook_script.new()
+	if hook is SkillHook:
+		_dispatch([{
+			"skill": skill,
+			"hook": hook,
+			"beneficiary_seat": beneficiary_seat,
+		}], event, ctx)
+	_state.event_chain_depth -= 1
+	return ctx
+
 func _collect(event: BattleEvent) -> Array:
 	var candidates: Array = []
 	# 角色能力仍按 ability id 去重；同 item_id 多实例用 item_instance_id 区分（#253）。

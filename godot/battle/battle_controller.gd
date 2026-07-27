@@ -238,14 +238,30 @@ func _emit(type: StringName, actor_seat: int, ti: TileSkillAnchor, extra: Dictio
 	events.append(ev)
 	_last_event_type = type
 	var ctx := scheduler.emit_event(ev)
+	_append_skill_triggered_events(ctx, type)
+	return ctx
+
+
+# 只激活指定技能，不把等价 source event 广播给 registry 中其他技能。
+func activate_single_skill_for_event(
+	skill: SkillResource,
+	beneficiary_seat: int,
+	source_type: StringName
+) -> SkillCtx:
+	var ev := BattleEvent.make(source_type, beneficiary_seat, null, {})
+	var ctx := scheduler.emit_single_skill_event(ev, skill, beneficiary_seat)
+	_append_skill_triggered_events(ctx, source_type)
+	return ctx
+
+
+func _append_skill_triggered_events(ctx: SkillCtx, source_type: StringName) -> void:
 	for entry in ctx.triggered_skills:
 		var skill_ev := BattleEvent.make(&"SKILL_TRIGGERED", int(entry.beneficiary_seat), null, {
 			"skill_id": entry.skill_id,
 			"skill_name": entry.skill_name,
-			"source_event": type,
+			"source_event": source_type,
 		})
 		events.append(skill_ev)
-	return ctx
 
 # 把 Tile 包成 TileSkillAnchor 以喂事件 payload。
 # Tile 当前没有 owner_seat 字段（main 合并冲突里 commit 2b87929 的字段被丢掉，是 main 旧债，

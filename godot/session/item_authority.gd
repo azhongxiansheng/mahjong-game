@@ -443,15 +443,9 @@ static func _activate_game_begin_ability(
 ) -> void:
 	if bc == null or slot == null or slot.skill == null:
 		return
-	var ev := BattleEvent.make(&"GAME_BEGIN", seat, null, {})
-	var ctx := SkillCtx.new(bc.state, ev)
-	ctx.beneficiary_seat = seat
-	ctx.current_skill = slot.skill
-	if slot.skill.hook_script != null:
-		var hook = slot.skill.hook_script.new()
-		if hook is SkillHook:
-			# 不经 scheduler 去重；直接等价激活；不改写 params
-			hook.on_event(slot.skill, ev, ctx)
+	# 只触发本槽，不重新广播 GAME_BEGIN；mutation 判定与普通 scheduler 一致，
+	# 有真实效果时由 BC 追加 SKILL_TRIGGERED，且不改写 params。
+	bc.activate_single_skill_for_event(slot.skill, seat, &"GAME_BEGIN")
 
 
 ## SETTLED/CANCELLED 后 DISARM：只清 active，unregister 停止后续 hook。

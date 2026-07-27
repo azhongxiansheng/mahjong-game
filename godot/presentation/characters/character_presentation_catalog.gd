@@ -19,5 +19,14 @@ static func active_profiles() -> Array:
 			"👁 {skill_name}　透视下家手牌",
 			Color("8fb8ff"),
 			true,
+			"读脊",
+		),
+		Profile.new(
+			&"bai_touli",
+			&"char_washizu_passive_v1",
+			"🔮 {skill_name}　看破三家各两张手牌",
+			Color("d7b8ff"),
+			true,
+			"镜华",
 		),
 	]

@@ -1,5 +1,7 @@
 extends GutTest
 
+const ViewerRevealResolverScript := preload("res://battle/viewer_reveal_resolver.gd")
+
 func test_character_pool_has_12_characters():
 	var pool: Array = CharacterPool.all()
 	assert_eq(pool.size(), 12)
@@ -105,5 +107,38 @@ func test_washizu_passive_reveals_all_opponents():
 		st.seats.append(seat)
 	var sched := SkillScheduler.new(reg, st)
 	BossAbilityFactory.inject(reg, &"char_washizu_passive_v1", 0)
-	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	var ctx := sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
 	assert_eq(st.revealed_tiles.size(), 6, "透璃应 reveal 3 对手各 2 张 = 6 张")
+	assert_eq(ctx.triggered_skills.size(), 1, "真实 GAME_BEGIN 只触发一次白透璃能力")
+	var unique_ids: Dictionary = {}
+	var counts_by_holder: Dictionary = {}
+	for value in st.revealed_tiles:
+		var record := value as Dictionary
+		var instance := record.tile as TileSkillAnchor
+		unique_ids[instance.tile.instance_id] = true
+		counts_by_holder[instance.holder_seat] = int(
+			counts_by_holder.get(instance.holder_seat, 0)) + 1
+		assert_eq(record.visible_to, [0], "每张牌只能授权给白透璃座位")
+	assert_eq(unique_ids.size(), 6, "同一对手的两次揭示不得重复同一实体")
+	assert_eq(counts_by_holder, {1: 2, 2: 2, 3: 2}, "三名对手必须各揭示两张")
+
+
+func test_washizu_reveal_survives_authority_restore_and_new_hand_clears() -> void:
+	var source := BattleController.new(341, 0, false, TileId.E, 0)
+	assert_true(BossAbilityFactory.inject(
+		source.registry, &"char_washizu_passive_v1", 0))
+	var ctx := source.scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	var snapshot := AuthorityReplaySnapshot.capture(source)
+	assert_not_null(snapshot)
+	assert_true(snapshot.can_restore())
+	var restored := BattleController.new(999, 1, false, TileId.S_WIND, 0)
+	assert_true(snapshot.restore_into(restored))
+	var grouped: Dictionary = ViewerRevealResolverScript.tiles_by_holder(restored.state, 0)
+	for holder in [1, 2, 3]:
+		assert_eq((grouped.get(holder, []) as Array).size(), 2,
+			"恢复后每家授权子集保持两张")
+	assert_true(ViewerRevealResolverScript.tiles_by_holder(restored.state, 2).is_empty(),
+		"权威恢复不得扩大 viewer 授权")
+	var next_hand := BattleController.new(342, 0, false, TileId.E, 1)
+	assert_true(next_hand.state.revealed_tiles.is_empty(), "新局必须清空上局揭示")
