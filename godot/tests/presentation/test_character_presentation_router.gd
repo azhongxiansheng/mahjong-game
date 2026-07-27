@@ -106,3 +106,21 @@ func test_catalog_activates_lin_yeche_without_table_character_branch() -> void:
 	assert_eq(ability[0].character_id, &"lin_yeche")
 	var feedback: Dictionary = router.feedback_for_event(ability_event)
 	assert_eq(feedback.text, "👁 林夜彻 · 脊读鬼神　透视下家手牌")
+
+
+func test_catalog_activates_bai_touli_feedback_voice_and_reveal_label() -> void:
+	var router = Router.new(Catalog.active_profiles())
+	router.bind_characters([&"bai_touli", &"qiu_jue", &"lin_yeche", &"hua_ling"])
+	assert_eq(router.reveal_label_for_local_character(), "镜华")
+	var ability_event := _event(&"SKILL_TRIGGERED", 0, {
+		"skill_id": &"char_washizu_passive_v1",
+		"skill_name": "白透璃·万透镜华",
+	})
+	var voice: Array = router.voice_requests_for_event(ability_event)
+	assert_eq(voice.size(), 1)
+	assert_eq(voice[0].character_id, &"bai_touli")
+	assert_eq(voice[0].event_kind, &"ability")
+	var feedback: Dictionary = router.feedback_for_event(ability_event)
+	assert_eq(feedback.text, "🔮 白透璃 · 万透镜华　看破三家各两张手牌")
+	router.bind_characters([&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"])
+	assert_eq(router.reveal_label_for_local_character(), "读脊")

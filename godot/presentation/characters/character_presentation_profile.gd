@@ -5,6 +5,7 @@ var ability_id: StringName
 var feedback_template: String
 var feedback_color: Color
 var feedback_pulse: bool
+var viewer_reveal_label: String
 
 
 func _init(
@@ -12,13 +13,15 @@ func _init(
 	p_ability_id: StringName = &"",
 	p_feedback_template: String = "",
 	p_feedback_color: Color = Color(1, 0.88, 0.32),
-	p_feedback_pulse: bool = false
+	p_feedback_pulse: bool = false,
+	p_viewer_reveal_label: String = ""
 ) -> void:
 	character_id = p_character_id
 	ability_id = p_ability_id
 	feedback_template = p_feedback_template
 	feedback_color = p_feedback_color
 	feedback_pulse = p_feedback_pulse
+	viewer_reveal_label = p_viewer_reveal_label
 
 
 func is_valid() -> bool:

@@ -324,6 +324,23 @@ func test_authorized_reveal_uses_existing_concealed_tiles_without_cross_seat_lea
 		"授权 reveal 投影必须能通过真实 ROOM_SNAPSHOT wire validator")
 
 
+func test_bai_touli_real_hook_projects_two_per_opponent_only_to_owner() -> void:
+	var st := BattleState.for_east_round(341, 0, 1, 0, 0)
+	var registry := SkillRegistry.new()
+	var scheduler := SkillScheduler.new(registry, st)
+	assert_true(BossAbilityFactory.inject(
+		registry, &"char_washizu_passive_v1", 0))
+	var ctx := scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(ctx.triggered_skills.size(), 1)
+	var owner_view := _dict(_project(st, 0))
+	for holder in [1, 2, 3]:
+		assert_eq((((owner_view.seats as Array)[holder] as Dictionary).concealed_tiles as Array).size(), 2)
+	var unauthorized_view := _dict(_project(st, 2))
+	for holder in [0, 1, 3]:
+		assert_true(((((unauthorized_view.seats as Array)[holder] as Dictionary).concealed_tiles) as Array).is_empty(),
+			"未授权 recipient 不得看到 seat %d 的白透璃揭示" % holder)
+
+
 func test_deep_copy_and_invalid() -> void:
 	if not ResourceLoader.exists(PATH):
 		assert_true(false, "缺 projector")

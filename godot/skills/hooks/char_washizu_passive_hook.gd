@@ -10,4 +10,4 @@ func on_event(_skill: SkillResource, _event: BattleEvent, ctx: SkillCtx) -> void
 		if i == ctx.beneficiary_seat:
 			continue
 		for _j in range(REVEAL_PER_OPPONENT):
-			ctx.reveal_random_from_seat(i, ctx.beneficiary_seat)
+			ctx.reveal_random_from_seat(i, ctx.beneficiary_seat, true)

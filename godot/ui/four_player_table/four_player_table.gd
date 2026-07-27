@@ -480,6 +480,12 @@ func set_local_seat(seat: int) -> void:
 		_reward_feedback_projector.set_local_seat(seat)
 
 
+func set_viewer_reveal_label(value: String) -> void:
+	for panel in seat_panels:
+		if panel is SeatPanel:
+			(panel as SeatPanel).set_viewer_reveal_label(value)
+
+
 func _on_inventory_btn_pressed() -> void:
 	if is_inventory_drawer_open():
 		close_inventory_drawer()

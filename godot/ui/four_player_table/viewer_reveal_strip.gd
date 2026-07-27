@@ -9,6 +9,7 @@ const ROW_GAP := 3.0
 
 var _instances: Array = []
 var _panel: Panel = null
+var _label_text := "揭示"
 
 
 func _ready() -> void:
@@ -23,6 +24,15 @@ func set_tiles(instances: Array) -> void:
 		if value is TileSkillAnchor and (value as TileSkillAnchor).tile != null:
 			_instances.append(value)
 	_rebuild()
+
+
+func set_label_text(value: String) -> void:
+	_label_text = value if not value.is_empty() else "揭示"
+	_rebuild()
+
+
+func label_text() -> String:
+	return _label_text
 
 
 func revealed_count() -> int:
@@ -64,7 +74,7 @@ func _rebuild() -> void:
 	_panel.add_theme_stylebox_override("panel", style)
 	add_child(_panel)
 	var label := Label.new()
-	label.text = "读脊"
+	label.text = _label_text
 	label.position = Vector2(4, 4)
 	label.size = Vector2(LABEL_W, TILE_H)
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER

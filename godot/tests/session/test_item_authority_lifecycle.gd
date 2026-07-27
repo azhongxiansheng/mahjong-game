@@ -6,6 +6,7 @@ extends GutTest
 const CHARS := [&"lin_yeche", &"qiu_jue", &"bai_touli", &"hua_ling"]
 const PARTS_ALL_H := [&"HUMAN", &"HUMAN", &"HUMAN", &"HUMAN"]
 const PARTS_MIX := [&"HUMAN", &"AI", &"AI", &"AI"]
+const ViewerRevealResolverScript := preload("res://battle/viewer_reveal_resolver.gd")
 
 
 func _cfg_tt(p_seed: int, sid: String, all_human: bool = true) -> GameSessionConfig:
@@ -374,3 +375,42 @@ func test_arm_seats_mid_failure_rolls_back_seat0() -> void:
 	assert_eq(bc.registry.get_all_entries().size(), pre_reg)
 	assert_false(bool(slots[0].armed))
 	assert_false(bool(slots[0].registry_registered))
+
+
+func test_bai_touli_arm_equivalent_game_begin_emits_one_real_skill_event() -> void:
+	var bc := BattleController.new(341, 0, false, TileId.E, 0)
+	var inv := ItemInventoryModule.new()
+	inv.set_match_namespace("bai-arm")
+	assert_true(bool(inv.grant_for_seat({
+		"seat": 0, "item_id": "iron_shield_v1", "window_id": "w0",
+		"hand_seq": 0, "score": 0, "rule_version": "rv", "assignment_version": "av",
+		"matched_rule_ids": [], "affinity_match": true, "next_window_id": "w1",
+	}).get("ok", false)))
+	var ch := CharacterPool.find(&"bai_touli")
+	var skill := BossAbilityFactory.build(ch.ability_id)
+	var slot := CharacterAbilitySlot.new(0, ch.id, ch.ability_id, skill, false)
+	var slots: Array = [slot, null, null, null]
+	var before_events := bc.events.size()
+	var arm := ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1")
+	assert_true(bool(arm.get("ok", false)))
+	assert_eq(bc.events.size(), before_events + 1,
+		"等价 GAME_BEGIN 必须把真实 SKILL_TRIGGERED 写入 BC 事件链")
+	var event := bc.events[-1] as BattleEvent
+	assert_eq(event.type, &"SKILL_TRIGGERED")
+	assert_eq(event.actor_seat, 0)
+	assert_eq(event.extra.get("skill_id"), &"char_washizu_passive_v1")
+	assert_eq(event.extra.get("source_event"), &"GAME_BEGIN")
+	assert_false(event.extra.has("tiles"), "公开触发事件不得携带私有牌身份")
+	var grouped: Dictionary = ViewerRevealResolverScript.tiles_by_holder(bc.state, 0)
+	assert_eq(grouped.keys().size(), 3)
+	for holder in [1, 2, 3]:
+		assert_eq((grouped.get(holder, []) as Array).size(), 2)
+	assert_true(ViewerRevealResolverScript.tiles_by_holder(bc.state, 1).is_empty(),
+		"被观察座位不得获得白透璃的私有信息")
+	var reveal_count := bc.state.revealed_tiles.size()
+	assert_true(bool(ItemAuthority.arm_seats_on_open(bc, inv, slots, "w1").get("ok", false)))
+	assert_eq(bc.events.size(), before_events + 1, "同一窗口重复 arm 不得再次激活")
+	assert_eq(bc.state.revealed_tiles.size(), reveal_count)
+	assert_true(bool(ItemAuthority.disarm_all_active(bc, inv, slots, "w1").get("ok", false)))
+	assert_eq(bc.state.revealed_tiles.size(), reveal_count,
+		"解除武装不抹除玩家已获得的信息")
