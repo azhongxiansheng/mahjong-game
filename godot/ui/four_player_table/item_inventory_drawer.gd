@@ -200,10 +200,9 @@ func _make_row(row: Dictionary) -> PanelContainer:
 	var panel := PanelContainer.new()
 	panel.name = "Row_%s" % iid
 	var ss := StyleBoxFlat.new()
-	ss.bg_color = Color(0.08, 0.11, 0.10, 0.95)
-	ss.border_color = DT.BORDER_GOLD_SOFT
-	ss.set_border_width_all(1)
-	ss.set_corner_radius_all(6)
+	ss.bg_color = Color(0.02, 0.02, 0.03, 0.0)
+	ss.border_color = Color(DT.BORDER_GOLD_SOFT, 0.42)
+	ss.set_border_width(SIDE_BOTTOM, 1)
 	ss.content_margin_left = 4
 	ss.content_margin_right = 4
 	ss.content_margin_top = 4

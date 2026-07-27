@@ -1,17 +1,19 @@
 extends Control
 
-# Issue #326：左右各两槽的常驻 icon-first 奖池 HUD（display-only）。
+# Issue #326 rework：四枚贴边“结界钉”，常态仅显示 icon。
 
 const ICON_RESOLVER := preload("res://ui/four_player_table/table_icon_resolver.gd")
-const LEFT_RECT := Rect2(16.0, 124.0, 208.0, 152.0)
-const RIGHT_RECT := Rect2(1376.0, 124.0, 208.0, 152.0)
+const PRIZE_ICON_SIZE := Vector2(52.0, 52.0)
+const PRIZE_ICON_RECTS := [
+	Rect2(24.0, 132.0, 52.0, 52.0),
+	Rect2(24.0, 192.0, 52.0, 52.0),
+	Rect2(1524.0, 132.0, 52.0, 52.0),
+	Rect2(1524.0, 192.0, 52.0, 52.0),
+]
 
-var _title: Label
+var _progress: Label
 var _feedback: Label
 var _slots: Array = []
-var _icons: Array = []
-var _name_labels: Array = []
-var _tag_labels: Array = []
 
 
 func _ready() -> void:
@@ -22,19 +24,30 @@ func _ready() -> void:
 	_build()
 
 
+func prize_icon_rects() -> Array:
+	return PRIZE_ICON_RECTS.duplicate()
+
+
 func pool_group_rects() -> Array:
-	return [LEFT_RECT, RIGHT_RECT]
+	return [
+		Rect2(PRIZE_ICON_RECTS[0].position, Vector2(52.0, 112.0)),
+		Rect2(PRIZE_ICON_RECTS[2].position, Vector2(52.0, 112.0)),
+	]
 
 
 func set_title(text: String) -> void:
-	if _title:
-		_title.text = text
+	if _progress == null:
+		return
+	_progress.tooltip_text = text
+	var parts := text.split("·", false, 1)
+	_progress.text = String(parts[1]).strip_edges() if parts.size() > 1 else text
 
 
 func set_feedback(text: String) -> void:
 	if _feedback:
 		_feedback.text = text
-		_feedback.visible = not text.is_empty()
+	if _progress and not text.is_empty():
+		_progress.tooltip_text = text
 
 
 func feedback_text() -> String:
@@ -43,113 +56,48 @@ func feedback_text() -> String:
 
 func set_prize_pool_rows(rows: Array) -> void:
 	for i in range(_slots.size()):
+		var icon: TextureRect = _slots[i]
 		var row: Dictionary = rows[i] if i < rows.size() and typeof(rows[i]) == TYPE_DICTIONARY else {}
-		_slots[i].visible = not row.is_empty()
+		icon.visible = not row.is_empty()
 		if row.is_empty():
-			_icons[i].texture = null
-			_name_labels[i].text = ""
-			_tag_labels[i].text = ""
+			icon.texture = null
+			icon.tooltip_text = ""
 			continue
-		_icons[i].texture = ICON_RESOLVER.texture(String(row.get("icon_path", ICON_RESOLVER.UNKNOWN_ICON)))
-		_name_labels[i].text = String(row.get("display_name", row.get("item_id", "?")))
-		var parts := PackedStringArray()
-		for tag_v in row.get("tag_labels", row.get("tags", [])):
-			var tag := String(tag_v)
-			if not tag.is_empty():
-				parts.append(tag)
-		_tag_labels[i].text = " · ".join(parts)
+		icon.texture = ICON_RESOLVER.texture(String(row.get(
+			"icon_path", ICON_RESOLVER.UNKNOWN_ICON)))
+		var display_name := String(row.get("display_name", row.get("item_id", "未知奖品")))
+		var effect := String(row.get("effect_summary", row.get("description", "")))
+		icon.tooltip_text = display_name if effect.is_empty() \
+			else "%s\n%s" % [display_name, effect]
 
 
 func _build() -> void:
-	var left := _make_group("PoolLeft", LEFT_RECT)
-	var right := _make_group("PoolRight", RIGHT_RECT)
-	add_child(left)
-	add_child(right)
-
-	_title = Label.new()
-	_title.name = "Title"
-	_title.text = "垃圾话奖池 · 0/24"
-	_title.position = Vector2(22, 130)
-	_title.size = Vector2(196, 20)
-	_title.add_theme_font_size_override("font_size", 13)
-	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_title)
-
-	_feedback = Label.new()
-	_feedback.name = "FeedbackBar"
-	_feedback.position = Vector2(1382, 130)
-	_feedback.size = Vector2(196, 20)
-	_feedback.add_theme_font_size_override("font_size", 11)
-	_feedback.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_feedback.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	_feedback.visible = false
-	_feedback.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_feedback)
-
-
-func _make_group(node_name: String, rect: Rect2) -> PanelContainer:
-	var group := PanelContainer.new()
-	group.name = node_name
-	group.position = rect.position
-	group.size = rect.size
-	group.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var bg := StyleBoxFlat.new()
-	bg.bg_color = Color(0.07, 0.07, 0.12, 0.92)
-	bg.border_color = Color(0.84, 0.57, 0.26, 0.9)
-	bg.set_border_width_all(1)
-	bg.set_corner_radius_all(10)
-	bg.content_margin_left = 6
-	bg.content_margin_right = 6
-	bg.content_margin_top = 30
-	bg.content_margin_bottom = 6
-	group.add_theme_stylebox_override("panel", bg)
-	var list := VBoxContainer.new()
-	list.add_theme_constant_override("separation", 4)
-	group.add_child(list)
-	for local_index in range(2):
-		var index := _slots.size()
-		var slot := PanelContainer.new()
-		slot.name = "PrizeSlot%d" % index
-		slot.custom_minimum_size = Vector2(0, 54)
-		var slot_style := StyleBoxFlat.new()
-		slot_style.bg_color = Color(0.12, 0.10, 0.18, 0.94)
-		slot_style.border_color = Color(0.76, 0.46, 0.78, 0.72)
-		slot_style.set_border_width_all(1)
-		slot_style.set_corner_radius_all(7)
-		slot_style.content_margin_left = 4
-		slot_style.content_margin_right = 4
-		slot_style.content_margin_top = 3
-		slot_style.content_margin_bottom = 3
-		slot.add_theme_stylebox_override("panel", slot_style)
-		list.add_child(slot)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 5)
-		slot.add_child(row)
+	for i in range(PRIZE_ICON_RECTS.size()):
+		var rect: Rect2 = PRIZE_ICON_RECTS[i]
 		var icon := TextureRect.new()
-		icon.name = "ItemIcon%d" % index
-		icon.custom_minimum_size = Vector2(46, 46)
+		icon.name = "ItemIcon%d" % i
+		icon.position = rect.position
+		icon.size = rect.size
 		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		row.add_child(icon)
-		var labels := VBoxContainer.new()
-		labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		labels.add_theme_constant_override("separation", 0)
-		row.add_child(labels)
-		var name_label := Label.new()
-		name_label.name = "ItemName"
-		name_label.add_theme_font_size_override("font_size", 12)
-		name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		labels.add_child(name_label)
-		var tag_label := Label.new()
-		tag_label.name = "ItemTags"
-		tag_label.add_theme_font_size_override("font_size", 10)
-		tag_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		labels.add_child(tag_label)
-		_slots.append(slot)
-		_icons.append(icon)
-		_name_labels.append(name_label)
-		_tag_labels.append(tag_label)
-		slot.visible = false
-	return group
+		icon.mouse_filter = Control.MOUSE_FILTER_STOP
+		icon.visible = false
+		add_child(icon)
+		_slots.append(icon)
+
+	_progress = Label.new()
+	_progress.name = "PoolProgress"
+	_progress.position = Vector2(24.0, 248.0)
+	_progress.size = Vector2(52.0, 18.0)
+	_progress.text = "0/24"
+	_progress.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_progress.add_theme_font_size_override("font_size", 11)
+	_progress.add_theme_color_override("font_color", Color(0.90, 0.72, 0.42))
+	_progress.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_progress)
+
+	# 保留既有反馈查询契约；实际反馈由字幕 banner 展示，避免再造浮窗。
+	_feedback = Label.new()
+	_feedback.name = "FeedbackBar"
+	_feedback.visible = false
+	add_child(_feedback)

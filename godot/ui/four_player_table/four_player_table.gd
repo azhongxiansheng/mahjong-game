@@ -52,6 +52,7 @@ var reward_pool_hud: Control = null
 var item_inventory_drawer: Control = null
 var ability_badge: Control = null
 var _inventory_btn: Button = null
+var _inventory_count_label: Label = null
 var _local_seat: int = 0
 
 func _ready() -> void:
@@ -264,14 +265,37 @@ func _build_layout() -> void:
 	# 顶栏「库存 N」入口（不改牌桌尺寸）
 	_inventory_btn = Button.new()
 	_inventory_btn.name = "InventoryButton"
-	_inventory_btn.text = "库存 0"
+	_inventory_btn.text = ""
 	_inventory_btn.focus_mode = Control.FOCUS_NONE
-	_inventory_btn.position = Vector2(1040.0, 8.0)
-	_inventory_btn.size = Vector2(100.0, 32.0)
+	_inventory_btn.position = Vector2(1536.0, 8.0)
+	_inventory_btn.size = Vector2(48.0, 48.0)
+	_inventory_btn.custom_minimum_size = Vector2(48.0, 48.0)
 	_inventory_btn.icon = TABLE_ICON_RESOLVER.texture(TABLE_ICON_RESOLVER.INVENTORY_ICON)
-	_inventory_btn.add_theme_constant_override("icon_max_width", 24)
+	_inventory_btn.expand_icon = true
+	_inventory_btn.add_theme_constant_override("icon_max_width", 42)
+	for state_name in ["normal", "hover", "pressed", "focus"]:
+		var seal_style := StyleBoxFlat.new()
+		seal_style.bg_color = Color(0.07, 0.05, 0.10, 0.72) \
+			if state_name == "normal" else Color(0.15, 0.09, 0.20, 0.88)
+		seal_style.border_color = Color(0.72, 0.48, 0.80, 0.72)
+		seal_style.set_border_width_all(1)
+		seal_style.set_corner_radius_all(8)
+		seal_style.content_margin_left = 2
+		seal_style.content_margin_right = 2
+		seal_style.content_margin_top = 2
+		seal_style.content_margin_bottom = 2
+		_inventory_btn.add_theme_stylebox_override(state_name, seal_style)
 	_inventory_btn.pressed.connect(_on_inventory_btn_pressed)
 	add_child(_inventory_btn)
+	_inventory_count_label = Label.new()
+	_inventory_count_label.name = "InventoryCountMark"
+	_inventory_count_label.position = Vector2(31.0, 30.0)
+	_inventory_count_label.size = Vector2(16.0, 16.0)
+	_inventory_count_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_inventory_count_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_inventory_count_label.add_theme_font_size_override("font_size", 10)
+	_inventory_count_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_inventory_btn.add_child(_inventory_count_label)
 	_refresh_reward_ui()
 
 
@@ -514,7 +538,9 @@ func _refresh_reward_ui() -> void:
 				String(_reward_feedback_projector.last_feedback_message())
 			)
 	if _inventory_btn != null:
-		_inventory_btn.text = "库存 %d" % inventory_count()
+		_inventory_btn.tooltip_text = "库存 %d 件" % inventory_count()
+	if _inventory_count_label != null:
+		_inventory_count_label.text = str(inventory_count())
 	if ability_badge != null and ability_badge.has_method("set_view"):
 		ability_badge.set_view(_reward_feedback_projector.local_ability_view())
 	if is_inventory_drawer_open():

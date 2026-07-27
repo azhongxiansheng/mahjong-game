@@ -10,8 +10,14 @@ const ITEM_ROOT := "res://assets/ui/table_hud/items/"
 const ABILITY_ROOT := "res://assets/ui/table_hud/abilities/"
 const CHROME_ROOT := "res://assets/ui/table_hud/chrome/"
 const DRAWER_RECT := Rect2(1384.0, 456.0, 200.0, 312.0)
-const POOL_LEFT_RECT := Rect2(16.0, 124.0, 208.0, 152.0)
-const POOL_RIGHT_RECT := Rect2(1376.0, 124.0, 208.0, 152.0)
+const PRIZE_ICON_RECTS := [
+	Rect2(24.0, 132.0, 52.0, 52.0),
+	Rect2(24.0, 192.0, 52.0, 52.0),
+	Rect2(1524.0, 132.0, 52.0, 52.0),
+	Rect2(1524.0, 192.0, 52.0, 52.0),
+]
+const ABILITY_SEAL_RECT := Rect2(1480.0, 8.0, 48.0, 48.0)
+const INVENTORY_SEAL_RECT := Rect2(1536.0, 8.0, 48.0, 48.0)
 
 
 func _item_icon_path(item_id: String) -> String:
@@ -94,6 +100,37 @@ func test_production_hud_is_icon_first_and_hidden_ability_panel_stays_hidden() -
 	assert_false(table.ability_panel.visible, "不得复活隐藏 AbilityPanel")
 
 
+func test_prize_pool_is_icon_only_and_tooltip_has_name_and_effect() -> void:
+	var hud = load("res://ui/four_player_table/reward_pool_hud.gd").new()
+	add_child_autofree(hud)
+	await get_tree().process_frame
+	hud.set_prize_pool_rows([{
+		"display_name": "铁壁",
+		"effect_summary": "抵消下一次失分",
+		"tag_labels": ["冷静", "防御"],
+		"icon_path": _item_icon_path("iron_shield_v1"),
+	}])
+	var icon: TextureRect = hud.find_child("ItemIcon0", true, false) as TextureRect
+	assert_not_null(icon)
+	assert_true(icon.tooltip_text.contains("铁壁"))
+	assert_true(icon.tooltip_text.contains("抵消下一次失分"))
+	assert_null(hud.find_child("ItemName", true, false), "奖品常态不得显示名称")
+	assert_null(hud.find_child("ItemTags", true, false), "奖品常态不得显示标签")
+	assert_eq(hud.prize_icon_rects(), PRIZE_ICON_RECTS)
+
+
+func test_ability_and_inventory_are_compact_equipment_seals() -> void:
+	var table = TableScr.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	var ability: Control = table.get_node("AbilityBadge") as Control
+	var inventory: Button = table.get_node("InventoryButton") as Button
+	assert_eq(Rect2(ability.position, ability.size), ABILITY_SEAL_RECT)
+	assert_eq(Rect2(inventory.position, inventory.size), INVENTORY_SEAL_RECT)
+	assert_null(ability.find_child("AbilityName", true, false), "技能印常态只显示图标与状态角标")
+	assert_not_null(ability.find_child("AbilityStateMark", true, false))
+
+
 func test_inventory_preserves_duplicate_instances_and_non_color_state_labels() -> void:
 	var table = TableScr.new()
 	add_child_autofree(table)
@@ -130,7 +167,7 @@ func test_approved_rects_and_critical_regions_do_not_overlap() -> void:
 	var drawer: Control = table.get_node("ItemInventoryDrawer") as Control
 	assert_eq(drawer.drawer_rect(), DRAWER_RECT)
 	var hud: Control = table.get_node("RewardPoolHud") as Control
-	assert_eq(hud.pool_group_rects(), [POOL_LEFT_RECT, POOL_RIGHT_RECT])
+	assert_eq(hud.prize_icon_rects(), PRIZE_ICON_RECTS)
 
 	# #304 生产关键区域：四向手牌、牌河/副露、中央与底部操作/宣告带。
 	var critical: Array = []
@@ -138,7 +175,7 @@ func test_approved_rects_and_critical_regions_do_not_overlap() -> void:
 	critical.append_array(TableLayout.crowded_state_rects())
 	critical.append(TableLayout.center_plate()["screen_aabb"])
 	critical.append(TableLayout.ACTION_BAR_RECT)
-	for hud_rect in [POOL_LEFT_RECT, POOL_RIGHT_RECT, DRAWER_RECT]:
+	for hud_rect in PRIZE_ICON_RECTS + [DRAWER_RECT]:
 		for region in critical:
 			assert_false(hud_rect.intersects(region),
 				"HUD %s 不得遮挡关键区 %s" % [hud_rect, region])
