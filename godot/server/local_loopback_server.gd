@@ -57,6 +57,15 @@ var _ai_control_seats: Dictionary = {}  # seat(int) -> bool
 var _fail_next_snapshot: bool = false
 # 测试：下一次 ACTION_APPLIED/SNAP 发布强制失败（AI step / submit 共用 emit）
 var _fail_next_action_publish: bool = false
+## #376 R4 测试：仅 start_next_hand 内首个 publish_snapshot 失败（不消耗通用 fail_next）
+var _fail_next_hand_start_snapshot: bool = false
+var fail_next_hand_start_snapshot_hit_count: int = 0
+## #376 R4 测试：MATCH_SETTLED 已发布后强制失败（验证外层 rollback 清 MATCH flag）
+var _fail_after_match_settled_for_test: bool = false
+var fail_after_match_settled_hit_count: int = 0
+## #376 R5 测试：下一次 match_authority payload 强制空（禁 fallback）
+var _fail_match_authority_payload: bool = false
+var fail_match_authority_payload_hit_count: int = 0
 # #241：本局 HAND_SETTLED 是否已发布（幂等，禁止重复 seq/journal；多局不得靠全局 journal 粗查）
 var _hand_settled_emitted: bool = false
 ## #256：整场 MATCH_SETTLED 是否已权威发布（O(1) 完成态；不经 event_journal 克隆）
@@ -66,6 +75,7 @@ var event_journal_call_count: int = 0
 ## E5-04：权威奖励时钟（仅 advance_reward_time 单调推进；禁止墙钟/伪造跳跃）
 var _reward_authority_now_ms: int = REWARD_CLOCK_BASE_MS
 ## 整场是否结束：仅显式注入；默认 null=未知→流局按 match 继续(FULL_GRANT)
+## #376：生产路径优先 match_end_after_hand；本字段仅保留测试/遗留 seam。
 var _reward_match_ended = null
 ## CLOSING 后是否曾见过开放 CLAIM/ROB 窗（用于区分「尚未开 CLAIM」与「CLAIM 已终态」）
 var _reward_claim_seen_open: bool = false
@@ -73,6 +83,37 @@ var _reward_claim_seen_open: bool = false
 var _reward_hand_settled_deferred: bool = false
 ## #253：权威内部 apply 中，禁止 PBC 再路由回 Loopback
 var _internal_apply: bool = false
+## #376：Callable(settlement: Dictionary) -> bool；生产由 HeadlessRoomSession 绑定。
+## 判断本局 HAND_SETTLED 后是否终场（连庄/半庄规则），不得依赖 set_reward_match_ended。
+var match_end_after_hand: Callable = Callable()
+## #376：Callable(settlement: Dictionary) -> Dictionary
+## 返回 {finished:bool, bc:BattleController|null}；未终场时提供下一局 BC。
+var on_hand_settled_committed: Callable = Callable()
+## #376：match owner（HeadlessRoomSession）— capture/restore 与 snapshot 投影。
+var match_owner: Object = null
+## #376：Action/Reward 事务级冻结（含 match + BC 所有权），供完整回滚。
+var _tx_match_freeze: Dictionary = {}
+var _tx_bc_strong: BattleController = null
+var _tx_bc_owned: BattleController = null
+var _tx_bc_injected: WeakRef = null
+## #376 P1-2：mutation 前 ARS；失败后禁止现拍
+var _tx_bc_ars: AuthorityReplaySnapshot = null
+var _tx_ai_control: Dictionary = {}
+var _tx_hand_start_scores: Array = []
+var _tx_hand_start_honba: int = 0
+var _tx_hand_start_riichi: int = 0
+var _tx_reward_match_ended = null
+var _tx_server_seq: int = -1
+var _tx_journals: Array = []
+var _tx_settlement_tracker: Dictionary = {}
+var _tx_hand_settled_emitted: bool = false
+var _tx_match_settled_emitted: bool = false
+var _tx_rw_state: Dictionary = {}
+var _tx_rw_clock: int = -1
+var _tx_claim_seen: bool = false
+var _tx_hand_deferred: bool = false
+## 嵌套/重复 begin 防护
+var _tx_active: bool = false
 
 
 func is_processing_internal() -> bool:
@@ -112,6 +153,12 @@ func _init(
 	_ai_control_seats = {}
 	_fail_next_snapshot = false
 	_fail_next_action_publish = false
+	_fail_next_hand_start_snapshot = false
+	fail_next_hand_start_snapshot_hit_count = 0
+	_fail_after_match_settled_for_test = false
+	fail_after_match_settled_hit_count = 0
+	_fail_match_authority_payload = false
+	fail_match_authority_payload_hit_count = 0
 	_hand_settled_emitted = false
 	_match_settled_emitted = false
 	event_journal_call_count = 0
@@ -274,6 +321,202 @@ func start() -> bool:
 	return true
 
 
+## #376：同一房间 identity 下开启下一局。
+## 保留 journal / server_seq / mode_modules / AI 接管位；替换 BC 并发布新局 SNAP/prompt。
+## 要求：上一局 HAND_SETTLED 已发布且整场未 MATCH_SETTLED。
+func start_next_hand(new_bc: BattleController) -> bool:
+	if _rollback_failed:
+		return false
+	if not _started or _match_settled_emitted:
+		return false
+	if not _hand_settled_emitted:
+		return false
+	if new_bc == null or new_bc.state == null:
+		return false
+	# 保留跨局状态
+	var frozen_seq: int = _server_seq
+	var frozen_journals: Array = []
+	for s in range(4):
+		frozen_journals.append(_clone_events(_journals[s] as Array))
+	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_ai: Dictionary = _ai_control_seats.duplicate(true)
+	var frozen_rw: Dictionary = _reward_capture_state()
+	var frozen_rw_clock: int = _reward_authority_now_ms
+	var prev_bc: BattleController = _bc
+	var prev_owned: BattleController = _bc_owned
+	var prev_injected: WeakRef = _bc_injected
+
+	# 换 BC（强拥有新局；不触碰 journal）
+	_bc_injected = null
+	_bc_owned = new_bc
+	_dealer_seat = int(new_bc.state.dealer_seat)
+	if mode_modules != null:
+		new_bc.bind_mode_modules(mode_modules)
+	# 恢复 AI 接管标志到新 BC 路径（set_seat_ai_control 只写字典）
+	_ai_control_seats = frozen_ai.duplicate(true)
+	for seat_k in _ai_control_seats.keys():
+		set_seat_ai_control(int(seat_k), bool(_ai_control_seats[seat_k]))
+
+	_hand_settled_emitted = false
+	_settlement_tracker = HandSettlement.empty_tracker()
+	_hand_start_scores = []
+	_hand_start_honba = 0
+	_hand_start_riichi_sticks = 0
+	_reward_claim_seen_open = false
+	_reward_hand_settled_deferred = false
+	_reward_match_ended = null
+	# 新局命令指纹与上一局隔离（hand_seq 已变；缓存仍清以免 stale）
+	_command_cache = {}
+
+	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
+	if snap == null or not snap.can_restore():
+		_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
+		_server_seq = frozen_seq
+		_journals = frozen_journals
+		_command_cache = frozen_cache
+		_ai_control_seats = frozen_ai
+		_hand_settled_emitted = true
+		_reward_restore_state(frozen_rw)
+		_reward_authority_now_ms = frozen_rw_clock
+		return false
+
+	var start_scores_candidate: Array = _capture_scores_array()
+	if start_scores_candidate.size() != 4:
+		_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
+		_server_seq = frozen_seq
+		_journals = frozen_journals
+		_command_cache = frozen_cache
+		_ai_control_seats = frozen_ai
+		_hand_settled_emitted = true
+		_reward_restore_state(frozen_rw)
+		_reward_authority_now_ms = frozen_rw_clock
+		return false
+	var start_honba_candidate: int = int(_bc.state.honba)
+	var start_riichi_candidate: int = int(_bc.state.riichi_sticks)
+
+	if mode_modules != null and mode_modules.is_trash_talk() and _item_module() != null:
+		var prep: Dictionary = ItemAuthority.prepare_new_hand(
+			_bc, _item_module(), _ability_slots()
+		)
+		if not bool(prep.get("ok", false)):
+			_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
+			_server_seq = frozen_seq
+			_journals = frozen_journals
+			_command_cache = frozen_cache
+			_ai_control_seats = frozen_ai
+			_hand_settled_emitted = true
+			_reward_restore_state(frozen_rw)
+			_reward_authority_now_ms = frozen_rw_clock
+			return false
+	var rw_boot: RewardWindowModule = _reward_module()
+	if rw_boot != null and _bc != null and _bc.state != null:
+		if int(rw_boot.hand_seq) != int(_bc.state.hand_seq) \
+				or rw_boot.phase == RewardWindowModule.PHASE_OPEN \
+				or rw_boot.phase == RewardWindowModule.PHASE_CLOSING:
+			rw_boot.hard_reset()
+
+	_ensure_drawn()
+	if not _finalize_item_triggers():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	# #376 R4 测试 seam：仅本处命中，证明失败边界在 start_next_hand 首 SNAP
+	if _fail_next_hand_start_snapshot:
+		_fail_next_hand_start_snapshot = false
+		fail_next_hand_start_snapshot_hit_count += 1
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	if not publish_snapshot():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	if not _maybe_open_reward_window():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	if _reward_module() != null:
+		if not publish_snapshot():
+			return _fail_next_hand_rollback(
+				snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+				frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			)
+	if not _auto_advance_ai():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	if bool(_bc.get("_settled")):
+		_hand_start_scores = start_scores_candidate
+		_hand_start_honba = start_honba_candidate
+		_hand_start_riichi_sticks = start_riichi_candidate
+		_settlement_tracker = HandSettlement.empty_tracker()
+		_hand_settled_emitted = false
+		if not _emit_settled_if_needed():
+			return _fail_next_hand_rollback(
+				snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+				frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			)
+		return true
+	if not _emit_private_prompt():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+		)
+	_hand_start_scores = start_scores_candidate
+	_hand_start_honba = start_honba_candidate
+	_hand_start_riichi_sticks = start_riichi_candidate
+	_settlement_tracker = HandSettlement.empty_tracker()
+	_hand_settled_emitted = false
+	return true
+
+
+func _restore_bc_after_next_hand_fail(
+	prev_owned: BattleController,
+	prev_injected: WeakRef,
+	_prev_bc: BattleController
+) -> void:
+	_bc_owned = prev_owned
+	_bc_injected = prev_injected
+
+
+func _fail_next_hand_rollback(
+	snap: AuthorityReplaySnapshot,
+	frozen_seq: int,
+	frozen_journals: Array,
+	frozen_cache: Dictionary,
+	frozen_ai: Dictionary,
+	frozen_rw: Dictionary,
+	frozen_rw_clock: int,
+	prev_owned: BattleController,
+	prev_injected: WeakRef
+) -> bool:
+	# 尽量 ARS 回滚新 BC 副作用后换回旧 BC；journal/seq 必须回到调用前
+	if snap != null and _bc != null:
+		snap.restore_into(_bc)
+	_restore_bc_after_next_hand_fail(prev_owned, prev_injected, null)
+	_server_seq = frozen_seq
+	_journals = []
+	for s in range(4):
+		if s < frozen_journals.size():
+			_journals.append(frozen_journals[s])
+		else:
+			_journals.append([])
+	_command_cache = frozen_cache
+	_ai_control_seats = frozen_ai
+	_hand_settled_emitted = true
+	_settlement_tracker = HandSettlement.empty_tracker()
+	_reward_restore_state(frozen_rw)
+	_reward_authority_now_ms = frozen_rw_clock
+	_reward_claim_seen_open = false
+	_reward_hand_settled_deferred = false
+	return false
+
+
 ## start 任一后续步骤失败：ARS + 服务端字段 + inv/slot/registry index 精确回调用前。
 func _fail_start_rollback(
 	snap: AuthorityReplaySnapshot,
@@ -311,6 +554,18 @@ func fail_next_snapshot_for_test() -> void:
 
 func fail_next_action_publish_for_test() -> void:
 	_fail_next_action_publish = true
+
+
+## #376 R4：仅跨局 start_next_hand 首 SNAP 失败注入（生产不可达）。
+func fail_next_hand_start_snapshot_for_test() -> void:
+	_fail_next_hand_start_snapshot = true
+	fail_next_hand_start_snapshot_hit_count = 0
+
+
+## #376 R4：MATCH 已发布后强制本事务失败（生产不可达）。
+func fail_after_match_settled_for_test() -> void:
+	_fail_after_match_settled_for_test = true
+	fail_after_match_settled_hit_count = 0
 
 
 func publish_snapshot() -> bool:
@@ -545,6 +800,9 @@ func _process_action_core(
 	var auth_h: String = snap.sha256()
 	if auth_h.is_empty() or auth_h.length() != 64 or not snap.can_restore():
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+	# #376：整事务冻结 match + BC 所有权（跨局失败可精确回滚）
+	if not begin_match_transaction_freeze():
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 	var frozen_seq: int = _server_seq
 	var frozen_journals: Array = []
 	for s in range(4):
@@ -584,8 +842,9 @@ func _process_action_core(
 		if res != null:
 			code = str(res.error_code)
 		var cr_rej := _reject_result(cmd, code)
-		# 非法动作不分配 server_seq，仍缓存幂等
+		# 非法动作不分配 server_seq，仍缓存幂等；#376 P1-3：必须释放 freeze
 		_cache_command(cmd, fp, cr_rej)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr_rej)
 
 	# 接受：RW 预消费 → ACTION_APPLIED+ROOM_SNAPSHOT（含动作后投影）→ 待发 CLOSING
@@ -697,6 +956,7 @@ func _process_action_core(
 		"error_code": "",
 	})
 	_cache_command(cmd, fp, cr_ok)
+	clear_match_transaction_freeze()
 	return _clone_cr(cr_ok)
 
 
@@ -717,7 +977,12 @@ func _rollback_transaction(
 	frozen_hand_settled: Variant = null,
 	frozen_settlement_tracker: Variant = null
 ) -> bool:
-	if snap == null or not snap.restore_into(_bc):
+	# #376：先恢复 BC 所有权与 match owner，再 ARS 写入正确的旧 BC
+	if not _restore_match_and_bc_ownership():
+		_rollback_failed = true
+		_started = false
+		return false
+	if snap == null or _bc == null or not snap.restore_into(_bc):
 		_rollback_failed = true
 		_started = false
 		return false
@@ -740,11 +1005,21 @@ func _rollback_transaction(
 	_reward_claim_seen_open = frozen_claim_seen
 	if typeof(frozen_hand_deferred) == TYPE_BOOL:
 		_reward_hand_settled_deferred = bool(frozen_hand_deferred)
+	elif _tx_active:
+		_reward_hand_settled_deferred = _tx_hand_deferred
 	if typeof(frozen_hand_settled) == TYPE_BOOL:
 		_hand_settled_emitted = bool(frozen_hand_settled)
+	elif _tx_active:
+		_hand_settled_emitted = _tx_hand_settled_emitted
+	# #376 R4：外层 rollback 必须恢复 MATCH flag（与 local 路径一致）
+	if _tx_active:
+		_match_settled_emitted = _tx_match_settled_emitted
+		_reward_claim_seen_open = _tx_claim_seen
+		_reward_match_ended = _tx_reward_match_ended
 	# #375：settlement tracker 与 ARS 同事务恢复，避免 commit 后回滚跳过重提
 	if typeof(frozen_settlement_tracker) == TYPE_DICTIONARY:
 		_settlement_tracker = (frozen_settlement_tracker as Dictionary).duplicate(true)
+	clear_match_transaction_freeze()
 	return true
 
 ## 业务指纹（ADR 全文唯一）：session_id + room_id + seat + hand_seq + decision_id
@@ -912,6 +1187,15 @@ func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 		ctx["character_ids"] = chars_ctx
 		ctx["participants"] = parts_ctx
 		ctx["config"] = _config
+	# #376 R5：Headless（match_owner）必须有合法 match_authority；失败整 SNAP 失败。
+	# Practice/无 owner：optional fallback（BC 派生）。
+	var match_pl: Dictionary = _match_authority_payload()
+	if match_owner != null:
+		if match_pl.is_empty():
+			return {}
+		ctx["match_authority"] = match_pl
+	elif not match_pl.is_empty():
+		ctx["match_authority"] = match_pl
 	var rw: RewardWindowModule = _reward_module()
 	if rw != null:
 		ctx["reward_window"] = rw
@@ -924,12 +1208,173 @@ func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 	var modules: Array = ser.get("modules", [])
 	if typeof(modules) != TYPE_ARRAY or (modules as Array).is_empty():
 		return {}
+	# Headless：committed SNAP 必须恰好含 match_authority@1（禁静默省略）
+	if match_owner != null:
+		var ma_n := 0
+		for m in modules:
+			if typeof(m) == TYPE_DICTIONARY \
+					and str((m as Dictionary).get("module_key", "")) == "match_authority":
+				ma_n += 1
+		if ma_n != 1:
+			return {}
 	return {
 		"snapshot_server_seq": seq,
 		"next_server_seq": seq + 1,
 		"seat_view": seat,
 		"modules": modules,
 	}
+
+
+## #376 R5 测试：下一帧 match_authority 强制失败（生产不可达）。
+func fail_match_authority_payload_for_test() -> void:
+	_fail_match_authority_payload = true
+	fail_match_authority_payload_hit_count = 0
+
+
+## #376 R5：有 match_owner 时只接受 owner 导出（校验后）；无效绝不 fallback BC。
+## 无 owner（Practice/遗留）时由 BC 派生单局等价字段。
+func _match_authority_payload() -> Dictionary:
+	if _fail_match_authority_payload:
+		_fail_match_authority_payload = false
+		fail_match_authority_payload_hit_count += 1
+		return {}
+	var checker := MatchAuthoritySnapshotProvider.new()
+	if match_owner != null:
+		if not match_owner.has_method("export_match_state"):
+			return {}
+		var exp: Variant = match_owner.call("export_match_state")
+		if typeof(exp) != TYPE_DICTIONARY:
+			return {}
+		var from_owner: Dictionary = MatchAuthoritySnapshotProvider.from_export(exp as Dictionary)
+		if from_owner.is_empty() or not checker.can_restore(from_owner, 0):
+			return {}
+		return from_owner
+	# Practice / 无整场驱动：optional BC 派生
+	if _bc == null or _bc.state == null:
+		return {}
+	var st: BattleState = _bc.state
+	var scores: Array = []
+	for i in range(4):
+		if i < st.scores.size():
+			scores.append(int(st.scores[i]))
+		else:
+			scores.append(0)
+	var total_h: int = 4
+	var hpr: int = 4
+	if _config != null and _config.round_kind == GameSessionConfig.ROUND_HANCHAN:
+		total_h = 8
+	var finished_bc: bool = bool(_match_settled_emitted)
+	var hi_bc: int = maxi(0, int(st.hand_number) - 1)
+	if finished_bc:
+		hi_bc = total_h
+	var hs_bc: int = int(st.hand_seq)
+	var derived := {
+		"hand_index": hi_bc,
+		"hand_seq": hs_bc,
+		"next_hand_seq": hs_bc + 1,
+		"dealer_seat": int(st.dealer_seat),
+		"honba": int(st.honba),
+		"riichi_sticks": int(st.riichi_sticks),
+		"cumulative_scores": scores,
+		"round_wind": int(st.round_wind),
+		"finished": finished_bc,
+		"total_hands": total_h,
+		"hands_per_round": hpr,
+	}
+	if not checker.can_restore(derived, 0):
+		return {}
+	return derived
+
+
+## #376：事务边界 — 冻结 match + BC 所有权 + 预 mutation ARS + journal/seq。
+## 已有活跃事务：复用外层（返回 true，不覆盖）。
+## BC 存在时必须预拍可 restore 的 ARS；否则零 mutation 返回 false。
+func begin_match_transaction_freeze() -> bool:
+	if _tx_active:
+		return true
+	var ars: AuthorityReplaySnapshot = null
+	if _bc != null:
+		ars = AuthorityReplaySnapshot.capture(_bc)
+		if ars == null or not ars.can_restore():
+			return false
+		var ah: String = ars.sha256()
+		if ah.is_empty() or ah.length() != 64:
+			return false
+	_tx_match_freeze = {}
+	if match_owner != null and match_owner.has_method("capture_match_authority_state"):
+		var cap: Variant = match_owner.call("capture_match_authority_state")
+		if typeof(cap) == TYPE_DICTIONARY:
+			_tx_match_freeze = (cap as Dictionary).duplicate(true)
+	_tx_bc_strong = _bc
+	_tx_bc_owned = _bc_owned
+	_tx_bc_injected = _bc_injected
+	_tx_bc_ars = ars
+	_tx_ai_control = _ai_control_seats.duplicate(true)
+	_tx_hand_start_scores = _hand_start_scores.duplicate()
+	_tx_hand_start_honba = _hand_start_honba
+	_tx_hand_start_riichi = _hand_start_riichi_sticks
+	_tx_reward_match_ended = _reward_match_ended
+	_tx_server_seq = _server_seq
+	_tx_journals = []
+	for s in range(4):
+		_tx_journals.append(_clone_events(_journals[s] as Array))
+	_tx_settlement_tracker = _settlement_tracker.duplicate(true)
+	_tx_hand_settled_emitted = _hand_settled_emitted
+	_tx_match_settled_emitted = _match_settled_emitted
+	_tx_rw_state = _reward_capture_state()
+	_tx_rw_clock = _reward_authority_now_ms
+	_tx_claim_seen = _reward_claim_seen_open
+	_tx_hand_deferred = _reward_hand_settled_deferred
+	_tx_active = true
+	return true
+
+
+func clear_match_transaction_freeze() -> void:
+	_tx_match_freeze = {}
+	_tx_bc_strong = null
+	_tx_bc_owned = null
+	_tx_bc_injected = null
+	_tx_bc_ars = null
+	_tx_ai_control = {}
+	_tx_hand_start_scores = []
+	_tx_hand_start_honba = 0
+	_tx_hand_start_riichi = 0
+	_tx_reward_match_ended = null
+	_tx_server_seq = -1
+	_tx_journals = []
+	_tx_settlement_tracker = {}
+	_tx_hand_settled_emitted = false
+	_tx_match_settled_emitted = false
+	_tx_rw_state = {}
+	_tx_rw_clock = -1
+	_tx_claim_seen = false
+	_tx_hand_deferred = false
+	_tx_active = false
+
+
+func has_match_transaction_freeze() -> bool:
+	return _tx_active
+
+
+## #376：在 ARS 回滚后恢复 match owner 与 BC 所有权。
+func _restore_match_and_bc_ownership() -> bool:
+	if _tx_bc_strong != null:
+		_bc_owned = _tx_bc_owned
+		_bc_injected = _tx_bc_injected
+		# 若 freeze 时是 inject，确保 weak 仍指向 strong
+		if _bc_injected == null and _bc_owned == null and _tx_bc_strong != null:
+			_bc_owned = _tx_bc_strong
+	if not _tx_ai_control.is_empty() or _ai_control_seats.size() > 0:
+		_ai_control_seats = _tx_ai_control.duplicate(true)
+	_hand_start_scores = _tx_hand_start_scores.duplicate()
+	_hand_start_honba = _tx_hand_start_honba
+	_hand_start_riichi_sticks = _tx_hand_start_riichi
+	_reward_match_ended = _tx_reward_match_ended
+	if _tx_match_freeze.is_empty():
+		return true
+	if match_owner != null and match_owner.has_method("restore_match_authority_state"):
+		return bool(match_owner.call("restore_match_authority_state", _tx_match_freeze))
+	return true
 
 
 ## #241：临时 AI 接管/归还。仅影响有效控制，不改 participants 配置。
@@ -1906,26 +2351,36 @@ func _emit_settled_if_needed() -> bool:
 
 ## 四席同 seq 发布 HAND_SETTLED；本局已发则幂等 true。
 ## #375：先完整校验 payload，再原子 commit 账本到 BattleState，最后同 seq 发布。
+## #376 P1-1：HAND_SETTLED 后先推进 GameDriver，再 MATCH_SETTLED+终态 SNAP
+## （终态 match_authority 必须 finished=true / 最终分）。失败精确回滚。
 func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 	if _hand_settled_emitted:
 		_reward_hand_settled_deferred = false
 		return true
 	if payload.is_empty() or not HandSettlement.is_valid_result(payload):
 		return false
+	# 延迟 RewardWindow：无外层事务时自建 freeze（含预 mutation ARS）
+	var local_freeze := false
+	if not _tx_active:
+		if not begin_match_transaction_freeze():
+			return false
+		local_freeze = true
 	var candidate: int = _server_seq + 1
 	var prepared: Array = []
 	for seat in range(4):
-		# 仅接受该席已提交 ROOM_SNAPSHOT.view_hash；禁止按新 seq 重建 fallback
 		var vh: String = _last_committed_snapshot_view_hash(seat)
 		if vh.is_empty() or vh.length() != 64:
+			if local_freeze:
+				clear_match_transaction_freeze()
 			return false
 		var ne: NetworkedEvent = _build_recipient_event(
 			"HAND_SETTLED", seat, candidate, payload, vh
 		)
 		if ne == null:
+			if local_freeze:
+				clear_match_transaction_freeze()
 			return false
 		prepared.append(ne)
-	# 校验全部通过后：提交账本（幂等）再发布事件
 	var ledger: Array = _capture_scores_array()
 	if ledger.size() != 4:
 		ledger = [0, 0, 0, 0]
@@ -1935,17 +2390,114 @@ func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 		payload, ledger, _settlement_tracker, _bc.state,
 		_hand_start_scores, _enforce_settlement_conservation()
 	):
+		if local_freeze:
+			clear_match_transaction_freeze()
 		return false
 	_server_seq = candidate
 	for seat2 in range(4):
 		(_journals[seat2] as Array).append(prepared[seat2])
 	_hand_settled_emitted = true
 	_reward_hand_settled_deferred = false
-	# #253：终场和牌 / 终场后 MATCH_SETTLED 清库存
-	if _is_match_ended_now():
-		if not _emit_match_settled_and_clear_items():
+
+	# 判定是否终场（推进前）；随后统一先推进 GameDriver
+	var expect_match_end: bool = _is_match_ended_for_hand(payload)
+	var next_bc: BattleController = null
+	if on_hand_settled_committed.is_valid():
+		var adv_v: Variant = on_hand_settled_committed.call(payload)
+		if typeof(adv_v) != TYPE_DICTIONARY:
+			if local_freeze:
+				_rollback_hand_transition_local()
 			return false
+		var adv: Dictionary = adv_v
+		# #376 R4：任何非空 error 无条件失败；禁止伪装终场
+		if not str(adv.get("error", "")).is_empty():
+			if local_freeze:
+				_rollback_hand_transition_local()
+			return false
+		var cb_finished: bool = bool(adv.get("finished", false))
+		# expect_match_end 与 callback finished 必须一致
+		if cb_finished != expect_match_end:
+			if local_freeze:
+				_rollback_hand_transition_local()
+			return false
+		if cb_finished:
+			expect_match_end = true
+		else:
+			next_bc = adv.get("bc", null) as BattleController
+			if next_bc == null:
+				if local_freeze:
+					_rollback_hand_transition_local()
+				return false
+	elif expect_match_end:
+		# 无 match owner 但判定终场：仅 seam 路径（练习/测试 set_reward_match_ended）
+		pass
+
+	if expect_match_end:
+		_reward_match_ended = true
+		# 此时 GameDriver 已为终态；MATCH + SNAP 投影 finished=true / 最终分
+		if not _emit_match_settled_and_clear_items():
+			if local_freeze:
+				_rollback_hand_transition_local()
+			return false
+		# #376 R4 测试 seam：MATCH 已落盘后失败 → 外层/本地 rollback 须清 MATCH flag
+		if _fail_after_match_settled_for_test:
+			_fail_after_match_settled_for_test = false
+			fail_after_match_settled_hit_count += 1
+			if local_freeze:
+				_rollback_hand_transition_local()
+			return false
+		if local_freeze:
+			clear_match_transaction_freeze()
+		return true
+
+	# 未终场：开下一局
+	if next_bc != null:
+		if not start_next_hand(next_bc):
+			if local_freeze:
+				_rollback_hand_transition_local()
+			return false
+	if local_freeze:
+		clear_match_transaction_freeze()
 	return true
+
+
+## #376：无外层 Action 事务时（延迟 HAND_SETTLED）本地完整回滚。
+## 必须使用 begin 时预拍的 _tx_bc_ars，禁止失败后再 capture。
+func _rollback_hand_transition_local() -> void:
+	if not _tx_active:
+		return
+	if not _restore_match_and_bc_ownership():
+		_rollback_failed = true
+		clear_match_transaction_freeze()
+		return
+	if _tx_bc_ars != null and _bc != null:
+		if not _tx_bc_ars.restore_into(_bc):
+			_rollback_failed = true
+			clear_match_transaction_freeze()
+			return
+	if _tx_server_seq >= 0:
+		_server_seq = _tx_server_seq
+	if not _tx_journals.is_empty():
+		_journals = []
+		for s in range(4):
+			if s < _tx_journals.size():
+				_journals.append(_tx_journals[s])
+			else:
+				_journals.append([])
+	if not _tx_settlement_tracker.is_empty():
+		_settlement_tracker = _tx_settlement_tracker.duplicate(true)
+	else:
+		_settlement_tracker = HandSettlement.empty_tracker()
+	_hand_settled_emitted = _tx_hand_settled_emitted
+	_match_settled_emitted = _tx_match_settled_emitted
+	_reward_match_ended = _tx_reward_match_ended
+	_reward_claim_seen_open = _tx_claim_seen
+	_reward_hand_settled_deferred = _tx_hand_deferred
+	if not _tx_rw_state.is_empty():
+		_reward_restore_state(_tx_rw_state)
+	if _tx_rw_clock >= 0:
+		_reward_authority_now_ms = _tx_rw_clock
+	clear_match_transaction_freeze()
 
 
 ## 延迟 HAND_SETTLED：仅在奖励窗已离开 CLOSING 后发布一次。
@@ -2059,20 +2611,24 @@ func _submit_item_use(
 	if _bc == null or _bc.state == null:
 		var cr0 := _reject_result(cmd, "INVALID_ACTION")
 		_cache_command(cmd, fp, cr0)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr0)
 	var seat: int = int(action.seat)
 	var ctx: DecisionContext = _bc.decision_context_for_seat(seat)
 	if ctx == null:
 		var cr1 := _reject_result(cmd, "WRONG_DECISION")
 		_cache_command(cmd, fp, cr1)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr1)
 	if str(action.decision_id) != str(ctx.decision_id):
 		var cr2 := _reject_result(cmd, "WRONG_DECISION")
 		_cache_command(cmd, fp, cr2)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr2)
 	if int(action.hand_seq) != int(_bc.state.hand_seq):
 		var cr3 := _reject_result(cmd, "WRONG_HAND")
 		_cache_command(cmd, fp, cr3)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr3)
 	var item_instance_id := String(action.payload.get("item_instance_id", ""))
 	var use_r: Dictionary = ItemAuthority.use_item(
@@ -2082,6 +2638,7 @@ func _submit_item_use(
 		var code := String(use_r.get("error_code", "INVALID_ACTION"))
 		var cr_rej := _reject_result(cmd, code)
 		_cache_command(cmd, fp, cr_rej)
+		clear_match_transaction_freeze()
 		return _clone_cr(cr_rej)
 	var domain_events: Array = []
 	for ev in use_r.get("events", []):
@@ -2124,6 +2681,7 @@ func _submit_item_use(
 		"error_code": "",
 	})
 	_cache_command(cmd, fp, cr_ok)
+	clear_match_transaction_freeze()
 	return _clone_cr(cr_ok)
 
 
@@ -2328,8 +2886,19 @@ func _item_after_cancelled(cancelled_payload: Dictionary) -> bool:
 
 
 func _is_match_ended_now() -> bool:
+	return _is_match_ended_for_hand({})
+
+
+## #376：结合 match owner 回调 / 测试 seam / payload.match_ended 判断终场。
+func _is_match_ended_for_hand(hand_payload: Dictionary) -> bool:
+	if match_end_after_hand.is_valid() and not hand_payload.is_empty():
+		return bool(match_end_after_hand.call(hand_payload))
 	if typeof(_reward_match_ended) == TYPE_BOOL:
 		return bool(_reward_match_ended)
+	if hand_payload.has("match_ended") and typeof(hand_payload["match_ended"]) == TYPE_BOOL:
+		return bool(hand_payload["match_ended"])
+	if match_end_after_hand.is_valid():
+		return bool(match_end_after_hand.call(hand_payload))
 	return false
 
 
@@ -2442,6 +3011,9 @@ func advance_reward_time(now_ms: int) -> bool:
 		snap = AuthorityReplaySnapshot.capture(_bc)
 		if snap == null or not snap.can_restore():
 			return false
+	# #376：与 Action 同边界 — match + journal + BC 所有权
+	if not begin_match_transaction_freeze():
+		return false
 	var frozen_seq: int = _server_seq
 	var frozen_journals: Array = []
 	for s in range(4):
@@ -2473,24 +3045,14 @@ func advance_reward_time(now_ms: int) -> bool:
 			if not _resume_normal_progress_after_reward_tick():
 				ok = false
 	if ok:
+		clear_match_transaction_freeze()
 		return true
-	# 全量回滚
-	if snap != null:
-		if not snap.restore_into(_bc):
-			_rollback_failed = true
-			_started = false
-			return false
-	_server_seq = frozen_seq
-	_journals = frozen_journals
-	_command_cache = frozen_cache
-	_reward_authority_now_ms = frozen_clock
-	_reward_claim_seen_open = frozen_claim
-	_reward_hand_settled_deferred = frozen_deferred
-	_hand_settled_emitted = frozen_hand_settled
-	_settlement_tracker = frozen_settlement_tracker.duplicate(true)
-	if not frozen_rw.is_empty() and not _reward_restore_state(frozen_rw):
-		_rollback_failed = true
-		_started = false
+	# 全量回滚（含 match owner / BC 所有权）
+	if not _rollback_transaction(
+		snap, frozen_seq, frozen_journals, frozen_cache,
+		frozen_rw, frozen_clock, frozen_claim, frozen_deferred,
+		frozen_hand_settled, frozen_settlement_tracker
+	):
 		return false
 	return false
 
@@ -2908,13 +3470,8 @@ func _reward_on_hand_result(hand_payload: Dictionary) -> bool:
 		):
 			return false
 		return _item_after_cancelled(can["payload"] as Dictionary)
-	# 流局：出口仅接受显式权威 match_ended；默认 match 继续 → FULL_GRANT
-	# 不猜测 hand_seq 阈值（连庄/半庄未由 LocalLoopback 完整推进）
-	var is_match_end := false
-	if typeof(_reward_match_ended) == TYPE_BOOL:
-		is_match_end = bool(_reward_match_ended)
-	elif hand_payload.has("match_ended") and typeof(hand_payload["match_ended"]) == TYPE_BOOL:
-		is_match_end = bool(hand_payload["match_ended"])
+	# 流局：#376 优先 match owner 回调；否则 seam / payload；默认 match 继续 → FULL_GRANT
+	var is_match_end: bool = _is_match_ended_for_hand(hand_payload)
 	var result_seq: int = maxi(_server_seq, 1)
 	# scoring close：结果判定事务内 claim_is_terminal=true（无 CLAIM 路径）
 	_reward_claim_seen_open = true

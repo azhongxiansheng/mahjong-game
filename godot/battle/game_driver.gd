@@ -62,11 +62,13 @@ func _init(p_seed: int = 0, p_total_hands: int = NUM_HANDS_EAST_ROUND, p_hands_p
 	hands_per_round = p_hands_per_round
 	cumulative_scores = [STARTING_SCORE, STARTING_SCORE, STARTING_SCORE, STARTING_SCORE]
 
-# M8: 当前局对应的场风。东风战恒东；半庄战 hand_index>=4 切到南。
-# 调用方需保证 hand_index < total_hands 时调用（连庄超出 total_hands 例外，
-# 见 advance_or_finish 终局判定）。
+# M8 / #376 P2-2：当前局对应的场风。东风战恒东；半庄 hand_index>=hands_per_round 切南。
+# finished 后 hand_index 可能 == total_hands：用「最后完成局」索引，避免东风终场误报南。
 func _compute_current_round_wind() -> int:
-	if hand_index < hands_per_round:
+	var idx: int = hand_index
+	if finished and hand_index > 0:
+		idx = hand_index - 1
+	if idx < hands_per_round:
 		return TileId.E
 	return TileId.S_WIND
 
@@ -345,27 +347,181 @@ func advance_or_finish(result: Dictionary) -> Dictionary:
 			_:
 				renchan = bool(result.get("renchan", false))
 
+	# #376：与 advance_from_committed_settlement 共用单一状态转移
+	return _apply_renchan_transition(renchan, kind)
+
+
+## #376：基于已提交 HAND_SETTLED 规范结果，判断若按规则推进后是否终场。
+## 不改内部状态；不依赖 set_reward_match_ended。
+func will_finish_after_settlement(settlement: Dictionary) -> bool:
+	if finished:
+		return true
+	if settlement.is_empty() or not HandSettlement.is_valid_result(settlement):
+		return false
+	if bool(settlement.get("renchan", false)):
+		return false
+	return hand_index + 1 >= total_hands
+
+
+## #376：LocalLoopback 已经 HandSettlement.commit 落账后，同步累计分并推进连庄/流转。
+## 禁止二次计分/二次 commit；只消费 settlement 规范字段。
+func advance_from_committed_settlement(settlement: Dictionary) -> Dictionary:
+	if finished:
+		return {"finished": true, "renchan": false, "kind": "", "error": "ALREADY_FINISHED"}
+	if settlement.is_empty() or not HandSettlement.is_valid_result(settlement):
+		return {
+			"finished": finished,
+			"renchan": false,
+			"kind": "",
+			"error": "INVALID_SETTLEMENT",
+		}
+	var scores_v: Variant = settlement.get("scores", null)
+	if typeof(scores_v) != TYPE_ARRAY or (scores_v as Array).size() != 4:
+		return {
+			"finished": finished,
+			"renchan": false,
+			"kind": "",
+			"error": "INVALID_SCORES",
+		}
+	var scores: Array = scores_v
+	for i in range(4):
+		cumulative_scores[i] = int(scores[i])
+	riichi_sticks = maxi(0, int(settlement.get("riichi_sticks", 0)))
+	var renchan: bool = bool(settlement.get("renchan", false))
+	var kind: String = HandSettlement.outcome_to_driver_kind(
+		str(settlement.get("outcome", ""))
+	)
+	return _apply_renchan_transition(renchan, kind)
+
+
+## #376 P2-2：连庄/流转/终场唯一实现；advance_or_finish 与 committed 入口共用。
+func _apply_renchan_transition(renchan: bool, kind: String) -> Dictionary:
 	if renchan:
 		honba += 1
 	else:
 		honba = 0
 		hand_index += 1
 		dealer_seat = (dealer_seat + 1) % 4
-
 	if not renchan and hand_index >= total_hands:
 		finished = true
-
 	battle = null
 	_clear_pending_draw()
-	# 本局已落账进 cumulative：清空 tracker，避免无 start_hand 时 hand_seq 复用导致误幂等
 	_settlement_tracker = HandSettlement.empty_tracker()
 	_pre_hand_frozen = false
-
 	return {
 		"finished": finished,
 		"renchan": renchan,
 		"kind": kind,
 	}
+
+
+## #376：只读 match 权威快照（客户端不可提交覆盖；生产 snapshot / 事务回滚）。
+func export_match_state() -> Dictionary:
+	var scores: Array = []
+	for s in cumulative_scores:
+		scores.append(int(s))
+	var active_seq: int = next_hand_seq
+	if battle != null and battle.state != null:
+		active_seq = int(battle.state.hand_seq)
+	elif next_hand_seq > 0:
+		# 局间：上一已开局 hand_seq = next_hand_seq-1
+		active_seq = next_hand_seq - 1
+	return {
+		"hand_index": hand_index,
+		"hand_seq": active_seq,
+		"next_hand_seq": next_hand_seq,
+		"dealer": dealer_seat,
+		"dealer_seat": dealer_seat,
+		"honba": honba,
+		"riichi_sticks": riichi_sticks,
+		"cumulative_scores": scores,
+		"round_wind": _compute_current_round_wind(),
+		"finished": finished,
+		"total_hands": total_hands,
+		"hands_per_round": hands_per_round,
+	}
+
+
+## #376 P1-1/P1-3：事务级 capture（含 battle 强引用，供精确 restore）。
+func capture_authority_state() -> Dictionary:
+	var scores: Array = []
+	for s in cumulative_scores:
+		scores.append(int(s))
+	var pre_scores: Array = []
+	for s2 in _pre_hand_state_scores:
+		pre_scores.append(int(s2))
+	return {
+		"hand_index": hand_index,
+		"next_hand_seq": next_hand_seq,
+		"honba": honba,
+		"riichi_sticks": riichi_sticks,
+		"dealer_seat": dealer_seat,
+		"cumulative_scores": scores,
+		"finished": finished,
+		"battle": battle,
+		"settlement_tracker": _settlement_tracker.duplicate(true),
+		"pre_hand_state_scores": pre_scores,
+		"pre_hand_riichi_sticks": _pre_hand_riichi_sticks,
+		"pre_hand_honba": _pre_hand_honba,
+		"pre_hand_frozen": _pre_hand_frozen,
+		"pending_draw_events": _pending_draw_events.duplicate(),
+		"pending_draw_state_scores": _pending_draw_state_scores.duplicate(),
+		"pending_draw_state_sticks": _pending_draw_state_sticks,
+		"pending_draw_hand_seq": _pending_draw_hand_seq,
+		"pending_draw_kind": _pending_draw_kind,
+		"total_hands": total_hands,
+		"hands_per_round": hands_per_round,
+		"seed": seed,
+	}
+
+
+## #376：精确恢复 capture_authority_state；失败 false 零半写。
+func restore_authority_state(snap: Dictionary) -> bool:
+	if snap.is_empty():
+		return false
+	if typeof(snap.get("cumulative_scores", null)) != TYPE_ARRAY:
+		return false
+	var scores: Array = snap["cumulative_scores"]
+	if scores.size() != 4:
+		return false
+	hand_index = int(snap.get("hand_index", 0))
+	next_hand_seq = int(snap.get("next_hand_seq", 0))
+	honba = int(snap.get("honba", 0))
+	riichi_sticks = int(snap.get("riichi_sticks", 0))
+	dealer_seat = int(snap.get("dealer_seat", 0))
+	for i in range(4):
+		cumulative_scores[i] = int(scores[i])
+	finished = bool(snap.get("finished", false))
+	# #376 R5：事务回滚须恢复 total_hands / hands_per_round（capture 已含）
+	if snap.has("total_hands"):
+		total_hands = int(snap["total_hands"])
+	if snap.has("hands_per_round"):
+		hands_per_round = int(snap["hands_per_round"])
+	if snap.has("seed"):
+		seed = int(snap["seed"])
+	battle = snap.get("battle", null) as IAuthoritativeBattleController
+	if typeof(snap.get("settlement_tracker", null)) == TYPE_DICTIONARY:
+		_settlement_tracker = (snap["settlement_tracker"] as Dictionary).duplicate(true)
+	else:
+		_settlement_tracker = HandSettlement.empty_tracker()
+	_pre_hand_state_scores = [0, 0, 0, 0]
+	if typeof(snap.get("pre_hand_state_scores", null)) == TYPE_ARRAY:
+		var ps: Array = snap["pre_hand_state_scores"]
+		for j in range(mini(4, ps.size())):
+			_pre_hand_state_scores[j] = int(ps[j])
+	_pre_hand_riichi_sticks = int(snap.get("pre_hand_riichi_sticks", 0))
+	_pre_hand_honba = int(snap.get("pre_hand_honba", 0))
+	_pre_hand_frozen = bool(snap.get("pre_hand_frozen", false))
+	_pending_draw_events = []
+	if typeof(snap.get("pending_draw_events", null)) == TYPE_ARRAY:
+		_pending_draw_events = (snap["pending_draw_events"] as Array).duplicate()
+	_pending_draw_state_scores = []
+	if typeof(snap.get("pending_draw_state_scores", null)) == TYPE_ARRAY:
+		_pending_draw_state_scores = (snap["pending_draw_state_scores"] as Array).duplicate()
+	_pending_draw_state_sticks = int(snap.get("pending_draw_state_sticks", 0))
+	_pending_draw_hand_seq = int(snap.get("pending_draw_hand_seq", -1))
+	_pending_draw_kind = str(snap.get("pending_draw_kind", ""))
+	return true
 
 
 func _clear_pending_draw() -> void:

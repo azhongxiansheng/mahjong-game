@@ -305,3 +305,118 @@ func TestHTTP_TicketFailedReturnsROOM_FAILED(t *testing.T) {
 		t.Fatalf("failed ticket must not present room_token as assigned success")
 	}
 }
+
+func TestHTTP_FailRoom_ReleasesAndIdempotent(t *testing.T) {
+	base, reg, _, rdb := newWorkerHTTPFixture(t)
+	ctx := context.Background()
+	body := []byte(`{"worker_id":"w-f1","game_endpoint":"ws://127.0.0.1:9000","voice_endpoint":"ws://127.0.0.1:9001","capacity":1,"active_rooms":0}`)
+	req, _ := http.NewRequest(http.MethodPost, base+"/v1/internal/workers/register", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+workerHTTPRegToken)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("register status=%d", res.StatusCode)
+	}
+	roomID := "room-http-fail"
+	rkey := reg.CasualPrefix() + "room:" + roomID
+	tid := "ticket-http-fail-0"
+	if err := rdb.HSet(ctx, rkey, map[string]interface{}{
+		"room_id": roomID, "worker_id": "w-f1", "status": workers.StatusActive,
+		"human_count": "1", "seat_0_ticket_id": tid,
+	}).Err(); err != nil {
+		t.Fatalf("seed room: %v", err)
+	}
+	tkey := reg.CasualPrefix() + "ticket:" + tid
+	if err := rdb.HSet(ctx, tkey, map[string]interface{}{
+		"ticket_id": tid, "status": workers.StatusAssigned, "room_id": roomID, "seat": "0",
+	}).Err(); err != nil {
+		t.Fatalf("seed ticket: %v", err)
+	}
+	if err := rdb.SAdd(ctx, reg.RoomsKey("w-f1"), roomID).Err(); err != nil {
+		t.Fatalf("sadd: %v", err)
+	}
+	if err := rdb.HSet(ctx, reg.WorkerKey("w-f1"), "reserved_rooms", "1").Err(); err != nil {
+		t.Fatalf("reserved: %v", err)
+	}
+	fbody := []byte(`{"worker_id":"w-f1","room_id":"` + roomID + `","fail_code":"ROOM_FAILED"}`)
+	req2, _ := http.NewRequest(http.MethodPost, base+"/v1/internal/workers/rooms/fail", bytes.NewReader(fbody))
+	req2.Header.Set("Authorization", "Bearer "+workerHTTPRegToken)
+	req2.Header.Set("Content-Type", "application/json")
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	res2.Body.Close()
+	if res2.StatusCode != http.StatusOK {
+		t.Fatalf("fail status=%d", res2.StatusCode)
+	}
+	rec, ok, err := reg.Get(ctx, "w-f1")
+	if err != nil || !ok || rec.ReservedRooms != 0 {
+		t.Fatalf("reserved after fail=%v ok=%v err=%v", rec.ReservedRooms, ok, err)
+	}
+	st, _ := rdb.HGet(ctx, rkey, "status").Result()
+	if st != workers.StatusFailed {
+		t.Fatalf("room status=%q", st)
+	}
+	tst, _ := rdb.HGet(ctx, tkey, "status").Result()
+	if tst != workers.StatusFailed {
+		t.Fatalf("ticket status=%q", tst)
+	}
+	// 幂等
+	req3, _ := http.NewRequest(http.MethodPost, base+"/v1/internal/workers/rooms/fail", bytes.NewReader(fbody))
+	req3.Header.Set("Authorization", "Bearer "+workerHTTPRegToken)
+	req3.Header.Set("Content-Type", "application/json")
+	res3, err := http.DefaultClient.Do(req3)
+	if err != nil {
+		t.Fatalf("fail2: %v", err)
+	}
+	res3.Body.Close()
+	if res3.StatusCode != http.StatusOK {
+		t.Fatalf("idempotent fail status=%d", res3.StatusCode)
+	}
+	rec, _, _ = reg.Get(ctx, "w-f1")
+	if rec.ReservedRooms != 0 {
+		t.Fatalf("reserved must stay 0, got %d", rec.ReservedRooms)
+	}
+}
+
+func TestHTTP_FailRoom_RejectsArbitraryFailCode(t *testing.T) {
+	base, reg, _, rdb := newWorkerHTTPFixture(t)
+	ctx := context.Background()
+	body := []byte(`{"worker_id":"w-fc1","game_endpoint":"ws://127.0.0.1:9000","voice_endpoint":"ws://127.0.0.1:9001","capacity":1,"active_rooms":0}`)
+	req, _ := http.NewRequest(http.MethodPost, base+"/v1/internal/workers/register", bytes.NewReader(body))
+	req.Header.Set("Authorization", "Bearer "+workerHTTPRegToken)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	res.Body.Close()
+	roomID := "room-http-bad-code"
+	rkey := reg.CasualPrefix() + "room:" + roomID
+	if err := rdb.HSet(ctx, rkey, map[string]interface{}{
+		"room_id": roomID, "worker_id": "w-fc1", "status": workers.StatusActive,
+	}).Err(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	fbody := []byte(`{"worker_id":"w-fc1","room_id":"` + roomID + `","fail_code":"NOT_A_STABLE_CODE"}`)
+	req2, _ := http.NewRequest(http.MethodPost, base+"/v1/internal/workers/rooms/fail", bytes.NewReader(fbody))
+	req2.Header.Set("Authorization", "Bearer "+workerHTTPRegToken)
+	req2.Header.Set("Content-Type", "application/json")
+	res2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	defer res2.Body.Close()
+	if res2.StatusCode != http.StatusBadRequest {
+		t.Fatalf("status=%d want 400", res2.StatusCode)
+	}
+	st, _ := rdb.HGet(ctx, rkey, "status").Result()
+	if st != workers.StatusActive {
+		t.Fatalf("room must stay active, got %q", st)
+	}
+}

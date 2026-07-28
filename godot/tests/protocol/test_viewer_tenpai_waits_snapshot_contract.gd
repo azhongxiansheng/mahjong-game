@@ -41,10 +41,10 @@ func test_optional_module_exists_and_coexists_with_existing_viewer_modules() -> 
 		"纪枢必须使用独立 viewer_tenpai_waits@1 optional module")
 	var registry := SnapshotModuleRegistry.make_trash_talk()
 	assert_eq(registry.registered_keys(), [
-		"core_table", "item_inventory", "matching_meta", "reward_window",
+		"core_table", "item_inventory", "match_authority", "matching_meta", "reward_window",
 		"viewer_next_draw", "viewer_seat_draw_forecast",
 		"viewer_tenpai_waits", "viewer_wall_top",
-	], "core_table@1 + matching_meta 与四个 viewer optional module 必须并存")
+	], "core_table@1 + match_authority + matching_meta 与四个 viewer optional module 必须并存")
 
 
 func test_serialize_is_recipient_private_and_absent_without_authorization() -> void:

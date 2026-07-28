@@ -37,6 +37,14 @@ const (
 	CompleteAlreadyFailed = "ALREADY_FAILED"
 	CompleteBadState      = "BAD_STATE"
 
+	// Fail 结果码（#376 READY 超时等；幂等，不含 secret）。
+	FailOK          = "OK"
+	FailIdempotent  = "OK_IDEM"
+	FailNotFound    = "NOT_FOUND"
+	FailWrongWorker = "WRONG_WORKER"
+	FailAlreadyDone = "ALREADY_COMPLETED"
+	FailBadState    = "BAD_STATE"
+
 	workerHashTTL = 24 * time.Hour
 )
 
@@ -269,6 +277,45 @@ func (r *Registry) CompleteRoom(ctx context.Context, workerID, roomID string) (s
 	}
 }
 
+// FailRoom 权威房间失败（#376 READY 超时等）：active 且归属该 worker → failed + ROOM_FAILED，
+// assigned tickets 同步 failed；释放 reserved 恰 1（幂等；不复活 completed）。
+// failCode 仅接受空（归一 ROOM_FAILED）或 ROOM_FAILED；其它值拒绝。
+func (r *Registry) FailRoom(ctx context.Context, workerID, roomID, failCode string) (string, error) {
+	workerID = strings.TrimSpace(workerID)
+	roomID = strings.TrimSpace(roomID)
+	failCode = strings.TrimSpace(failCode)
+	if workerID == "" || roomID == "" {
+		return FailBadState, fmt.Errorf("worker_id and room_id required")
+	}
+	if failCode == "" {
+		failCode = FailCodeRoomFailed
+	}
+	if failCode != FailCodeRoomFailed {
+		return FailBadState, fmt.Errorf("fail_code must be ROOM_FAILED")
+	}
+	res, err := failRoomScript.Run(ctx, r.rdb, []string{
+		r.WorkerKey(workerID),
+		r.RoomsKey(workerID),
+		r.casualPrefix + "room:" + roomID,
+		r.casualPrefix,
+	}, workerID, roomID, StatusFailed, StatusActive, StatusCompleted, failCode).Result()
+	if err != nil {
+		return "", err
+	}
+	kind, _ := res.(string)
+	if kind == "" {
+		if arr, ok := res.([]interface{}); ok && len(arr) > 0 {
+			kind, _ = arr[0].(string)
+		}
+	}
+	switch kind {
+	case FailOK, FailIdempotent, FailNotFound, FailWrongWorker, FailAlreadyDone, FailBadState:
+		return kind, nil
+	default:
+		return kind, fmt.Errorf("unexpected fail result: %v", res)
+	}
+}
+
 // ReapExpired 扫描失联 Worker：仅未结束 active 房间 → failed/ROOM_FAILED；
 // completed 不改；完成后从选择索引 SREM（同 ID 恢复 Register 会再 SADD）。
 func (r *Registry) ReapExpired(ctx context.Context) (int, error) {
@@ -391,6 +438,60 @@ if owner ~= worker_id then
 end
 redis.call('HSET', rkey, 'status', st_completed)
 redis.call('HDEL', rkey, 'fail_code')
+redis.call('SREM', rset, room_id)
+local reserved = tonumber(redis.call('HGET', wkey, 'reserved_rooms') or '0')
+if reserved == nil then reserved = 0 end
+if reserved > 0 then
+  redis.call('HINCRBY', wkey, 'reserved_rooms', -1)
+end
+return 'OK'
+`)
+
+// failRoomScript：Worker 主动失败房间并释放容量（#376）。
+// 始终先校验 owner，再处理 failed/completed/active（防止他 worker 对 failed 幂等成功）。
+// KEYS: worker_hash, worker_rooms_set, room_hash, casual_prefix
+// ARGV: worker_id, room_id, failed, active, completed, fail_code
+var failRoomScript = redis.NewScript(`
+local wkey = KEYS[1]
+local rset = KEYS[2]
+local rkey = KEYS[3]
+local casual_prefix = KEYS[4]
+local worker_id = ARGV[1]
+local room_id = ARGV[2]
+local st_failed = ARGV[3]
+local st_active = ARGV[4]
+local st_completed = ARGV[5]
+local fail_code = ARGV[6]
+
+if redis.call('EXISTS', rkey) == 0 then
+  return 'NOT_FOUND'
+end
+local owner = redis.call('HGET', rkey, 'worker_id')
+if owner ~= worker_id then
+  return 'WRONG_WORKER'
+end
+local st = redis.call('HGET', rkey, 'status')
+if st == st_failed then
+  redis.call('SREM', rset, room_id)
+  return 'OK_IDEM'
+end
+if st == st_completed then
+  return 'ALREADY_COMPLETED'
+end
+if st ~= false and st ~= nil and st ~= '' and st ~= st_active then
+  return 'BAD_STATE'
+end
+redis.call('HSET', rkey, 'status', st_failed, 'fail_code', fail_code)
+for seat = 0, 3 do
+  local tid = redis.call('HGET', rkey, 'seat_' .. seat .. '_ticket_id')
+  if tid and tid ~= '' then
+    local tkey = casual_prefix .. 'ticket:' .. tid
+    local tst = redis.call('HGET', tkey, 'status')
+    if tst == 'assigned' then
+      redis.call('HSET', tkey, 'status', 'failed', 'fail_code', fail_code)
+    end
+  end
+end
 redis.call('SREM', rset, room_id)
 local reserved = tonumber(redis.call('HGET', wkey, 'reserved_rooms') or '0')
 if reserved == nil then reserved = 0 end
