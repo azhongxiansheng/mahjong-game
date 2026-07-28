@@ -234,14 +234,10 @@ func _build_layout() -> void:
 			var pp: String = String(persona[2]) if persona.size() >= 3 else ""
 			sp.set_ai_persona(persona[0], persona[1], pp)
 
-	# 4 个 DiscardRiver — 日麻 4 边布局，按 seat 旋转 0/-90/180/+90 度
+	# 4 个 DiscardRiver — 每张牌独立投影到桌面，根节点不再旋转/缩放。
 	for i in range(4):
 		var dr := DiscardRiverView.new()
 		dr.set_seat_id(i)
-		var p := _discard_river_layout(i)
-		dr.position = p.position
-		dr.rotation_degrees = p.rotation_degrees
-		dr.scale = p.scale
 		table.add_child(dr)
 		discard_rivers.append(dr)
 
@@ -702,7 +698,3 @@ static func _make_board_frame_line(node_name: String,
 	line.joint_mode = Line2D.LINE_JOINT_ROUND
 	line.antialiased = true
 	return line
-
-
-static func _discard_river_layout(seat_id: int) -> Dictionary:
-	return TableLayout.discard_river(seat_id)

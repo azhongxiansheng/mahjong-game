@@ -1822,7 +1822,8 @@ func apply_reference_hand_layout(meld_main_extent: float = 0.0) -> void:
 		_hand_tile_row.position = host_rect.position - position
 		return
 	if _seat_id == 2:
-		var raw_extent := TableLayout.hand_main_extent(2, _hand_base_count)
+		var raw_extent := TableLayout.hand_main_extent(
+			2, _hand_base_count, _hand_has_drawn)
 		_hand_tile_row.scale = Vector2(
 			host_rect.size.x / raw_extent,
 			host_rect.size.y / TOP_HAND_TILE_H,
@@ -1886,13 +1887,15 @@ func get_reference_hand_metrics() -> Dictionary:
 	return {
 		"base_count": _hand_base_count,
 		"has_drawn": _hand_has_drawn,
-		"main_extent": TableLayout.hand_main_extent(_seat_id, _hand_base_count),
+		"main_extent": TableLayout.hand_main_extent(
+			_seat_id, _hand_base_count, _hand_has_drawn),
 	}
 
 
 func get_reference_hand_host_rect() -> Rect2:
 	# FourPlayerTable bind 后 row 已按当前 meld extent 放置；由实际 row/host参数返回。
-	var host_extent := TableLayout.hand_main_extent(_seat_id, _hand_base_count)
+	var host_extent := TableLayout.hand_main_extent(
+		_seat_id, _hand_base_count, _hand_has_drawn)
 	if _seat_id == 0:
 		return Rect2(position + _hand_tile_row.position, Vector2(host_extent, 92.0))
 	if _seat_id == 2:

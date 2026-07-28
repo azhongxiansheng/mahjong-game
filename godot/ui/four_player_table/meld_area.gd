@@ -2,16 +2,18 @@ class_name MeldArea extends Node2D
 
 # 麻将王 — 副露日麻风格视觉渲染（单 seat 用）
 #
-# Node2D 旋转 0/-90/180/+90 让面朝桌心；内部把公开 CSS 的四种 flex
-# 方向逆变换到本地 x/y，最终屏幕流向与 owner-0/1/2/3 一致。
+# 逻辑排位仍使用各家的局部方向；生产渲染把每张牌四角逐点投影到桌面，
+# 不再旋转或缩放整个副露区域。
 
-const TILE_W: int = 40
-const TILE_H: int = 53
+const TILE_W: int = 34
+const TILE_H: int = 45
 
 var _seat_id: int = -1
 var _melds: Array = []        # Array[Meld]
 var _tile_nodes: Array = []   # [{id, node}] 同名高亮
 var _hover_match_id: int = -1
+var _projection_raw_host := Rect2()
+var _uses_table_projection: bool = false
 
 
 func set_seat_id(seat_id: int) -> void:
@@ -38,7 +40,7 @@ func clear_hover_match() -> void:
 func count_hover_matched() -> int:
 	var n := 0
 	for e in _tile_nodes:
-		var tile_rect: TextureRect = e.get("node")
+		var tile_rect := e.get("node") as CanvasItem
 		if tile_rect != null and is_instance_valid(tile_rect) \
 				and bool(tile_rect.get_meta("hover_match", false)):
 			n += 1
@@ -47,7 +49,7 @@ func count_hover_matched() -> int:
 
 func _apply_hover_match() -> void:
 	for e in _tile_nodes:
-		var tile_rect: TextureRect = e.get("node")
+		var tile_rect := e.get("node") as CanvasItem
 		if tile_rect == null or not is_instance_valid(tile_rect):
 			continue
 		var on: bool = _hover_match_id >= 0 and int(e.get("id", -2)) == _hover_match_id
@@ -200,25 +202,28 @@ func apply_reference_layout(hand_main_extent: float = -1.0,
 				target = Rect2(
 					Vector2(base_target.end.x - screen_size.x, screen_meld_top_y),
 					screen_size)
-	var transformed_points := []
-	var rotation_xf := Transform2D(deg_to_rad(rotation_degrees), Vector2.ZERO)
-	for point in [
-		local_bounds.position,
-		Vector2(local_bounds.end.x, local_bounds.position.y),
-		local_bounds.end,
-		Vector2(local_bounds.position.x, local_bounds.end.y),
-	]:
-		transformed_points.append(rotation_xf * ((point as Vector2) * scale))
-	var transformed_min: Vector2 = transformed_points[0]
-	for point: Vector2 in transformed_points:
-		transformed_min = transformed_min.min(point)
-	position = target.position - transformed_min
+	_projection_raw_host = TableLayout.raw_host_for_projected_local_bounds(
+		_seat_id, target, local_bounds)
+	_uses_table_projection = true
+	position = Vector2.ZERO
+	rotation = 0.0
+	scale = Vector2.ONE
+	_rebuild()
 
 
 func get_screen_layout_bounds() -> Rect2:
 	var local_bounds := get_layout_bounds()
 	if local_bounds.size == Vector2.ZERO:
 		return Rect2()
+	if _uses_table_projection:
+		var quad := TableLayout.project_seat_local_rect(
+			_seat_id, _projection_raw_host, local_bounds)
+		var projected_min: Vector2 = quad[0]
+		var projected_max: Vector2 = quad[0]
+		for point in quad:
+			projected_min = projected_min.min(point)
+			projected_max = projected_max.max(point)
+		return Rect2(projected_min, projected_max - projected_min)
 	var xf := get_global_transform()
 	var points := [
 		xf * local_bounds.position,
@@ -235,11 +240,11 @@ func get_screen_layout_bounds() -> Rect2:
 
 
 static func _intra_meld_gap(owner_seat: int) -> float:
-	return 2.0 if owner_seat == 1 or owner_seat == 3 else 1.0
+	return 1.0
 
 
 static func _between_meld_gap(owner_seat: int) -> float:
-	return 9.0 if owner_seat == 1 or owner_seat == 3 else 6.0
+	return 6.0
 
 
 static func _slot_size(slot: Dictionary) -> Vector2:
@@ -340,6 +345,9 @@ static func _reference_z_index(owner_seat: int, meld_index: int,
 # 在 (x, y_offset) 摆 1 张 tile 子节点（face_down 走 ColorRect 占位）
 func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node,
 		suppress_flat_depth: bool = false, draw_z: int = 0) -> void:
+	if _uses_table_projection:
+		_spawn_projected_tile(slot, Vector2(x, y_offset), extractor, draw_z)
+		return
 	var first_child_index := get_child_count()
 	if bool(slot["face_down"]):
 		_add_depth_layers(Vector2(x, y_offset), Vector2(TILE_W, TILE_H), true,
@@ -405,6 +413,72 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node,
 	_set_new_children_z(first_child_index, draw_z)
 
 
+func _spawn_projected_tile(slot: Dictionary, slot_position: Vector2,
+		extractor: Node, draw_z: int) -> void:
+	var rotated := bool(slot["rotated"])
+	var slot_size := Vector2(TILE_H, TILE_W) if rotated \
+		else Vector2(TILE_W, TILE_H)
+	var quad := TableLayout.project_seat_local_rect(
+		_seat_id, _projection_raw_host, Rect2(slot_position, slot_size))
+	var shadow_points := PackedVector2Array()
+	for point in quad:
+		shadow_points.append(point + Vector2(0, 2.5))
+	var shadow := Polygon2D.new()
+	shadow.name = "TileShadow"
+	shadow.polygon = shadow_points
+	shadow.color = Color(0, 0, 0, 0.24)
+	shadow.z_index = draw_z
+	add_child(shadow)
+	var thickness := Polygon2D.new()
+	thickness.name = "TileThickness"
+	thickness.polygon = PackedVector2Array([
+		quad[3], quad[2], quad[2] + Vector2(0, 1.8),
+		quad[3] + Vector2(0, 1.8),
+	])
+	thickness.color = Color("d8ded5")
+	thickness.z_index = draw_z
+	add_child(thickness)
+	var face := Polygon2D.new()
+	face.name = "TileBackFace" if bool(slot["face_down"]) else "TileFace"
+	face.polygon = quad
+	face.z_index = draw_z
+	if bool(slot["face_down"]):
+		face.color = Color("2c5e3f")
+		add_child(face)
+		return
+	var key: String = CardTileBack.tile_id_to_atlas_key(
+		int(slot["tile_id"]), bool(slot.get("is_red_dora", false)))
+	if key == "":
+		return
+	var texture: Texture2D = extractor.get_tile_texture(key)
+	if texture == null:
+		return
+	var texture_size := texture.get_size()
+	if rotated and _called_local_rotation(_seat_id) > 0.0:
+		face.uv = PackedVector2Array([
+			Vector2(0, texture_size.y), Vector2.ZERO,
+			Vector2(texture_size.x, 0), texture_size,
+		])
+	elif rotated:
+		face.uv = PackedVector2Array([
+			Vector2(texture_size.x, 0), texture_size,
+			Vector2(0, texture_size.y), Vector2.ZERO,
+		])
+	else:
+		face.uv = PackedVector2Array([
+			Vector2.ZERO, Vector2(texture_size.x, 0), texture_size,
+			Vector2(0, texture_size.y),
+		])
+	face.texture = texture
+	face.set_meta("tile_id", int(slot["tile_id"]))
+	add_child(face)
+	_tile_nodes.append({
+		"id": int(slot["tile_id"]),
+		"node": face,
+		"was_red_tint": false,
+	})
+
+
 func _set_new_children_z(first_child_index: int, draw_z: int) -> void:
 	for child_index in range(first_child_index, get_child_count()):
 		var canvas_item := get_child(child_index) as CanvasItem
@@ -416,17 +490,17 @@ func _set_new_children_z(first_child_index: int, draw_z: int) -> void:
 func _add_depth_layers(pos: Vector2, size_: Vector2, face_down: bool,
 		suppress_flat_depth: bool) -> void:
 	if _seat_id == 1 or _seat_id == 3:
-		var tile_shadow_offset := Vector2(2.5, 0) if _seat_id == 1 \
-			else Vector2(-2.5, 0)
-		add_child(_make_shadow("TileShadowSide", pos, size_, tile_shadow_offset, 4,
-			Color("0000006b")))
+		var tile_shadow_offset := Vector2(1.5, 0) if _seat_id == 1 \
+			else Vector2(-1.5, 0)
+		add_child(_make_shadow("TileShadowSide", pos, size_, tile_shadow_offset, 3,
+			Color("0000004d")))
 		_add_side_polygon_layers(pos, size_, face_down)
 		return
 	var geometry := _depth_geometry(_seat_id, pos, size_)
-	add_child(_make_shadow("TileShadowSoft", pos, size_, geometry["soft"], 7,
-		Color(0, 0, 0, 0.16)))
-	add_child(_make_shadow("TileShadowSharp", pos, size_, geometry["sharp"], 4,
-		Color(0, 0, 0, 0.30)))
+	add_child(_make_shadow("TileShadowSoft", pos, size_, geometry["soft"], 4,
+		Color(0, 0, 0, 0.12)))
+	add_child(_make_shadow("TileShadowSharp", pos, size_, geometry["sharp"], 2,
+		Color(0, 0, 0, 0.22)))
 	if suppress_flat_depth:
 		return
 	var green_colors: Array
@@ -454,14 +528,14 @@ static func _depth_geometry(seat_id: int, pos: Vector2, size_: Vector2) -> Dicti
 	if seat_id == 2:
 		# 根节点 180°：本地向上才会落在屏幕牌体下边。
 		return {
-			"green_pos": pos + Vector2(0, -6), "green_size": Vector2(size_.x, 6),
-			"white_pos": pos + Vector2(0, -3), "white_size": Vector2(size_.x, 7),
-			"sharp": Vector2(0, -7), "soft": Vector2(0, -9),
+			"green_pos": pos + Vector2(0, -2), "green_size": Vector2(size_.x, 2),
+			"white_pos": pos + Vector2(0, -1), "white_size": Vector2(size_.x, 2),
+			"sharp": Vector2(0, -2), "soft": Vector2(0, -3),
 		}
 	return {
-		"green_pos": pos + Vector2(0, size_.y), "green_size": Vector2(size_.x, 6),
-		"white_pos": pos + Vector2(0, size_.y - 3), "white_size": Vector2(size_.x, 7),
-		"sharp": Vector2(0, 7), "soft": Vector2(0, 9),
+		"green_pos": pos + Vector2(0, size_.y), "green_size": Vector2(size_.x, 2),
+		"white_pos": pos + Vector2(0, size_.y - 1), "white_size": Vector2(size_.x, 2),
+		"sharp": Vector2(0, 2), "soft": Vector2(0, 3),
 	}
 
 
@@ -533,31 +607,31 @@ static func _side_screen_geometry(owner_seat: int, pos: Vector2,
 		size_: Vector2) -> Dictionary:
 	var tile_rect := _screen_rect(owner_seat, pos, size_)
 	var is_left := owner_seat == 3
-	var element_pos := tile_rect.position + Vector2(0.0 if is_left else -4.5, 3.0)
-	var element_size := Vector2(tile_rect.size.x + 4.5, tile_rect.size.y + 6.0)
+	var element_pos := tile_rect.position + Vector2(0.0 if is_left else -1.5, 1.0)
+	var element_size := Vector2(tile_rect.size.x + 1.5, tile_rect.size.y + 2.0)
 	var w := element_size.x
 	var h := element_size.y
 	var outer: PackedVector2Array
 	if is_left:
 		outer = PackedVector2Array([
-			element_pos + Vector2(0, -4),
-			element_pos + Vector2(w + 8, -4),
-			element_pos + Vector2(w + 8, h + 8),
-			element_pos + Vector2(7.65, h + 8),
-			element_pos + Vector2(0, h - 9),
+			element_pos + Vector2(0, -2),
+			element_pos + Vector2(w + 2, -2),
+			element_pos + Vector2(w + 2, h + 2),
+			element_pos + Vector2(2, h + 2),
+			element_pos + Vector2(0, h - 3),
 		])
 	else:
 		outer = PackedVector2Array([
-			element_pos + Vector2(w, -4),
-			element_pos + Vector2(-8, -4),
-			element_pos + Vector2(-8, h + 8),
-			element_pos + Vector2(w - 7.65, h + 8),
-			element_pos + Vector2(w, h - 9),
+			element_pos + Vector2(w, -2),
+			element_pos + Vector2(-2, -2),
+			element_pos + Vector2(-2, h + 2),
+			element_pos + Vector2(w - 2, h + 2),
+			element_pos + Vector2(w, h - 3),
 		])
-	var inner_left := element_pos.x if is_left else element_pos.x + 2.0
-	var inner_right := element_pos.x + w - 2.0 if is_left else element_pos.x + w
-	var inner_top := element_pos.y - 1.5
-	var inner_bottom := element_pos.y + h - 3.6
+	var inner_left := element_pos.x if is_left else element_pos.x + 0.75
+	var inner_right := element_pos.x + w - 0.75 if is_left else element_pos.x + w
+	var inner_top := element_pos.y - 0.5
+	var inner_bottom := element_pos.y + h - 1.2
 	var inner_rect := PackedVector2Array([
 		Vector2(inner_left, inner_top), Vector2(inner_right, inner_top),
 		Vector2(inner_right, inner_bottom), Vector2(inner_left, inner_bottom),
@@ -588,10 +662,10 @@ func _add_side_polygon_layers(pos: Vector2, size_: Vector2,
 	var outer_screen: PackedVector2Array = geometry["outer_screen"]
 	var inner_screen: PackedVector2Array = geometry["inner_screen"]
 	for shadow_spec in [
-		{"name": "TileSideShadowSoft", "offset": 7.0, "blur": 7.0,
-			"color": Color("0000003d")},
-		{"name": "TileSideShadowSharp", "offset": 2.5, "blur": 3.0,
-			"color": Color("00000073")},
+		{"name": "TileSideShadowSoft", "offset": 3.0, "blur": 4.0,
+			"color": Color("0000002e")},
+		{"name": "TileSideShadowSharp", "offset": 1.5, "blur": 2.0,
+			"color": Color("00000059")},
 	]:
 		var shifted := PackedVector2Array()
 		for point in outer_screen:
@@ -629,9 +703,9 @@ func _add_side_polygon_layers(pos: Vector2, size_: Vector2,
 	var outer := _make_gradient_polygon("TileSideOuter",
 		_map_screen_polygon_to_local(_seat_id, outer_screen), outer_colors,
 		outer_offsets, fill_from_local, fill_to_local)
-	outer.set_meta("css_top", 3.0)
-	outer.set_meta("css_bottom", -9.0)
-	outer.set_meta("css_inline_overhang", -4.5)
+	outer.set_meta("css_top", 1.0)
+	outer.set_meta("css_bottom", -3.0)
+	outer.set_meta("css_inline_overhang", -1.5)
 	add_child(outer)
 	var inner := _make_gradient_polygon("TileSideInner",
 		_map_screen_polygon_to_local(_seat_id, inner_screen), inner_colors,

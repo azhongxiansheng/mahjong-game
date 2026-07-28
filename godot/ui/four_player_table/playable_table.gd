@@ -9,6 +9,8 @@ class_name PlayableTable extends Control
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
+const TABLE_ACTION_BUTTON_STYLE := preload(
+	"res://ui/four_player_table/table_action_button.gd")
 const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
 const CharacterPresentationCatalogScript := preload(
 	"res://presentation/characters/character_presentation_catalog.gd")
@@ -144,10 +146,14 @@ func _build_top_bar() -> void:
 	add_child(logo)
 
 	var rules_btn := DT.make_button("规则", DT.BtnRole.SECONDARY, Vector2(88, 34))
+	rules_btn.name = "RulesButton"
+	TABLE_ACTION_BUTTON_STYLE.apply_table_utility_style(rules_btn)
 	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 7)
 	rules_btn.pressed.connect(_open_help_overlay)
 	add_child(rules_btn)
 	var settings_btn := DT.make_button("设置", DT.BtnRole.SECONDARY, Vector2(88, 34))
+	settings_btn.name = "SettingsButton"
+	TABLE_ACTION_BUTTON_STYLE.apply_table_utility_style(settings_btn)
 	settings_btn.position = Vector2(TableLayout.TABLE_W - 100, 7)
 	settings_btn.pressed.connect(_open_settings_overlay)
 	add_child(settings_btn)

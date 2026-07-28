@@ -11,13 +11,13 @@ class_name DiscardRiverView extends Node2D
 const RIVER_W: int = 300
 const RIVER_H: int = 144
 const ROW_COUNT: int = 4
-const ROW_H: int = 53
+const ROW_H: int = 45
 const TILES_PER_ROW: int = 6
 
-# `.river .tile--sm`。
-const TILE_W: int = 39
-const TILE_H: int = 52
-const TILE_GAP: int = 2
+# 原创紧凑公开牌尺寸：牌河与副露共用比例，避免中心区形成厚重牌墙。
+const TILE_W: int = 34
+const TILE_H: int = 45
+const TILE_GAP: int = 3
 const RIICHI_W_EXTRA: int = TILE_H - TILE_W
 
 # Framer Motion bundle 原参数：type=spring, stiffness=360, damping=22, mass=.7。
@@ -42,8 +42,8 @@ var _cursor_x: float = 0.0
 var _cursor_row: int = 0
 var _visible_count: int = 0
 
-var _last_highlight: Panel = null
-var _tile_nodes: Array = [] # Array[{id:int, node:TextureRect}]
+var _last_highlight: CanvasItem = null
+var _tile_nodes: Array = [] # Array[{id:int, node:CanvasItem}]
 var _tile_roots: Array = []
 var _last_tile_local_center: Vector2 = Vector2.ZERO
 var _hover_match_id: int = -1
@@ -84,7 +84,7 @@ func set_dora_ids(ids: Array) -> void:
 func count_hover_matched() -> int:
 	var count := 0
 	for entry in _tile_nodes:
-		var face := entry.get("node") as TextureRect
+		var face := entry.get("node") as CanvasItem
 		if face != null and is_instance_valid(face) \
 				and bool(face.get_meta("hover_match", false)):
 			count += 1
@@ -103,7 +103,7 @@ func clear_hover_match() -> void:
 
 func _apply_hover_match() -> void:
 	for entry in _tile_nodes:
-		var face := entry.get("node") as TextureRect
+		var face := entry.get("node") as CanvasItem
 		if face == null or not is_instance_valid(face):
 			continue
 		var match_id: int = int(entry.get("id", -2))
@@ -213,15 +213,15 @@ func _reconcile_dora_borders() -> void:
 		var root := root_value as Node2D
 		if root == null or not is_instance_valid(root):
 			continue
-		var face := root.get_node_or_null("TileFace") as TextureRect
+		var face := root.get_node_or_null("TileFace") as CanvasItem
 		if face == null:
 			continue
 		var should_show: bool = _dora_ids.has(int(face.get_meta("tile_id", -1)))
-		var border := root.get_node_or_null("DoraBorder") as Panel
+		var border := root.get_node_or_null("DoraBorder") as CanvasItem
 		if should_show and border == null:
-			border = _make_border(Vector2.ZERO,
-				root.get_meta("slot_size") as Vector2,
-				Color(0.85, 0.71, 0.36, 0.9), 2)
+			border = _make_projected_border(
+				root.get_meta("projected_quad") as PackedVector2Array,
+				Color(0.85, 0.71, 0.36, 0.9), 2.0)
 			border.name = "DoraBorder"
 			root.add_child(border)
 		elif not should_show and border != null:
@@ -271,15 +271,16 @@ func _update_row_positions() -> void:
 
 
 func _row_gap() -> float:
-	return 7.0 if _seat_id == 0 or _seat_id == 2 else 2.0
+	return 4.0
 
 
 func _tile_gap() -> float:
-	return 2.0 if _seat_id == 0 or _seat_id == 2 else 7.0
+	return float(TILE_GAP)
 
 
 func _left_padding() -> float:
-	return 25.0 if _seat_id == 0 or _seat_id == 2 else 6.0
+	var row_width := TILES_PER_ROW * TILE_W + (TILES_PER_ROW - 1) * TILE_GAP
+	return (RIVER_W - row_width) * 0.5
 
 
 func _spawn_rendered_tile(texture: Texture2D, original_index: int,
@@ -306,13 +307,14 @@ func _spawn_rendered_tile(texture: Texture2D, original_index: int,
 	root.set_meta("slot_size", slot_size)
 	root.set_meta("is_riichi", is_riichi)
 	root.set_meta("is_latest", is_latest)
-	(_rows[row_index] as Control).add_child(root)
+	_container.add_child(root)
 	_tile_roots.append(root)
 
-	_spawn_tile_contents(root, Vector2.ZERO, slot_size, texture, is_riichi,
+	_spawn_projected_tile_contents(root, river_position, slot_size, texture, is_riichi,
 		is_latest, is_dora, tile_id)
-	_last_tile_local_center = river_position + slot_size * 0.5
-	_start_enter_spring(root, row_position)
+	var quad := root.get_meta("projected_quad") as PackedVector2Array
+	_last_tile_local_center = (quad[0] + quad[1] + quad[2] + quad[3]) * 0.25
+	_start_enter_spring(root, Vector2.ZERO)
 	_cursor_x += slot_size.x + _tile_gap()
 
 
@@ -361,6 +363,71 @@ func _spawn_tile_contents(parent: Node, slot_position: Vector2, slot_size: Vecto
 		_play_latest_glow(glow)
 
 
+func _spawn_projected_tile_contents(parent: Node2D, river_position: Vector2,
+		slot_size: Vector2, texture: Texture2D, is_riichi: bool,
+		is_last: bool, is_dora: bool, tile_id: int) -> void:
+	var quad := TableLayout.project_seat_local_rect(
+		_seat_id, TableLayout.river_raw_rect(_seat_id),
+		Rect2(river_position, slot_size))
+	parent.set_meta("projected_quad", quad)
+	var shadow_quad := PackedVector2Array()
+	for point in quad:
+		shadow_quad.append(point + Vector2(0, 2.5))
+	var shadow := Polygon2D.new()
+	shadow.name = "TileShadow"
+	shadow.polygon = shadow_quad
+	shadow.color = Color(0, 0, 0, 0.24)
+	parent.add_child(shadow)
+	var thickness := Polygon2D.new()
+	thickness.name = "TileThickness"
+	thickness.polygon = PackedVector2Array([
+		quad[3], quad[2], quad[2] + Vector2(0, 1.8),
+		quad[3] + Vector2(0, 1.8),
+	])
+	thickness.color = Color("d8ded5")
+	parent.add_child(thickness)
+	var face := Polygon2D.new()
+	face.name = "TileFace"
+	face.polygon = quad
+	var texture_size := texture.get_size()
+	face.uv = PackedVector2Array([
+		Vector2(texture_size.x, 0), Vector2(texture_size.x, texture_size.y),
+		Vector2(0, texture_size.y), Vector2.ZERO,
+	]) if is_riichi else PackedVector2Array([
+		Vector2.ZERO, Vector2(texture_size.x, 0), texture_size,
+		Vector2(0, texture_size.y),
+	])
+	face.texture = texture
+	face.set_meta("tile_id", tile_id)
+	parent.add_child(face)
+	_tile_nodes.append({"id": tile_id, "node": face})
+	if is_dora:
+		var border := _make_projected_border(
+			quad, Color(0.85, 0.71, 0.36, 0.9), 2.0)
+		border.name = "DoraBorder"
+		parent.add_child(border)
+	if is_last:
+		var glow := Polygon2D.new()
+		glow.name = "LatestGlow"
+		glow.polygon = quad
+		glow.color = Color("d9b65b66")
+		glow.set_meta("duration_seconds", LATEST_GLOW_DURATION)
+		parent.add_child(glow)
+		_last_highlight = glow
+		_play_latest_glow(glow)
+
+
+static func _make_projected_border(quad: PackedVector2Array, color: Color,
+		width: float) -> Line2D:
+	var border := Line2D.new()
+	border.points = quad
+	border.closed = true
+	border.default_color = color
+	border.width = width
+	border.antialiased = true
+	return border
+
+
 func _clear_latest_glow() -> void:
 	if _last_highlight != null and is_instance_valid(_last_highlight):
 		_last_highlight.queue_free()
@@ -386,7 +453,7 @@ static func _make_latest_glow(position_: Vector2, size_: Vector2) -> Panel:
 	return glow
 
 
-func _play_latest_glow(glow: Panel) -> void:
+func _play_latest_glow(glow: CanvasItem) -> void:
 	var tween := glow.create_tween()
 	# CSS discard-glow 的 0% → 60% → 100%，总长严格 1s；结束删除节点。
 	tween.tween_property(glow, "modulate", Color(1, 1, 1, 0.30), 0.6) \
@@ -450,13 +517,13 @@ static func _spring_sample(initial: float, target: float, elapsed: float) -> Dic
 	return {"value": value, "velocity": velocity}
 
 
-# 参考 river 的 before/after：绿背侧 6px 在后，白牌侧 7px 在前。
+# 公开牌平放桌面，只保留 2px 牌体和轻微接触阴影。
 func _add_depth_layers_to(parent: Node, position_: Vector2, size_: Vector2) -> void:
 	var geometry := _depth_geometry(_seat_id, position_, size_)
 	parent.add_child(_make_shadow("TileShadowSoft", position_, size_,
-		geometry["soft"], 7, Color(0, 0, 0, 0.16)))
+		geometry["soft"], 4, Color(0, 0, 0, 0.12)))
 	parent.add_child(_make_shadow("TileShadowSharp", position_, size_,
-		geometry["sharp"], 4, Color(0, 0, 0, 0.30)))
+		geometry["sharp"], 2, Color(0, 0, 0, 0.22)))
 	parent.add_child(_make_side("GreenSide", geometry["green_pos"],
 		geometry["green_size"], false, _seat_id))
 	parent.add_child(_make_side("WhiteSide", geometry["white_pos"],
@@ -544,34 +611,34 @@ static func _depth_geometry(seat_id: int, position_: Vector2,
 	match seat_id:
 		1: # 右家：侧面在左
 			return {
-				"green_pos": position_ + Vector2(-6, 0),
-				"green_size": Vector2(6, size_.y),
-				"white_pos": position_ + Vector2(-4, 0),
-				"white_size": Vector2(7, size_.y),
-				"sharp": Vector2(-7, 0), "soft": Vector2(-9, 0),
+				"green_pos": position_ + Vector2(-2, 0),
+				"green_size": Vector2(2, size_.y),
+				"white_pos": position_ + Vector2(-1, 0),
+				"white_size": Vector2(2, size_.y),
+				"sharp": Vector2(-2, 0), "soft": Vector2(-3, 0),
 			}
 		2: # 上家：侧面在上
 			return {
-				"green_pos": position_ + Vector2(0, -6),
-				"green_size": Vector2(size_.x, 6),
-				"white_pos": position_ + Vector2(0, -4),
-				"white_size": Vector2(size_.x, 7),
-				"sharp": Vector2(0, -7), "soft": Vector2(0, -9),
+				"green_pos": position_ + Vector2(0, -2),
+				"green_size": Vector2(size_.x, 2),
+				"white_pos": position_ + Vector2(0, -1),
+				"white_size": Vector2(size_.x, 2),
+				"sharp": Vector2(0, -2), "soft": Vector2(0, -3),
 			}
 		3: # 左家：侧面在右
 			return {
 				"green_pos": position_ + Vector2(size_.x, 0),
-				"green_size": Vector2(6, size_.y),
-				"white_pos": position_ + Vector2(size_.x - 3, 0),
-				"white_size": Vector2(7, size_.y),
-				"sharp": Vector2(7, 0), "soft": Vector2(9, 0),
+				"green_size": Vector2(2, size_.y),
+				"white_pos": position_ + Vector2(size_.x - 1, 0),
+				"white_size": Vector2(2, size_.y),
+				"sharp": Vector2(2, 0), "soft": Vector2(3, 0),
 			}
 	return { # 自家：侧面在下
 		"green_pos": position_ + Vector2(0, size_.y),
-		"green_size": Vector2(size_.x, 6),
-		"white_pos": position_ + Vector2(0, size_.y - 3),
-		"white_size": Vector2(size_.x, 7),
-		"sharp": Vector2(0, 7), "soft": Vector2(0, 9),
+		"green_size": Vector2(size_.x, 2),
+		"white_pos": position_ + Vector2(0, size_.y - 1),
+		"white_size": Vector2(size_.x, 2),
+		"sharp": Vector2(0, 2), "soft": Vector2(0, 3),
 	}
 
 

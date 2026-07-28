@@ -1,5 +1,8 @@
 class_name PlayerActionPanel extends Control
 
+const TABLE_ACTION_BUTTON := preload(
+	"res://ui/four_player_table/table_action_button.gd")
+
 # 麻将王 — 玩家输入面板（plan: 战斗节点真实可玩 / Step 4）。
 #
 # 4 人桌底部的玩家命令栏。状态机（与 BC 决策顺序对齐 — 先切牌再问立直）：
@@ -37,12 +40,12 @@ var _dots_tween: Tween = null
 var _dots_base_text: String = ""
 var _btn_riichi: Button = null     # WAITING_RIICHI_CONFIRM 用 — "立直"
 var _btn_tsumo: Button = null      # WAITING_DISCARD 用 — "自摸"
-var _btn_ron: Button = null        # WAITING_CLAIM 用 — "荣和"
+var _btn_ron: Button = null        # WAITING_CLAIM 用 — "和"
 var _btn_chi: Button = null        # WAITING_CLAIM 用 — "吃"（仅下家）
 var _btn_pon: Button = null        # WAITING_CLAIM 用 — "碰"
 var _btn_minkan: Button = null     # WAITING_CLAIM 用 — "杠"
 var _btn_skip: Button = null       # WAITING_CLAIM/WAITING_RIICHI_CONFIRM 用 — "跳过"
-var _btn_kyuusyu: Button = null    # WAITING_KYUUSYU 用 — "九種九牌"(途中流局)
+var _btn_kyuusyu: Button = null    # WAITING_KYUUSYU 用 — "九种九牌"(途中流局)
 var _btn_ankan: Button = null      # WAITING_DISCARD 用 — "暗杠"
 var _btn_added_kan: Button = null  # WAITING_DISCARD 用 — "加杠"
 var _btn_consumable: Button = null # WAITING_DISCARD 用 — "道具"（主动消耗品）
@@ -96,18 +99,14 @@ func _build_ui() -> void:
 	_ritual_band.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ritual_band.visible = false
 	var ritual_style := StyleBoxFlat.new()
-	ritual_style.bg_color = Color(0.025, 0.045, 0.07, 0.86)
-	ritual_style.border_color = Color(0.38, 0.82, 0.92, 0.72)
-	ritual_style.set_border_width_all(1)
-	ritual_style.set_corner_radius_all(12)
-	ritual_style.shadow_color = Color(0.10, 0.72, 0.82, 0.22)
-	ritual_style.shadow_size = 12
+	ritual_style.bg_color = Color(0.025, 0.035, 0.05, 0.10)
+	ritual_style.border_color = Color.TRANSPARENT
 	_ritual_band.add_theme_stylebox_override("panel", ritual_style)
 	add_child(_ritual_band)
 
 	# 居中胶囊底：只在有合法按钮时显示
 	_bg = ColorRect.new()
-	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.88)
+	_bg.color = Color(DT.BG_BASE.r, DT.BG_BASE.g, DT.BG_BASE.b, 0.08)
 	_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bg.visible = false
 	add_child(_bg)
@@ -164,20 +163,20 @@ func _build_ui() -> void:
 	_countdown_bar.add_theme_stylebox_override("background", bg_sb)
 	add_child(_countdown_bar)
 
-	# 金色只保留自摸/荣和；其余动作复用四种共享按钮语义。
-	_btn_riichi = _make_btn("立直", DT.BtnRole.SECONDARY)
-	_btn_tsumo = _make_btn("自摸", DT.BtnRole.PRIMARY, true)
-	_btn_ron = _make_btn("荣和", DT.BtnRole.PRIMARY, true)
-	_btn_chi = _make_btn("吃", DT.BtnRole.DANGER)
-	_btn_pon = _make_btn("碰", DT.BtnRole.DANGER)
-	_btn_minkan = _make_btn("杠", DT.BtnRole.DANGER)
-	_btn_kyuusyu = _make_btn("九種九牌", DT.BtnRole.DANGER)
+	# 每种真实动作固定一套旗标色；内部 choice 协议保持不变。
+	_btn_riichi = _make_btn("立直", &"riichi")
+	_btn_tsumo = _make_btn("自摸", &"win")
+	_btn_ron = _make_btn("和", &"win")
+	_btn_chi = _make_btn("吃", &"chi")
+	_btn_pon = _make_btn("碰", &"pon")
+	_btn_minkan = _make_btn("杠", &"kan")
+	_btn_kyuusyu = _make_btn("九种九牌", &"danger")
 	_btn_kyuusyu.custom_minimum_size = Vector2(132, BTN_H)
 	_btn_kyuusyu.pivot_offset = Vector2(66, BTN_H / 2.0)
-	_btn_ankan = _make_btn("暗杠", DT.BtnRole.SECONDARY)
-	_btn_added_kan = _make_btn("加杠", DT.BtnRole.SECONDARY)
-	_btn_consumable = _make_btn("道具", DT.BtnRole.SECONDARY)
-	_btn_skip = _make_btn("跳过", DT.BtnRole.GHOST)
+	_btn_ankan = _make_btn("暗杠", &"kan")
+	_btn_added_kan = _make_btn("加杠", &"kan")
+	_btn_consumable = _make_btn("道具", &"item")
+	_btn_skip = _make_btn("跳过", &"skip")
 
 	_btn_riichi.pressed.connect(_on_btn_riichi)
 	_btn_tsumo.pressed.connect(_on_btn_tsumo)
@@ -191,12 +190,11 @@ func _build_ui() -> void:
 	_btn_consumable.pressed.connect(_on_btn_consumable)
 	_btn_skip.pressed.connect(_on_btn_skip)
 
-func _make_btn(text: String, role: int, high_value: bool = false) -> Button:
-	var btn := Button.new()
-	btn.text = text
+func _make_btn(text: String, action_kind: StringName) -> Button:
+	var btn: Button = TABLE_ACTION_BUTTON.new() as Button
 	btn.custom_minimum_size = Vector2(BTN_W, BTN_H)
-	DT.apply_button_role(btn, role, high_value)
-	btn.add_theme_font_size_override("font_size", 22)
+	btn.size = Vector2(BTN_W, BTN_H)
+	btn.configure(text, action_kind)
 	btn.disabled = true
 	btn.visible = false
 	btn.pivot_offset = Vector2(BTN_W / 2.0, BTN_H / 2.0)

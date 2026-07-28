@@ -72,14 +72,14 @@ static func _compute_open_meld(meld: Meld, claimant_seat: int) -> Array:
 		slots.append(_slot(called, true, true))
 	return slots
 
-# Ankan: bundle nV 固定第 1 / 第 2 张 face_down，无旋转牌。
+# 通行日麻视觉：暗杠首尾盖牌，中间两张正面，无旋转牌。
 static func _compute_ankan(meld: Meld) -> Array:
 	var slots: Array = []
 	for i in range(4):
 		slots.append({
 			"tile_id": meld.tiles[i].id,
 			"rotated": false,
-			"face_down": (i == 1 or i == 2),
+			"face_down": (i == 0 or i == 3),
 			"stacked_above": false,
 			"is_red_dora": meld.tiles[i].is_red_dora,
 		})

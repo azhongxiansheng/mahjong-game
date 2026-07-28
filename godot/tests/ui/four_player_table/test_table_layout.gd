@@ -152,14 +152,17 @@ func test_live_rivers_stay_inside_crowded_public_zones() -> void:
 	var crowded := TableLayout.crowded_state_rects()
 	for seat_id in range(4):
 		var river := table.discard_rivers[seat_id] as DiscardRiverView
-		var container := river.get_node_or_null("RiverContainer") as Control
-		assert_not_null(container)
-		if container == null:
-			continue
-		var actual := _global_aabb(container,
-			Rect2(Vector2.ZERO, container.size))
-		assert_true(crowded[seat_id].encloses(actual),
-			"seat %d 真实牌河必须留在最拥挤公开信息区" % seat_id)
+		var tiles: Array = []
+		for index in range(12):
+			tiles.append(Tile.new((seat_id * 7 + index) % 34))
+		river.set_tiles(tiles)
+		assert_eq(river._tile_roots.size(), 12)
+		for root in river._tile_roots:
+			var quad := (root as Node2D).get_meta(
+				"projected_quad") as PackedVector2Array
+			for point in quad:
+				assert_true(crowded[seat_id].has_point(point),
+					"seat %d 真实牌河必须留在最拥挤公开信息区" % seat_id)
 
 
 func test_center_plate_and_felt_remain_visible() -> void:

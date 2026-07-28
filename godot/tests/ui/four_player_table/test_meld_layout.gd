@@ -93,8 +93,8 @@ func test_minkan_from_shimocha_puts_called_tile_at_tail():
 
 # ---- ANKAN ----
 
-func test_ankan_face_down_middle_two():
-	# bundle nV：暗杠 index 1 / 2 牌背，index 0 / 3 正面。
+func test_ankan_face_down_outer_two():
+	# 通行日麻视觉：暗杠首尾盖牌，中间两张正面。
 	var tiles: Array[Tile] = [
 		_t(TileId.W1, 60), _t(TileId.W1, 61),
 		_t(TileId.W1, 62), _t(TileId.W1, 63),
@@ -102,10 +102,10 @@ func test_ankan_face_down_middle_two():
 	var meld := Meld.make_ankan(tiles)
 	var layout: Array = MeldLayout.compute(meld, 0)
 	assert_eq(layout.size(), 4)
-	assert_false(layout[0]["face_down"], "第 0 张正面")
-	assert_true(layout[1]["face_down"], "第 1 张 face_down")
-	assert_true(layout[2]["face_down"], "第 2 张 face_down")
-	assert_false(layout[3]["face_down"], "第 3 张正面")
+	assert_true(layout[0]["face_down"], "第 0 张 face_down")
+	assert_false(layout[1]["face_down"], "第 1 张正面")
+	assert_false(layout[2]["face_down"], "第 2 张正面")
+	assert_true(layout[3]["face_down"], "第 3 张 face_down")
 	for s in layout:
 		assert_false(s["rotated"], "ankan 无旋转牌")
 

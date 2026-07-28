@@ -137,21 +137,25 @@ const SIDE_HAND_RAW_X_LEFT: float = 210.297237
 const SIDE_HAND_RAW_Y_RIGHT: float = 211.185
 const SIDE_HAND_RAW_Y_LEFT: float = 157.185
 const SIDE_HAND_RAW_STEP: float = 32.0
-const HAND_MELD_GAP: float = 32.0
+const HAND_MELD_GAP: float = 12.0
 const SIDE_MELD_MAIN_OVERHANG: float = 8.0
 const TOP_HAND_PROJECTION_SCALE_X: float = 483.441 / 590.0
 const SIDE_FLEX_CENTER_RAW_Y: float = 404.5
 
 
-static func hand_main_extent(seat_id: int, base_count: int) -> float:
+static func hand_main_extent(seat_id: int, base_count: int,
+		has_drawn: bool = true) -> float:
 	assert(base_count >= 0)
 	match seat_id:
 		0:
-			return base_count * 66.0 + maxi(base_count - 1, 0) * 4.0 + 24.0 + 66.0
+			var base_extent := base_count * 66.0 + maxi(base_count - 1, 0) * 4.0
+			return base_extent + 24.0 + 66.0 if has_drawn else base_extent
 		2:
-			return base_count * 38.0 + maxi(base_count - 1, 0) * 3.0 + 22.0 + 38.0
+			var base_extent := base_count * 38.0 + maxi(base_count - 1, 0) * 3.0
+			return base_extent + 22.0 + 38.0 if has_drawn else base_extent
 		1, 3:
-			return 66.63 + base_count * SIDE_HAND_RAW_STEP + 12.0
+			return 66.63 + base_count * SIDE_HAND_RAW_STEP + 12.0 \
+				if has_drawn else 66.63 + maxi(base_count - 1, 0) * SIDE_HAND_RAW_STEP
 	return 0.0
 
 
@@ -180,7 +184,7 @@ static func hand_meld_flex_layout(seat_id: int, hand_extent: float,
 
 static func hand_host_rect_for_state(seat_id: int, base_count: int,
 		meld_main_extent: float = 0.0, has_drawn: bool = true) -> Rect2:
-	var hand_extent := hand_main_extent(seat_id, base_count)
+	var hand_extent := hand_main_extent(seat_id, base_count, has_drawn)
 	var meld_outer := meld_main_extent + (SIDE_MELD_MAIN_OVERHANG \
 		if meld_main_extent > 0.0 and (seat_id == 1 or seat_id == 3) else 0.0)
 	var flex := hand_meld_flex_layout(seat_id, hand_extent, meld_outer)
@@ -196,7 +200,7 @@ static func hand_host_rect_for_state(seat_id: int, base_count: int,
 
 static func _side_hand_raw_host_rect_for_state(seat_id: int, base_count: int,
 		meld_main_extent: float, has_drawn: bool) -> Rect2:
-	var hand_extent := hand_main_extent(seat_id, base_count)
+	var hand_extent := hand_main_extent(seat_id, base_count, has_drawn)
 	if meld_main_extent <= 0.0 and base_count == 13:
 		return Rect2(
 			1343.00023 if seat_id == 1 else 210.29774,
@@ -269,6 +273,86 @@ static func project_table_point(point: Vector2) -> Vector2:
 		PERSPECTIVE_ORIGIN.y
 			+ (rotated_y - PERSPECTIVE_ORIGIN.y) * perspective_scale,
 	)
+
+
+static func unproject_table_point(point: Vector2) -> Vector2:
+	var angle := deg_to_rad(TABLE_PLANE_ROTATION_X_DEGREES)
+	var y_delta := point.y - PERSPECTIVE_ORIGIN.y
+	var origin_delta := TABLE_PLANE_ORIGIN.y - PERSPECTIVE_ORIGIN.y
+	var relative_y := PERSPECTIVE_DISTANCE * (y_delta - origin_delta) / (
+		y_delta * sin(angle) + PERSPECTIVE_DISTANCE * cos(angle))
+	var raw_y := TABLE_PLANE_ORIGIN.y + relative_y
+	var perspective_scale := PERSPECTIVE_DISTANCE / (
+		PERSPECTIVE_DISTANCE - sin(angle) * relative_y)
+	var raw_x := PERSPECTIVE_ORIGIN.x + (
+		point.x - PERSPECTIVE_ORIGIN.x) / perspective_scale
+	return Vector2(raw_x, raw_y)
+
+
+# 将某席位的局部坐标逐点放到同一个桌面平面。局部 +x 沿该家牌面从左到右，
+# 局部 +y 指向该家身前；四席只改变朝向，不再用投影后 AABB 冒充牌面。
+static func project_seat_local_point(seat_id: int, raw_host: Rect2,
+		local_point: Vector2) -> Vector2:
+	assert(seat_id >= 0 and seat_id <= 3)
+	var raw_point: Vector2
+	match seat_id:
+		0:
+			raw_point = raw_host.position + local_point
+		1:
+			raw_point = Vector2(
+				raw_host.position.x + local_point.y,
+				raw_host.end.y - local_point.x)
+		2:
+			raw_point = raw_host.end - local_point
+		3:
+			raw_point = Vector2(
+				raw_host.end.x - local_point.y,
+				raw_host.position.y + local_point.x)
+	return project_table_point(raw_point)
+
+
+static func project_seat_local_rect(seat_id: int, raw_host: Rect2,
+		local_rect: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([
+		project_seat_local_point(seat_id, raw_host, local_rect.position),
+		project_seat_local_point(seat_id, raw_host,
+			Vector2(local_rect.end.x, local_rect.position.y)),
+		project_seat_local_point(seat_id, raw_host, local_rect.end),
+		project_seat_local_point(seat_id, raw_host,
+			Vector2(local_rect.position.x, local_rect.end.y)),
+	])
+
+
+# 用既有布局目标只确定锚点；牌的大小与倾斜仍由真实桌面投影计算。
+static func raw_host_for_projected_local_bounds(seat_id: int,
+		target: Rect2, local_bounds: Rect2) -> Rect2:
+	var host_size := local_bounds.size if seat_id == 0 or seat_id == 2 \
+		else Vector2(local_bounds.size.y, local_bounds.size.x)
+	var provisional := Rect2(Vector2.ZERO, host_size)
+	var raw_corners := PackedVector2Array()
+	for point in [
+		local_bounds.position,
+		Vector2(local_bounds.end.x, local_bounds.position.y),
+		local_bounds.end,
+		Vector2(local_bounds.position.x, local_bounds.end.y),
+	]:
+		var projected := project_seat_local_point(seat_id, provisional, point)
+		raw_corners.append(unproject_table_point(projected))
+	var raw_min: Vector2 = raw_corners[0]
+	var raw_max: Vector2 = raw_corners[0]
+	for point in raw_corners:
+		raw_min = raw_min.min(point)
+		raw_max = raw_max.max(point)
+	var desired_top := unproject_table_point(
+		Vector2(target.get_center().x, target.position.y)).y
+	var desired_raw_center := unproject_table_point(Vector2(
+		target.get_center().x,
+		project_table_point(Vector2(PERSPECTIVE_ORIGIN.x,
+			desired_top + (raw_max.y - raw_min.y) * 0.5)).y))
+	var translation := Vector2(
+		desired_raw_center.x - (raw_min.x + raw_max.x) * 0.5,
+		desired_top - raw_min.y)
+	return Rect2(translation, host_size)
 
 
 static func board_frame_paths() -> Dictionary:
@@ -357,7 +441,7 @@ static func controlled_side_hand_drawn_slot_rect(seat_id: int,
 	return _projected_rect_aabb(Rect2(Vector2(raw_x, raw_y), SIDE_HAND_RAW_SIZE))
 
 
-static func _river_raw_rect(seat_id: int) -> Rect2:
+static func river_raw_rect(seat_id: int) -> Rect2:
 	var middle_x := BOARD_ORIGIN.x + BOARD_TRACKS.x + BOARD_GAP
 	var middle_y := (BOARD_ORIGIN.y + BOARD_TRACKS.x + BOARD_GAP
 		+ BOARD_TRANSLATE_Y)
@@ -421,9 +505,9 @@ static func seat_anchor(seat_id: int) -> Vector2:
 	return center()
 
 
-# 弃牌河：逐项应用四向网格、30px 内移与透视后的屏幕 AABB。
+# 牌河公开区的兼容包围盒；生产牌面使用 project_seat_local_rect 逐牌投影。
 static func discard_river(seat_id: int) -> Dictionary:
-	var projected := _projected_rect_aabb(_river_raw_rect(seat_id))
+	var projected := _projected_rect_aabb(river_raw_rect(seat_id))
 	var rotation_degrees := 0.0
 	var position := projected.position
 	var scale := projected.size / RIVER_SIZE

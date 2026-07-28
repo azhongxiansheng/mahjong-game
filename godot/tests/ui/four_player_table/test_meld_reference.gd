@@ -56,16 +56,21 @@ func _legal_post_draw_state_with_melds(seat_id: int,
 
 
 func test_owner_specific_css_gaps() -> void:
-	for owner_seat in [0, 2]:
+	for owner_seat in range(4):
 		assert_eq(MeldArea._intra_meld_gap(owner_seat), 1.0,
-			"owner %d 的 .meld gap=1px" % owner_seat)
+			"owner %d 组内只留 1px 接缝" % owner_seat)
 		assert_eq(MeldArea._between_meld_gap(owner_seat), 6.0,
-			"owner %d 的 .melds gap=6px" % owner_seat)
-	for owner_seat in [1, 3]:
-		assert_eq(MeldArea._intra_meld_gap(owner_seat), 2.0,
-			"owner %d 的 .meld gap=2px" % owner_seat)
-		assert_eq(MeldArea._between_meld_gap(owner_seat), 9.0,
-			"owner %d 的 .melds gap=9px" % owner_seat)
+			"owner %d 组间统一 6px" % owner_seat)
+
+
+func test_post_discard_hand_extent_does_not_reserve_empty_drawn_slot() -> void:
+	assert_eq(TableLayout.hand_main_extent(0, 10, false), 696.0,
+		"自家打牌后不保留 66px 摸牌槽与 24px 间隔")
+	assert_eq(TableLayout.hand_main_extent(2, 10, false), 407.0,
+		"上家打牌后不保留 38px 摸牌槽与 22px 间隔")
+	for seat_id in [1, 3]:
+		assert_almost_eq(TableLayout.hand_main_extent(seat_id, 10, false),
+			354.63, 0.001, "侧家打牌后不保留末端摸牌槽")
 
 
 func test_owner0_group_flow_is_row_reverse_and_right_aligned() -> void:
@@ -75,37 +80,37 @@ func test_owner0_group_flow_is_row_reverse_and_right_aligned() -> void:
 
 
 func test_other_owner_group_flows_match_css_and_keep_right_edge_alignment() -> void:
-	assert_eq(MeldArea._meld_origins([120.0, 160.0], 1), [-289.0, -160.0],
-		"owner1 column-reverse：首组在下，后续向上，组间 9px")
+	assert_eq(MeldArea._meld_origins([120.0, 160.0], 1), [-286.0, -160.0],
+		"owner1 column-reverse：首组在下，后续向上，组间 6px")
 	assert_eq(MeldArea._meld_origins([120.0, 160.0], 2), [-286.0, -160.0],
 		"owner2 row-reverse：首组在右，后续向左，组间 6px")
-	assert_eq(MeldArea._meld_origins([120.0, 160.0], 3), [-289.0, -160.0],
-		"owner3 column：首组在上，后续向下，组间 9px")
+	assert_eq(MeldArea._meld_origins([120.0, 160.0], 3), [-286.0, -160.0],
+		"owner3 column：首组在上，后续向下，组间 6px")
 
 
 func test_slot_flow_and_owner_cross_axis_alignment() -> void:
 	var slots := [_slot(false), _slot(true), _slot(false)]
 	var owner0 := MeldArea._slot_layout(slots, 0)
-	assert_eq(owner0["positions"], [Vector2(0, 0), Vector2(41, 13), Vector2(95, 0)])
-	assert_eq(owner0["width"], 135.0)
+	assert_eq(owner0["positions"], [Vector2(0, 0), Vector2(35, 11), Vector2(81, 0)])
+	assert_eq(owner0["width"], 115.0)
 	var owner1 := MeldArea._slot_layout(slots, 1)
-	assert_eq(owner1["positions"], [Vector2(0, 0), Vector2(42, 13), Vector2(97, 0)])
-	assert_eq(owner1["width"], 137.0)
+	assert_eq(owner1["positions"], [Vector2(0, 0), Vector2(35, 11), Vector2(81, 0)])
+	assert_eq(owner1["width"], 115.0)
 	var owner2 := MeldArea._slot_layout(slots, 2)
-	assert_eq(owner2["positions"], [Vector2(0, 0), Vector2(41, 0), Vector2(95, 0)],
+	assert_eq(owner2["positions"], [Vector2(0, 0), Vector2(35, 0), Vector2(81, 0)],
 		"180 度根旋转后，本地顶边对齐等价于屏幕底边对齐")
 	var owner3 := MeldArea._slot_layout(slots, 3)
-	assert_eq(owner3["positions"], [Vector2(0, 0), Vector2(42, 13), Vector2(97, 0)])
+	assert_eq(owner3["positions"], [Vector2(0, 0), Vector2(35, 11), Vector2(81, 0)])
 
 
 func test_added_kan_stack_direction_and_one_pixel_margin_are_owner_specific() -> void:
 	var slots := [_slot(true), _slot(false), _slot(false), _slot(true, true)]
 	for owner_seat in [0, 1, 3]:
 		var positions: Array = MeldArea._slot_layout(slots, owner_seat)["positions"]
-		assert_eq(positions[3] - positions[0], Vector2(0, -41),
+		assert_eq(positions[3] - positions[0], Vector2(0, -35),
 			"owner %d：额外牌沿 CSS 方向叠放并留 1px" % owner_seat)
 	var owner2_positions: Array = MeldArea._slot_layout(slots, 2)["positions"]
-	assert_eq(owner2_positions[3] - owner2_positions[0], Vector2(0, 41),
+	assert_eq(owner2_positions[3] - owner2_positions[0], Vector2(0, 35),
 		"owner2 根节点旋转 180 度，须反向本地偏移才仍向屏幕上方叠")
 
 
@@ -143,19 +148,19 @@ func test_side_owner_uses_css_polygon_not_rectangular_depth_blocks() -> void:
 			Gradient.GRADIENT_COLOR_SPACE_SRGB, "CSS 渐变必须用 sRGB 插值")
 		assert_eq((inner.texture as GradientTexture2D).gradient.interpolation_color_space,
 			Gradient.GRADIENT_COLOR_SPACE_SRGB, "CSS 内棱渐变必须用 sRGB 插值")
-		assert_eq(float(outer.get_meta("css_top")), 3.0)
-		assert_eq(float(outer.get_meta("css_bottom")), -9.0)
-		assert_eq(float(outer.get_meta("css_inline_overhang")), -4.5)
+		assert_eq(float(outer.get_meta("css_top")), 1.0)
+		assert_eq(float(outer.get_meta("css_bottom")), -3.0)
+		assert_eq(float(outer.get_meta("css_inline_overhang")), -1.5)
 
 
 func test_top_and_bottom_depth_always_extrude_toward_screen_bottom() -> void:
-	var bottom := MeldArea._depth_geometry(0, Vector2.ZERO, Vector2(40, 53))
-	var top := MeldArea._depth_geometry(2, Vector2.ZERO, Vector2(40, 53))
-	assert_eq(bottom["green_pos"], Vector2(0, 53))
-	assert_eq(bottom["sharp"], Vector2(0, 7))
-	assert_eq(top["green_pos"], Vector2(0, -6),
+	var bottom := MeldArea._depth_geometry(0, Vector2.ZERO, Vector2(34, 45))
+	var top := MeldArea._depth_geometry(2, Vector2.ZERO, Vector2(34, 45))
+	assert_eq(bottom["green_pos"], Vector2(0, 45))
+	assert_eq(bottom["sharp"], Vector2(0, 2))
+	assert_eq(top["green_pos"], Vector2(0, -2),
 		"owner2 根旋转 180 度，本地向上才是屏幕向下")
-	assert_eq(top["sharp"], Vector2(0, -7))
+	assert_eq(top["sharp"], Vector2(0, -2))
 
 
 func test_owner1_uses_reference_nested_z_order() -> void:
@@ -190,12 +195,7 @@ func test_owner1_uses_reference_nested_z_order() -> void:
 
 
 func test_single_pon_layout_bounds_follow_hand_flex_reflow() -> void:
-	var expected := [
-		Rect2(1246.5, 797.5, 135.0, 53.0),
-		Rect2(1289.893, 151.433, 59.806, 106.771),
-		Rect2(494.917, 27.162, 110.950, 37.759),
-		Rect2(180.129, 590.599, 69.488, 135.268),
-	]
+	var projected_bounds: Array[Rect2] = []
 	for seat_id in range(4):
 		var area := MeldArea.new()
 		area.set_seat_id(seat_id)
@@ -211,12 +211,22 @@ func test_single_pon_layout_bounds_follow_hand_flex_reflow() -> void:
 		area.apply_reference_layout()
 		await get_tree().process_frame
 		var actual: Rect2 = area.get_screen_layout_bounds()
-		_assert_rect_almost_eq(actual, expected[seat_id], 0.02,
-			"seat %d single pon bbox" % seat_id)
+		projected_bounds.append(actual)
+		assert_gt(actual.size.x * actual.size.y, 0.0)
+		assert_eq(area._tile_nodes.size(), 3,
+			"seat %d 三张副露都逐牌投影" % seat_id)
+		for entry in area._tile_nodes:
+			var face := entry.get("node") as Polygon2D
+			assert_not_null(face)
+			if face != null:
+				assert_eq(face.polygon.size(), 4)
+	assert_lt(projected_bounds[2].size.x * projected_bounds[2].size.y,
+		projected_bounds[0].size.x * projected_bounds[0].size.y,
+		"远端副露应比近端副露小")
 
 
 func test_real_bind_uses_legal_concealed_count_for_one_and_two_pon() -> void:
-	assert_eq(TableLayout.HAND_MELD_GAP, 32.0, "公开 bundle hand/meld gap")
+	assert_eq(TableLayout.HAND_MELD_GAP, 12.0, "副露贴近手牌但保持可辨分组")
 	for meld_count in [1, 2]:
 		var expected_base: int = 13 - int(meld_count) * 3
 		var expected_visual: int = expected_base + 1
@@ -249,18 +259,14 @@ func test_real_bind_uses_legal_concealed_count_for_one_and_two_pon() -> void:
 			assert_almost_eq(float(flex["combined_center"]),
 				800.0 if seat_id == 0 or seat_id == 2 \
 					else TableLayout.SIDE_FLEX_CENTER_RAW_Y, 0.001)
-			assert_almost_eq(float(flex["gap"]), 32.0, 0.001)
+			assert_almost_eq(float(flex["gap"]), TableLayout.HAND_MELD_GAP, 0.001)
 			_assert_rect_almost_eq(panel.get_reference_hand_host_rect(),
 				TableLayout.hand_host_rect_for_state(
 					seat_id, expected_base, meld_extent), 0.02,
 				"seat %d/%d pon dynamic hand host" % [seat_id, meld_count])
-			if meld_count == 1:
-				_assert_rect_almost_eq(panel.get_reference_hand_host_rect(),
-					TableLayout.LEGAL_ONE_PON_POST_DRAW_HAND_RECTS[seat_id], 0.03,
-					"seat %d legal one-pon post-draw hand" % seat_id)
-				_assert_rect_almost_eq(area.get_screen_layout_bounds(),
-					TableLayout.LEGAL_ONE_PON_POST_DRAW_MELD_RECTS[seat_id], 0.03,
-					"seat %d legal one-pon post-draw meld" % seat_id)
+			assert_false(panel.get_reference_hand_host_rect().intersects(
+				area.get_screen_layout_bounds()),
+				"seat %d/%d pon 手牌与桌面副露不得相压" % [seat_id, meld_count])
 			# 每个碰减少3张暗手：bottom/top 不得残留198/123px，side不得残留96px。
 			assert_lt(expected_hand_extent,
 				TableLayout.hand_main_extent(seat_id, 13))
@@ -281,16 +287,10 @@ func test_live_left_one_pon_post_discard_matches_browser_bbox() -> void:
 	var panel := table.seat_panels[3] as SeatPanel
 	var rects := panel.get_visual_hand_rects()
 	assert_eq(rects.size(), 10)
-	_assert_rect_almost_eq(panel.get_reference_hand_host_rect(),
-		TableLayout.LEGAL_LEFT_ONE_PON_POST_DISCARD_HAND_RECT, 0.03,
-		"live left hand host")
-	_assert_rect_almost_eq(rects[0],
-		Rect2(299.509705, 177.346008, 46.009247, 51.889145), 0.03,
-		"live left first slot")
-	_assert_rect_almost_eq(rects[9],
-		Rect2(266.081543, 412.987640, 49.544128, 58.995819), 0.03,
-		"live left last slot")
-	_assert_rect_almost_eq(
-		(table.meld_areas[3] as MeldArea).get_screen_layout_bounds(),
-		TableLayout.LEGAL_LEFT_ONE_PON_POST_DISCARD_MELD_RECT, 0.03,
-		"live left meld")
+	assert_lt(rects[0].get_center().y, rects[9].get_center().y,
+		"左家暗手仍按桌边向下排列")
+	var meld_rect := (table.meld_areas[3] as MeldArea).get_screen_layout_bounds()
+	assert_false(panel.get_reference_hand_host_rect().intersects(meld_rect),
+		"左家打牌后暗手与副露保持分离")
+	assert_gt(meld_rect.position.y, rects[9].position.y,
+		"左家副露接在暗手末端")

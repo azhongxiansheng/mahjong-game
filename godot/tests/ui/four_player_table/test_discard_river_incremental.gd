@@ -16,9 +16,9 @@ func _tiles(ids: Array) -> Array:
 		out.append(Tile.new(tid))
 	return out
 
-func _first_tile_node() -> TextureRect:
+func _first_tile_node() -> CanvasItem:
 	for e in _river._tile_nodes:
-		var node := e.get("node") as TextureRect
+		var node := e.get("node") as CanvasItem
 		if node != null and is_instance_valid(node):
 			return node
 	return null
@@ -77,23 +77,22 @@ func test_dora_change_reconciles_border_without_replaying_old_spring():
 		_river._process(1.0 / 60.0)
 	assert_true(_river._enter_animations.is_empty(), "先让首张牌完成入场")
 	_river.set_dora_ids([TileId.W5])  # 杠翻出新指示牌,W5 变宝牌
-	var dora_borders := _river.find_children("DoraBorder", "Panel", true, false)
+	var dora_borders := _river.find_children("DoraBorder", "Line2D", true, false)
 	assert_eq(dora_borders.size(), 1, "纯 dora 变化立即原位补金边")
 	assert_eq(_first_tile_node(), first, "参考 keyed 弃牌节点不得 remount")
 	assert_false(_river._enter_animations.any(func(state: Dictionary):
 		return state.get("node") == first_root), "旧牌不得重播 spring")
 
 	_river.set_tiles(_tiles([TileId.W5, TileId.T1]))
-	var second := _river._tile_nodes[1].get("node") as TextureRect
+	var second := _river._tile_nodes[1].get("node") as CanvasItem
 	var second_root := second.get_parent() as Node2D
 	assert_eq(_first_tile_node(), first, "dora 变化后 append 仍保留旧节点")
 	assert_eq(_river._enter_animations.size(), 1, "只给新增弃牌入场")
 	assert_eq(_river._enter_animations[0].get("node"), second_root)
 	assert_eq(second_root.modulate.a, 0.0)
-	assert_eq(second_root.position,
-		(second_root.get_meta("row_position") as Vector2) + Vector2(0, 16))
+	assert_eq(second_root.position, Vector2(0, 16))
 	await get_tree().process_frame
-	assert_eq(_river.find_children("LatestGlow", "Panel", true, false).size(), 1,
+	assert_eq(_river.find_children("LatestGlow", "Polygon2D", true, false).size(), 1,
 		"最新弃牌临时高亮仍在")
 
 func test_same_won_indices_append_keeps_existing_visible_node():

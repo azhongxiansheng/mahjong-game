@@ -64,6 +64,21 @@ func test_top_bar_container_does_not_cover_reference_top_hand() -> void:
 		"参考 header 不投全宽阴影；Logo 与按钮保留各自样式")
 
 
+func test_top_bar_utility_buttons_use_table_reference_style() -> void:
+	var table := _make_table()
+	for node_name in ["RulesButton", "SettingsButton"]:
+		var button := table.get_node_or_null(node_name) as Button
+		assert_not_null(button, "%s 必须提供稳定生产节点名" % node_name)
+		if button == null:
+			continue
+		assert_true(bool(button.get_meta("table_utility_button", false)))
+		var normal := button.get_theme_stylebox("normal") as StyleBoxFlat
+		assert_not_null(normal)
+		if normal != null:
+			assert_eq(normal.bg_color, Color("111827e8"))
+			assert_eq(normal.border_color, Color("d9b65bcc"))
+
+
 func test_3d_table_remains_explicit_opt_in() -> void:
 	var table := _make_table(true)
 

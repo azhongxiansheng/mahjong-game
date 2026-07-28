@@ -111,10 +111,10 @@ func test_reference_tile_sizes_are_exact() -> void:
 		"右家走 bundle q0/aw SVG 立方体 Q3 包围盒")
 	assert_eq(SeatPanel.opponent_hand_tile_size(3), Vector2(46.71, 66.63),
 		"左家只镜像同一 SVG 立方体")
-	assert_eq(Vector2(DiscardRiverView.TILE_W, DiscardRiverView.TILE_H), Vector2(39, 52),
-		"河牌覆盖参考 .river .tile--sm")
-	assert_eq(Vector2(MeldArea.TILE_W, MeldArea.TILE_H), Vector2(40, 53),
-		"副露覆盖参考 .melds .tile--sm")
+	assert_eq(Vector2(DiscardRiverView.TILE_W, DiscardRiverView.TILE_H), Vector2(34, 45),
+		"河牌使用紧凑公开牌尺寸")
+	assert_eq(Vector2(MeldArea.TILE_W, MeldArea.TILE_H), Vector2(34, 45),
+		"副露与河牌统一尺寸")
 
 
 func test_player_standing_edges_and_final_bbox_match_reference() -> void:
@@ -213,12 +213,12 @@ func test_deal_target_rects_cover_four_real_hand_directions() -> void:
 func test_reference_hand_slots_apply_real_screen_geometry() -> void:
 	var expected_first := {
 		1: Rect2(1261.194, 251.394, 47.074, 54.072),
-		2: Rect2(1010.583, 24.341, 31.137, 45.067),
+		2: Rect2(986.002, 24.341, 31.137, 45.067),
 		3: Rect2(297.752, 208.710, 46.437, 52.808),
 	}
 	var expected_last := {
 		1: Rect2(1303.480, 586.663, 52.143, 64.530),
-		2: Rect2(607.443, 24.341, 31.137, 45.067),
+		2: Rect2(582.861, 24.341, 31.137, 45.067),
 		3: Rect2(251.563, 535.848, 51.366, 62.885),
 	}
 	for seat_id in [1, 2, 3]:
@@ -393,8 +393,9 @@ func test_bottom_seat_label_matches_reference_structure_and_clearance() -> void:
 		assert_almost_eq(badge_rect.get_center().y, name_rect.get_center().y,
 			0.02, "bottom 状态徽章与 name-row 垂直居中")
 	var hand_host := panel.get_reference_hand_host_rect()
-	_assert_rect_almost_eq(hand_host, Rect2(302, 778, 996, 92), 0.02,
-		"bottom hand host")
+	_assert_rect_almost_eq(hand_host,
+		TableLayout.hand_host_rect_for_state(0, 13, 0.0, false), 0.02,
+		"bottom 打牌后手牌不再保留空摸牌槽")
 	var standing_edge_y := hand_host.position.y - 10.0
 	assert_gte(standing_edge_y - score_rect.end.y, 20.0,
 		"分数与牌顶棱至少保留参考 20px 净空")
@@ -488,7 +489,7 @@ func test_player_drawn_hand_and_pon_reflow_match_reference() -> void:
 	union = rects[0]
 	for rect in rects.slice(1):
 		union = union.merge(rect)
-	_assert_rect_almost_eq(union, Rect2(218.5, 778, 996, 92), 0.02,
+	_assert_rect_almost_eq(union, Rect2(228.5, 778, 996, 92), 0.02,
 		"bottom hand shifts with pon")
 
 
@@ -699,18 +700,18 @@ func test_card_base_uses_reference_double_shadow() -> void:
 
 func test_river_depth_layers_follow_all_four_seat_directions() -> void:
 	var expected := {
-		0: {"green_pos": Vector2(0, 52), "green_size": Vector2(39, 6),
-			"white_pos": Vector2(0, 49), "white_size": Vector2(39, 7),
-			"sharp": Vector2(0, 7), "soft": Vector2(0, 9)},
-		1: {"green_pos": Vector2(-6, 0), "green_size": Vector2(6, 52),
-			"white_pos": Vector2(-4, 0), "white_size": Vector2(7, 52),
-			"sharp": Vector2(-7, 0), "soft": Vector2(-9, 0)},
-		2: {"green_pos": Vector2(0, -6), "green_size": Vector2(39, 6),
-			"white_pos": Vector2(0, -4), "white_size": Vector2(39, 7),
-			"sharp": Vector2(0, -7), "soft": Vector2(0, -9)},
-		3: {"green_pos": Vector2(39, 0), "green_size": Vector2(6, 52),
-			"white_pos": Vector2(36, 0), "white_size": Vector2(7, 52),
-			"sharp": Vector2(7, 0), "soft": Vector2(9, 0)},
+		0: {"green_pos": Vector2(0, 45), "green_size": Vector2(34, 2),
+			"white_pos": Vector2(0, 44), "white_size": Vector2(34, 2),
+			"sharp": Vector2(0, 2), "soft": Vector2(0, 3)},
+		1: {"green_pos": Vector2(-2, 0), "green_size": Vector2(2, 45),
+			"white_pos": Vector2(-1, 0), "white_size": Vector2(2, 45),
+			"sharp": Vector2(-2, 0), "soft": Vector2(-3, 0)},
+		2: {"green_pos": Vector2(0, -2), "green_size": Vector2(34, 2),
+			"white_pos": Vector2(0, -1), "white_size": Vector2(34, 2),
+			"sharp": Vector2(0, -2), "soft": Vector2(0, -3)},
+		3: {"green_pos": Vector2(34, 0), "green_size": Vector2(2, 45),
+			"white_pos": Vector2(33, 0), "white_size": Vector2(2, 45),
+			"sharp": Vector2(2, 0), "soft": Vector2(3, 0)},
 	}
 	for seat_id in range(4):
 		var river := DiscardRiverView.new()
@@ -749,8 +750,8 @@ func test_meld_tiles_get_reference_depth_layers() -> void:
 	var white := _named_child(area, "WhiteSide") as ColorRect
 	assert_not_null(green)
 	assert_not_null(white)
-	assert_eq(green.size, Vector2(40, 6))
-	assert_eq(white.size, Vector2(40, 7))
+	assert_eq(green.size, Vector2(34, 2))
+	assert_eq(white.size, Vector2(34, 2))
 
 
 func test_four_player_table_propagates_seat_to_depth_renderers() -> void:
