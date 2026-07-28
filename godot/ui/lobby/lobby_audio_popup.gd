@@ -72,18 +72,24 @@ func _build_ui() -> void:
 	_panel.offset_top = -PANEL_H - PANEL_BOTTOM_GAP
 	_panel.offset_right = -PANEL_RIGHT_GAP
 	_panel.offset_bottom = -PANEL_BOTTOM_GAP
-	_panel.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_OMAMORI_CASE, 38, 44, 38, 34, 22, 8
-	))
+	var panel_style := DesignTokens.make_shared_panel_style("Modal")
+	panel_style.content_margin_left = 22
+	panel_style.content_margin_right = 22
+	panel_style.content_margin_top = 8
+	panel_style.content_margin_bottom = 8
+	_panel.add_theme_stylebox_override("panel", panel_style)
 	add_child(_panel)
 
 	_inner = PanelContainer.new()
 	_inner.name = "AudioWashiInner"
 	_inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_inner.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_inner.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_WASHI_PANEL, 28, 16, 28, 16, 16, 6
-	))
+	var inner_style := DesignTokens.make_shared_panel_style("Panel")
+	inner_style.content_margin_left = 16
+	inner_style.content_margin_right = 16
+	inner_style.content_margin_top = 6
+	inner_style.content_margin_bottom = 6
+	_inner.add_theme_stylebox_override("panel", inner_style)
 	_panel.add_child(_inner)
 
 	var content_margin := MarginContainer.new()
@@ -111,7 +117,7 @@ func _build_ui() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 20)
-	title.add_theme_color_override("font_color", DesignTokens.LOBBY_CINNABAR)
+	title.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_TITLE)
 	header.add_child(title)
 
 	_preview_btn = DesignTokens.make_button("试听", DesignTokens.BtnRole.SECONDARY, Vector2(76, 34))
@@ -154,14 +160,14 @@ func _build_slider_block(title_text: String, is_bgm: bool) -> Control:
 	title.text = title_text
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	title.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_BODY)
 	row.add_child(title)
 
 	var value_lbl := Label.new()
 	value_lbl.custom_minimum_size = Vector2(52, 0)
 	value_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	value_lbl.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	value_lbl.add_theme_color_override("font_color", DesignTokens.LOBBY_CINNABAR)
+	value_lbl.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_TITLE)
 	row.add_child(value_lbl)
 
 	var slider := HSlider.new()

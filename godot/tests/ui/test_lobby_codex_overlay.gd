@@ -176,7 +176,7 @@ func test_codex_is_full_screen_bounded_and_has_keyboard_focus_hooks() -> void:
 		assert_eq((shell.get_node("%%%s" % hook_name) as Control).focus_mode, Control.FOCUS_ALL)
 
 
-func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
+func test_codex_uses_obsidian_stage_roster_and_readable_detail_materials() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	if not _require_hooks(shell, [
@@ -188,12 +188,12 @@ func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
 	await get_tree().process_frame
 	var panel_style := (shell.get_node("%CodexPanel") as Control).get_theme_stylebox("panel")
 	var detail_style := (shell.get_node("%CodexDetailScroll") as Control).get_theme_stylebox("panel")
-	assert_true(panel_style is StyleBoxTexture)
-	assert_true(detail_style is StyleBoxTexture)
-	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
-		"res://assets/ui/lobby_materials/lobby_lacquer_panel_9slice.png")
-	assert_eq((detail_style as StyleBoxTexture).texture.resource_path,
-		"res://assets/ui/lobby_materials/lobby_scroll_panel_9slice.png")
+	assert_true(panel_style is StyleBoxFlat)
+	assert_true(detail_style is StyleBoxFlat)
+	if panel_style is StyleBoxFlat:
+		assert_eq((panel_style as StyleBoxFlat).bg_color, Color("111217f5"))
+	if detail_style is StyleBoxFlat:
+		assert_eq((detail_style as StyleBoxFlat).border_width_left, 1)
 	var entries := shell.get_node("%CodexRoster").find_children("CodexRosterEntry*", "Button", true, false)
 	assert_gte(entries.size(), 2, "木札名录必须来自真实 catalog")
 	if entries.size() >= 2:
@@ -201,6 +201,17 @@ func test_codex_uses_generated_stage_roster_and_scroll_materials() -> void:
 		(entries[1] as Button).pressed.emit()
 		await get_tree().process_frame
 		assert_eq((shell.get_node("%CodexDetailTitle") as Label).text, expected)
+	var detail_title := shell.get_node("%CodexDetailTitle") as Label
+	assert_gt(detail_title.get_theme_color("font_color").get_luminance(), 0.45)
+	var detail_content := shell.find_child("CodexDetailContent", true, false) as Control
+	assert_not_null(detail_content, "资料馆必须保留详情正文容器")
+	if detail_content == null:
+		return
+	for node in detail_content.find_children("*", "Label", true, false):
+		var label := node as Label
+		if not label.text.is_empty():
+			assert_gt(label.get_theme_color("font_color").get_luminance(), 0.45,
+				"资料馆黑曜详情正文必须可读")
 
 
 func test_codex_has_weighted_header_tabs_and_three_layer_body() -> void:

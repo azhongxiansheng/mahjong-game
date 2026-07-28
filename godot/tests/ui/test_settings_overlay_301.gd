@@ -79,12 +79,20 @@ func test_settings_has_fixed_header_scroll_body_footer_and_mask_close() -> void:
 	var scroll := overlay.get_node_or_null("%SettingsContentScroll") as ScrollContainer
 	var footer := overlay.get_node_or_null("%SettingsFooter") as Control
 	var backdrop := overlay.get_node_or_null("%SettingsBackdrop") as Control
+	var modal := overlay.find_child("SettingsModal", true, false) as Panel
 	assert_not_null(header)
 	assert_not_null(scroll)
 	assert_not_null(footer)
 	assert_not_null(backdrop)
-	if header == null or scroll == null or footer == null or backdrop == null:
+	assert_not_null(modal)
+	if header == null or scroll == null or footer == null or backdrop == null or modal == null:
 		return
+	var modal_style := modal.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_not_null(modal_style)
+	if modal_style == null:
+		return
+	assert_eq(modal_style.bg_color, Color("111217f5"))
+	assert_eq(modal_style.border_width_left, 1)
 	assert_lt(header.get_global_rect().end.y, scroll.get_global_rect().end.y)
 	assert_lt(scroll.get_global_rect().position.y, footer.get_global_rect().position.y)
 	watch_signals(overlay)

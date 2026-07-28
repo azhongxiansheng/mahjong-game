@@ -52,6 +52,16 @@ func test_panel_shows_title_ranks_and_buttons() -> void:
 	assert_eq(return_btn.tooltip_text, return_btn.text)
 	assert_eq(rematch_btn.get_meta("dt_button_role"), DT.BtnRole.PRIMARY)
 	assert_eq(return_btn.get_meta("dt_button_role"), DT.BtnRole.SECONDARY)
+	var modal := panel.find_child("SettlementModal", true, false) as Panel
+	assert_not_null(modal)
+	if modal == null:
+		return
+	var modal_style := modal.get_theme_stylebox("panel") as StyleBoxFlat
+	assert_not_null(modal_style)
+	if modal_style == null:
+		return
+	assert_eq(modal_style.bg_color, Color("111217f5"))
+	assert_eq(modal_style.border_width_left, 1)
 
 
 func test_extreme_button_text_keeps_fixed_settlement_geometry() -> void:

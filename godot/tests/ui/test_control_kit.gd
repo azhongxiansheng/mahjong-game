@@ -2,20 +2,20 @@ extends GutTest
 
 # DT 交互控件 kit：按钮角色 / 滑条 / 主题补丁
 
-const EXPECTED_PRIMARY := Color("8b5cf6")
-const EXPECTED_SECONDARY := Color("3ca9d6")
-const EXPECTED_DANGER := Color("e04b55")
-const EXPECTED_FOCUS := Color("52d3ff")
-const EXPECTED_TEXT := Color("f3f1ff")
+const EXPECTED_PRIMARY := Color("c99a55")
+const EXPECTED_SECONDARY := Color("8f8577")
+const EXPECTED_DANGER := Color("c9675f")
+const EXPECTED_FOCUS := Color("d7b56d")
+const EXPECTED_TEXT := Color("eee9df")
 
 
-func test_make_button_primary_uses_spirit_purple_instead_of_gold() -> void:
+func test_make_button_primary_uses_narrow_copper_edge() -> void:
 	var btn := DT.make_button("确定", DT.BtnRole.PRIMARY)
 	add_child_autofree(btn)
 	var sb: StyleBoxFlat = btn.get_theme_stylebox("normal") as StyleBoxFlat
 	assert_not_null(sb)
 	assert_eq(sb.border_color, EXPECTED_PRIMARY)
-	assert_ne(sb.border_color, DT.TEXT_TITLE, "普通 PRIMARY 不得使用高价值金色")
+	assert_eq(sb.border_width_left, 1, "方案 A 常态必须是 1px 窄边")
 	assert_eq(btn.get_theme_color("font_color"), EXPECTED_TEXT)
 
 
@@ -51,6 +51,15 @@ func test_button_roles_share_obsidian_talisman_five_state_contract() -> void:
 		assert_eq(normal.corner_radius_top_right, 7)
 		assert_eq(normal.corner_radius_bottom_right, 2)
 		assert_eq(normal.corner_radius_bottom_left, 7)
+		if role == DT.BtnRole.GHOST:
+			assert_eq(normal.border_width_left, 0, "Ghost 可用态保持开放边缘")
+			assert_gt(disabled.border_width_left, normal.border_width_left,
+				"Ghost disabled 以断续侧缘区别可用态")
+		else:
+			assert_eq(normal.border_width_left, 1)
+			assert_eq(normal.border_width_top, 1)
+			assert_eq(normal.border_width_right, 1)
+			assert_eq(normal.border_width_bottom, 1)
 		assert_gt(hover.border_width_top, normal.border_width_top,
 			"hover 除提亮外还要加粗上缘")
 		assert_eq(focus.bg_color.a, 0.0, "focus 是独立透明叠层，不能冒充 hover 底色")
@@ -131,3 +140,8 @@ func test_patch_project_theme_idempotent() -> void:
 	if theme:
 		assert_not_null(theme.get_stylebox("slider", "HSlider"))
 		assert_not_null(theme.get_stylebox("panel", "PopupMenu"))
+		var tooltip := theme.get_stylebox("panel", "TooltipPanel") as StyleBoxFlat
+		assert_not_null(tooltip)
+		if tooltip != null:
+			assert_eq(tooltip.bg_color, Color("111217f5"))
+			assert_eq(tooltip.border_width_left, 1)

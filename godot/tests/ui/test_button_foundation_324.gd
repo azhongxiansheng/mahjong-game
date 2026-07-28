@@ -16,6 +16,21 @@ func test_project_theme_default_button_no_longer_uses_texture_frame() -> void:
 			"全局 Button.%s 必须脱离旧厚框 PNG" % state)
 	assert_ne(theme.get_stylebox("hover", "Button"), theme.get_stylebox("focus", "Button"),
 		"hover 与 focus 不得复用同一 StyleBox")
+	var normal := theme.get_stylebox("normal", "Button") as StyleBoxFlat
+	var hover := theme.get_stylebox("hover", "Button") as StyleBoxFlat
+	var focus := theme.get_stylebox("focus", "Button") as StyleBoxFlat
+	var pressed := theme.get_stylebox("pressed", "Button") as StyleBoxFlat
+	var disabled := theme.get_stylebox("disabled", "Button") as StyleBoxFlat
+	assert_eq(normal.border_width_left, 1, "默认普通 Button 必须使用方案 A 窄边")
+	assert_gt(hover.border_width_top, normal.border_width_top, "默认 hover 必须有非颜色上缘提示")
+	assert_gt(focus.border_width_left, normal.border_width_left, "默认 focus 必须有非颜色侧缘提示")
+	assert_gt(pressed.border_width_bottom, normal.border_width_bottom, "默认 pressed 必须下沉底缘")
+	assert_lt(disabled.border_width_top, normal.border_width_top, "默认 disabled 必须使用断缘")
+	var panel_style := theme.get_stylebox("panel", "Panel") as StyleBoxFlat
+	assert_not_null(panel_style)
+	assert_eq(panel_style.content_margin_left, 24.0, "共享换肤不得改变默认 Panel 内容几何")
+	assert_eq(panel_style.content_margin_top, 24.0, "共享换肤不得改变默认 Panel 内容几何")
+	assert_true(theme.get_stylebox("panel", "PanelContainer") is StyleBoxFlat)
 
 
 func test_real_lobby_fixed_slot_keeps_geometry_and_gets_ellipsis_contract() -> void:
