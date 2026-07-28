@@ -451,6 +451,10 @@ func test_complete_500_respects_retry_deadline_and_does_not_starve_renew() -> vo
 		"complete must not tight-loop before retry deadline")
 	# 失败后 complete deadline 应在未来（退避生效）
 	if client.complete_attempt_count > attempts_before:
+		for _i in range(40):
+			if client.get_next_complete_ms_for_test() > client.clock_now_ms:
+				break
+			await get_tree().process_frame
 		assert_gt(client.get_next_complete_ms_for_test(), client.clock_now_ms)
 
 	# complete backlog 期间：推进到 renew 到期，必须仍能 register
