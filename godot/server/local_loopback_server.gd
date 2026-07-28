@@ -42,6 +42,11 @@ var _command_cache: Dictionary = {}
 var _participants: Array = []
 # 本局起始分：仅 start 成功后冻结；失败 start 不得污染（空 = 未冻结）
 var _hand_start_scores: Array = []
+# #375：本局起始本场 / 立直棒（与起始分同生命周期冻结）
+var _hand_start_honba: int = 0
+var _hand_start_riichi_sticks: int = 0
+# #375：本局结算提交幂等 tracker
+var _settlement_tracker: Dictionary = HandSettlement.empty_tracker()
 # E2-04：构造期模式模块包（STANDARD 四零 / TRASH_TALK 最小对象）
 var mode_modules: ModeModuleBundle = null
 # #241：快照 module provider 注册表（STANDARD 仅 core_table；TRASH_TALK + reward_window）
@@ -98,6 +103,9 @@ func _init(
 	_journals = [[], [], [], []]
 	_command_cache = {}
 	_hand_start_scores = []
+	_hand_start_honba = 0
+	_hand_start_riichi_sticks = 0
+	_settlement_tracker = HandSettlement.empty_tracker()
 	_participants = [&"HUMAN", &"AI", &"AI", &"AI"]
 	mode_modules = null
 	snapshot_registry = SnapshotModuleRegistry.make_standard()
@@ -154,10 +162,12 @@ func start() -> bool:
 	var auth_h: String = snap.sha256()
 	if auth_h.is_empty() or auth_h.length() != 64 or not snap.can_restore():
 		return false
-	# 无副作用时点：mutation 前读取本局起始分候选；仅 start 成功后提交
+	# 无副作用时点：mutation 前读取本局起始分/本场/立直棒候选；仅 start 成功后提交
 	var start_scores_candidate: Array = _capture_scores_array()
 	if start_scores_candidate.size() != 4:
 		return false
+	var start_honba_candidate: int = int(_bc.state.honba)
+	var start_riichi_candidate: int = int(_bc.state.riichi_sticks)
 	var frozen_seq: int = _server_seq
 	var frozen_journals: Array = []
 	for s in range(4):
@@ -165,12 +175,15 @@ func start() -> bool:
 	var frozen_cache: Dictionary = _command_cache.duplicate(true)
 	var frozen_started: bool = _started
 	var frozen_hand_start: Array = _hand_start_scores.duplicate()
+	var frozen_hand_start_honba: int = _hand_start_honba
+	var frozen_hand_start_riichi_sticks: int = _hand_start_riichi_sticks
 	# #253 Round 8：prepare 与后续 mutation 同一事务；含 inv/slot/registry index
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
 	var frozen_claim_seen: bool = _reward_claim_seen_open
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
+	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
 
 	# #253：跨局库存实例 → 新 BC.registry 重绑（relic held / delayed armed）
 	if mode_modules != null and mode_modules.is_trash_talk() and _item_module() != null:
@@ -196,20 +209,20 @@ func start() -> bool:
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 		)
 	if not publish_snapshot():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 		)
 	# E5-04 / #252：权威开局快照后、首条 TURN_PROMPT 前开窗
 	if not _maybe_open_reward_window():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 		)
 	# 开窗后 OPEN 投影 SNAP（seq 连续；失败全回滚）
 	if _reward_module() != null:
@@ -217,27 +230,45 @@ func start() -> bool:
 			return _fail_start_rollback(
 				snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 				frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled, frozen_started, frozen_hand_start
+				frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 			)
 	# AI 庄：先推进到真人决策入口再发 TURN/CLAIM prompt（否则 AI TURN 会令 start 失败）
 	if not _auto_advance_ai():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 		)
 	if bool(_bc.get("_settled")):
+		# #375：AI 庄 start 内终局（如合法 TSUMO）须同事务发布 HAND_SETTLED。
+		# 顺序：先冻结起分供 HandSettlement → 清空本局 tracker/emitted → emit；
+		# 成功后不得再清空已提交 tracker（commit 写入的 canonical 必须保留）。
 		_hand_start_scores = start_scores_candidate
+		_hand_start_honba = start_honba_candidate
+		_hand_start_riichi_sticks = start_riichi_candidate
+		_settlement_tracker = HandSettlement.empty_tracker()
 		_hand_settled_emitted = false
+		if not _emit_settled_if_needed():
+			return _fail_start_rollback(
+				snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+				frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+				frozen_hand_settled, frozen_started, frozen_hand_start,
+				frozen_hand_start_honba, frozen_hand_start_riichi_sticks,
+				frozen_settlement_tracker
+			)
+		# deferred（TRASH_TALK CLOSING）仍算 start 成功；已发布则 tracker/emitted 已提交
 		_started = true
 		return true
 	if not _emit_private_prompt():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
 		)
 	_hand_start_scores = start_scores_candidate
+	_hand_start_honba = start_honba_candidate
+	_hand_start_riichi_sticks = start_riichi_candidate
+	_settlement_tracker = HandSettlement.empty_tracker()
 	_hand_settled_emitted = false
 	_started = true
 	return true
@@ -255,15 +286,22 @@ func _fail_start_rollback(
 	frozen_hand_deferred: bool,
 	frozen_hand_settled: bool,
 	frozen_started: bool,
-	frozen_hand_start: Array
+	frozen_hand_start: Array,
+	frozen_hand_start_honba: int = 0,
+	frozen_hand_start_riichi_sticks: int = 0,
+	frozen_settlement_tracker: Dictionary = {}
 ) -> bool:
 	if _rollback_transaction(
 		snap, frozen_seq, frozen_journals, frozen_cache,
 		frozen_rw, frozen_rw_clock, frozen_claim_seen,
-		frozen_hand_deferred, frozen_hand_settled
+		frozen_hand_deferred, frozen_hand_settled,
+		frozen_settlement_tracker
 	):
 		_started = frozen_started
+		# #375：三项起分冻结须同事务恢复（scores + honba + riichi_sticks）
 		_hand_start_scores = frozen_hand_start
+		_hand_start_honba = frozen_hand_start_honba
+		_hand_start_riichi_sticks = frozen_hand_start_riichi_sticks
 	return false
 
 
@@ -517,13 +555,15 @@ func _process_action_core(
 	var frozen_claim_seen: bool = _reward_claim_seen_open
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
+	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
 
 	# #253：ITEM_USE 仅命令——不发 ACTION_APPLIED / 无 ITEM_USE 回声
 	if action.kind == "ITEM_USE":
 		return _submit_item_use(
 			action, cmd, fp, snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 
 	# 捕获弃牌源（DISCARD/RIICHI）
@@ -557,7 +597,8 @@ func _process_action_core(
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -566,7 +607,8 @@ func _process_action_core(
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -577,7 +619,8 @@ func _process_action_core(
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 	else:
@@ -586,7 +629,8 @@ func _process_action_core(
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 		# 屏障释放后可能已 settle 窗口并 OPEN 下一窗；再处理摸打
@@ -595,7 +639,8 @@ func _process_action_core(
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-					frozen_hand_settled
+					frozen_hand_settled,
+			frozen_settlement_tracker
 				)
 				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 		else:
@@ -610,7 +655,8 @@ func _process_action_core(
 					_rollback_transaction(
 						snap, frozen_seq, frozen_journals, frozen_cache,
 						frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-						frozen_hand_settled
+						frozen_hand_settled,
+			frozen_settlement_tracker
 					)
 					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 			else:
@@ -619,7 +665,8 @@ func _process_action_core(
 						_rollback_transaction(
 							snap, frozen_seq, frozen_journals, frozen_cache,
 							frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-							frozen_hand_settled
+							frozen_hand_settled,
+			frozen_settlement_tracker
 						)
 						return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 				# CLAIM 在 CLOSING 屏障期间仍须对真人可见；普通 TURN 受屏障阻止
@@ -627,7 +674,8 @@ func _process_action_core(
 					_rollback_transaction(
 						snap, frozen_seq, frozen_journals, frozen_cache,
 						frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-						frozen_hand_settled
+						frozen_hand_settled,
+			frozen_settlement_tracker
 					)
 					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -636,7 +684,8 @@ func _process_action_core(
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -665,7 +714,8 @@ func _rollback_transaction(
 	frozen_rw_clock: int = -1,
 	frozen_claim_seen: bool = false,
 	frozen_hand_deferred: Variant = null,
-	frozen_hand_settled: Variant = null
+	frozen_hand_settled: Variant = null,
+	frozen_settlement_tracker: Variant = null
 ) -> bool:
 	if snap == null or not snap.restore_into(_bc):
 		_rollback_failed = true
@@ -692,6 +742,9 @@ func _rollback_transaction(
 		_reward_hand_settled_deferred = bool(frozen_hand_deferred)
 	if typeof(frozen_hand_settled) == TYPE_BOOL:
 		_hand_settled_emitted = bool(frozen_hand_settled)
+	# #375：settlement tracker 与 ARS 同事务恢复，避免 commit 后回滚跳过重提
+	if typeof(frozen_settlement_tracker) == TYPE_DICTIONARY:
+		_settlement_tracker = (frozen_settlement_tracker as Dictionary).duplicate(true)
 	return true
 
 ## 业务指纹（ADR 全文唯一）：session_id + room_id + seat + hand_seq + decision_id
@@ -920,6 +973,7 @@ func publish_resync_snapshot_and_prompt() -> Dictionary:
 	var frozen_claim_seen: bool = _reward_claim_seen_open
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
+	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
 	if bool(_bc.get("_settled")):
 		# 重连：始终先发新鲜 ROOM_SNAPSHOT（首条业务事件）
 		if not publish_snapshot():
@@ -929,7 +983,8 @@ func publish_resync_snapshot_and_prompt() -> Dictionary:
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
 		return {"ok": true, "advanced": true, "code": ""}
@@ -944,7 +999,8 @@ func publish_resync_snapshot_and_prompt() -> Dictionary:
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return {"ok": false, "advanced": false, "code": ERROR_EVENT_PUBLISH_FAILED}
 	return {"ok": true, "advanced": true, "code": ""}
@@ -1004,6 +1060,7 @@ func step_ai_once() -> Dictionary:
 	var frozen_claim_seen: bool = _reward_claim_seen_open
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
+	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
 
 	# CLOSING 屏障：先刷新窗；普通 DRAW/TURN 不得越过；CLAIM/ROB 可推进
 	for s0 in range(4):
@@ -1033,7 +1090,8 @@ func step_ai_once() -> Dictionary:
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-					frozen_hand_settled
+					frozen_hand_settled,
+			frozen_settlement_tracker
 				)
 				return {
 					"ok": false, "advanced": false, "waiting_human": false,
@@ -1049,7 +1107,8 @@ func step_ai_once() -> Dictionary:
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return {
 				"ok": false, "advanced": false, "waiting_human": false,
@@ -1070,7 +1129,8 @@ func step_ai_once() -> Dictionary:
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-					frozen_hand_settled
+					frozen_hand_settled,
+			frozen_settlement_tracker
 				)
 				return {
 					"ok": false, "advanced": false, "waiting_human": false,
@@ -1120,7 +1180,8 @@ func step_ai_once() -> Dictionary:
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return {
 				"ok": true, "advanced": false, "waiting_human": false,
@@ -1131,7 +1192,8 @@ func step_ai_once() -> Dictionary:
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return {
 				"ok": false, "advanced": false, "waiting_human": false,
@@ -1143,7 +1205,8 @@ func step_ai_once() -> Dictionary:
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-					frozen_hand_settled
+					frozen_hand_settled,
+			frozen_settlement_tracker
 				)
 				return {
 					"ok": false, "advanced": false, "waiting_human": false,
@@ -1176,7 +1239,8 @@ func step_ai_once() -> Dictionary:
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-					frozen_hand_settled
+					frozen_hand_settled,
+			frozen_settlement_tracker
 				)
 				return {
 					"ok": false, "advanced": false, "waiting_human": false,
@@ -1187,7 +1251,8 @@ func step_ai_once() -> Dictionary:
 					_rollback_transaction(
 						snap, frozen_seq, frozen_journals, frozen_cache,
 						frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-						frozen_hand_settled
+						frozen_hand_settled,
+			frozen_settlement_tracker
 					)
 					return {
 						"ok": false, "advanced": false, "waiting_human": false,
@@ -1769,6 +1834,15 @@ func _next_cmd() -> String:
 
 
 ## 从 BC.state.scores 捕获 4 席整数分；非法 → 空 Array。
+func _enforce_settlement_conservation() -> bool:
+	# null mode_modules：不静默当 TRASH_TALK；按 STANDARD 严格守恒
+	if mode_modules == null:
+		return true
+	if mode_modules.is_trash_talk():
+		return false
+	return true
+
+
 func _capture_scores_array() -> Array:
 	if _bc == null or _bc.state == null:
 		return []
@@ -1781,81 +1855,25 @@ func _capture_scores_array() -> Array:
 
 
 ## 从真实 BC.events + state.scores + 冻结起始分推导 HAND_SETTLED payload。
-## WIN：scores = state.scores 应用 WIN_DECLARED.extra.payout / winner_total（GameDriver 语义）。
-## 流局：scores = state.scores（#232 不应用 noten / 整场规则）。
+## #375：与 GameDriver 共用 HandSettlement（含 noten / 流し满贯 / adjustments）。
 ## 失败 → {}。
 func _build_hand_settled_payload() -> Dictionary:
 	if _bc == null or _bc.state == null:
 		return {}
 	if _hand_start_scores.size() != 4:
 		return {}
-	var outcome: String = ""
-	var winner_seats: Array = []
-	var loser_seat: int = -1
-	var win_extra: Dictionary = {}
-	var winner_actor: int = -1
-	# 倒序找最末结算相关事件（真实 BattleEvent，非伪装）
-	for i in range(_bc.events.size() - 1, -1, -1):
-		var ev: BattleEvent = _bc.events[i]
-		if ev == null:
-			continue
-		if ev.type == &"WIN_DECLARED":
-			win_extra = ev.extra if typeof(ev.extra) == TYPE_DICTIONARY else {}
-			winner_actor = int(ev.actor_seat)
-			if bool(win_extra.get("is_tsumo", false)):
-				outcome = "TSUMO"
-				winner_seats = [winner_actor]
-				loser_seat = -1
-			else:
-				outcome = "RON"
-				winner_seats = [winner_actor]
-				loser_seat = int(win_extra.get("discarder_seat", -1))
-			break
-		if ev.type == &"ABORTIVE_DRAW":
-			outcome = "ABORTIVE_DRAW"
-			winner_seats = []
-			loser_seat = -1
-			break
-		if ev.type == &"EXHAUSTIVE_DRAW":
-			outcome = "EXHAUSTIVE_DRAW"
-			winner_seats = []
-			loser_seat = -1
-			break
-	if outcome.is_empty():
+	var tenpai: Array = HandSettlement.detect_tenpai_array(_bc.state)
+	var built: Dictionary = HandSettlement.build(
+		_bc.events,
+		_hand_start_scores,
+		_bc.state,
+		tenpai,
+		_hand_start_honba,
+		_hand_start_riichi_sticks
+	)
+	if built.is_empty() or not HandSettlement.is_valid_result(built):
 		return {}
-
-	var final_scores: Array = _capture_scores_array()
-	if final_scores.size() != 4:
-		return {}
-	if outcome == "RON" or outcome == "TSUMO":
-		# GameDriver.apply_result：loser -= payout[seat]；winner += winner_total
-		var payout: Dictionary = win_extra.get("payout", {})
-		if typeof(payout) != TYPE_DICTIONARY:
-			return {}
-		for seat_id in payout:
-			var si: int = int(seat_id)
-			if si < 0 or si > 3:
-				return {}
-			final_scores[si] = int(final_scores[si]) - int(payout[seat_id])
-		if winner_actor < 0 or winner_actor > 3:
-			return {}
-		final_scores[winner_actor] = int(final_scores[winner_actor]) \
-			+ int(win_extra.get("winner_total", 0))
-		if outcome == "RON" and (loser_seat < 0 or loser_seat > 3 or loser_seat == winner_actor):
-			return {}
-
-	var deltas: Array = []
-	for i2 in range(4):
-		deltas.append(int(final_scores[i2]) - int(_hand_start_scores[i2]))
-
-	return {
-		"hand_seq": int(_bc.state.hand_seq),
-		"outcome": outcome,
-		"winner_seats": winner_seats,
-		"loser_seat": loser_seat,
-		"score_deltas": deltas,
-		"scores": final_scores,
-	}
+	return built
 
 
 ## 四席 HAND_SETTLED 原子发布：先全部 make+strict roundtrip，再同一 server_seq 提交。
@@ -1887,11 +1905,12 @@ func _emit_settled_if_needed() -> bool:
 
 
 ## 四席同 seq 发布 HAND_SETTLED；本局已发则幂等 true。
+## #375：先完整校验 payload，再原子 commit 账本到 BattleState，最后同 seq 发布。
 func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 	if _hand_settled_emitted:
 		_reward_hand_settled_deferred = false
 		return true
-	if payload.is_empty():
+	if payload.is_empty() or not HandSettlement.is_valid_result(payload):
 		return false
 	var candidate: int = _server_seq + 1
 	var prepared: Array = []
@@ -1906,6 +1925,17 @@ func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 		if ne == null:
 			return false
 		prepared.append(ne)
+	# 校验全部通过后：提交账本（幂等）再发布事件
+	var ledger: Array = _capture_scores_array()
+	if ledger.size() != 4:
+		ledger = [0, 0, 0, 0]
+		for i in range(4):
+			ledger[i] = int(payload["scores"][i])
+	if not HandSettlement.commit(
+		payload, ledger, _settlement_tracker, _bc.state,
+		_hand_start_scores, _enforce_settlement_conservation()
+	):
+		return false
 	_server_seq = candidate
 	for seat2 in range(4):
 		(_journals[seat2] as Array).append(prepared[seat2])
@@ -2022,7 +2052,8 @@ func _submit_item_use(
 	frozen_rw_clock: int,
 	frozen_claim_seen: bool,
 	frozen_hand_deferred: bool,
-	frozen_hand_settled: bool
+	frozen_hand_settled: bool,
+	frozen_settlement_tracker: Dictionary = {}
 ) -> CommandResult:
 	# 阶段/decision：须有该席当前 decision 窗且 decision_id 对齐
 	if _bc == null or _bc.state == null:
@@ -2058,7 +2089,8 @@ func _submit_item_use(
 			_rollback_transaction(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-				frozen_hand_settled
+				frozen_hand_settled,
+			frozen_settlement_tracker
 			)
 			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 		domain_events.append(ev)
@@ -2068,7 +2100,8 @@ func _submit_item_use(
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 	for fev in fin.get("events", []):
@@ -2079,7 +2112,8 @@ func _submit_item_use(
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled
+			frozen_hand_settled,
+			frozen_settlement_tracker
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 	var cr_ok := CommandResult.from_dict({
@@ -2418,6 +2452,7 @@ func advance_reward_time(now_ms: int) -> bool:
 	var frozen_claim: bool = _reward_claim_seen_open
 	var frozen_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
+	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
 
 	# 仅当本 tick 真正完成 CLOSING→终态/OPEN 转换时才恢复普通推进
 	var rw0: RewardWindowModule = _reward_module()
@@ -2452,6 +2487,7 @@ func advance_reward_time(now_ms: int) -> bool:
 	_reward_claim_seen_open = frozen_claim
 	_reward_hand_settled_deferred = frozen_deferred
 	_hand_settled_emitted = frozen_hand_settled
+	_settlement_tracker = frozen_settlement_tracker.duplicate(true)
 	if not frozen_rw.is_empty() and not _reward_restore_state(frozen_rw):
 		_rollback_failed = true
 		_started = false

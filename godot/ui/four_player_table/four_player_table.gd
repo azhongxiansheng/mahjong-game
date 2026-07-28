@@ -109,6 +109,9 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
+		# #375：权威分来自 BattleState.scores，不读可能漂移的 Seat.points
+		if i < state.scores.size():
+			sp.set_score(int(state.scores[i]))
 		if tenpai_by_subject.has(i):
 			sp.set_viewer_wait_tiles(tenpai_by_subject.get(i, []))
 		else:

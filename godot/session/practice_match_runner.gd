@@ -26,11 +26,12 @@ func run_async(
 		var run_result: Dictionary = await play_hand.call(bc)
 		var events: Array = run_result.get("events", [])
 		var applied: Dictionary = driver.apply_result(events)
-		if after_hand.is_valid():
-			after_hand.call(driver.cumulative_scores.duplicate(), applied.duplicate(true))
 		if applied.get("kind", "") == "exhaustive_draw":
 			applied["tenpai_array"] = _detect_tenpai_array(bc)
 		driver.advance_or_finish(applied)
+		# #375：after_hand 使用已提交终分（含 noten / 转分），避免过早分数
+		if after_hand.is_valid():
+			after_hand.call(driver.cumulative_scores.duplicate(), applied.duplicate(true))
 
 	if not driver.finished:
 		return _summary(config, driver, hand_count, false, &"HAND_LIMIT_EXCEEDED")

@@ -269,9 +269,11 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 	var summary: Array = []
 	for i in range(4):
 		var seat: Seat = state.seats[i]
+		# #375：权威分 BattleState.scores（Seat.points 可能漂移）
+		var score_i: int = int(state.scores[i]) if i < state.scores.size() else seat.points
 		summary.append({
 			"wind": seat.seat_wind,
-			"score": seat.points,
+			"score": score_i,
 			"riichi": seat.riichi.declared,
 			"active": i == state.current_seat,
 		})
