@@ -51,13 +51,22 @@ func bootstrap_from_claims(claims: Dictionary) -> bool:
 		participants.append(StringName(str(p)))
 	if room_id.is_empty() or participants.size() != 4:
 		return false
+	# #374：四席角色必须来自已验签 claims；禁止本地再抽。
+	var chars_raw: Variant = claims.get("character_ids", null)
+	if typeof(chars_raw) != TYPE_ARRAY:
+		return false
+	character_ids = []
+	for c in chars_raw:
+		var cid := StringName(str(c))
+		if String(cid).is_empty() or CharacterPool.find(cid) == null:
+			return false
+		character_ids.append(cid)
+	if character_ids.size() != 4:
+		return false
 	if _seed_override >= 0:
 		authority_seed = _seed_override
 	else:
 		authority_seed = _generate_seed()
-	character_ids = _pick_characters(authority_seed)
-	if character_ids.size() != 4:
-		return false
 	var wire_parts: Array = []
 	for p in participants:
 		wire_parts.append(p)
@@ -447,24 +456,6 @@ func _generate_seed() -> int:
 	return v & 0x7fffffffffffffff
 
 
-func _pick_characters(p_seed: int) -> Array:
-	var pool: Array = []
-	for c in CharacterPool.all():
-		pool.append(c.id)
-	pool.sort_custom(func(a: StringName, b: StringName) -> bool:
-		return String(a) < String(b)
-	)
-	var state: int = p_seed & 0xffffffff
-	for i in range(pool.size() - 1, 0, -1):
-		state = GameSessionConfig._lcrng_next(state)
-		var j: int = state % (i + 1)
-		var tmp = pool[i]
-		pool[i] = pool[j]
-		pool[j] = tmp
-	var out: Array = []
-	for i in range(mini(4, pool.size())):
-		out.append(pool[i])
-	return out
 
 
 func _ok() -> Dictionary:

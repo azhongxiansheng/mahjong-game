@@ -38,9 +38,9 @@ const (
 )
 
 // RoomTokenIssuer 签发房间令牌（由 tokens.Service 实现）。
-// roundKind / gameMode / participants 为 #240 不可篡改房间启动声明。
+// roundKind / gameMode / participants / characterIDs 为 #240/#374 不可篡改房间启动声明。
 type RoomTokenIssuer interface {
-	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (token string, expiresAt time.Time, err error)
+	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (token string, expiresAt time.Time, err error)
 }
 
 // WorkerRegistry 为 #256 匹配所需的 Redis Worker 键空间（真实注册表）。
@@ -74,24 +74,26 @@ type SeatOccupant struct {
 
 // Room 持久化在 Redis 的临时房间状态。
 type Room struct {
-	RoomID      string
-	Worker      string
-	VoiceWorker string
-	WorkerID    string
-	Status      string // active | failed
-	FailCode    string
-	RoundKind   RoundKind
-	GameMode    GameMode
-	HumanCount  int
-	AICount     int
-	CreatedAt   int64 // Unix 毫秒
-	Seats       map[int]SeatOccupant
+	RoomID       string
+	Worker       string
+	VoiceWorker  string
+	WorkerID     string
+	Status       string // active | failed
+	FailCode     string
+	RoundKind    RoundKind
+	GameMode     GameMode
+	HumanCount   int
+	AICount      int
+	CreatedAt    int64 // Unix 毫秒
+	CharacterIDs []string
+	Seats        map[int]SeatOccupant
 }
 
 type matchCandidate struct {
-	TicketID string
-	GuestID  string
-	ScoreMs  int64
+	TicketID    string
+	GuestID     string
+	CharacterID string
+	ScoreMs     int64
 }
 
 // MatchPool 对指定规则池尝试一次匹配（真实 Redis 原子完整提交）。
@@ -130,17 +132,23 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 
 		// 预签发：失败则不写 Redis，池与 ticket 保持 waiting。
 		participants := make([]string, 4)
+		humanBySeat := make(map[int]string, len(cands))
 		for i := 0; i < 4; i++ {
 			if i < len(cands) {
 				participants[i] = SeatKindHuman
+				humanBySeat[i] = cands[i].CharacterID
 			} else {
 				participants[i] = SeatKindAI
 			}
 		}
+		characterIDs, err := BuildCharacterRoster(participants, humanBySeat)
+		if err != nil {
+			return MatchResult{}, fmt.Errorf("build character roster: %w", err)
+		}
 		tokens := make([]string, len(cands))
 		for i, c := range cands {
 			tok, _, err := params.TokenIssuer.IssueRoomToken(
-				c.GuestID, roomID, i, string(rk), string(gm), participants,
+				c.GuestID, roomID, i, string(rk), string(gm), participants, characterIDs,
 			)
 			if err != nil {
 				return MatchResult{}, fmt.Errorf("issue room token: %w", err)
@@ -150,8 +158,10 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 
 		nowMs := s.clock.Now().UTC().UnixMilli()
 		// ARGV：now, wait, room, ttl, ticket_prefix, guest_prefix, rk, gm, human_count,
-		//       workers_index, worker_key_prefix, want_voice, then humans...
-		args := make([]interface{}, 0, 12+len(cands)*4)
+		//       workers_index, worker_key_prefix, want_voice, character_ids,
+		//       then humans (tid,guest,seat,token)*
+		// character_ids 与 room/ticket 同一 Lua 原子提交（#374），禁止 post-commit 补写。
+		args := make([]interface{}, 0, 13+len(cands)*4)
 		args = append(args,
 			nowMs,
 			QueueWaitDeadline.Milliseconds(),
@@ -165,6 +175,7 @@ func (s *Service) MatchPool(ctx context.Context, rk RoundKind, gm GameMode, para
 			s.workers.IndexKey(),
 			s.workers.KeyPrefix(),
 			wantVoice,
+			encodeCharacterIDs(characterIDs),
 		)
 		for i, c := range cands {
 			args = append(args, c.TicketID, c.GuestID, i, tokens[i])
@@ -247,9 +258,10 @@ func (s *Service) peekMatchCandidates(ctx context.Context, rk RoundKind, gm Game
 			}
 			if len(cands) < 4 {
 				cands = append(cands, matchCandidate{
-					TicketID: tid,
-					GuestID:  tk.GuestID,
-					ScoreMs:  scoreMs,
+					TicketID:    tid,
+					GuestID:     tk.GuestID,
+					CharacterID: tk.CharacterID,
+					ScoreMs:     scoreMs,
 				})
 			}
 		}
@@ -306,18 +318,19 @@ func (s *Service) GetRoom(ctx context.Context, roomID string) (Room, error) {
 	aiCount, _ := strconv.Atoi(m["ai_count"])
 	createdAt, _ := strconv.ParseInt(m["created_at"], 10, 64)
 	room := Room{
-		RoomID:      m["room_id"],
-		Worker:      m["worker"],
-		VoiceWorker: m["voice_worker"],
-		WorkerID:    m["worker_id"],
-		Status:      m["status"],
-		FailCode:    m["fail_code"],
-		RoundKind:   RoundKind(m["round_kind"]),
-		GameMode:    GameMode(m["game_mode"]),
-		HumanCount:  humanCount,
-		AICount:     aiCount,
-		CreatedAt:   createdAt,
-		Seats:       make(map[int]SeatOccupant, 4),
+		RoomID:       m["room_id"],
+		Worker:       m["worker"],
+		VoiceWorker:  m["voice_worker"],
+		WorkerID:     m["worker_id"],
+		Status:       m["status"],
+		FailCode:     m["fail_code"],
+		RoundKind:    RoundKind(m["round_kind"]),
+		GameMode:     GameMode(m["game_mode"]),
+		HumanCount:   humanCount,
+		AICount:      aiCount,
+		CreatedAt:    createdAt,
+		CharacterIDs: decodeCharacterIDs(m["character_ids"]),
+		Seats:        make(map[int]SeatOccupant, 4),
 	}
 	for seat := 0; seat < 4; seat++ {
 		kind := m[fmt.Sprintf("seat_%d_kind", seat)]
@@ -344,7 +357,8 @@ func (s *Service) roomKey(roomID string) string {
 // - 一次写入 room + 全部 ticket 完整字段（含 room_token / worker_id）
 // ARGV：now, wait, room_id, ttl, ticket_prefix, guest_prefix, rk, gm, human_count,
 //
-//	workers_index, worker_key_prefix, want_voice, then (tid,guest,seat,token)*
+//	workers_index, worker_key_prefix, want_voice, character_ids,
+//	then (tid,guest,seat,token)*
 var matchCommitScript = redis.NewScript(`
 local pkey = KEYS[1]
 local rkey = KEYS[2]
@@ -360,15 +374,19 @@ local human_count = tonumber(ARGV[9])
 local workers_index = ARGV[10]
 local worker_prefix = ARGV[11]
 local want_voice = tonumber(ARGV[12])
+local character_ids = ARGV[13]
 local max_clean = 64
 
 if human_count < 1 or human_count > 4 then
   return {'RETRY'}
 end
+if character_ids == nil or character_ids == '' then
+  return {'RETRY'}
+end
 
 local expect = {}
 for i = 0, human_count - 1 do
-  local base = 13 + i * 4
+  local base = 14 + i * 4
   expect[i + 1] = {
     tid = ARGV[base],
     guest = ARGV[base + 1],
@@ -502,7 +520,8 @@ redis.call('HSET', rkey,
   'game_mode', game_mode,
   'human_count', tostring(human_count),
   'ai_count', tostring(4 - human_count),
-  'created_at', tostring(now_ms))
+  'created_at', tostring(now_ms),
+  'character_ids', character_ids)
 if voice_worker ~= nil and voice_worker ~= '' then
   redis.call('HSET', rkey, 'voice_worker', voice_worker)
 else
@@ -686,4 +705,30 @@ func (m *Matcher) loop() {
 			}
 		}
 	}
+}
+
+func encodeCharacterIDs(ids []string) string {
+	if len(ids) == 0 {
+		return ""
+	}
+	out := ids[0]
+	for i := 1; i < len(ids); i++ {
+		out += "," + ids[i]
+	}
+	return out
+}
+
+func decodeCharacterIDs(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := make([]string, 0, 4)
+	start := 0
+	for i := 0; i <= len(s); i++ {
+		if i == len(s) || s[i] == ',' {
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	return parts
 }

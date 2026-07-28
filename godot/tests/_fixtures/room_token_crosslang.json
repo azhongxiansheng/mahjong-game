@@ -1,5 +1,11 @@
 {
   "claims": {
+    "character_ids": [
+      "lin_yeche",
+      "qiu_jue",
+      "an_cheng",
+      "bai_touli"
+    ],
     "exp": 1784901600,
     "game_mode": "STANDARD",
     "participants": [
@@ -15,8 +21,8 @@
   },
   "expires_at_unix": 1784901600,
   "issued_at_unix": 1784894400,
-  "note": "Go tokens.TestExportCrossLangRoomTokenFixture 签发；GDScript 只验不重签。网络端到端未验证。",
+  "note": "Go tokens 真实签发；GDScript 只验不重签。UPDATE_CROSSLANG_FIXTURE=1 维护。网络端到端未验证。",
   "secret": "0123456789abcdef0123456789abcdef",
   "session_token_must_fail_as_room": true,
-  "token": "v1.r.eyJ0eXAiOiJyb29tIiwicm9vbV9pZCI6InJvb20tZml4dHVyZSIsInNlYXQiOjEsInNlc3Npb25faWQiOiJzZXNzLWZpeHR1cmUiLCJleHAiOjE3ODQ5MDE2MDAsInJvdW5kX2tpbmQiOiJFQVNUIiwiZ2FtZV9tb2RlIjoiU1RBTkRBUkQiLCJwYXJ0aWNpcGFudHMiOlsiSFVNQU4iLCJIVU1BTiIsIkFJIiwiQUkiXX0.-RYAleHd6uSI8mbKsv-3wA90AX6Upb-RuMCu_nuqSX4"
+  "token": "v1.r.eyJ0eXAiOiJyb29tIiwicm9vbV9pZCI6InJvb20tZml4dHVyZSIsInNlYXQiOjEsInNlc3Npb25faWQiOiJzZXNzLWZpeHR1cmUiLCJleHAiOjE3ODQ5MDE2MDAsInJvdW5kX2tpbmQiOiJFQVNUIiwiZ2FtZV9tb2RlIjoiU1RBTkRBUkQiLCJwYXJ0aWNpcGFudHMiOlsiSFVNQU4iLCJIVU1BTiIsIkFJIiwiQUkiXSwiY2hhcmFjdGVyX2lkcyI6WyJsaW5feWVjaGUiLCJxaXVfanVlIiwiYW5fY2hlbmciLCJiYWlfdG91bGkiXX0.7jVS5NAljIMhtC0RG6Qe9exxTwmd0UMA5a3ku2mSYgI"
 }

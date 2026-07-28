@@ -90,7 +90,10 @@ func test_core_table_v1_stays_exact12_without_prediction_field() -> void:
 func test_optional_prediction_module_omits_empty_and_old_registry_skips_new_module() -> void:
 	var state := BattleState.for_east_round(344, 0, 1, 0, 0)
 	var reg := _registry_with_prediction_provider()
-	var empty_ser := reg.serialize_modules({"state": state}, 0)
+	var empty_ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	assert_true(bool(empty_ser.get("ok", false)), str(empty_ser))
 	assert_true(_module(empty_ser.get("modules", []), "viewer_next_draw").is_empty(),
 		"无预知时不得给历史快照增加空模块噪声")
@@ -100,7 +103,10 @@ func test_optional_prediction_module_omits_empty_and_old_registry_skips_new_modu
 	assert_true(BossAbilityFactory.inject(registry, &"char_awai_passive_v1", 0))
 	var expected: Tile = state.wall.peek_next_draw()
 	scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
-	var ser := reg.serialize_modules({"state": state}, 0)
+	var ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	assert_true(bool(ser.get("ok", false)), str(ser))
 	var prediction := _module(ser.get("modules", []), "viewer_next_draw")
 	assert_eq(int(prediction.get("schema_version", 0)), 1)
@@ -114,6 +120,8 @@ func test_optional_prediction_module_omits_empty_and_old_registry_skips_new_modu
 		"state": state,
 		"item_inventory": ItemInventoryModule.new(),
 		"reward_window": RewardWindowModule.new(),
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
 	}, 0)
 	assert_true(bool(production_ser.get("ok", false)), str(production_ser))
 	assert_false(_module(production_ser.get("modules", []), "viewer_next_draw").is_empty(),
@@ -135,7 +143,10 @@ func test_prediction_module_new_registry_restores_atomically_and_wire_rejects_ba
 	assert_true(BossAbilityFactory.inject(skill_registry, &"char_awai_passive_v1", 0))
 	scheduler.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
 	var reg := _registry_with_prediction_provider()
-	var ser := reg.serialize_modules({"state": state}, 0)
+	var ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	assert_true(bool(ser.get("ok", false)), str(ser))
 	var modules: Array = ser.get("modules", [])
 	var wire := _wire(modules)
@@ -156,7 +167,10 @@ func test_prediction_module_new_registry_restores_atomically_and_wire_rejects_ba
 	assert_eq(int((nbc.get_viewer_next_draw_view().get("tile", {}) as Dictionary)
 		.get("instance_id", -1)), state.wall.peek_next_draw().instance_id)
 	state.wall.draw()
-	var expired_ser := reg.serialize_modules({"state": state}, 0)
+	var expired_ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	assert_true(bool(expired_ser.get("ok", false)), str(expired_ser))
 	assert_true(_module(expired_ser.get("modules", []), "viewer_next_draw").is_empty())
 	var expired_wire := _wire(expired_ser.get("modules", []), 0, 2)

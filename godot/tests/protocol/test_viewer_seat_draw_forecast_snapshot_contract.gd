@@ -85,6 +85,8 @@ func test_new_module_keeps_core_and_viewer_next_draw_v1_unchanged() -> void:
 		"state": state,
 		"item_inventory": ItemInventoryModule.new(),
 		"reward_window": RewardWindowModule.new(),
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
 	}, 1)
 	assert_true(bool(ser.get("ok", false)), str(ser))
 	var modules := ser.get("modules", []) as Array
@@ -111,6 +113,8 @@ func test_wire_and_nbc_restore_atomically_reject_cross_hand_or_duplicate_target(
 		"state": state,
 		"item_inventory": ItemInventoryModule.new(),
 		"reward_window": RewardWindowModule.new(),
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
 	}, 2)
 	assert_true(bool(ser.get("ok", false)), str(ser))
 	var modules := ser.get("modules", []) as Array
@@ -143,6 +147,8 @@ func test_wire_and_nbc_restore_atomically_reject_cross_hand_or_duplicate_target(
 		"state": empty_state,
 		"item_inventory": ItemInventoryModule.new(),
 		"reward_window": RewardWindowModule.new(),
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
 	}, 2)
 	var empty_wire := _wire(empty_ser.get("modules", []), 2, 2)
 	assert_true(nbc.ingest_networked_event(NetworkedEvent.from_dict(empty_wire)))

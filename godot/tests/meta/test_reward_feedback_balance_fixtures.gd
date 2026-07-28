@@ -92,8 +92,8 @@ func test_display_only_via_begin_scoring_close_public_api() -> void:
 	var open_ok: Dictionary = rw.open({
 		"seed": int(expected["seed"]), "hand_seq": 0, "window_index": 0,
 		"rule_version": RULE, "room_id": "room_disp",
-		"character_ids": CHARS, "language": "zh",
-		"participants": ["HUMAN", "AI", "AI", "AI"],
+				"participants": ["HUMAN", "AI", "AI", "AI"],
+				"character_ids": CHARS, "language": "zh",
 		"public_initial": {"hand_seq": 0, "dealer_seat": 0, "scores": [25000, 25000, 25000, 25000]},
 	})
 	assert_true(bool(open_ok.get("ok", false)), str(open_ok))
@@ -136,8 +136,8 @@ func test_cancelled_via_real_cancel_by_win_no_fallback() -> void:
 	assert_true(bool(rw.open({
 		"seed": int(expected["seed"]), "hand_seq": 0, "window_index": 0,
 		"rule_version": RULE, "room_id": "room_can",
-		"character_ids": CHARS, "language": "zh",
-		"participants": ["HUMAN", "AI", "AI", "AI"],
+				"participants": ["HUMAN", "AI", "AI", "AI"],
+				"character_ids": CHARS, "language": "zh",
 		"public_initial": {"hand_seq": 0, "dealer_seat": 0, "scores": [25000, 25000, 25000, 25000]},
 	}).get("ok", false)))
 	var can: Dictionary = rw.cancel_by_win({"now_ms": NOW0})

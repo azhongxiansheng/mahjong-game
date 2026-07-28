@@ -57,11 +57,11 @@ func newRecordingIssuer(t *testing.T, clk Clock) *recordingIssuer {
 	return &recordingIssuer{inner: svc}
 }
 
-func (r *recordingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
+func (r *recordingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string, characterIDs []string) (string, time.Time, error) {
 	r.mu.Lock()
 	r.n++
 	r.mu.Unlock()
-	return r.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants)
+	return r.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants, characterIDs)
 }
 
 func (r *recordingIssuer) VerifyRoomToken(token, roomID string, seat int) (tokens.RoomClaims, error) {
@@ -173,7 +173,7 @@ func enqueueN(t *testing.T, svc *Service, n int, rk RoundKind, gm GameMode) []Ti
 	ctx := context.Background()
 	out := make([]Ticket, 0, n)
 	for i := 0; i < n; i++ {
-		tk, err := svc.Enqueue(ctx, fmt.Sprintf("guest-%d", i+1), rk, gm)
+		tk, err := svc.Enqueue(ctx, fmt.Sprintf("guest-%d", i+1), rk, gm, "lin_yeche")
 		if err != nil {
 			t.Fatalf("Enqueue %d: %v", i+1, err)
 		}
@@ -392,13 +392,13 @@ func TestMatch_DeadlineFollowsEarliestValidTicket(t *testing.T) {
 	ctx := context.Background()
 
 	// t0: guest-early
-	early, err := f.svc.Enqueue(ctx, "guest-early", RoundKindEast, GameModeStandard)
+	early, err := f.svc.Enqueue(ctx, "guest-early", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("early: %v", err)
 	}
 	// t0+10s: guest-late
 	f.clk.Advance(10 * time.Second)
-	late, err := f.svc.Enqueue(ctx, "guest-late", RoundKindEast, GameModeStandard)
+	late, err := f.svc.Enqueue(ctx, "guest-late", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("late: %v", err)
 	}
@@ -506,7 +506,7 @@ func TestMatch_CancelVsConsumeRace(t *testing.T) {
 		f := newMatchFixture(t)
 		ctx := context.Background()
 		// 单人满 30s 可补位
-		tk, err := f.svc.Enqueue(ctx, "guest-race", RoundKindEast, GameModeStandard)
+		tk, err := f.svc.Enqueue(ctx, "guest-race", RoundKindEast, GameModeStandard, "lin_yeche")
 		if err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
@@ -601,7 +601,7 @@ func TestMatch_PoolsIsolated(t *testing.T) {
 		{RoundKindHanchan, GameModeTrashTalk},
 	}
 	for i, c := range combos {
-		if _, err := f.svc.Enqueue(ctx, fmt.Sprintf("g-%d", i), c.rk, c.gm); err != nil {
+		if _, err := f.svc.Enqueue(ctx, fmt.Sprintf("g-%d", i), c.rk, c.gm, "lin_yeche"); err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 	}
@@ -656,7 +656,7 @@ func TestMatch_TokenTypeConfusion(t *testing.T) {
 func TestMatcher_StartStopLifecycle(t *testing.T) {
 	f := newMatchFixture(t)
 	ctx := context.Background()
-	tk, err := f.svc.Enqueue(ctx, "guest-life", RoundKindEast, GameModeStandard)
+	tk, err := f.svc.Enqueue(ctx, "guest-life", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("enqueue: %v", err)
 	}

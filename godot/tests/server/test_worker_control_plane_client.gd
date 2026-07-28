@@ -303,6 +303,7 @@ func test_match_settled_triggers_complete_and_room_count_excludes_done() -> void
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	var session := HeadlessRoomSession.new()
 	assert_true(session.bootstrap_from_claims(claims))
@@ -379,7 +380,8 @@ func test_match_settled_flag_only_on_real_match_settled() -> void:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	var server: LocalLoopbackServer = session.server
 	assert_not_null(server)
 	assert_false(server.has_match_settled())

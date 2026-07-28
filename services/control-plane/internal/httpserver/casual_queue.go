@@ -17,23 +17,25 @@ const maxQueueBodyBytes = 1 << 20 // 1 MiB
 
 // CasualQueue 公共休闲队列能力。
 type CasualQueue interface {
-	Enqueue(ctx context.Context, guestID string, rk queue.RoundKind, gm queue.GameMode) (queue.Ticket, error)
+	Enqueue(ctx context.Context, guestID string, rk queue.RoundKind, gm queue.GameMode, characterID string) (queue.Ticket, error)
 	Get(ctx context.Context, guestID, ticketID string) (queue.Ticket, error)
 	Cancel(ctx context.Context, guestID, ticketID string) (queue.Ticket, error)
 }
 
 type enqueueRequest struct {
-	RoundKind string `json:"round_kind"`
-	GameMode  string `json:"game_mode"`
+	RoundKind   string `json:"round_kind"`
+	GameMode    string `json:"game_mode"`
+	CharacterID string `json:"character_id"`
 }
 
 type ticketResponse struct {
-	TicketID   string `json:"ticket_id"`
-	RoundKind  string `json:"round_kind"`
-	GameMode   string `json:"game_mode"`
-	Status     string `json:"status"`
-	QueuedAt   string `json:"queued_at"`
-	DeadlineAt string `json:"deadline_at"`
+	TicketID    string `json:"ticket_id"`
+	RoundKind   string `json:"round_kind"`
+	GameMode    string `json:"game_mode"`
+	CharacterID string `json:"character_id,omitempty"`
+	Status      string `json:"status"`
+	QueuedAt    string `json:"queued_at"`
+	DeadlineAt  string `json:"deadline_at"`
 	// assigned 时填充（ADR：Worker / room / seat / token；#244 voice_worker 显式配置）
 	Worker      string `json:"worker,omitempty"`
 	VoiceWorker string `json:"voice_worker,omitempty"`
@@ -54,12 +56,13 @@ func formatAPITime(t time.Time) string {
 
 func ticketToResponse(tk queue.Ticket) ticketResponse {
 	resp := ticketResponse{
-		TicketID:   tk.TicketID,
-		RoundKind:  string(tk.RoundKind),
-		GameMode:   string(tk.GameMode),
-		Status:     tk.Status,
-		QueuedAt:   formatAPITime(tk.QueuedAt.Time()),
-		DeadlineAt: formatAPITime(tk.DeadlineAt.Time()),
+		TicketID:    tk.TicketID,
+		RoundKind:   string(tk.RoundKind),
+		GameMode:    string(tk.GameMode),
+		CharacterID: tk.CharacterID,
+		Status:      tk.Status,
+		QueuedAt:    formatAPITime(tk.QueuedAt.Time()),
+		DeadlineAt:  formatAPITime(tk.DeadlineAt.Time()),
 	}
 	if tk.Status == queue.StatusAssigned {
 		resp.Worker = tk.Worker
@@ -129,11 +132,19 @@ func (s *Server) handleEnqueueCasual(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid round_kind or game_mode")
 		return
 	}
+	if err := queue.ValidateCharacterID(req.CharacterID); err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid character_id")
+		return
+	}
 
-	tk, err := s.casualQueue.Enqueue(r.Context(), claims.GuestID, rk, gm)
+	tk, err := s.casualQueue.Enqueue(r.Context(), claims.GuestID, rk, gm, req.CharacterID)
 	if err != nil {
 		if errors.Is(err, queue.ErrInvalidRules) {
 			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid round_kind or game_mode")
+			return
+		}
+		if errors.Is(err, queue.ErrInvalidCharacter) {
+			writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid character_id")
 			return
 		}
 		writeError(w, r, http.StatusInternalServerError, "INTERNAL", "failed to enqueue")

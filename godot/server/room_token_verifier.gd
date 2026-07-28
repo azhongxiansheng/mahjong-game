@@ -81,6 +81,9 @@ func verify(token: Variant, expected_room_id: String, expected_seat: int, now_un
 	var parts_out: Array = []
 	for item in p["participants"]:
 		parts_out.append(str(item))
+	var chars_out: Array = []
+	for item in p["character_ids"]:
+		chars_out.append(str(item))
 	return {
 		"room_id": room_id,
 		"seat": seat,
@@ -89,11 +92,12 @@ func verify(token: Variant, expected_room_id: String, expected_seat: int, now_un
 		"round_kind": str(p["round_kind"]),
 		"game_mode": str(p["game_mode"]),
 		"participants": parts_out,
+		"character_ids": chars_out,
 	}
 
 
 func _validate_payload(p: Dictionary) -> bool:
-	for k in ["typ", "room_id", "seat", "session_id", "exp", "round_kind", "game_mode", "participants"]:
+	for k in ["typ", "room_id", "seat", "session_id", "exp", "round_kind", "game_mode", "participants", "character_ids"]:
 		if not p.has(k):
 			return false
 	if str(p["typ"]) != CLAIM_ROOM:
@@ -127,7 +131,20 @@ func _validate_payload(p: Dictionary) -> bool:
 			human += 1
 		elif kind != "AI":
 			return false
-	return human >= 1
+	if human < 1:
+		return false
+	if typeof(p["character_ids"]) != TYPE_ARRAY:
+		return false
+	var chars: Array = p["character_ids"]
+	if chars.size() != 4:
+		return false
+	for item in chars:
+		var cid := str(item)
+		if cid.is_empty():
+			return false
+		if CharacterPool.find(StringName(cid)) == null:
+			return false
+	return true
 
 
 static func _b64url_decode(s: String) -> PackedByteArray:

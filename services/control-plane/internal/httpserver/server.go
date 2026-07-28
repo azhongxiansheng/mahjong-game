@@ -21,7 +21,7 @@ type Pinger interface {
 type TokenService interface {
 	IssueGuestSession() (tokens.GuestSession, error)
 	VerifyGuestToken(token string) (tokens.GuestClaims, error)
-	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error)
+	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (string, time.Time, error)
 	VerifyRoomToken(token, expectedRoomID string, expectedSeat int) (tokens.RoomClaims, error)
 }
 

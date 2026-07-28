@@ -108,7 +108,7 @@ type GuestClaims struct {
 	ExpiresAt   time.Time
 }
 
-// RoomClaims 为房间令牌解析结果（含 #240 不可篡改启动声明）。
+// RoomClaims 为房间令牌解析结果（含 #240/#374 不可篡改启动声明）。
 type RoomClaims struct {
 	RoomID       string
 	Seat         int
@@ -117,15 +117,18 @@ type RoomClaims struct {
 	RoundKind    string
 	GameMode     string
 	Participants []string
+	CharacterIDs []string
 }
 
 // RoomBootstrap 房间启动声明：签入 room_token，客户端只能运输不能改写。
 // RoundKind ∈ EAST|HANCHAN；GameMode ∈ STANDARD|TRASH_TALK；
-// Participants 恰 4 席，每席 HUMAN|AI。
+// Participants 恰 4 席，每席 HUMAN|AI；
+// CharacterIDs 恰 4 席规范角色 id（#374 权威 roster）。
 type RoomBootstrap struct {
 	RoundKind    string
 	GameMode     string
 	Participants []string
+	CharacterIDs []string
 }
 
 type guestPayload struct {
@@ -144,6 +147,7 @@ type roomPayload struct {
 	RoundKind    string   `json:"round_kind"`
 	GameMode     string   `json:"game_mode"`
 	Participants []string `json:"participants"`
+	CharacterIDs []string `json:"character_ids"`
 }
 
 // IssueGuestSession 签发游客会话。
@@ -224,17 +228,26 @@ func validateRoomBootstrap(b RoomBootstrap) error {
 	if human < 1 {
 		return fmt.Errorf("participants must include at least one HUMAN")
 	}
+	if len(b.CharacterIDs) != 4 {
+		return fmt.Errorf("character_ids must have length 4")
+	}
+	for _, id := range b.CharacterIDs {
+		if !isCanonicalCharacterID(id) {
+			return fmt.Errorf("invalid character_id")
+		}
+	}
 	return nil
 }
 
 // IssueRoomToken 签发绑定 room/seat/session 与启动声明的短期房间令牌。
-// roundKind / gameMode / participants 为不可篡改 bootstrap claims（#240）。
+// roundKind / gameMode / participants / characterIDs 为不可篡改 bootstrap claims（#240/#374）。
 // 形参列表与 queue.RoomTokenIssuer 对齐，便于 main 直接注入。
-func (s *Service) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (token string, expiresAt time.Time, err error) {
+func (s *Service) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (token string, expiresAt time.Time, err error) {
 	return s.IssueRoomTokenBootstrap(sessionID, roomID, seat, RoomBootstrap{
 		RoundKind:    roundKind,
 		GameMode:     gameMode,
 		Participants: participants,
+		CharacterIDs: characterIDs,
 	})
 }
 
@@ -249,9 +262,11 @@ func (s *Service) IssueRoomTokenBootstrap(sessionID, roomID string, seat int, bo
 	if err := validateRoomBootstrap(bootstrap); err != nil {
 		return "", time.Time{}, err
 	}
-	// 拷贝 participants，避免调用方后续改写影响已签语义。
+	// 拷贝 participants / character_ids，避免调用方后续改写影响已签语义。
 	parts := make([]string, 4)
 	copy(parts, bootstrap.Participants)
+	chars := make([]string, 4)
+	copy(chars, bootstrap.CharacterIDs)
 	now := s.clock.Now().UTC()
 	// 与 payload exp.Unix() / 校验 time.Unix(exp,0) 对齐到 UTC 秒，避免纳秒偏差。
 	exp := time.Unix(now.Add(RoomTokenTTL).Unix(), 0).UTC()
@@ -264,6 +279,7 @@ func (s *Service) IssueRoomTokenBootstrap(sessionID, roomID string, seat int, bo
 		RoundKind:    bootstrap.RoundKind,
 		GameMode:     bootstrap.GameMode,
 		Participants: parts,
+		CharacterIDs: chars,
 	})
 	if err != nil {
 		return "", time.Time{}, err
@@ -292,6 +308,7 @@ func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int
 		RoundKind:    p.RoundKind,
 		GameMode:     p.GameMode,
 		Participants: p.Participants,
+		CharacterIDs: p.CharacterIDs,
 	}); err != nil {
 		return RoomClaims{}, ErrUnauthorized
 	}
@@ -304,6 +321,8 @@ func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int
 	}
 	parts := make([]string, 4)
 	copy(parts, p.Participants)
+	chars := make([]string, 4)
+	copy(chars, p.CharacterIDs)
 	return RoomClaims{
 		RoomID:       p.RoomID,
 		Seat:         p.Seat,
@@ -312,6 +331,7 @@ func (s *Service) VerifyRoomToken(token, expectedRoomID string, expectedSeat int
 		RoundKind:    p.RoundKind,
 		GameMode:     p.GameMode,
 		Participants: parts,
+		CharacterIDs: chars,
 	}, nil
 }
 
@@ -360,4 +380,19 @@ func (s *Service) verifyRaw(token, wantTyp string) ([]byte, error) {
 		return nil, ErrUnauthorized
 	}
 	return raw, nil
+}
+
+// 与 queue.CanonicalCharacterIDs 保持同步的冻结目录（token 包不可依赖 queue，避免环）。
+var canonicalCharacterSet = map[string]struct{}{
+	"an_cheng": {}, "bai_touli": {}, "bao_luo": {}, "hua_ling": {},
+	"ji_shu": {}, "ju_jin": {}, "lian_yao": {}, "lin_yeche": {},
+	"qiu_jue": {}, "xian_shi": {}, "ying_li": {}, "yuan_xi": {},
+}
+
+func isCanonicalCharacterID(id string) bool {
+	if id == "" {
+		return false
+	}
+	_, ok := canonicalCharacterSet[id]
+	return ok
 }

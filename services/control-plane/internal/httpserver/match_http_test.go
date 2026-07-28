@@ -151,7 +151,7 @@ func (f *matchHTTPFixture) join(t *testing.T, token string) map[string]any {
 // joinWithMode 真实 HTTP 入队；gameMode 为 ADR 稳定值（STANDARD | TRASH_TALK）。
 func (f *matchHTTPFixture) joinWithMode(t *testing.T, token, gameMode string) map[string]any {
 	t.Helper()
-	body := []byte(`{"round_kind":"EAST","game_mode":"` + gameMode + `"}`)
+	body := []byte(`{"round_kind":"EAST","game_mode":"` + gameMode + `","character_id":"lin_yeche"}`)
 	resp, raw := doJSON(t, http.MethodPost, f.baseURL+"/v1/queues/casual", token, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("join status=%d body=%s", resp.StatusCode, redactSecrets(raw))

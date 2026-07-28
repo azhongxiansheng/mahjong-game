@@ -9,6 +9,7 @@ func _mint_room_token() -> String:
 		"session_id": "guest-323", "exp": 2_000_000_000,
 		"round_kind": "EAST", "game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	var payload := Marshalls.raw_to_base64(JSON.stringify(body).to_utf8_buffer())
 	payload = payload.replace("+", "-").replace("/", "_").rstrip("=")

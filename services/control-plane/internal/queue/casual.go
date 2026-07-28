@@ -91,13 +91,14 @@ func (t TicketTime) Time() time.Time { return time.Time(t).UTC() }
 
 // Ticket 队列票据。
 type Ticket struct {
-	TicketID   string     `json:"ticket_id"`
-	GuestID    string     `json:"guest_id"`
-	RoundKind  RoundKind  `json:"round_kind"`
-	GameMode   GameMode   `json:"game_mode"`
-	Status     string     `json:"status"`
-	QueuedAt   TicketTime `json:"queued_at"`
-	DeadlineAt TicketTime `json:"deadline_at"`
+	TicketID    string     `json:"ticket_id"`
+	GuestID     string     `json:"guest_id"`
+	RoundKind   RoundKind  `json:"round_kind"`
+	GameMode    GameMode   `json:"game_mode"`
+	CharacterID string     `json:"character_id,omitempty"` // #374 本席入队角色身份
+	Status      string     `json:"status"`
+	QueuedAt    TicketTime `json:"queued_at"`
+	DeadlineAt  TicketTime `json:"deadline_at"`
 	// 以下字段仅 status=assigned 时有意义（跨 CP 实例 Redis 可读）。
 	RoomID      string `json:"room_id,omitempty"`
 	Seat        int    `json:"seat,omitempty"`
@@ -199,6 +200,7 @@ local queued_at = ARGV[7]
 local deadline_at = ARGV[8]
 local score = ARGV[9]
 local ttl = tonumber(ARGV[10])
+local character_id = ARGV[11]
 
 local existing = redis.call('GET', gkey)
 if existing then
@@ -217,6 +219,7 @@ redis.call('HSET', tkey,
   'guest_id', guest_id,
   'round_kind', round_kind,
   'game_mode', game_mode,
+  'character_id', character_id,
   'status', status,
   'queued_at', queued_at,
   'deadline_at', deadline_at)
@@ -269,11 +272,15 @@ return {'OK'}
 `)
 
 // Enqueue 加入队列；同 guest+规则组合 waiting 时幂等返回同一 ticket。
-func (s *Service) Enqueue(ctx context.Context, guestID string, rk RoundKind, gm GameMode) (Ticket, error) {
+// characterID 为本席规范角色身份（#374）；不得提交他席/ability/运行时参数。
+func (s *Service) Enqueue(ctx context.Context, guestID string, rk RoundKind, gm GameMode, characterID string) (Ticket, error) {
 	if guestID == "" {
 		return Ticket{}, fmt.Errorf("guest_id required")
 	}
 	if err := ValidateRules(rk, gm); err != nil {
+		return Ticket{}, err
+	}
+	if err := ValidateCharacterID(characterID); err != nil {
 		return Ticket{}, err
 	}
 
@@ -300,6 +307,7 @@ func (s *Service) Enqueue(ctx context.Context, guestID string, rk RoundKind, gm 
 		formatTicketTime(deadline),
 		fmt.Sprintf("%d", now.UnixMilli()),
 		int(ticketTTL.Seconds()),
+		characterID,
 	).Result()
 	if err != nil {
 		return Ticket{}, err
@@ -408,6 +416,7 @@ func (s *Service) loadTicket(ctx context.Context, ticketID string) (Ticket, erro
 		GuestID:     m["guest_id"],
 		RoundKind:   RoundKind(m["round_kind"]),
 		GameMode:    GameMode(m["game_mode"]),
+		CharacterID: m["character_id"],
 		Status:      m["status"],
 		QueuedAt:    TicketTime(queuedAt.UTC()),
 		DeadlineAt:  TicketTime(deadlineAt.UTC()),
