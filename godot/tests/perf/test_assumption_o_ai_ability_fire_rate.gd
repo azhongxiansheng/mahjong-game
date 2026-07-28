@@ -11,7 +11,7 @@ extends GutTest
 # 到 AI seat，跑一整场对战，统计实际 fire 次数。用 GAME_BEGIN（每局必触发）
 # 作 control，WIN_DECLARED_PRE 作 experiment，对比印证结构性差距。
 #
-# 这不是回归测试 — 是实证假设 O 的机制定位测试。结论会写进 baseline 7 报告。
+# 这是实证/统计测试而非日常规则回归，因此归入慢速 perf 门禁。
 
 const FireCountingHook := preload("res://tests/_fixtures/fire_counting_hook.gd")
 
