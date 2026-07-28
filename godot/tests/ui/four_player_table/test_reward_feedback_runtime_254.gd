@@ -221,9 +221,8 @@ func test_item_use_button_precise_instance() -> void:
 	drawer.set_instances(fpt._reward_feedback_projector.local_inventory_instances())
 	await get_tree().process_frame
 	var row: Control = drawer._rows_by_id.get(iid_a, null)
-	assert_not_null(row, "抽屉必须有目标 iid 图标")
-	drawer.select_instance(iid_a)
-	var btn: Button = drawer.find_child("UseSelectedButton", true, false) as Button
+	assert_not_null(row, "抽屉必须有目标 iid 实例行")
+	var btn: Button = row.find_child("UseButton", true, false) as Button
 	assert_not_null(btn)
 	assert_true(btn.visible)
 	assert_false(btn.disabled)

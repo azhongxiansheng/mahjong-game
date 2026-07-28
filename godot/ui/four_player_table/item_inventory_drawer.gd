@@ -6,24 +6,21 @@ signal use_item_requested(item_instance_id: String)
 signal close_requested()
 
 const DRAWER_X := 1384.0
-const DRAWER_Y := 456.0
+const DRAWER_Y := 480.0
 const DRAWER_W := 200.0
-const DRAWER_H := 312.0
+const DRAWER_H := 288.0
 const PANEL_PADDING_Y := 12.0
 const HEADER_H := 24.0
-const CELL_H := 64.0
-const GRID_GAP_Y := 5.0
-const ACTION_H := 28.0
-const MAX_SCROLL_H := 204.0
+const ROW_H := 76.0
+const ROW_GAP_Y := 4.0
+const MAX_SCROLL_H := 229.0
 
 var _panel: PanelContainer
 var _scroll: ScrollContainer
-var _grid: GridContainer
+var _list: VBoxContainer
 var _title: Label
 var _empty: Label
-var _use_selected_btn: Button
 var _rows_by_id: Dictionary = {}
-var _selected_iid := ""
 var _visible_count := 0
 
 
@@ -58,12 +55,9 @@ func is_open() -> bool:
 
 
 func set_instances(rows: Array) -> void:
-	for child in _grid.get_children():
+	for child in _list.get_children():
 		child.queue_free()
 	_rows_by_id.clear()
-	_selected_iid = ""
-	_use_selected_btn.visible = false
-	_use_selected_btn.disabled = true
 	var valid_count := 0
 	for raw in rows:
 		if typeof(raw) != TYPE_DICTIONARY:
@@ -72,9 +66,9 @@ func set_instances(rows: Array) -> void:
 		var iid := String(row.get("item_instance_id", "")).strip_edges()
 		if iid.is_empty():
 			continue
-		var cell := _make_cell(row)
-		_grid.add_child(cell)
-		_rows_by_id[iid] = cell
+		var instance_row := _make_row(row)
+		_list.add_child(instance_row)
+		_rows_by_id[iid] = instance_row
 		valid_count += 1
 	_title.text = "库存 %d" % valid_count
 	_empty.visible = valid_count == 0
@@ -111,6 +105,16 @@ func select_instance(item_instance_id: String) -> void:
 	_select_instance(item_instance_id)
 
 
+func focus_first() -> void:
+	var ids := row_ids()
+	if ids.is_empty():
+		return
+	var row: Control = _rows_by_id[ids[0]] as Control
+	var item_button := row.find_child("ItemButton", true, false) as Button
+	if item_button != null:
+		item_button.grab_focus()
+
+
 func _build() -> void:
 	_panel = PanelContainer.new()
 	_panel.name = "DrawerPanel"
@@ -143,7 +147,7 @@ func _build() -> void:
 	var close_btn := Button.new()
 	close_btn.name = "CloseButton"
 	close_btn.text = "×"
-	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.focus_mode = Control.FOCUS_ALL
 	close_btn.custom_minimum_size = Vector2(28, 24)
 	close_btn.pressed.connect(func() -> void:
 		close_drawer()
@@ -157,13 +161,11 @@ func _build() -> void:
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	layout.add_child(_scroll)
-	_grid = GridContainer.new()
-	_grid.name = "InstanceGrid"
-	_grid.columns = 3
-	_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_grid.add_theme_constant_override("h_separation", 4)
-	_grid.add_theme_constant_override("v_separation", 5)
-	_scroll.add_child(_grid)
+	_list = VBoxContainer.new()
+	_list.name = "InstanceList"
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_list.add_theme_constant_override("separation", int(ROW_GAP_Y))
+	_scroll.add_child(_list)
 
 	_empty = Label.new()
 	_empty.name = "EmptyLabel"
@@ -173,94 +175,124 @@ func _build() -> void:
 	_empty.add_theme_color_override("font_color", DT.TEXT_MUTED)
 	layout.add_child(_empty)
 
-	_use_selected_btn = Button.new()
-	_use_selected_btn.name = "UseSelectedButton"
-	_use_selected_btn.text = "使用所选道具"
-	_use_selected_btn.focus_mode = Control.FOCUS_NONE
-	_use_selected_btn.custom_minimum_size = Vector2(0, 28)
-	_use_selected_btn.visible = false
-	_use_selected_btn.disabled = true
-	_use_selected_btn.pressed.connect(_use_selected)
-	layout.add_child(_use_selected_btn)
-
-
-func _make_cell(row: Dictionary) -> PanelContainer:
+func _make_row(row: Dictionary) -> PanelContainer:
 	var iid := String(row.get("item_instance_id", ""))
 	var item_id := String(row.get("item_id", ""))
 	var display_name := String(row.get("display_name", item_id))
 	var effect := String(row.get("effect_summary", row.get("description", "")))
 	var status := String(row.get("status", ItemInstance.STATUS_HELD))
-	var cell := PanelContainer.new()
-	cell.name = "Row_%s" % iid
-	cell.custom_minimum_size = Vector2(54, 64)
-	cell.set_meta("row", row.duplicate(true))
-	cell.add_theme_stylebox_override("panel", _cell_style(false))
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 0)
-	cell.add_child(column)
+	var instance_row := PanelContainer.new()
+	instance_row.name = "Row_%s" % iid
+	instance_row.custom_minimum_size = Vector2(DRAWER_W - 14.0, ROW_H)
+	instance_row.set_meta("row", row.duplicate(true))
+	instance_row.add_theme_stylebox_override("panel", _cell_style(false))
+	var row_layout := HBoxContainer.new()
+	row_layout.add_theme_constant_override("separation", 4)
+	instance_row.add_child(row_layout)
+	var icon_column := VBoxContainer.new()
+	icon_column.custom_minimum_size = Vector2(46.0, 0.0)
+	icon_column.add_theme_constant_override("separation", 0)
+	row_layout.add_child(icon_column)
 	var item_button := Button.new()
 	item_button.name = "ItemButton"
 	item_button.icon = ICON_RESOLVER.texture(String(row.get(
 		"icon_path", ICON_RESOLVER.item_icon_path(item_id))))
 	item_button.expand_icon = true
-	item_button.add_theme_constant_override("icon_max_width", 44)
-	item_button.custom_minimum_size = Vector2(52, 48)
-	item_button.focus_mode = Control.FOCUS_NONE
+	item_button.add_theme_constant_override("icon_max_width", 42)
+	item_button.custom_minimum_size = Vector2(46, 48)
+	item_button.focus_mode = Control.FOCUS_ALL
 	var details := PackedStringArray([display_name])
 	if not effect.is_empty():
 		details.append(effect)
 	details.append(_state_label(status, item_id))
-	details.append("实例：%s" % iid)
+	details.append(_affinity_label(row))
+	details.append(_armed_label(row))
+	details.append("item_id：%s" % item_id)
+	details.append("instance_id：%s" % iid)
 	item_button.tooltip_text = "\n".join(details)
 	item_button.pressed.connect(func() -> void: _select_instance(iid))
-	column.add_child(item_button)
-	var state_mark := Label.new()
-	state_mark.name = "StateLabel"
-	state_mark.text = _state_short(status, item_id)
-	state_mark.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	state_mark.add_theme_font_size_override("font_size", 10)
-	state_mark.add_theme_color_override("font_color", DT.TEXT_TITLE)
-	column.add_child(state_mark)
-	return cell
+	icon_column.add_child(item_button)
+	var armed_label := Label.new()
+	armed_label.name = "ArmedLabel"
+	armed_label.text = _armed_label(row)
+	armed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	armed_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	armed_label.add_theme_font_size_override("font_size", 10)
+	armed_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	icon_column.add_child(armed_label)
+
+	var details_column := VBoxContainer.new()
+	details_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details_column.add_theme_constant_override("separation", 0)
+	row_layout.add_child(details_column)
+	var top_line := HBoxContainer.new()
+	top_line.add_theme_constant_override("separation", 2)
+	details_column.add_child(top_line)
+	var name_label := Label.new()
+	name_label.name = "ItemName"
+	name_label.text = display_name
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.add_theme_font_size_override("font_size", 13)
+	name_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	top_line.add_child(name_label)
+	var use_button := Button.new()
+	use_button.name = "UseButton"
+	use_button.text = "用" if can_request_use(row) else "锁"
+	use_button.focus_mode = Control.FOCUS_ALL
+	use_button.disabled = not can_request_use(row)
+	use_button.custom_minimum_size = Vector2(30.0, 22.0)
+	use_button.tooltip_text = "使用 %s" % display_name if can_request_use(row) \
+		else "%s：%s" % [display_name, _state_label(status, item_id)]
+	use_button.pressed.connect(func() -> void:
+		_select_instance(iid)
+		if can_request_use(row):
+			use_item_requested.emit(iid)
+	)
+	top_line.add_child(use_button)
+	var effect_label := Label.new()
+	effect_label.name = "EffectSummary"
+	effect_label.text = effect if not effect.is_empty() else "无效果摘要"
+	effect_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	effect_label.add_theme_font_size_override("font_size", 11)
+	effect_label.add_theme_color_override("font_color", DT.TEXT_PRIMARY)
+	details_column.add_child(effect_label)
+	var state_label := Label.new()
+	state_label.name = "StateLabel"
+	state_label.text = "状态：%s" % _state_label(status, item_id)
+	state_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	state_label.add_theme_font_size_override("font_size", 11)
+	state_label.add_theme_color_override("font_color", DT.TEXT_TITLE)
+	details_column.add_child(state_label)
+	var affinity_label := Label.new()
+	affinity_label.name = "AffinityLabel"
+	affinity_label.text = _affinity_label(row)
+	affinity_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	affinity_label.add_theme_font_size_override("font_size", 11)
+	affinity_label.add_theme_color_override("font_color", Color(0.91, 0.72, 0.43))
+	details_column.add_child(affinity_label)
+	return instance_row
 
 
 func _select_instance(iid: String) -> void:
 	if not _rows_by_id.has(iid):
 		return
-	_selected_iid = iid
 	for key in _rows_by_id:
 		var cell: PanelContainer = _rows_by_id[key] as PanelContainer
 		cell.add_theme_stylebox_override("panel", _cell_style(String(key) == iid))
-	var selected: PanelContainer = _rows_by_id[iid] as PanelContainer
-	var row: Dictionary = selected.get_meta("row", {}) as Dictionary
-	var usable := can_request_use(row)
-	_use_selected_btn.visible = usable
-	_use_selected_btn.disabled = not usable
 	_sync_panel_height()
 
 
-func _use_selected() -> void:
-	if _selected_iid.is_empty() or not _rows_by_id.has(_selected_iid):
-		return
-	var cell: PanelContainer = _rows_by_id[_selected_iid] as PanelContainer
-	var row: Dictionary = cell.get_meta("row", {}) as Dictionary
-	if can_request_use(row):
-		use_item_requested.emit(_selected_iid)
-
-
 func _sync_panel_height() -> void:
-	if _panel == null or _scroll == null or _use_selected_btn == null:
+	if _panel == null or _scroll == null:
 		return
-	var row_count := ceili(float(_visible_count) / float(_grid.columns))
-	var grid_h := 0.0
-	if row_count > 0:
-		grid_h = row_count * CELL_H + (row_count - 1) * GRID_GAP_Y
+	var list_h := 0.0
+	if _visible_count > 0:
+		list_h = _visible_count * ROW_H + (_visible_count - 1) * ROW_GAP_Y
 	_scroll.visible = _visible_count > 0
-	_scroll.custom_minimum_size.y = minf(grid_h, MAX_SCROLL_H)
+	_scroll.custom_minimum_size.y = minf(list_h, MAX_SCROLL_H)
 	var content_h := PANEL_PADDING_Y + HEADER_H
-	content_h += GRID_GAP_Y + (grid_h if _visible_count > 0 else 16.0)
-	if _use_selected_btn.visible:
-		content_h += GRID_GAP_Y + ACTION_H
+	content_h += ROW_GAP_Y + (list_h if _visible_count > 0 else 16.0)
 	_panel.custom_minimum_size = Vector2(DRAWER_W, minf(content_h, DRAWER_H))
 	_panel.size = _panel.custom_minimum_size
 
@@ -279,27 +311,31 @@ static func _cell_style(selected: bool) -> StyleBoxFlat:
 	return style
 
 
-static func _state_short(status: String, item_id: String) -> String:
-	var definition := ItemCatalog.definition(StringName(item_id))
-	if definition != null and definition.is_relic():
-		return "遗"
-	match status:
-		ItemInstance.STATUS_HELD:
-			return "可"
-		ItemInstance.STATUS_ARMED:
-			return "武"
-	return "禁"
-
-
 static func _state_label(status: String, item_id: String) -> String:
 	var definition := ItemCatalog.definition(StringName(item_id))
 	if definition != null and definition.is_relic():
 		return "常驻遗物"
 	match status:
 		ItemInstance.STATUS_HELD:
-			return "可使用"
+			return "可用"
 		ItemInstance.STATUS_ARMED:
 			return "已武装"
 		"consumed":
 			return "已消耗"
 	return "不可使用"
+
+
+static func _affinity_label(row: Dictionary) -> String:
+	var labels: Array = row.get("tag_labels", []) as Array
+	var affinity := String(labels[0]) if not labels.is_empty() else "无属性"
+	return "属性：%s · %s" % [
+		affinity,
+		"契合" if bool(row.get("affinity_match", false)) else "未契合",
+	]
+
+
+static func _armed_label(row: Dictionary) -> String:
+	var armed_value: Variant = row.get("armed_for_window_id", null)
+	var armed_for := "" if armed_value == null else String(armed_value)
+	return "已武装" if String(row.get("status", "")) == ItemInstance.STATUS_ARMED \
+		or not armed_for.is_empty() else "未武装"
