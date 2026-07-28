@@ -1,7 +1,7 @@
 class_name CharacterPool
 
 # E1-06：12 名虚席馆原创角色；ability_id 1:1 映射既有 char_*_passive_v1 语义。
-# 最终 portrait 路径已写入契约；资源文件待 Gate B 批量入库后才存在。
+# 最终 portrait 路径与三类视觉资产合同已由 #332/#334 入库并验收。
 
 static func _mk(
 	p_id: StringName,
@@ -65,7 +65,7 @@ static func all() -> Array:
 		&"char_koromo_passive_v1", &"MYSTIC", &"CALM",
 		4, 30, &"starter_control", 300))
 	pool.append(_mk(&"ji_shu", "纪枢",
-		"虚席馆「算枢」席。胡牌 +1 番；对手听牌成型时透视其手牌 1 张。",
+		"虚席馆「算枢」席。胡牌 +1 番；对手首次进入听牌时查看真实等待牌。",
 		&"char_nodoka_passive_v1", &"CALM", &"CUNNING",
 		5, 10, &"starter_control", 300))
 

@@ -90,6 +90,18 @@ func test_pool_maps_ability_and_affinity_1_to_1():
 			"%s 最终 portrait_path 契约" % row.id
 		)
 
+
+func test_ji_shu_description_matches_authoritative_wait_reveal() -> void:
+	var character := CharacterPool.find(&"ji_shu")
+	assert_not_null(character)
+	if character == null:
+		return
+	assert_true(character.description.contains("真实等待牌"),
+		"纪枢角色描述必须反映 #346 已合并的等待牌投影")
+	assert_false(character.description.contains("透视其手牌"),
+		"纪枢角色描述不得保留已废弃的随机手牌 reveal 语义")
+
+
 func test_old_production_character_ids_absent_from_pool():
 	for old_id in OLD_PRODUCTION_IDS:
 		assert_null(CharacterPool.find(old_id), "旧 id 不得仍在池: %s" % old_id)
