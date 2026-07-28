@@ -229,6 +229,27 @@ func test_cancel_back_and_escape_close_without_emitting_intent() -> void:
 	assert_eq(_captured_intents.size(), 0, "Esc 不得提交 SessionIntent")
 
 
+func test_drawer_mask_left_click_closes_and_restores_real_source_focus() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	var source := shell.get_node("%PracticeButton") as Button
+	source.grab_focus()
+	shell.request_practice()
+	await get_tree().process_frame
+	var dim := shell.get_node_or_null("%DrawerDim") as Control
+	assert_not_null(dim)
+	if dim == null:
+		return
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	dim.gui_input.emit(click)
+	await get_tree().process_frame
+	assert_false((shell.get_node("%RuleDrawerHost") as Control).visible)
+	assert_same(get_viewport().gui_get_focus_owner(), source)
+	assert_eq(_captured_intents.size(), 0)
+
+
 func test_open_and_close_move_focus_deterministically() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame

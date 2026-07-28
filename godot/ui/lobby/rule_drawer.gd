@@ -10,6 +10,7 @@ const DRAWER_W: float = 560.0
 const OPEN_SEC: float = 0.22
 
 var _room_kind: StringName = &"PRACTICE"
+var _dim: ColorRect = null
 var _panel: PanelContainer = null
 var _content_group: VBoxContainer = null
 var _mode_section: Control = null
@@ -43,6 +44,7 @@ func _ready() -> void:
 func get_hook_nodes() -> Array[Node]:
 	var nodes: Array[Node] = []
 	for n in [
+		_dim,
 		_panel,
 		_content_group,
 		_mode_section,
@@ -97,13 +99,13 @@ func _build_ui() -> void:
 		return
 	_built = true
 
-	var dim := ColorRect.new()
-	dim.name = "DrawerDim"
-	dim.color = Color(0.04, 0.015, 0.01, DesignTokens.MODAL_BG_DIM * 0.62)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	dim.gui_input.connect(_on_dim_gui_input)
-	add_child(dim)
+	_dim = ColorRect.new()
+	_dim.name = "DrawerDim"
+	_dim.color = Color(0.04, 0.015, 0.01, DesignTokens.MODAL_BG_DIM * 0.62)
+	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_dim.gui_input.connect(_on_dim_gui_input)
+	add_child(_dim)
 
 	_panel = PanelContainer.new()
 	_panel.name = "RuleDrawerPanel"
@@ -387,9 +389,10 @@ func _emit_cancelled() -> void:
 
 
 func _on_dim_gui_input(event: InputEvent) -> void:
-	# 点击遮罩不关闭（仅取消/返回/Esc），避免误触；仍消费事件挡住大厅。
-	if event is InputEventMouseButton and event.pressed:
+	if event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_LEFT:
 		accept_event()
+		_emit_cancelled()
 
 
 func _play_open_anim() -> void:

@@ -225,6 +225,19 @@ func test_original_result_shell_keeps_final_hand_visible() -> void:
 	assert_not_null(panel.get_node_or_null("FeltGradient"), "绿毡渐变不得退化成旧猩红主题")
 
 
+func test_result_overlay_escape_does_not_open_settings_or_close_result() -> void:
+	var shell: Dictionary = _pt._create_result_modal_shell()
+	var overlay := shell["overlay"] as Control
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	get_viewport().push_input(escape)
+	await get_tree().process_frame
+	assert_true(is_instance_valid(overlay))
+	assert_null(get_tree().root.get_node_or_null("_settings_overlay_root"),
+		"局结算期间 Esc 不得在其上打开设置层")
+
+
 func test_result_hand_tiles_keep_readable_modal_size() -> void:
 	var tile := _pt._make_overlay_tile(TileId.W1, false)
 	add_child_autofree(tile)

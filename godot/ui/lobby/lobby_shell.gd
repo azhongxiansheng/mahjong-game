@@ -31,6 +31,9 @@ var _codex_source: Control = null
 var _audio_host: Control = null
 var _audio_popup: LobbyAudioPopup = null
 var _audio_source: Control = null
+var _settings_source: Control = null
+var _public_status_overlay: PublicMatchStatusOverlay = null
+var _public_status_source: Control = null
 # #258：首次公共连接说明进行中时暂存 Intent，避免重复弹窗
 var _pending_public_intent: SessionIntent = null
 var _public_connect_notice: ConfirmDialog = null
@@ -69,6 +72,11 @@ func _input(event: InputEvent) -> void:
 		return
 	if event.keycode != KEY_ESCAPE:
 		return
+	if _public_status_overlay != null and _public_status_overlay.is_blocking():
+		get_viewport().set_input_as_handled()
+		return
+	if get_tree().root.get_node_or_null("_settings_overlay_root") != null:
+		return
 	if _codex_host != null and _codex_host.visible:
 		_close_codex()
 		get_viewport().set_input_as_handled()
@@ -100,7 +108,7 @@ func _connect_stage_intents() -> void:
 	_stage.match_requested.connect(request_match)
 	_stage.notice_requested.connect(func() -> void: notice_pressed.emit())
 	_stage.help_requested.connect(func() -> void: help_pressed.emit())
-	_stage.settings_requested.connect(func() -> void: settings_pressed.emit())
+	_stage.settings_requested.connect(_on_settings_requested)
 	_stage.character_codex_requested.connect(_on_character_codex_requested)
 	_stage.item_codex_requested.connect(_on_item_codex_requested)
 	_stage.rules_requested.connect(_on_rules_requested)
@@ -149,6 +157,18 @@ func _build_overlay_hosts() -> void:
 	for hook_node in _audio_popup.get_hook_nodes():
 		_register_hook(hook_node)
 
+	_public_status_overlay = PublicMatchStatusOverlay.new()
+	add_child(_public_status_overlay)
+	_public_status_overlay.cancel_requested.connect(_on_public_cancel_requested)
+	_public_status_overlay.retry_requested.connect(_on_public_retry_requested)
+	_public_status_overlay.close_requested.connect(_on_public_status_closed)
+	for hook_node in _public_status_overlay.get_hook_nodes():
+		_register_hook(hook_node)
+	var coordinator := get_node_or_null("PublicMatchCoordinator") as PublicMatchCoordinator
+	if coordinator != null:
+		coordinator.view_changed.connect(_on_public_match_view_changed)
+		_public_status_overlay.present(coordinator.get_view())
+
 
 func _register_hook(node: Node) -> void:
 	if node == null:
@@ -182,6 +202,11 @@ func _on_sfx_requested(source: Control) -> void:
 	_open_audio_popup(source)
 
 
+func _on_settings_requested() -> void:
+	settings_pressed.emit()
+	_open_settings_overlay(get_node_or_null("%SettingsButton") as Control)
+
+
 func _set_status(text: String) -> void:
 	if _status_label:
 		_status_label.text = text
@@ -192,6 +217,7 @@ func _open_rule_drawer(room_kind: StringName, source: Control) -> void:
 		return
 	_close_codex(false)
 	_close_audio_popup(false)
+	_close_settings_overlay(false)
 	_drawer_source = source
 	_drawer_host.visible = true
 	_drawer_host.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -214,6 +240,8 @@ func _close_rule_drawer(restore_focus: bool = true) -> void:
 
 
 func _on_rule_drawer_confirmed(intent: SessionIntent) -> void:
+	if intent != null and intent.room_kind == &"PUBLIC_CASUAL":
+		_public_status_source = _drawer_source
 	# #258：Windows 首次公共连接应用内说明（仅 Windows 运行时；系统防火墙弹窗不保证）
 	if intent != null and intent.room_kind == &"PUBLIC_CASUAL":
 		if FirstUseNotices.needs_public_connect_notice():
@@ -265,6 +293,7 @@ func _open_codex(page: StringName, source: Control) -> void:
 		return
 	_close_rule_drawer(false)
 	_close_audio_popup(false)
+	_close_settings_overlay(false)
 	_codex_source = source
 	_codex_host.visible = true
 	_codex_host.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -287,6 +316,7 @@ func _open_audio_popup(source: Control) -> void:
 		return
 	_close_rule_drawer(false)
 	_close_codex(false)
+	_close_settings_overlay(false)
 	_audio_source = source
 	_audio_host.visible = true
 	_audio_host.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -302,6 +332,84 @@ func _close_audio_popup(restore_focus: bool = true) -> void:
 			and _audio_source.focus_mode != Control.FOCUS_NONE:
 		_audio_source.grab_focus()
 	_audio_source = null
+
+
+func _open_settings_overlay(source: Control) -> void:
+	var existing := get_tree().root.get_node_or_null("_settings_overlay_root") as SettingsOverlay
+	if existing != null:
+		return
+	_close_rule_drawer(false)
+	_close_codex(false)
+	_close_audio_popup(false)
+	_settings_source = source
+	var overlay := SettingsOverlay.new()
+	overlay.name = "_settings_overlay_root"
+	overlay.closed.connect(_on_settings_overlay_closed)
+	get_tree().root.add_child(overlay)
+
+
+func _close_settings_overlay(restore_focus: bool = true) -> void:
+	var overlay := get_tree().root.get_node_or_null("_settings_overlay_root") as SettingsOverlay
+	if not restore_focus:
+		_settings_source = null
+	if overlay != null:
+		overlay.close_overlay()
+	elif restore_focus:
+		_restore_settings_focus()
+
+
+func _on_settings_overlay_closed() -> void:
+	_restore_settings_focus()
+
+
+func _restore_settings_focus() -> void:
+	if _settings_source != null and is_instance_valid(_settings_source) \
+			and _settings_source.focus_mode != Control.FOCUS_NONE:
+		_settings_source.grab_focus()
+	_settings_source = null
+
+
+func _on_public_match_view_changed(view: Dictionary) -> void:
+	if _public_status_overlay == null:
+		return
+	var state := str(view.get("state", "idle"))
+	if state not in ["idle", "cancelled", "recovered"]:
+		_close_rule_drawer(false)
+		_close_codex(false)
+		_close_audio_popup(false)
+		_close_settings_overlay(false)
+	_public_status_overlay.present(view)
+	move_child(_public_status_overlay, get_child_count() - 1)
+	if state == "cancelled":
+		_restore_public_status_focus()
+
+
+func _on_public_cancel_requested() -> void:
+	var coordinator := get_node_or_null("PublicMatchCoordinator") as PublicMatchCoordinator
+	if coordinator != null:
+		coordinator.request_cancel()
+
+
+func _on_public_retry_requested() -> void:
+	var coordinator := get_node_or_null("PublicMatchCoordinator") as PublicMatchCoordinator
+	if coordinator != null:
+		coordinator.request_retry()
+
+
+func _on_public_status_closed() -> void:
+	if _public_status_overlay != null:
+		_public_status_overlay.visible = false
+		_public_status_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_restore_public_status_focus()
+
+
+func _restore_public_status_focus() -> void:
+	var source := _public_status_source
+	if source == null or not is_instance_valid(source):
+		source = get_node_or_null("%MatchButton") as Control
+	if source != null and source.focus_mode != Control.FOCUS_NONE:
+		source.grab_focus()
+	_public_status_source = null
 
 
 func _request_lobby_bgm() -> void:

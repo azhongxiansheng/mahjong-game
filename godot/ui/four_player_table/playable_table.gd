@@ -155,7 +155,7 @@ func _build_top_bar() -> void:
 	settings_btn.name = "SettingsButton"
 	TABLE_ACTION_BUTTON_STYLE.apply_table_utility_style(settings_btn)
 	settings_btn.position = Vector2(TableLayout.TABLE_W - 100, 7)
-	settings_btn.pressed.connect(_open_settings_overlay)
+	settings_btn.pressed.connect(_open_settings_overlay.bind(settings_btn))
 	add_child(settings_btn)
 
 
@@ -490,9 +490,12 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	panel.add_child(step_hint)
 
 	var btn := Button.new()
+	btn.name = "ResultContinueButton"
 	btn.text = "继续 →" if win_event != null else "确定"
 	btn.position = Vector2(230, 490)
 	btn.custom_minimum_size = Vector2(160, 44)
+	btn.focus_mode = Control.FOCUS_ALL
+	DT.apply_button_role(btn, DT.BtnRole.PRIMARY)
 	var step_state := {"value": 1 if win_event != null else 2}
 	btn.pressed.connect(func():
 		if int(step_state["value"]) == 1:
@@ -516,6 +519,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		_skip_result_animations()
 		overlay.queue_free())
 	panel.add_child(btn)
+	btn.grab_focus()
 
 	# modal backdrop 不负责关闭；只允许显式按钮推进两步状态机。
 	while is_instance_valid(overlay):
@@ -2702,14 +2706,20 @@ func _input(event: InputEvent) -> void:
 			if _decision_adapter != null:
 				_decision_adapter.submit_action({"action": "riichi_yes"})
 		KEY_ESCAPE:
-			# 唤起设置 overlay(SFX 音量调节);overlay 自己 ESC 关
-			_open_settings_overlay()
+			if get_node_or_null("ResultOverlay") != null:
+				get_viewport().set_input_as_handled()
+				return
+			_open_settings_overlay(find_child("SettingsButton", true, false) as Control)
 
 
-func _open_settings_overlay() -> void:
+func _open_settings_overlay(source: Control = null) -> void:
 	# 防止 ESC 连按打开多个
 	if get_tree().root.get_node_or_null("_settings_overlay_root") != null:
 		return
 	var overlay := SettingsOverlay.new()
 	overlay.name = "_settings_overlay_root"
+	overlay.closed.connect(func() -> void:
+		if source != null and is_instance_valid(source) \
+				and source.focus_mode != Control.FOCUS_NONE:
+			source.grab_focus())
 	get_tree().root.add_child(overlay)

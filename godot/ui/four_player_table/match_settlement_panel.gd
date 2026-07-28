@@ -22,6 +22,7 @@ func _init() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	z_index = 200
+	set_process_input(true)
 
 
 func _ready() -> void:
@@ -58,6 +59,8 @@ func present(view: Dictionary) -> void:
 		var color := Color(1, 0.85, 0.4) if seat_id == 0 else Color(0.92, 0.92, 0.9)
 		label.add_theme_color_override("font_color", color)
 		_rows_host.add_child(label)
+	if _rematch_btn != null:
+		_rematch_btn.grab_focus()
 
 
 func _ensure_built() -> void:
@@ -69,7 +72,8 @@ func _ensure_built() -> void:
 	bg.name = "Backdrop"
 	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bg.color = Color(0, 0, 0, 0.72)
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	bg.gui_input.connect(_on_backdrop_gui_input)
 	add_child(bg)
 
 	var panel := Panel.new()
@@ -98,7 +102,7 @@ func _ensure_built() -> void:
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_title_label.add_theme_font_size_override("font_size", 30)
 	_title_label.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
-	_title_label.text = "对局结束"
+	_title_label.text = "整场结界解除"
 	panel.add_child(_title_label)
 
 	_rows_host = VBoxContainer.new()
@@ -116,17 +120,23 @@ func _ensure_built() -> void:
 	_rematch_btn.position = Vector2(70, PANEL_H - 72)
 	_rematch_btn.size = Vector2(160, 44)
 	_rematch_btn.pressed.connect(_on_rematch_pressed)
+	_rematch_btn.focus_mode = Control.FOCUS_ALL
 	panel.add_child(_rematch_btn)
 
 	_return_btn = Button.new()
 	_return_btn.name = "ReturnLobbyButton"
 	_return_btn.text = "返回大厅"
-	DT.apply_button_role(_return_btn, DT.BtnRole.GHOST)
+	DT.apply_button_role(_return_btn, DT.BtnRole.SECONDARY)
 	_return_btn.custom_minimum_size = Vector2(160, 44)
 	_return_btn.position = Vector2(PANEL_W - 70 - 160, PANEL_H - 72)
 	_return_btn.size = Vector2(160, 44)
 	_return_btn.pressed.connect(_on_return_pressed)
+	_return_btn.focus_mode = Control.FOCUS_ALL
 	panel.add_child(_return_btn)
+	_rematch_btn.focus_next = _rematch_btn.get_path_to(_return_btn)
+	_rematch_btn.focus_previous = _rematch_btn.get_path_to(_return_btn)
+	_return_btn.focus_next = _return_btn.get_path_to(_rematch_btn)
+	_return_btn.focus_previous = _return_btn.get_path_to(_rematch_btn)
 
 
 func _on_rematch_pressed() -> void:
@@ -150,3 +160,14 @@ func _set_buttons_disabled(disabled: bool) -> void:
 		_rematch_btn.disabled = disabled
 	if _return_btn != null:
 		_return_btn.disabled = disabled
+
+
+func _on_backdrop_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		accept_event()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo \
+			and event.keycode == KEY_ESCAPE:
+		get_viewport().set_input_as_handled()

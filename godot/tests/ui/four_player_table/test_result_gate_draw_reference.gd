@@ -346,11 +346,11 @@ func test_flat_meld_slots_cover_pon_open_kan_ankan_and_added_kan() -> void:
 	var ankan_slots := _flat_tile_slots(flat.get_child(2))
 	assert_eq(ankan_slots.size(), 4)
 	assert_eq(ankan_slots.map(func(slot: Control):
-		return bool(slot.get_meta("face_down"))), [false, true, true, false],
-		"暗杠固定中间两张牌背")
+		return bool(slot.get_meta("face_down"))), [true, false, false, true],
+		"暗杠按通行日麻视觉固定首尾两张牌背")
 	assert_eq(ankan_slots.filter(func(slot: Control):
 		return slot.get_node_or_null("Back") != null).size(), 2)
-	assert_eq((ankan_slots[1].get_node("Back") as Control).custom_minimum_size,
+	assert_eq((ankan_slots[0].get_node("Back") as Control).custom_minimum_size,
 		Vector2(30, 40))
 
 	var added_slots := _flat_tile_slots(flat.get_child(3))

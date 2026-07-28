@@ -51,7 +51,7 @@ func test_panel_shows_title_ranks_and_buttons() -> void:
 	assert_eq(rematch_btn.tooltip_text, rematch_btn.text)
 	assert_eq(return_btn.tooltip_text, return_btn.text)
 	assert_eq(rematch_btn.get_meta("dt_button_role"), DT.BtnRole.PRIMARY)
-	assert_eq(return_btn.get_meta("dt_button_role"), DT.BtnRole.GHOST)
+	assert_eq(return_btn.get_meta("dt_button_role"), DT.BtnRole.SECONDARY)
 
 
 func test_extreme_button_text_keeps_fixed_settlement_geometry() -> void:
@@ -69,7 +69,7 @@ func test_extreme_button_text_keeps_fixed_settlement_geometry() -> void:
 	DT.apply_button_role(rematch_btn, DT.BtnRole.PRIMARY)
 	return_btn.text = long_chinese
 	return_btn.tooltip_text = ""
-	DT.apply_button_role(return_btn, DT.BtnRole.GHOST)
+	DT.apply_button_role(return_btn, DT.BtnRole.SECONDARY)
 	await get_tree().process_frame
 
 	assert_eq(modal.custom_minimum_size, Vector2(520, 400))
@@ -113,3 +113,27 @@ func test_buttons_emit_once_then_disable() -> void:
 	return_btn.pressed.emit()
 	assert_signal_emit_count(panel, "return_lobby_requested", 1)
 	assert_true(return_btn.disabled)
+
+
+func test_settlement_focus_is_closed_loop_and_escape_never_chooses_action() -> void:
+	var panel := MatchSettlementPanel.new()
+	add_child_autofree(panel)
+	await get_tree().process_frame
+	panel.present(_make_view())
+	await get_tree().process_frame
+	watch_signals(panel)
+	var rematch := panel.find_child("RematchButton", true, false) as Button
+	var return_lobby := panel.find_child("ReturnLobbyButton", true, false) as Button
+	assert_same(get_viewport().gui_get_focus_owner(), rematch)
+	assert_eq(rematch.focus_mode, Control.FOCUS_ALL)
+	assert_eq(return_lobby.focus_mode, Control.FOCUS_ALL)
+	assert_same(rematch.get_node_or_null(rematch.focus_next), return_lobby)
+	assert_same(return_lobby.get_node_or_null(return_lobby.focus_next), rematch)
+	var escape := InputEventKey.new()
+	escape.keycode = KEY_ESCAPE
+	escape.pressed = true
+	get_viewport().push_input(escape)
+	await get_tree().process_frame
+	assert_signal_not_emitted(panel, "rematch_requested")
+	assert_signal_not_emitted(panel, "return_lobby_requested")
+	assert_true(panel.is_visible_in_tree())

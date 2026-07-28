@@ -135,6 +135,26 @@ func test_close_button_and_escape_restore_focus_to_real_source() -> void:
 		assert_same(get_viewport().gui_get_focus_owner(), source, "关闭后焦点必须回到来源按钮")
 
 
+func test_codex_mask_left_click_closes_and_restores_source_focus() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	var source := shell.get_node("%RulesButton") as Button
+	source.grab_focus()
+	_press(shell, "RulesButton")
+	await get_tree().process_frame
+	var dim := shell.get_node_or_null("%CodexDim") as Control
+	assert_not_null(dim)
+	if dim == null:
+		return
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	dim.gui_input.emit(click)
+	await get_tree().process_frame
+	assert_false((shell.get_node("%CodexHost") as Control).visible)
+	assert_same(get_viewport().gui_get_focus_owner(), source)
+
+
 func test_codex_is_full_screen_bounded_and_has_keyboard_focus_hooks() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame

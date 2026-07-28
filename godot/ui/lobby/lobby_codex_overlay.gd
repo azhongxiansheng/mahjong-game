@@ -11,6 +11,7 @@ const PAGE_RULES := &"rules"
 
 var _current_page: StringName = PAGE_CHARACTERS
 var _catalog: LobbyCodexCatalog = LobbyCodexCatalog.new()
+var _dim: ColorRect = null
 var _panel: PanelContainer = null
 var _header_plaque: PanelContainer = null
 var _header_title: Label = null
@@ -51,6 +52,7 @@ func get_hook_nodes() -> Array[Node]:
 	var nodes: Array[Node] = []
 	for n in [
 		self,
+		_dim,
 		_panel,
 		_header_plaque,
 		_header_title,
@@ -82,12 +84,13 @@ func _build_ui() -> void:
 		return
 	_built = true
 
-	var dim := ColorRect.new()
-	dim.name = "CodexDim"
-	dim.color = Color(DesignTokens.BG_BASE.r, DesignTokens.BG_BASE.g, DesignTokens.BG_BASE.b, DesignTokens.MODAL_BG_DIM)
-	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(dim)
+	_dim = ColorRect.new()
+	_dim.name = "CodexDim"
+	_dim.color = Color(DesignTokens.BG_BASE.r, DesignTokens.BG_BASE.g, DesignTokens.BG_BASE.b, DesignTokens.MODAL_BG_DIM)
+	_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	_dim.gui_input.connect(_on_dim_gui_input)
+	add_child(_dim)
 
 	_panel = PanelContainer.new()
 	_panel.name = "CodexPanel"
@@ -277,6 +280,12 @@ func _rebuild_content() -> void:
 		_roster_buttons.append(button)
 	if not rows.is_empty():
 		_select_entry(0)
+	else:
+		_detail_title.text = "暂无档案"
+		var empty := _label("此卷暂无可阅读条目。", DesignTokens.FONT_BODY,
+			DesignTokens.LOBBY_INK, true)
+		empty.name = "CodexEmptyState"
+		_detail_content.add_child(empty)
 	_wire_focus_graph()
 
 
@@ -403,3 +412,10 @@ func _wire_focus_graph() -> void:
 
 func _on_close_pressed() -> void:
 	closed.emit()
+
+
+func _on_dim_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed \
+			and event.button_index == MOUSE_BUTTON_LEFT:
+		accept_event()
+		closed.emit()
