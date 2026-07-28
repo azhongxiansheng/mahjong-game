@@ -5,7 +5,7 @@ extends GutTest
 const CHARS_OK := true
 
 
-func _claims(room := "room-hs", parts: Array = ["HUMAN", "AI", "AI", "AI"]) -> Dictionary:
+func _claims(room := "room-hs", parts: Array = ["HUMAN", "AI", "AI", "AI"], chars: Array = ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]) -> Dictionary:
 	return {
 		"room_id": room,
 		"seat": 0,
@@ -13,6 +13,7 @@ func _claims(room := "room-hs", parts: Array = ["HUMAN", "AI", "AI", "AI"]) -> D
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": parts,
+		"character_ids": chars,
 		"expires_at_unix": 9999999999,
 	}
 
@@ -178,3 +179,37 @@ func _discard_meta(prompt: NetworkedEvent) -> Dictionary:
 			"tile_instance_id": int(opts[0]["tile_instance_id"]),
 		}
 	return {}
+
+
+func test_bootstrap_uses_signed_character_ids_not_random() -> void:
+	var s := HeadlessRoomSession.new()
+	s.set_seed_override_for_test(42)
+	var chars := ["qiu_jue", "lin_yeche", "yuan_xi", "ji_shu"]
+	assert_true(s.bootstrap_from_claims(_claims("room-char", ["HUMAN", "AI", "AI", "AI"], chars)))
+	assert_eq(s.character_ids.size(), 4)
+	for i in range(4):
+		assert_eq(String(s.character_ids[i]), chars[i], "seat %d" % i)
+	# 缺 character_ids fail-closed
+	var bad := _claims("room-missing")
+	bad.erase("character_ids")
+	var s2 := HeadlessRoomSession.new()
+	assert_false(s2.bootstrap_from_claims(bad))
+	# 未知 ID fail-closed
+	var s3 := HeadlessRoomSession.new()
+	assert_false(s3.bootstrap_from_claims(_claims("room-unk", ["HUMAN", "AI", "AI", "AI"], ["not_real", "a", "b", "c"])))
+
+
+func test_reconnect_ready_does_not_change_roster() -> void:
+	var s := HeadlessRoomSession.new()
+	s.set_seed_override_for_test(7)
+	var chars := ["hua_ling", "an_cheng", "bai_touli", "lin_yeche"]
+	assert_true(s.bootstrap_from_claims(_claims("room-rc", ["HUMAN", "AI", "AI", "AI"], chars)))
+	var frozen: Array = s.character_ids.duplicate()
+	assert_true(bool(s.join(0, "human-0")["ok"]))
+	assert_true(bool(s.ready(0, "human-0")["ok"]))
+	assert_true(s.is_started())
+	# 重复 JOIN/READY（重连）
+	assert_true(bool(s.join(0, "human-0", 2, 1)["ok"]))
+	assert_true(bool(s.ready(0, "human-0")["ok"]))
+	for i in range(4):
+		assert_eq(String(s.character_ids[i]), String(frozen[i]))

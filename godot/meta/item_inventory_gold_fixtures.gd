@@ -94,6 +94,53 @@ static func gold_public_networked_events() -> Array:
 		if typeof(raw) != TYPE_DICTIONARY:
 			return []
 		out.append(_coerce_event_ints(raw as Dictionary))
+	# #374：冻结 JSON 早于 matching_meta；加载时注入并重算 view_hash，保持 NBC 可回放。
+	return _ensure_matching_meta_on_snapshots(out)
+
+
+static func _ensure_matching_meta_on_snapshots(events: Array) -> Array:
+	# 两遍：先处理全部 SNAP 建立 old_hash→new_hash（含 forward pending 引用），再改写业务事件。
+	var hash_map: Dictionary = {}
+	var out: Array = []
+	var meta_mod: Dictionary = MatchingMetaSnapshotProvider.fixture_module()
+	for raw in events:
+		if typeof(raw) != TYPE_DICTIONARY:
+			return []
+		var d: Dictionary = (raw as Dictionary).duplicate(true)
+		if str(d.get("kind", "")) == "ROOM_SNAPSHOT":
+			var old_h := str(d.get("view_hash", ""))
+			var payload: Dictionary = (d.get("payload", {}) as Dictionary).duplicate(true)
+			var mods: Array = []
+			if payload.get("modules", null) is Array:
+				mods = (payload["modules"] as Array).duplicate(true)
+			var has_meta := false
+			for m in mods:
+				if typeof(m) == TYPE_DICTIONARY \
+						and str((m as Dictionary).get("module_key", "")) \
+						== MatchingMetaSnapshotProvider.MODULE_KEY:
+					has_meta = true
+					break
+			if not has_meta:
+				mods.append(meta_mod.duplicate(true))
+				mods.sort_custom(func(a, b) -> bool:
+					return str(a.get("module_key", "")) < str(b.get("module_key", ""))
+				)
+				payload["modules"] = mods
+			var new_h := ProtocolViewCodec.compute_view_hash(payload)
+			if not old_h.is_empty():
+				hash_map[old_h] = new_h
+			d["payload"] = payload
+			d["view_hash"] = new_h
+		out.append(d)
+	for d2 in out:
+		if typeof(d2) != TYPE_DICTIONARY:
+			continue
+		var ed: Dictionary = d2
+		if str(ed.get("kind", "")) == "ROOM_SNAPSHOT":
+			continue
+		var vh := str(ed.get("view_hash", ""))
+		if hash_map.has(vh):
+			ed["view_hash"] = str(hash_map[vh])
 	return out
 
 

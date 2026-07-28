@@ -130,7 +130,7 @@ func TestCasualQueue_JoinGetCancel_HappyPath(t *testing.T) {
 	baseURL, ts, q := newQueueServer(t)
 	_, token := issueGuestToken(t, ts)
 
-	body := []byte(`{"round_kind":"EAST","game_mode":"STANDARD"}`)
+	body := []byte(`{"round_kind":"EAST","game_mode":"STANDARD","character_id":"lin_yeche"}`)
 	resp, raw := doJSON(t, http.MethodPost, baseURL+"/v1/queues/casual", token, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST status=%d body=%s", resp.StatusCode, redactSecrets(raw))
@@ -219,7 +219,7 @@ func TestCasualQueue_AuthNegatives(t *testing.T) {
 	baseURL, ts, _ := newQueueServer(t)
 	_, goodToken := issueGuestToken(t, ts)
 
-	body := []byte(`{"round_kind":"EAST","game_mode":"STANDARD"}`)
+	body := []byte(`{"round_kind":"EAST","game_mode":"STANDARD","character_id":"lin_yeche"}`)
 	url := baseURL + "/v1/queues/casual"
 
 	// 缺失
@@ -239,7 +239,7 @@ func TestCasualQueue_AuthNegatives(t *testing.T) {
 	assertNoSecretLeak(t, raw, goodToken)
 
 	// 房间 token 不得当 session
-	roomTok, _, err := ts.IssueRoomToken("sess-1", "room-1", 0, "EAST", "STANDARD", []string{"HUMAN", "AI", "AI", "AI"})
+	roomTok, _, err := ts.IssueRoomToken("sess-1", "room-1", 0, "EAST", "STANDARD", []string{"HUMAN", "AI", "AI", "AI"}, []string{"lin_yeche", "an_cheng", "bai_touli", "hua_ling"})
 	if err != nil {
 		t.Fatalf("IssueRoomToken: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestCasualQueue_OwnerIsolation(t *testing.T) {
 	_, tokenA := issueGuestToken(t, ts)
 	_, tokenB := issueGuestToken(t, ts)
 
-	body := []byte(`{"round_kind":"HANCHAN","game_mode":"TRASH_TALK"}`)
+	body := []byte(`{"round_kind":"HANCHAN","game_mode":"TRASH_TALK","character_id":"lin_yeche"}`)
 	resp, raw := doJSON(t, http.MethodPost, baseURL+"/v1/queues/casual", tokenA, body)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("join status=%d body=%s", resp.StatusCode, redactSecrets(raw))
@@ -386,10 +386,10 @@ func TestCasualQueue_FourPoolsHTTP(t *testing.T) {
 	baseURL, ts, q := newQueueServer(t)
 	_, token := issueGuestToken(t, ts)
 	combos := []string{
-		`{"round_kind":"EAST","game_mode":"STANDARD"}`,
-		`{"round_kind":"EAST","game_mode":"TRASH_TALK"}`,
-		`{"round_kind":"HANCHAN","game_mode":"STANDARD"}`,
-		`{"round_kind":"HANCHAN","game_mode":"TRASH_TALK"}`,
+		`{"round_kind":"EAST","game_mode":"STANDARD","character_id":"lin_yeche"}`,
+		`{"round_kind":"EAST","game_mode":"TRASH_TALK","character_id":"lin_yeche"}`,
+		`{"round_kind":"HANCHAN","game_mode":"STANDARD","character_id":"lin_yeche"}`,
+		`{"round_kind":"HANCHAN","game_mode":"TRASH_TALK","character_id":"lin_yeche"}`,
 	}
 	ids := map[string]bool{}
 	for _, body := range combos {

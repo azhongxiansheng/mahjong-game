@@ -296,7 +296,7 @@ func enqueueNGuests(t *testing.T, svc *Service, n, guestBase int, rk RoundKind, 
 	ctx := context.Background()
 	out := make([]Ticket, 0, n)
 	for i := 0; i < n; i++ {
-		tk, err := svc.Enqueue(ctx, fmt.Sprintf("guest-%d", guestBase+i+1), rk, gm)
+		tk, err := svc.Enqueue(ctx, fmt.Sprintf("guest-%d", guestBase+i+1), rk, gm, "lin_yeche")
 		if err != nil {
 			t.Fatalf("Enqueue: %v", err)
 		}

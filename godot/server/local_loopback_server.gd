@@ -848,6 +848,17 @@ func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 	if snapshot_registry == null or _bc == null:
 		return {}
 	var ctx: Dictionary = {"state": _bc.state}
+	# #374：权威 roster 进入独立 matching_meta 模块（不改 core_table）。
+	if _config != null:
+		var chars_ctx: Array = []
+		for c in _config.character_ids:
+			chars_ctx.append(String(c))
+		var parts_ctx: Array = []
+		for p in _participants:
+			parts_ctx.append(String(p))
+		ctx["character_ids"] = chars_ctx
+		ctx["participants"] = parts_ctx
+		ctx["config"] = _config
 	var rw: RewardWindowModule = _reward_module()
 	if rw != null:
 		ctx["reward_window"] = rw

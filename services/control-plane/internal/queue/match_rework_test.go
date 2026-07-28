@@ -25,7 +25,7 @@ type blockingIssuer struct {
 	release chan struct{}
 }
 
-func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
+func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string, characterIDs []string) (string, time.Time, error) {
 	b.mu.Lock()
 	idx := b.n
 	b.n++
@@ -40,7 +40,7 @@ func (b *blockingIssuer) IssueRoomToken(sessionID, roomID string, seat int, roun
 		}
 		<-b.release
 	}
-	return b.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants)
+	return b.inner.IssueRoomToken(sessionID, roomID, seat, roundKind, gameMode, participants, characterIDs)
 }
 
 // TestRework_P1_BlockingIssuerNeverExposesPartialAssigned
@@ -264,7 +264,7 @@ func TestRework_P2_MillisecondDeadlineBoundary(t *testing.T) {
 	f.clk.Set(start)
 	ctx := context.Background()
 
-	tk, err := f.svc.Enqueue(ctx, "guest-ms", RoundKindEast, GameModeStandard)
+	tk, err := f.svc.Enqueue(ctx, "guest-ms", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -309,13 +309,13 @@ func TestRework_P2_DeadlineReanchorsWithMillisecondPrecision(t *testing.T) {
 	ctx := context.Background()
 	t0 := time.Date(2026, 7, 24, 12, 0, 0, 500*int(time.Millisecond), time.UTC)
 	f.clk.Set(t0)
-	early, err := f.svc.Enqueue(ctx, "g-early", RoundKindEast, GameModeStandard)
+	early, err := f.svc.Enqueue(ctx, "g-early", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("early: %v", err)
 	}
 	t1 := t0.Add(1500 * time.Millisecond)
 	f.clk.Set(t1)
-	late, err := f.svc.Enqueue(ctx, "g-late", RoundKindEast, GameModeStandard)
+	late, err := f.svc.Enqueue(ctx, "g-late", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("late: %v", err)
 	}
@@ -383,7 +383,7 @@ func TestRework_P2_MatchAllDrainsEightHumansInOneScan(t *testing.T) {
 	// 8 真人同池
 	tickets := make([]Ticket, 0, 8)
 	for i := 0; i < 8; i++ {
-		tk, err := f.svc.Enqueue(ctx, fmt.Sprintf("guest-8-%d", i), RoundKindEast, GameModeStandard)
+		tk, err := f.svc.Enqueue(ctx, fmt.Sprintf("guest-8-%d", i), RoundKindEast, GameModeStandard, "lin_yeche")
 		if err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
@@ -450,7 +450,7 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 	}
 
 	// 后台 loop 路径：始终失败的 issuer，验证 OnError 被调用
-	alwaysFail := RoomTokenIssuer(RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
+	alwaysFail := RoomTokenIssuer(RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (string, time.Time, error) {
 		return "", time.Time{}, errors.New("issuer synthetic failure")
 	}))
 	m2, err := NewMatcher(MatcherOptions{
@@ -503,8 +503,8 @@ func TestRework_P2_MatcherReportsErrorsAndRecovers(t *testing.T) {
 }
 
 // RoomTokenIssuerFunc 测试用函数适配器。
-type RoomTokenIssuerFunc func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error)
+type RoomTokenIssuerFunc func(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (string, time.Time, error)
 
-func (f RoomTokenIssuerFunc) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
-	return f(sessionID, roomID, seat, roundKind, gameMode, participants)
+func (f RoomTokenIssuerFunc) IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string, characterIDs []string) (string, time.Time, error) {
+	return f(sessionID, roomID, seat, roundKind, gameMode, participants, characterIDs)
 }

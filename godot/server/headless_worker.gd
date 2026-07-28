@@ -454,7 +454,8 @@ func _handle_join(cid: int, d: Dictionary) -> void:
 		# 已建房：bootstrap claims 必须一致
 		if session.round_kind != str(claims["round_kind"]) \
 				or session.game_mode != str(claims["game_mode"]) \
-				or not _participants_equal(session.participants, claims["participants"]):
+				or not _participants_equal(session.participants, claims["participants"]) \
+				or not _character_ids_equal(session.character_ids, claims.get("character_ids", [])):
 			_send_error(cid, room_id, "", "UNAUTHORIZED", "bootstrap mismatch")
 			return
 	else:
@@ -875,6 +876,18 @@ func _participants_equal(a: Array, b: Variant) -> bool:
 	if a.size() != bb.size():
 		return false
 	for i in range(a.size()):
+		if str(a[i]) != str(bb[i]):
+			return false
+	return true
+
+
+func _character_ids_equal(a: Array, b: Variant) -> bool:
+	if typeof(b) != TYPE_ARRAY:
+		return false
+	var bb: Array = b
+	if a.size() != 4 or bb.size() != 4:
+		return false
+	for i in range(4):
 		if str(a[i]) != str(bb[i]):
 			return false
 	return true

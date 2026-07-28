@@ -30,6 +30,11 @@ func bind_characters(character_ids: Array, local_seat: int = 0) -> void:
 		policy.bind_characters(_character_ids, _local_seat)
 
 
+## 只读：当前已绑定四席角色身份（#374 公共场权威 roster 可观察 seam）。
+func bound_character_ids() -> Array:
+	return _character_ids.duplicate()
+
+
 func set_local_seat(local_seat: int) -> void:
 	_local_seat = local_seat
 	for policy in _policies:

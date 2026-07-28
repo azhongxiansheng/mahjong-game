@@ -17,6 +17,7 @@ func _mint_room_token(claims: Dictionary) -> String:
 		"round_kind": str(claims.get("round_kind", "EAST")),
 		"game_mode": str(claims.get("game_mode", "STANDARD")),
 		"participants": claims["participants"],
+		"character_ids": claims.get("character_ids", ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]),
 	}
 	var raw: PackedByteArray = JSON.stringify(body).to_utf8_buffer()
 	var payload_b64: String = Marshalls.raw_to_base64(raw)
@@ -51,6 +52,7 @@ func _claims_1h(room: String, seat: int, sess: String) -> Dictionary:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 
 
@@ -196,7 +198,8 @@ func test_ai_single_step_per_tick_and_real_action_applied() -> void:
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
 		"expires_at_unix": 2_000_000_000,
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	assert_true(bool(session.join(0, "sess-ai-s", 1, 1)["ok"]))
 	assert_true(bool(session.ready(0, "sess-ai-s")["ok"]))
 	assert_true(session.is_started())
@@ -241,6 +244,7 @@ func test_ai_single_step_per_tick_and_real_action_applied() -> void:
 			"room_id": "room-ai-step", "seat": 0, "session_id": "sess-ai-s",
 			"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
 			"participants": ["HUMAN", "AI", "AI", "AI"],
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 		}
 		w.clear_outbox_for_test(3)
 		_join(w, 3, claims_rc)
@@ -364,7 +368,8 @@ func test_settled_reconnect_snapshot_no_duplicate_hand_settled() -> void:
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
 		"expires_at_unix": 2_000_000_000,
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	assert_true(bool(session.join(0, "sess-set")["ok"]))
 	assert_true(bool(session.ready(0, "sess-set")["ok"]))
 	assert_true(session.is_started())
@@ -392,6 +397,7 @@ func test_settled_reconnect_snapshot_no_duplicate_hand_settled() -> void:
 		"room_id": "room-settled-rc", "seat": 0, "session_id": "sess-set",
 		"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	w.clear_outbox_for_test(2)
 	_join(w, 2, claims)
@@ -503,6 +509,7 @@ func test_multi_client_visibility_and_reconnect_no_history_replay() -> void:
 		"room_id": "room-2h", "seat": 0, "session_id": "s0",
 		"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
 		"participants": parts,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	var c1 := c0.duplicate(true)
 	c1["seat"] = 1
@@ -567,3 +574,64 @@ func test_multi_client_visibility_and_reconnect_no_history_replay() -> void:
 	assert_not_null(gap_ne, "gap fixture 必须可构造")
 	assert_false(nbc_r.ingest_networked_event(gap_ne), "缺口须失败")
 	assert_true(nbc_r.resync_required())
+
+
+func test_join_with_different_roster_token_unauthorized_keeps_frozen() -> void:
+	# #374：已建房后，同 room/seat/session 但完整 roster 不同的合法签名 token → UNAUTHORIZED
+	var room := "room-roster-mismatch"
+	var chars_a := ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]
+	var chars_b := ["qiu_jue", "yuan_xi", "ji_shu", "bao_luo"]
+	var claims_a := {
+		"room_id": room,
+		"seat": 0,
+		"session_id": "sess-same",
+		"exp": 2_000_000_000,
+		"round_kind": "EAST",
+		"game_mode": "STANDARD",
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": chars_a,
+	}
+	var claims_b := claims_a.duplicate(true)
+	claims_b["character_ids"] = chars_b
+	var tok_a := _mint_room_token(claims_a)
+	var tok_b := _mint_room_token(claims_b)
+	var w := _new_worker()
+	w.handle_dict_for_test(1, {
+		"protocol_version": 1,
+		"kind": "JOIN",
+		"room_id": room,
+		"seat": 0,
+		"room_token": tok_a,
+	})
+	var out1 := w.test_outbox(1)
+	for m in out1:
+		assert_ne(str(m.get("kind", "")), "ERROR", "首 JOIN 须成功")
+	var session: HeadlessRoomSession = w.get_room(room)
+	assert_not_null(session)
+	for i in range(4):
+		assert_eq(String(session.character_ids[i]), chars_a[i])
+	var frozen: Array = session.character_ids.duplicate()
+	# 第二连接：有效签名但不同 roster
+	w.handle_dict_for_test(2, {
+		"protocol_version": 1,
+		"kind": "JOIN",
+		"room_id": room,
+		"seat": 0,
+		"room_token": tok_b,
+	})
+	var out2 := w.test_outbox(2)
+	assert_gt(out2.size(), 0)
+	var saw := false
+	for m in out2:
+		if str(m.get("kind", "")) == "ERROR" and str(m.get("code", "")) == "UNAUTHORIZED":
+			saw = true
+			var msg := str(m.get("message", ""))
+			assert_true(
+				msg.contains("bootstrap") or msg.contains("mismatch") or msg.contains("UNAUTHORIZED") \
+					or not msg.is_empty(),
+				"UNAUTHORIZED 须带安全 message，不得泄露 token"
+			)
+	assert_true(saw, "不同 roster 必须 UNAUTHORIZED")
+	for i in range(4):
+		assert_eq(String(session.character_ids[i]), String(frozen[i]),
+			"冻结 roster 不得被篡改 token 改写")

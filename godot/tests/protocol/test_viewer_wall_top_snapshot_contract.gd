@@ -96,7 +96,10 @@ func test_core_table_and_viewer_next_draw_contracts_stay_unchanged() -> void:
 func test_optional_module_projects_ordered_tiles_only_to_recipient_and_old_registry_skips_it() -> void:
 	var state := _state_with_wall_top(2, 7)
 	var reg := _registry()
-	var owner_ser := reg.serialize_modules({"state": state}, 2)
+	var owner_ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 2)
 	assert_true(bool(owner_ser.get("ok", false)), str(owner_ser))
 	assert_true(_module(owner_ser.get("modules", []), "viewer_next_draw").is_empty(),
 		"渊汐墙顶序列不得冒充 #344 安澄青下一摸模块")
@@ -113,7 +116,10 @@ func test_optional_module_projects_ordered_tiles_only_to_recipient_and_old_regis
 		assert_eq(int(entry.get("offset", -1)), index)
 		assert_eq(int((entry.get("tile", {}) as Dictionary).get("instance_id", -1)),
 			(expected[index] as Tile).instance_id)
-	var other_ser := reg.serialize_modules({"state": state}, 1)
+	var other_ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 1)
 	assert_true(_module(other_ser.get("modules", []), "viewer_wall_top").is_empty(),
 		"非 recipient 不得收到空壳或私有牌面")
 	var old_sink := RestoreSink.new()
@@ -128,7 +134,10 @@ func test_optional_module_projects_ordered_tiles_only_to_recipient_and_old_regis
 func test_real_wire_json_and_nbc_restore_then_clear_omitted_module() -> void:
 	var state := _state_with_wall_top(0, 9)
 	var reg := _registry()
-	var ser := reg.serialize_modules({"state": state}, 0)
+	var ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	var wire := _wire(ser.get("modules", []))
 	var event := NetworkedEvent.from_dict(wire)
 	assert_not_null(event, "viewer_wall_top@1 必须通过真实 wire validator")
@@ -141,7 +150,10 @@ func test_real_wire_json_and_nbc_restore_then_clear_omitted_module() -> void:
 		.get("tiles", []).size(), 3)
 	for _index in range(3):
 		state.wall.draw()
-	var expired := reg.serialize_modules({"state": state}, 0)
+	var expired := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	assert_true(_module(expired.get("modules", []), "viewer_wall_top").is_empty())
 	var expired_event := NetworkedEvent.from_dict(
 		_wire(expired.get("modules", []), 0, 2))
@@ -154,7 +166,10 @@ func test_real_wire_json_and_nbc_restore_then_clear_omitted_module() -> void:
 func test_bad_recipient_order_namespace_and_cross_hand_fail_atomically() -> void:
 	var state := _state_with_wall_top(0, 10)
 	var reg := _registry()
-	var ser := reg.serialize_modules({"state": state}, 0)
+	var ser := reg.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 	var modules := ser.get("modules", []) as Array
 	var sink := RestoreSink.new()
 	assert_true(bool(reg.restore_modules(modules, 0, sink).get("ok", false)))

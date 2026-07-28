@@ -69,14 +69,15 @@ func test_make_trash_talk_registry_keys_stable_sorted() -> void:
 	assert_true(reg.is_trash_talk_registry())
 	assert_false(reg.is_standard_only())
 	var keys: Array = reg.registered_keys()
-	assert_eq(keys.size(), 7)
+	assert_eq(keys.size(), 8)
 	assert_eq(str(keys[0]), "core_table")
 	assert_eq(str(keys[1]), "item_inventory")
-	assert_eq(str(keys[2]), "reward_window")
-	assert_eq(str(keys[3]), "viewer_next_draw")
-	assert_eq(str(keys[4]), "viewer_seat_draw_forecast")
-	assert_eq(str(keys[5]), "viewer_tenpai_waits")
-	assert_eq(str(keys[6]), "viewer_wall_top")
+	assert_eq(str(keys[2]), "matching_meta")
+	assert_eq(str(keys[3]), "reward_window")
+	assert_eq(str(keys[4]), "viewer_next_draw")
+	assert_eq(str(keys[5]), "viewer_seat_draw_forecast")
+	assert_eq(str(keys[6]), "viewer_tenpai_waits")
+	assert_eq(str(keys[7]), "viewer_wall_top")
 	assert_eq(int(reg.provider_for("reward_window").schema_version()),
 		RewardWindowModule.SCHEMA_VERSION)
 	assert_eq(int(reg.provider_for("item_inventory").schema_version()),
@@ -109,10 +110,11 @@ func test_trash_talk_loopback_snapshot_has_core_and_reward_sorted() -> void:
 			snap = ne as NetworkedEvent
 	assert_not_null(snap)
 	var keys: Array = _module_keys_from_snap(snap.payload)
-	assert_eq(keys.size(), 3, "TRASH_TALK modules 恰 3")
+	assert_eq(keys.size(), 4, "TRASH_TALK modules 恰 4（含 matching_meta）")
 	assert_eq(str(keys[0]), "core_table")
 	assert_eq(str(keys[1]), "item_inventory")
-	assert_eq(str(keys[2]), "reward_window")
+	assert_eq(str(keys[2]), "matching_meta")
+	assert_eq(str(keys[3]), "reward_window")
 	var sorted := keys.duplicate()
 	sorted.sort()
 	assert_eq(JSON.stringify(keys), JSON.stringify(sorted), "modules 稳定升序")
@@ -145,8 +147,9 @@ func test_standard_loopback_snapshot_no_reward_window() -> void:
 	var snap: NetworkedEvent = _first_snapshot(server, 0)
 	assert_not_null(snap)
 	var keys: Array = _module_keys_from_snap(snap.payload)
-	assert_eq(keys.size(), 1)
+	assert_eq(keys.size(), 2)
 	assert_eq(str(keys[0]), "core_table")
+	assert_eq(str(keys[1]), "matching_meta")
 	assert_true(_find_module(snap.payload, "reward_window").is_empty())
 	assert_eq(_count(_kinds(server), "REWARD_WINDOW_OPENED"), 0)
 	assert_eq(_count(_kinds(server), "ITEM_GRANTED"), 0)
@@ -272,6 +275,7 @@ func test_headless_session_resync_restores_same_window_deadline() -> void:
 		"round_kind": "EAST",
 		"game_mode": "TRASH_TALK",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "qiu_jue", "bai_touli", "hua_ling"],
 		"session_id": "sess-rw-resync",
 		"seat": 0,
 		"exp": 2_000_000_000,
@@ -305,7 +309,8 @@ func test_headless_session_resync_restores_same_window_deadline() -> void:
 	var keys: Array = _module_keys_from_snap(first.payload)
 	assert_eq(str(keys[0]), "core_table")
 	assert_eq(str(keys[1]), "item_inventory")
-	assert_eq(str(keys[2]), "reward_window")
+	assert_eq(str(keys[2]), "matching_meta")
+	assert_eq(str(keys[3]), "reward_window")
 	var rw_mod: Dictionary = _find_module(first.payload, "reward_window")
 	var pl: Dictionary = rw_mod.get("payload", {})
 	assert_eq(str(pl.get("phase", "")), expect_phase)
@@ -555,6 +560,7 @@ func test_step_ai_once_counts_discard_and_syncs_snapshot() -> void:
 		"round_kind": "EAST",
 		"game_mode": "TRASH_TALK",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "qiu_jue", "bai_touli", "hua_ling"],
 		"session_id": "sess-ai-rw",
 		"seat": 0,
 		"exp": 2_000_000_000,

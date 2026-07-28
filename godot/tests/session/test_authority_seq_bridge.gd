@@ -94,10 +94,14 @@ func _mod(payload: Dictionary) -> Dictionary:
 	return m
 
 
+func _meta_mod() -> Dictionary:
+	return MatchingMetaSnapshotProvider.fixture_module()
+
+
 func _snap(seq: int, phase: String = "DRAW", wall: int = 70) -> Dictionary:
 	var p := {
 		"snapshot_server_seq": seq, "next_server_seq": seq + 1,
-		"seat_view": 0, "modules": [_mod(_core(0, phase, wall))],
+		"seat_view": 0, "modules": [_mod(_core(0, phase, wall)), _meta_mod()],
 	}
 	assert_true(_exact(p, SNAP_KEYS))
 	return p

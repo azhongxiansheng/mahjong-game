@@ -106,7 +106,7 @@ func TestEnqueue_CreatesWaitingTicketWithDeadline(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	ticket, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard)
+	ticket, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -142,11 +142,11 @@ func TestEnqueue_IdempotentSameGuestSameRules(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	a, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard)
+	a, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("first: %v", err)
 	}
-	b, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard)
+	b, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("second: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestEnqueue_ConcurrentIdempotent(t *testing.T) {
 	for i := 0; i < n; i++ {
 		go func(i int) {
 			defer wg.Done()
-			ticket, err := svc.Enqueue(context.Background(), "guest-concurrent", RoundKindHanchan, GameModeTrashTalk)
+			ticket, err := svc.Enqueue(context.Background(), "guest-concurrent", RoundKindHanchan, GameModeTrashTalk, "lin_yeche")
 			errs[i] = err
 			if err == nil {
 				ids[i] = ticket.TicketID
@@ -228,7 +228,7 @@ func TestEnqueue_DifferentRuleCombosIsolatedPools(t *testing.T) {
 	tickets := make([]Ticket, 0, 4)
 	for _, c := range combos {
 		// 同一 guest 不同组合应得到不同 ticket 并进入不同池
-		tk, err := svc.Enqueue(ctx, "guest-pool", c.rk, c.gm)
+		tk, err := svc.Enqueue(ctx, "guest-pool", c.rk, c.gm, "lin_yeche")
 		if err != nil {
 			t.Fatalf("Enqueue %s/%s: %v", c.rk, c.gm, err)
 		}
@@ -259,7 +259,7 @@ func TestGet_AndCancel_OwnerOnly_Idempotent(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
 
-	tk, err := svc.Enqueue(ctx, "guest-owner", RoundKindEast, GameModeStandard)
+	tk, err := svc.Enqueue(ctx, "guest-owner", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}
@@ -314,7 +314,7 @@ func TestGet_AndCancel_OwnerOnly_Idempotent(t *testing.T) {
 	}
 
 	// 取消后同组合可重新入队得到新 ticket
-	newTk, err := svc.Enqueue(ctx, "guest-owner", RoundKindEast, GameModeStandard)
+	newTk, err := svc.Enqueue(ctx, "guest-owner", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("re-enqueue: %v", err)
 	}
@@ -329,7 +329,7 @@ func TestGet_AndCancel_OwnerOnly_Idempotent(t *testing.T) {
 func TestCancel_OtherGuestRejected(t *testing.T) {
 	svc := newTestService(t)
 	ctx := context.Background()
-	tk, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard)
+	tk, err := svc.Enqueue(ctx, "guest-a", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("Enqueue: %v", err)
 	}

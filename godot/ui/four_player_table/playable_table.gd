@@ -238,6 +238,15 @@ func bind_character_ids(character_ids: Array) -> void:
 	_sync_character_status()
 
 
+## 只读：CharacterPresentationRouter 已绑定的权威四席角色（测试/诊断；不改生产逻辑）。
+func presentation_character_ids() -> Array:
+	if _character_presentation_router == null:
+		return []
+	if _character_presentation_router.has_method("bound_character_ids"):
+		return _character_presentation_router.bound_character_ids()
+	return []
+
+
 func _sync_viewer_reveal_label() -> void:
 	if _table != null and _table.has_method("set_viewer_reveal_label"):
 		_table.set_viewer_reveal_label(
@@ -2176,8 +2185,23 @@ func _fill_reward_views(reward_view: Dictionary, inv_view: Dictionary) -> void:
 				inv_view.merge(env)
 
 
+func _bind_public_matching_meta_characters() -> void:
+	if _public_reward_session == null or _public_reward_session.nbc == null:
+		return
+	var meta: Dictionary = _public_reward_session.nbc.get_matching_meta_view()
+	if meta.is_empty():
+		return
+	var chars: Variant = meta.get("character_ids", null)
+	if typeof(chars) != TYPE_ARRAY or (chars as Array).size() != 4:
+		return
+	bind_character_ids(chars as Array)
+
+
 func _apply_reward_views_only() -> void:
+	# #374：权威 roster 绑定不依赖库存/奖励子表是否已挂载。
+	_bind_public_matching_meta_characters()
 	if _table == null or not _table.has_method("apply_reward_views"):
+		_last_reward_view_sig = _reward_view_signature()
 		return
 	var reward_view: Dictionary = {}
 	var inv_view: Dictionary = {}

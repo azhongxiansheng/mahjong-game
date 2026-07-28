@@ -39,6 +39,10 @@ func test_crosslang_go_issued_token_verifies() -> void:
 	assert_eq((claims["participants"] as Array).size(), 4)
 	assert_eq(str((claims["participants"] as Array)[0]), "HUMAN")
 	assert_eq(str((claims["participants"] as Array)[2]), "AI")
+	assert_true(claims.has("character_ids"), "claims 必须含 character_ids")
+	assert_eq((claims["character_ids"] as Array).size(), 4)
+	assert_eq(str((claims["character_ids"] as Array)[0]), "lin_yeche")
+	assert_eq(str((claims["character_ids"] as Array)[1]), "qiu_jue")
 
 
 func test_session_token_cannot_impersonate_room_token() -> void:
