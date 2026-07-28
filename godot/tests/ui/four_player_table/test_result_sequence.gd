@@ -214,15 +214,35 @@ func test_original_result_shell_keeps_final_hand_visible() -> void:
 		"结算层位于桌心偏上且避开手牌/操作带")
 	assert_eq(panel.size, Vector2(620, 560))
 	var style := panel.get_theme_stylebox("panel") as StyleBoxFlat
-	assert_eq(style.bg_color, Color.TRANSPARENT)
-	assert_eq(style.border_color, Color("d9b65b8c"))
+	assert_eq(style.bg_color, Color("111217f5"))
+	assert_eq(style.border_color, Color("8f7047"))
 	assert_eq(style.border_width_left, 1)
 	assert_eq(style.corner_radius_top_left, 12)
 	assert_eq(style.content_margin_left, 36.0)
 	assert_eq(style.content_margin_top, 28.0)
 	assert_eq(style.content_margin_right, 36.0)
 	assert_eq(style.content_margin_bottom, 24.0)
-	assert_not_null(panel.get_node_or_null("FeltGradient"), "绿毡渐变不得退化成旧猩红主题")
+	var felt := panel.get_node_or_null("FeltGradient") as ColorRect
+	assert_not_null(felt, "FeltGradient 节点与结算层结构必须保留")
+	if felt != null:
+		assert_true(felt.visible, "黑曜薄漆材质层不得以隐藏规避旧绿毡")
+		assert_true(felt.material is ShaderMaterial)
+		var material := felt.material as ShaderMaterial
+		var lacquer_top_value: Variant = material.get_shader_parameter("lacquer_top")
+		var lacquer_bottom_value: Variant = material.get_shader_parameter("lacquer_bottom")
+		var inner_line_value: Variant = material.get_shader_parameter("inner_line")
+		assert_true(lacquer_top_value is Color, "FeltGradient 必须暴露黑曜薄漆顶色")
+		assert_true(lacquer_bottom_value is Color, "FeltGradient 必须暴露黑曜薄漆底色")
+		assert_true(inner_line_value is Color, "FeltGradient 必须保留克制内暗线")
+		if not lacquer_top_value is Color or not lacquer_bottom_value is Color \
+				or not inner_line_value is Color:
+			return
+		var lacquer_top := lacquer_top_value as Color
+		var lacquer_bottom := lacquer_bottom_value as Color
+		var inner_line := inner_line_value as Color
+		assert_lt(lacquer_top.get_luminance(), 0.12)
+		assert_lt(lacquer_bottom.get_luminance(), 0.08)
+		assert_lt(inner_line.get_luminance(), lacquer_bottom.get_luminance())
 
 
 func test_result_overlay_escape_does_not_open_settings_or_close_result() -> void:

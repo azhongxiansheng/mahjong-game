@@ -171,3 +171,36 @@ func test_waiting_and_reconnecting_escape_do_not_hide_or_trigger_actions() -> vo
 	await get_tree().process_frame
 	assert_true(overlay.visible)
 	assert_eq(coordinator.get_view().get("state"), "reconnecting")
+
+
+func test_waiting_reconnecting_and_error_share_obsidian_modal_without_geometry_change() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	var coordinator := shell.get_node("PublicMatchCoordinator") as PublicMatchCoordinator
+	coordinator.consume_ticket_for_test({
+		"ticket_id": "style-contract", "status": "waiting",
+		"round_kind": "EAST", "game_mode": "STANDARD",
+	})
+	await get_tree().process_frame
+	var modal := shell.get_node_or_null("%PublicMatchModal") as Control
+	assert_not_null(modal)
+	if modal == null:
+		return
+	var expected_rect := modal.get_global_rect()
+	for state in [&"waiting", &"reconnecting", &"terminal_error"]:
+		if state == &"waiting":
+			coordinator.consume_ticket_for_test({
+				"ticket_id": "style-contract", "status": "waiting",
+				"round_kind": "EAST", "game_mode": "STANDARD",
+			})
+		else:
+			coordinator.consume_connection_fact_for_test(state, "STYLE_CHECK", "连接状态检查")
+		await get_tree().process_frame
+		var style := modal.get_theme_stylebox("panel") as StyleBoxFlat
+		assert_not_null(style)
+		if style == null:
+			return
+		assert_eq(style.bg_color, Color("111217f5"))
+		assert_eq(style.border_width_left, 1)
+		assert_eq(modal.get_global_rect(), expected_rect,
+			"匹配状态切换不得改变 Modal 外包围盒：%s" % state)

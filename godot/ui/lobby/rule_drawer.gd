@@ -118,9 +118,11 @@ func _build_ui() -> void:
 	_panel.offset_top = 0.0
 	_panel.offset_bottom = 0.0
 	_snap_panel_closed()
-	var sb := DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_LACQUER_PANEL, 108, 92, 108, 92, 42, 44
-	)
+	var sb := DesignTokens.make_shared_panel_style("Drawer")
+	sb.content_margin_left = 42
+	sb.content_margin_right = 42
+	sb.content_margin_top = 44
+	sb.content_margin_bottom = 44
 	_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_panel)
 
@@ -173,7 +175,7 @@ func _build_header() -> Control:
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_title.add_theme_font_size_override("font_size", DesignTokens.FONT_SUBTITLE)
-	_title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	_title.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_TITLE)
 	row.add_child(_title)
 	return plaque
 
@@ -188,7 +190,7 @@ func _build_round_section() -> Control:
 	caption.name = "RoundCaption"
 	caption.text = "局制"
 	caption.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	caption.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	caption.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_BODY)
 	col.add_child(caption)
 
 	var row := HBoxContainer.new()
@@ -217,7 +219,7 @@ func _build_mode_section() -> Control:
 	caption.name = "ModeCaption"
 	caption.text = "玩法"
 	caption.add_theme_font_size_override("font_size", DesignTokens.FONT_BODY)
-	caption.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	caption.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_BODY)
 	col.add_child(caption)
 
 	var row := VBoxContainer.new()
@@ -242,6 +244,7 @@ func _build_mode_section() -> Control:
 	hint.text = "标准场纯日麻；欢乐场启用角色与道具"
 	hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	DesignTokens.apply_caption_style(hint)
+	hint.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_MUTED)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	col.add_child(hint)
 	return col

@@ -56,17 +56,25 @@ const CARD_BORDER: int = 2
 
 # ---- 基础按钮：黑曜符札（#324）----
 
-const BUTTON_OBSIDIAN: Color = Color("11131c")
-const BUTTON_OBSIDIAN_HOVER: Color = Color("191c29")
-const BUTTON_OBSIDIAN_PRESSED: Color = Color("23151b")
-const BUTTON_OBSIDIAN_DISABLED: Color = Color("0d0e12")
-const BUTTON_PRIMARY: Color = Color("8b5cf6")
-const BUTTON_SECONDARY: Color = Color("3ca9d6")
-const BUTTON_DANGER: Color = Color("e04b55")
-const BUTTON_GHOST: Color = Color("7f8797")
-const BUTTON_FOCUS: Color = Color("52d3ff")
-const BUTTON_TEXT: Color = Color("f3f1ff")
-const BUTTON_PRESSED_MARK: Color = Color("c74742")
+const BUTTON_OBSIDIAN: Color = Color("121318")
+const BUTTON_OBSIDIAN_HOVER: Color = Color("1b1b20")
+const BUTTON_OBSIDIAN_PRESSED: Color = Color("0d0e12")
+const BUTTON_OBSIDIAN_DISABLED: Color = Color("0b0c10")
+const BUTTON_PRIMARY: Color = Color("c99a55")
+const BUTTON_SECONDARY: Color = Color("8f8577")
+const BUTTON_DANGER: Color = Color("c9675f")
+const BUTTON_GHOST: Color = Color("aaa095")
+const BUTTON_FOCUS: Color = Color("d7b56d")
+const BUTTON_TEXT: Color = Color("eee9df")
+const BUTTON_PRESSED_MARK: Color = Color("8f7047")
+
+# ---- 共享面板：方案 A 黑曜薄漆（#370）----
+
+const SHARED_PANEL: Color = Color("111217f5")
+const SHARED_PANEL_BORDER: Color = Color("8f7047")
+const SHARED_TEXT_TITLE: Color = Color("f4dcae")
+const SHARED_TEXT_BODY: Color = Color("eee9df")
+const SHARED_TEXT_MUTED: Color = Color("9b948a")
 
 # ---- 大厅实体材质（#302，真实生产 PNG；不扩散到牌桌/Run Theme）----
 
@@ -241,7 +249,7 @@ static func make_centered_panel(width: float, height: float) -> Panel:
 	panel.offset_top = -height / 2.0
 	panel.offset_right = width / 2.0
 	panel.offset_bottom = height / 2.0
-	var sb := make_card_stylebox(BORDER_GOLD, "normal")
+	var sb := make_shared_panel_style("Modal")
 	sb.content_margin_left = PANEL_PAD
 	sb.content_margin_right = PANEL_PAD
 	sb.content_margin_top = PANEL_PAD
@@ -249,6 +257,25 @@ static func make_centered_panel(width: float, height: float) -> Panel:
 	sb.shadow_size = 16
 	panel.add_theme_stylebox_override("panel", sb)
 	return panel
+
+
+static func make_shared_panel_style(kind: String = "Panel") -> StyleBoxFlat:
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = SHARED_PANEL
+	sb.border_color = SHARED_PANEL_BORDER
+	sb.set_border_width_all(1)
+	sb.corner_radius_top_left = 3
+	sb.corner_radius_top_right = 7
+	sb.corner_radius_bottom_right = 3
+	sb.corner_radius_bottom_left = 7
+	sb.content_margin_left = 14
+	sb.content_margin_right = 14
+	sb.content_margin_top = 12
+	sb.content_margin_bottom = 12
+	sb.shadow_color = Color(0, 0, 0, 0.58)
+	sb.shadow_size = 8 if kind == "Modal" else 3
+	sb.shadow_offset = Vector2(0, 4 if kind == "Modal" else 2)
+	return sb
 
 
 # ---- 交互控件样式（按钮角色 / 滑条 / 下拉 / 开关）----
@@ -374,9 +401,9 @@ static func _button_stylebox(role: int, accent: Color, state: String) -> StyleBo
 	sb.content_margin_bottom = 10
 	match state:
 		"hover":
-			sb.bg_color = Color(1, 1, 1, 0.06) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_HOVER
+			sb.bg_color = Color(BUTTON_FOCUS, 0.10) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_HOVER
 			sb.border_color = accent
-			sb.border_width_left = 3
+			sb.border_width_left = 1
 			sb.border_width_top = 2
 			sb.border_width_right = 2
 			sb.border_width_bottom = 1
@@ -386,25 +413,25 @@ static func _button_stylebox(role: int, accent: Color, state: String) -> StyleBo
 		"focus":
 			sb.bg_color = Color.TRANSPARENT
 			sb.border_color = BUTTON_FOCUS
-			sb.border_width_left = 4
-			sb.border_width_top = 2
-			sb.border_width_right = 2
-			sb.border_width_bottom = 2
+			sb.border_width_left = 3
+			sb.border_width_top = 1
+			sb.border_width_right = 1
+			sb.border_width_bottom = 1
 			sb.content_margin_left = 0
 			sb.content_margin_right = 0
 			sb.content_margin_top = 0
 			sb.content_margin_bottom = 0
 		"pressed":
-			sb.bg_color = Color(1, 1, 1, 0.10) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_PRESSED
+			sb.bg_color = Color(BUTTON_PRIMARY, 0.14) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_PRESSED
 			sb.border_color = BUTTON_PRESSED_MARK
 			sb.border_width_left = 1
 			sb.border_width_top = 0
-			sb.border_width_right = 3
+			sb.border_width_right = 1
 			sb.border_width_bottom = 3
 			sb.content_margin_top = 12
 			sb.content_margin_bottom = 8
 		"disabled":
-			sb.bg_color = Color.TRANSPARENT if role == BtnRole.GHOST else BUTTON_OBSIDIAN_DISABLED
+			sb.bg_color = Color(BUTTON_OBSIDIAN_DISABLED, 0.24) if role == BtnRole.GHOST else BUTTON_OBSIDIAN_DISABLED
 			sb.border_color = Color(BUTTON_GHOST, 0.55)
 			sb.border_width_left = 1
 			sb.border_width_top = 0
@@ -413,7 +440,7 @@ static func _button_stylebox(role: int, accent: Color, state: String) -> StyleBo
 		_:
 			sb.bg_color = Color.TRANSPARENT if role == BtnRole.GHOST else BUTTON_OBSIDIAN
 			sb.border_color = accent
-			sb.border_width_left = 0 if role == BtnRole.GHOST else 3
+			sb.border_width_left = 0 if role == BtnRole.GHOST else 1
 			sb.border_width_top = 0 if role == BtnRole.GHOST else 1
 			sb.border_width_right = 0 if role == BtnRole.GHOST else 1
 			sb.border_width_bottom = 0 if role == BtnRole.GHOST else 1
@@ -593,7 +620,11 @@ static func _apply_controls_to_theme(theme: Theme) -> void:
 	theme.set_stylebox("scroll", "HScrollBar", scroll_bg)
 	theme.set_stylebox("grabber", "HScrollBar", scroll_grab)
 	# --- TooltipPanel ---
-	var tip := _flat_sb(Color(0.08, 0.09, 0.12, 0.97), BORDER_GOLD, 1, 6, 10, 8)
+	var tip := make_shared_panel_style("Panel")
+	tip.content_margin_left = 10
+	tip.content_margin_right = 10
+	tip.content_margin_top = 8
+	tip.content_margin_bottom = 8
 	tip.shadow_size = 6
 	theme.set_stylebox("panel", "TooltipPanel", tip)
 	theme.set_color("font_color", "TooltipLabel", TEXT_PRIMARY)

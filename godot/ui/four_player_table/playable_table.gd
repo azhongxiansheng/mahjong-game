@@ -923,10 +923,7 @@ func _create_result_modal_shell() -> Dictionary:
 	panel.custom_minimum_size = RESULT_MODAL_SIZE
 	panel.size = RESULT_MODAL_SIZE
 	panel.clip_contents = false
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color.TRANSPARENT
-	style.border_color = Color("d9b65b8c")
-	style.set_border_width_all(1)
+	var style := DT.make_shared_panel_style("Modal")
 	style.set_corner_radius_all(12)
 	style.content_margin_left = RESULT_MODAL_PADDING.x
 	style.content_margin_top = RESULT_MODAL_PADDING.y
@@ -955,22 +952,28 @@ static func _make_result_felt_material(rect_size: Vector2) -> ShaderMaterial:
 shader_type canvas_item;
 uniform vec2 rect_size = vec2(618.0, 558.0);
 uniform float radius = 11.0;
-uniform vec4 felt_1 : source_color = vec4(0.122, 0.318, 0.196, 1.0);
-uniform vec4 felt_2 : source_color = vec4(0.078, 0.220, 0.133, 1.0);
+uniform vec4 lacquer_top : source_color = vec4(0.071, 0.075, 0.094, 1.0);
+uniform vec4 lacquer_bottom : source_color = vec4(0.027, 0.031, 0.039, 1.0);
+uniform vec4 inner_line : source_color = vec4(0.008, 0.008, 0.016, 1.0);
 void fragment() {
 	vec2 p = UV * rect_size;
 	vec2 q = abs(p - rect_size * 0.5) - (rect_size * 0.5 - vec2(radius));
 	float dist = length(max(q, vec2(0.0))) + min(max(q.x, q.y), 0.0) - radius;
 	float alpha = 1.0 - smoothstep(-0.7, 0.7, dist);
-	float diagonal = clamp(UV.x * 0.35 + UV.y * 0.65, 0.0, 1.0);
-	vec3 felt = mix(felt_1.rgb, felt_2.rgb, diagonal);
-	felt += vec3(0.04) * (1.0 - UV.y);
-	COLOR = vec4(felt, alpha);
+	float diagonal = clamp(UV.x * 0.22 + UV.y * 0.78, 0.0, 1.0);
+	vec3 lacquer = mix(lacquer_top.rgb, lacquer_bottom.rgb, diagonal);
+	float edge_distance = min(min(UV.x, 1.0 - UV.x), min(UV.y, 1.0 - UV.y));
+	float inner = smoothstep(0.0, 0.008, edge_distance);
+	lacquer = mix(inner_line.rgb, lacquer, inner);
+	COLOR = vec4(lacquer, alpha);
 }
 """
 	var shader_material := ShaderMaterial.new()
 	shader_material.shader = _result_felt_shader
 	shader_material.set_shader_parameter("rect_size", rect_size)
+	shader_material.set_shader_parameter("lacquer_top", Color("121318"))
+	shader_material.set_shader_parameter("lacquer_bottom", Color("07080a"))
+	shader_material.set_shader_parameter("inner_line", Color("020204"))
 	return shader_material
 
 

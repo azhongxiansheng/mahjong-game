@@ -231,7 +231,7 @@ func test_audio_popup_tab_focus_stays_inside_popup() -> void:
 				"音量弹层打开时 Tab 不得泄漏到底层大厅")
 
 
-func test_audio_popup_consumes_omamori_case_and_slider_assets() -> void:
+func test_audio_popup_consumes_obsidian_panel_and_keeps_slider_assets() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame
 	if not _require_hooks(shell, [
@@ -242,9 +242,10 @@ func test_audio_popup_consumes_omamori_case_and_slider_assets() -> void:
 	_press(shell, "BgmButton")
 	await get_tree().process_frame
 	var panel_style := (shell.get_node("%AudioPopupPanel") as Control).get_theme_stylebox("panel")
-	assert_true(panel_style is StyleBoxTexture, "音量弹层必须是御守匣生产资产")
-	assert_eq((panel_style as StyleBoxTexture).texture.resource_path,
-		"res://assets/ui/lobby_materials/lobby_omamori_case_9slice.png")
+	assert_true(panel_style is StyleBoxFlat, "音量弹层必须消费方案 A 黑曜薄漆")
+	if panel_style is StyleBoxFlat:
+		assert_eq((panel_style as StyleBoxFlat).bg_color, Color("111217f5"))
+		assert_eq((panel_style as StyleBoxFlat).border_width_left, 1)
 	var panel_rect := (shell.get_node("%AudioPopupPanel") as Control).get_global_rect()
 	assert_true(Rect2(shell.global_position, DESIGN_SIZE).encloses(panel_rect),
 		"御守匣在 1600×900 下不得裁切")

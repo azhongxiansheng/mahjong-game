@@ -99,9 +99,12 @@ func _build_ui() -> void:
 	_panel.offset_top = 18
 	_panel.offset_right = -18
 	_panel.offset_bottom = -18
-	_panel.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_LACQUER_PANEL, 108, 92, 108, 92, 46, 40
-	))
+	var panel_style := DesignTokens.make_shared_panel_style("Modal")
+	panel_style.content_margin_left = 46
+	panel_style.content_margin_right = 46
+	panel_style.content_margin_top = 40
+	panel_style.content_margin_bottom = 40
+	_panel.add_theme_stylebox_override("panel", panel_style)
 	add_child(_panel)
 
 	var root := VBoxContainer.new()
@@ -125,9 +128,12 @@ func _build_ui() -> void:
 	_stage.name = "CodexStage"
 	_stage.custom_minimum_size.x = 420
 	_stage.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_stage.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_LACQUER_PANEL, 108, 92, 108, 92, 32, 28
-	))
+	var stage_style := DesignTokens.make_shared_panel_style("Panel")
+	stage_style.content_margin_left = 32
+	stage_style.content_margin_right = 32
+	stage_style.content_margin_top = 28
+	stage_style.content_margin_bottom = 28
+	_stage.add_theme_stylebox_override("panel", stage_style)
 	body.add_child(_stage)
 	_stage_body = VBoxContainer.new()
 	_stage_body.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -150,9 +156,12 @@ func _build_ui() -> void:
 	_detail_panel.name = "CodexDetailScroll"
 	_detail_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_detail_panel.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_detail_panel.add_theme_stylebox_override("panel", DesignTokens.make_lobby_texture_style(
-		DesignTokens.LOBBY_SCROLL_PANEL, 70, 58, 70, 58, 70, 48
-	))
+	var detail_style := DesignTokens.make_shared_panel_style("Panel")
+	detail_style.content_margin_left = 70
+	detail_style.content_margin_right = 70
+	detail_style.content_margin_top = 48
+	detail_style.content_margin_bottom = 48
+	_detail_panel.add_theme_stylebox_override("panel", detail_style)
 	body.add_child(_detail_panel)
 
 	_content_host = ScrollContainer.new()
@@ -168,7 +177,7 @@ func _build_ui() -> void:
 	_content.add_theme_constant_override("separation", DesignTokens.GAP_NORMAL)
 	_content_host.add_child(_content)
 
-	_detail_title = _label("", DesignTokens.FONT_TITLE, DesignTokens.LOBBY_CINNABAR, false)
+	_detail_title = _label("", DesignTokens.FONT_TITLE, DesignTokens.SHARED_TEXT_TITLE, false)
 	_detail_title.name = "CodexDetailTitle"
 	_content.add_child(_detail_title)
 	_detail_content = VBoxContainer.new()
@@ -198,7 +207,7 @@ func _build_header() -> Control:
 	_header_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_header_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_header_title.add_theme_font_size_override("font_size", 30)
-	_header_title.add_theme_color_override("font_color", DesignTokens.LOBBY_INK)
+	_header_title.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_TITLE)
 	header.add_child(_header_title)
 
 	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.PRIMARY, Vector2(140, 52))
@@ -283,7 +292,7 @@ func _rebuild_content() -> void:
 	else:
 		_detail_title.text = "暂无档案"
 		var empty := _label("此卷暂无可阅读条目。", DesignTokens.FONT_BODY,
-			DesignTokens.LOBBY_INK, true)
+			DesignTokens.SHARED_TEXT_BODY, true)
 		empty.name = "CodexEmptyState"
 		_detail_content.add_child(empty)
 	_wire_focus_graph()
@@ -343,18 +352,18 @@ func _render_detail(row: Dictionary) -> void:
 		var affinities: Array = row.get("affinity_labels", [])
 		var affinity_text := " / ".join(PackedStringArray(affinities))
 		if affinity_text != "":
-			_detail_content.add_child(_label(affinity_text, DesignTokens.FONT_CAPTION, DesignTokens.LOBBY_CINNABAR, false))
-		_detail_content.add_child(_label(String(row.get("description", "")), DesignTokens.FONT_BODY, DesignTokens.LOBBY_INK, true))
+			_detail_content.add_child(_label(affinity_text, DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, false))
+		_detail_content.add_child(_label(String(row.get("description", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 		var ability_name := String(row.get("ability_name", ""))
 		if ability_name != "":
-			_detail_content.add_child(_label(ability_name, DesignTokens.FONT_SUBTITLE, DesignTokens.LOBBY_CINNABAR, false))
-			_detail_content.add_child(_label(String(row.get("ability_description", "")), DesignTokens.FONT_BODY, DesignTokens.LOBBY_INK, true))
+			_detail_content.add_child(_label(ability_name, DesignTokens.FONT_SUBTITLE, DesignTokens.SHARED_TEXT_TITLE, false))
+			_detail_content.add_child(_label(String(row.get("ability_description", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 	elif _current_page == PAGE_ITEMS:
 		var meta := "%s · %s" % [String(row.get("category", "")), String(row.get("rarity_label", ""))]
-		_detail_content.add_child(_label(meta, DesignTokens.FONT_CAPTION, DesignTokens.LOBBY_CINNABAR, false))
-		_detail_content.add_child(_label(String(row.get("description", "")), DesignTokens.FONT_BODY, DesignTokens.LOBBY_INK, true))
+		_detail_content.add_child(_label(meta, DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, false))
+		_detail_content.add_child(_label(String(row.get("description", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 	else:
-		_detail_content.add_child(_label(String(row.get("body", "")), DesignTokens.FONT_BODY, DesignTokens.LOBBY_INK, true))
+		_detail_content.add_child(_label(String(row.get("body", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 	var summary_parts := PackedStringArray()
 	for catalog_row in _page_rows():
 		if _current_page == PAGE_ITEMS:
@@ -363,7 +372,7 @@ func _render_detail(row: Dictionary) -> void:
 			summary_parts.append(String(catalog_row.get("title", "")))
 	if not summary_parts.is_empty():
 		_detail_content.add_child(_label(
-			" · ".join(summary_parts), DesignTokens.FONT_CAPTION, DesignTokens.LOBBY_CINNABAR, true
+			" · ".join(summary_parts), DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, true
 		))
 
 

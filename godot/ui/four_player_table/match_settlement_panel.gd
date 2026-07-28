@@ -84,11 +84,7 @@ func _ensure_built() -> void:
 		(DT.VIEW_W - PANEL_W) / 2.0,
 		(DT.VIEW_H - PANEL_H) / 2.0
 	)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.08, 0.12, 0.18, 0.98)
-	style.border_color = Color("d9b65b8c")
-	style.set_border_width_all(1)
-	style.set_corner_radius_all(12)
+	var style := DT.make_shared_panel_style("Modal")
 	style.shadow_color = Color(0, 0, 0, 0.55)
 	style.shadow_size = 24
 	style.shadow_offset = Vector2(0, 12)
