@@ -336,6 +336,7 @@ const SEAT_VIEW_KEYS := [
 const PLAYER_JOINED_KEYS := ["seat", "participant_kind", "display_name", "connected"]
 const HAND_SETTLED_KEYS := [
 	"hand_seq", "outcome", "winner_seats", "loser_seat", "score_deltas", "scores",
+	"dealer_seat", "renchan", "honba", "riichi_sticks", "adjustments",
 ]
 const MATCH_SETTLED_KEYS := ["round_kind", "final_scores", "seat_order"]
 const SNAPSHOT_PHASES := ["DRAW", "DISCARD", "CLAIM", "SETTLE"]
@@ -487,7 +488,12 @@ func _hand_settled_payload(
 	loser_seat: int = -1,
 	score_deltas: Array = [3000, -1000, -1000, -1000],
 	scores: Array = [28000, 24000, 24000, 24000],
-	hand_seq: int = 0
+	hand_seq: int = 0,
+	dealer_seat: int = 0,
+	renchan: bool = false,
+	honba: int = 0,
+	riichi_sticks: int = 0,
+	adjustments: Array = []
 ) -> Dictionary:
 	return {
 		"hand_seq": hand_seq,
@@ -496,6 +502,11 @@ func _hand_settled_payload(
 		"loser_seat": loser_seat,
 		"score_deltas": score_deltas.duplicate(),
 		"scores": scores.duplicate(),
+		"dealer_seat": dealer_seat,
+		"renchan": renchan,
+		"honba": honba,
+		"riichi_sticks": riichi_sticks,
+		"adjustments": adjustments.duplicate(true),
 	}
 
 
@@ -2234,7 +2245,7 @@ func test_hand_settled_valid_outcomes_and_cross_rules() -> void:
 	assert_not_null(ron_ev, "RON 单 winner 合法")
 	if ron_ev != null:
 		var rp: Dictionary = ron_ev.to_dict()["payload"] as Dictionary
-		assert_true(_exact_keys(rp, HAND_SETTLED_KEYS), "HAND_SETTLED exact 6 键")
+		assert_true(_exact_keys(rp, HAND_SETTLED_KEYS), "HAND_SETTLED exact 11 键")
 		assert_eq(str(rp["outcome"]), "RON")
 		assert_eq(rp["winner_seats"], [2], "RON winner_seats 恰好一人")
 		assert_eq(int(rp["loser_seat"]), 1)

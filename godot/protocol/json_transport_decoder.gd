@@ -271,7 +271,24 @@ static func _convert_event_payload_ints(payload: Dictionary, kind_str: String) -
 				return false
 			if not _convert_int_array_field(payload, "score_deltas"):
 				return false
-			return _convert_int_array_field(payload, "scores")
+			if not _convert_int_array_field(payload, "scores"):
+				return false
+			if not _set_int_field(payload, "dealer_seat"):
+				return false
+			if not _set_int_field(payload, "honba"):
+				return false
+			if not _set_int_field(payload, "riichi_sticks"):
+				return false
+			# renchan 保持 bool；adjustments 内 delta/seat 转 int
+			if payload.has("adjustments") and typeof(payload["adjustments"]) == TYPE_ARRAY:
+				for adj in payload["adjustments"]:
+					if typeof(adj) != TYPE_DICTIONARY:
+						return false
+					if not _set_int_field(adj, "seat"):
+						return false
+					if not _set_int_field(adj, "delta"):
+						return false
+			return true
 		"MATCH_SETTLED":
 			if not _convert_int_array_field(payload, "final_scores"):
 				return false

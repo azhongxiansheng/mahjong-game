@@ -342,10 +342,13 @@ func _hand_settled(seq: int = 52, outcome: String = "RON") -> Dictionary:
 	var winner_seats: Array = [2]
 	var loser_seat := 0
 	var score_deltas: Array = [-1000, 0, 1000, 0]
+	var renchan := false
 	if outcome in ["EXHAUSTIVE_DRAW", "ABORTIVE_DRAW"]:
 		winner_seats = []
 		loser_seat = -1
 		score_deltas = [0, 0, 0, 0]
+	if outcome == "ABORTIVE_DRAW":
+		renchan = true
 	return _env("HAND_SETTLED", seq, {
 		"hand_seq": 3,
 		"outcome": outcome,
@@ -353,6 +356,11 @@ func _hand_settled(seq: int = 52, outcome: String = "RON") -> Dictionary:
 		"loser_seat": loser_seat,
 		"score_deltas": score_deltas,
 		"scores": [24000, 25000, 26000, 25000],
+		"dealer_seat": 0,
+		"renchan": renchan,
+		"honba": 1 if renchan else 0,
+		"riichi_sticks": 0,
+		"adjustments": [],
 	})
 
 

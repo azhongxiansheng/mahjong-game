@@ -107,6 +107,12 @@ func _cfg_all_human() -> GameSessionConfig:
 		GameSessionConfig.ROOM_PUBLIC_CASUAL, GameSessionConfig.ROUND_EAST,
 		GameSessionConfig.MODE_STANDARD, PARTS_ALL_HUMAN, CHARS, 42, CLAIM_SID, "rv-e2-02")
 
+
+func _cfg_trash_talk_all_human() -> GameSessionConfig:
+	return GameSessionConfig.create_validated(
+		GameSessionConfig.ROOM_PUBLIC_CASUAL, GameSessionConfig.ROUND_EAST,
+		GameSessionConfig.MODE_TRASH_TALK, PARTS_ALL_HUMAN, CHARS, 42, CLAIM_SID, "rv-e2-02-tt")
+
 func _src() -> String:
 	if not ResourceLoader.exists(PATH):
 		return ""
@@ -2193,6 +2199,7 @@ func test_final_post_draw_snapshot_fail_rolls_back_whole_command() -> void:
 
 const HAND_SETTLED_KEYS := [
 	"hand_seq", "outcome", "winner_seats", "loser_seat", "score_deltas", "scores",
+	"dealer_seat", "renchan", "honba", "riichi_sticks", "adjustments",
 ]
 
 
@@ -2212,6 +2219,46 @@ class FailingHandSettledServer extends LocalLoopbackServer:
 				fail_hit += 1
 				return null
 		return super._build_recipient_event(kind, recipient_seat, seq, payload, view_hash)
+
+
+## #375：HAND_SETTLED commit 成功后、finalize 失败 → 整笔回滚须恢复 settlement tracker。
+class FailFinalizeAfterHandSettledServer extends LocalLoopbackServer:
+	var fail_next_finalize: bool = false
+	var finalize_fail_hit: int = 0
+
+	func _finalize_item_triggers() -> bool:
+		if fail_next_finalize and bool(get("_hand_settled_emitted")):
+			fail_next_finalize = false
+			finalize_fail_hit += 1
+			return false
+		return super._finalize_item_triggers()
+
+
+## #375：生产路径返回矛盾 score_deltas，验证 commit 边界 fail-closed。
+## 将非零 delta 翻转符号，保证与 scores-start 矛盾（全 0 在无罚符流局时可能合法）。
+class BadDeltaHandSettledServer extends LocalLoopbackServer:
+	func _build_hand_settled_payload() -> Dictionary:
+		var p: Dictionary = super._build_hand_settled_payload()
+		if p.is_empty():
+			return p
+		p = p.duplicate(true)
+		var scores: Array = p.get("scores", [])
+		var start_raw = get("_hand_start_scores")
+		if typeof(start_raw) == TYPE_ARRAY and scores.size() == 4:
+			var bad_deltas: Array = []
+			var any_nonzero := false
+			for i in range(4):
+				var real_d: int = int(scores[i]) - int((start_raw as Array)[i])
+				if real_d != 0:
+					any_nonzero = true
+				bad_deltas.append(-real_d if real_d != 0 else 1)
+			if not any_nonzero:
+				# 强制矛盾：终分未变却宣称 +1
+				bad_deltas = [1, 0, 0, -1]
+			p["score_deltas"] = bad_deltas
+		else:
+			p["score_deltas"] = [1, 0, 0, -1]
+		return p
 
 
 ## 清空 active 区；返回开局 draw_index 下限后临时回绕到 0，
@@ -2294,13 +2341,15 @@ func _noise_14_with(tid: int) -> Array:
 	]
 
 
-## 期望 HAND_SETTLED scores/deltas：state.scores + WIN payout（GameDriver 语义）。
+## 期望 HAND_SETTLED scores/deltas：局内 state 快照 + WIN payout（#375 HandSettlement 语义）。
+## pre_payout_state_scores：提交前的 BattleState.scores（含立直/技能，不含 WIN payout）。
+## 若已 commit，不得再把 post-commit state 当作 pre_payout 基数。
 func _expected_final_scores_from_win(
-	start_scores: Array, state_scores: Array, win_extra: Dictionary, winner_seat: int
+	start_scores: Array, pre_payout_state_scores: Array, win_extra: Dictionary, winner_seat: int
 ) -> Dictionary:
 	var final_scores: Array = []
 	for i in range(4):
-		final_scores.append(int(state_scores[i]))
+		final_scores.append(int(pre_payout_state_scores[i]))
 	var payout: Dictionary = win_extra.get("payout", {})
 	for seat_id in payout:
 		final_scores[int(seat_id)] = int(final_scores[int(seat_id)]) - int(payout[seat_id])
@@ -2466,13 +2515,13 @@ func test_hand_settled_tsumo_real_payout_and_four_seat_seq() -> void:
 	if settled_ev == null:
 		return
 	var p: Dictionary = settled_ev.payload
-	assert_true(_exact(p, HAND_SETTLED_KEYS), "HAND_SETTLED exact 6 键")
+	assert_true(_exact(p, HAND_SETTLED_KEYS), "HAND_SETTLED exact 11 键")
 	assert_eq(str(p["outcome"]), "TSUMO", "不得伪装 EXHAUSTIVE_DRAW")
 	assert_eq(p["winner_seats"], [0])
 	assert_eq(int(p["loser_seat"]), -1)
 	assert_eq(int(p["hand_seq"]), int(bc.state.hand_seq))
 
-	# 从真实 WIN_DECLARED 推导期望 scores/deltas
+	# 从真实 WIN_DECLARED + 局起始分推导期望（#375 commit 后 state 已是终分，不得再叠 payout）
 	var win_ev: BattleEvent = null
 	for i in range(bc.events.size() - 1, -1, -1):
 		var ev: BattleEvent = bc.events[i]
@@ -2482,16 +2531,20 @@ func test_hand_settled_tsumo_real_payout_and_four_seat_seq() -> void:
 	assert_not_null(win_ev, "须有真实 WIN_DECLARED")
 	if win_ev == null:
 		return
-	var state_scores: Array = []
-	for s2 in bc.state.scores:
-		state_scores.append(int(s2))
+	# 本 fixture 无局内转分/立直：pre_payout == start
 	var expected_scores: Dictionary = _expected_final_scores_from_win(
-		start_scores, state_scores, win_ev.extra, int(win_ev.actor_seat)
+		start_scores, start_scores, win_ev.extra, int(win_ev.actor_seat)
 	)
 	assert_eq(JSON.stringify(p["scores"]), JSON.stringify(expected_scores["scores"]),
 		"scores 须含 payout 后最终分（非仅 state.scores）")
 	assert_eq(JSON.stringify(p["score_deltas"]), JSON.stringify(expected_scores["score_deltas"]),
 		"score_deltas 须 = final - start")
+	# 提交后 BattleState.scores 与 HAND_SETTLED 一致
+	var committed: Array = []
+	for s2 in bc.state.scores:
+		committed.append(int(s2))
+	assert_eq(JSON.stringify(committed), JSON.stringify(p["scores"]),
+		"commit 后 BattleState.scores == HAND_SETTLED.scores")
 	# 无局前棒时本例 sum 可为 0；契约不强制
 	assert_gt(int(win_ev.extra.get("winner_total", 0)), 0)
 	assert_true(win_ev.extra.has("payout"))
@@ -2631,14 +2684,17 @@ func test_hand_settled_ron_real_payout_and_outcome() -> void:
 	assert_not_null(win_ev)
 	if win_ev == null:
 		return
-	var state_scores: Array = []
-	for s2 in bc.state.scores:
-		state_scores.append(int(s2))
+	# 本 fixture 无局内转分/立直：pre_payout == start；commit 后不得二次叠 payout
 	var expected_scores: Dictionary = _expected_final_scores_from_win(
-		start_scores, state_scores, win_ev.extra, 0
+		start_scores, start_scores, win_ev.extra, 0
 	)
 	assert_eq(JSON.stringify(p["scores"]), JSON.stringify(expected_scores["scores"]))
 	assert_eq(JSON.stringify(p["score_deltas"]), JSON.stringify(expected_scores["score_deltas"]))
+	var committed_r: Array = []
+	for s2 in bc.state.scores:
+		committed_r.append(int(s2))
+	assert_eq(JSON.stringify(committed_r), JSON.stringify(p["scores"]),
+		"commit 后 BattleState.scores == HAND_SETTLED.scores")
 
 
 ## Red：真实 ABORTIVE_DRAW（九种九牌）→ HAND_SETTLED.outcome=ABORTIVE_DRAW。
@@ -2782,8 +2838,20 @@ func test_hand_settled_exhaustive_draw_real_outcome() -> void:
 	var deltas: Array = []
 	for i in range(4):
 		deltas.append(int(state_scores[i]) - int(start_scores[i]))
-	assert_eq(JSON.stringify(p["scores"]), JSON.stringify(state_scores))
-	assert_eq(JSON.stringify(p["score_deltas"]), JSON.stringify(deltas))
+	# #375：普通流局须应用真实听牌 noten；全不听时与 state 一致
+	var tenpai: Array = HandSettlement.detect_tenpai_array(bc.state)
+	var noten: Dictionary = ExhaustiveDraw.noten_payout(tenpai)
+	var expected_scores: Array = []
+	var expected_deltas: Array = []
+	for i3 in range(4):
+		var fs: int = int(state_scores[i3]) + int(noten.get(i3, 0))
+		expected_scores.append(fs)
+		expected_deltas.append(fs - int(start_scores[i3]))
+	assert_eq(JSON.stringify(p["scores"]), JSON.stringify(expected_scores),
+		"EXHAUSTIVE_DRAW scores 须含 noten")
+	assert_eq(JSON.stringify(p["score_deltas"]), JSON.stringify(expected_deltas))
+	assert_true(p.has("dealer_seat") and p.has("renchan") and p.has("adjustments"),
+		"HAND_SETTLED 扩展键")
 
 
 ## 契约：1H+3AI 真实 CLAIM 链至 seat3 弃后、seat0 最后 PASS 前精确耗尽 live wall；
@@ -2850,8 +2918,20 @@ func test_arm_pass_empty_live_wall_exhaustive_draw_hand_settled_via_submit() -> 
 	assert_not_null(settled_ev, "四席须有 HAND_SETTLED")
 	if settled_ev == null:
 		return
-	assert_eq(str(settled_ev.payload.get("outcome", "")), "EXHAUSTIVE_DRAW",
-		"HAND_SETTLED.outcome 须 EXHAUSTIVE_DRAW")
+	# #375：若真实满足流し満貫条件则 outcome=NAGASHI_MANGAN，否则 EXHAUSTIVE_DRAW
+	var hs_outcome: String = str(settled_ev.payload.get("outcome", ""))
+	var has_nm_ev := false
+	for i_nm in range(bc.events.size()):
+		var ev_nm: BattleEvent = bc.events[i_nm]
+		if ev_nm != null and ev_nm.type == &"NAGASHI_MANGAN":
+			has_nm_ev = true
+			break
+	if has_nm_ev or NagashiMangan.detect_winner_seat(bc.state) >= 0:
+		assert_eq(hs_outcome, "NAGASHI_MANGAN",
+			"满足流し条件时 HAND_SETTLED.outcome 须 NAGASHI_MANGAN")
+	else:
+		assert_eq(hs_outcome, "EXHAUSTIVE_DRAW",
+			"HAND_SETTLED.outcome 须 EXHAUSTIVE_DRAW")
 
 
 ## Red：HAND_SETTLED recipient 构建失败 → 零半提交；submit 整笔回滚；同 command_id 可重试。
@@ -2938,7 +3018,196 @@ func test_hand_settled_recipient_fail_zero_commit_and_submit_rollback_retry() ->
 		assert_eq(str(settled_ev.payload.get("outcome", "")), "TSUMO")
 
 
+## #375 P2-1：STANDARD LocalLoopback 拒绝非守恒 mint，零 HAND_SETTLED / 零 tracker。
+func test_loopback_standard_rejects_non_conserved_mint_no_hand_settled() -> void:
+	if not _contract_ok():
+		return
+	var server := LocalLoopbackServer.new(_cfg_all_human(), 0)
+	assert_true(bool(server.call("start")))
+	var bc: BattleController = server.get("_bc") as BattleController
+	assert_not_null(bc)
+	if bc == null:
+		return
+	var start_raw = server.get("_hand_start_scores")
+	assert_eq(typeof(start_raw), TYPE_ARRAY)
+	var start_scores: Array = []
+	for s in start_raw as Array:
+		start_scores.append(int(s))
+	# 注入 mint + 真实 EXHAUSTIVE 终局
+	bc.state.scores[0] = int(bc.state.scores[0]) + 2000
+	if not bool(bc.get("_settled")):
+		bc._emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		bc.set("_settled", true)
+	var seq0: int = int(server.call("current_server_seq"))
+	var ok: bool = bool(server.call("_emit_settled_if_needed"))
+	assert_false(ok, "STANDARD 非守恒须拒绝发布 HAND_SETTLED")
+	assert_eq(int(server.call("current_server_seq")), seq0, "拒绝后 server_seq 零推进")
+	assert_null(_find_hand_settled(server, 0), "不得发布 HAND_SETTLED")
+	assert_eq(int((server.get("_settlement_tracker") as Dictionary).get("committed_hand_seq", 99)), -1)
+	for i in range(4):
+		# state 可能仍含 mint（未 commit 终局分数）；不得变成 HAND_SETTLED 终分语义
+		# 关键：commit 未写 final；mint 已在 state 上（测试注入）
+		pass
+	assert_false(bool(server.get("_hand_settled_emitted")))
+
+
+## #375 P2-1：TRASH_TALK LocalLoopback 接受 mint 并发布 HAND_SETTLED + EXTERNAL。
+func test_loopback_trash_talk_accepts_mint_publishes_hand_settled() -> void:
+	if not _contract_ok():
+		return
+	var cfg := _cfg_trash_talk_all_human()
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	var server := LocalLoopbackServer.new(cfg, 0)
+	assert_true(bool(server.call("start")))
+	var bc: BattleController = server.get("_bc") as BattleController
+	assert_not_null(bc)
+	if bc == null:
+		return
+	assert_true(server.mode_modules != null and server.mode_modules.is_trash_talk())
+	bc.state.scores[0] = int(bc.state.scores[0]) + 2000
+	if not bool(bc.get("_settled")):
+		bc._emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		bc.set("_settled", true)
+	# TRASH_TALK 可能 deferred reward；强制走 publish
+	server.set("_reward_hand_settled_deferred", false)
+	var ok: bool = bool(server.call("_emit_settled_if_needed"))
+	# 若 RW CLOSING 屏障，advance 时钟；否则须 true
+	if not ok and bool(server.get("_reward_hand_settled_deferred")):
+		assert_true(bool(server.call("advance_reward_time", int(server.get("_reward_authority_now_ms")) + 60_000)))
+	var hs := _find_hand_settled(server, 0)
+	assert_not_null(hs, "TRASH_TALK mint 须发布 HAND_SETTLED")
+	if hs == null:
+		return
+	assert_eq(str(hs.payload.get("outcome", "")), "EXHAUSTIVE_DRAW")
+	var scores_p: Array = hs.payload.get("scores", [])
+	var start_raw2 = server.get("_hand_start_scores")
+	assert_eq(int(scores_p[0]), int((start_raw2 as Array)[0]) + 2000, "终分含 mint")
+	var has_ext := false
+	for a in hs.payload.get("adjustments", []):
+		if str(a.get("kind", "")) == "EXTERNAL" and int(a.get("delta", 0)) != 0:
+			has_ext = true
+	assert_true(has_ext, "须 EXTERNAL adjustment")
+
+
+## #375 P2-2：LocalLoopback 生产路径矛盾 score_deltas → 零 HAND_SETTLED。
+func test_loopback_rejects_mismatched_score_deltas_no_publish() -> void:
+	if not _contract_ok():
+		return
+	var server := BadDeltaHandSettledServer.new(_cfg_all_human(), 0)
+	assert_true(bool(server.call("start")))
+	var bc: BattleController = server.get("_bc") as BattleController
+	assert_not_null(bc)
+	if bc == null:
+		return
+	if not bool(bc.get("_settled")):
+		bc._emit(&"EXHAUSTIVE_DRAW", -1, null, {})
+		bc.set("_settled", true)
+	var seq0: int = int(server.call("current_server_seq"))
+	var ok: bool = bool(server.call("_emit_settled_if_needed"))
+	assert_false(ok, "矛盾 deltas 须拒绝 HAND_SETTLED")
+	assert_eq(int(server.call("current_server_seq")), seq0)
+	assert_null(_find_hand_settled(server, 0))
+	assert_eq(int((server.get("_settlement_tracker") as Dictionary).get("committed_hand_seq", 99)), -1)
+
+
+## #375 P1：commit 后后续步骤失败整笔回滚须恢复 tracker；重试重新落账且一致。
+
+func test_hand_settled_commit_then_finalize_fail_rolls_back_tracker_and_retries() -> void:
+	if not _contract_ok():
+		return
+	var cfg := _cfg_all_human()
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	var server := FailFinalizeAfterHandSettledServer.new(cfg, 0)
+	assert_not_null(server)
+	if server == null:
+		return
+	assert_true(bool(server.call("start")))
+	var bc: BattleController = server.get("_bc") as BattleController
+	assert_not_null(bc)
+	if bc == null:
+		return
+	var start_raw = server.get("_hand_start_scores")
+	assert_eq(typeof(start_raw), TYPE_ARRAY)
+	if typeof(start_raw) != TYPE_ARRAY:
+		return
+	var start_scores: Array = []
+	for s in start_raw as Array:
+		start_scores.append(int(s))
+
+	var used: Dictionary = {}
+	var wall_floor: int = _prep_live(bc)
+	bc.state.seats[0].hand = _hand_live(bc, _chiitoi_13(), used)
+	bc.state.first_round_active = false
+	var win_t: Tile = _draw_live_tid(bc, TileId.W9, used)
+	assert_not_null(win_t)
+	if win_t == null:
+		return
+	assert_true(bc.state.seats[0].hand.add(win_t))
+	bc.state.seats[0].last_drawn_instance_id = win_t.instance_id
+	bc.state.current_seat = 0
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	bc.set("_settled", false)
+	bc.set("_active_window", null)
+	_seal_live_wall_draw_index(bc, wall_floor)
+
+	var ctx: DecisionContext = bc.decision_context_for_seat(0)
+	assert_not_null(ctx)
+	if ctx == null:
+		return
+	assert_true(ctx.has_kind("TSUMO"))
+	var act: Action = Action.tsumo(
+		0, CLAIM_SID, _cmd(540), ctx.decision_id, int(bc.state.hand_seq),
+		int(server.call("current_server_seq")) + 1
+	)
+	server.fail_next_finalize = true
+	var frozen: Dictionary = _freeze_accepted_batch_state(server, "hs_trk0")
+	var cr := _as_cr(server.call("submit_action", act), "hs_trk_fail")
+	if cr == null:
+		return
+	assert_gt(server.finalize_fail_hit, 0, "须命中 finalize 失败注入")
+	assert_eq(cr.status, "REJECTED", "finalize 失败须整笔 REJECTED")
+	if cr.status != "REJECTED":
+		return
+	_assert_accepted_batch_zero_mutation(server, frozen, "hs_trk")
+	# tracker 必须恢复为空，否则重试会跳过真实落账
+	var tr = server.get("_settlement_tracker")
+	assert_eq(typeof(tr), TYPE_DICTIONARY)
+	assert_eq(int((tr as Dictionary).get("committed_hand_seq", 99)), -1,
+		"回滚后 settlement tracker 须未提交")
+	assert_false(bool(server.get("_hand_settled_emitted")))
+	for seat in range(4):
+		assert_null(_find_hand_settled(server, seat), "失败后不得残留 HAND_SETTLED")
+	# 分数回到局起始
+	for i in range(4):
+		assert_eq(int(bc.state.scores[i]), int(start_scores[i]),
+			"回滚后 BattleState.scores 须恢复起分 seat%d" % i)
+
+	# 重试：完整提交
+	var cr2 := _as_cr(server.call("submit_action", act), "hs_trk_retry")
+	if cr2 == null:
+		return
+	assert_eq(cr2.status, "ACCEPTED",
+		"重试须 ACCEPTED status=%s error=%s" % [cr2.status, cr2.error_code])
+	var hs := _assert_four_seat_hand_settled_same_seq(server, "hs_trk_retry")
+	assert_not_null(hs)
+	if hs == null:
+		return
+	assert_eq(str(hs.payload.get("outcome", "")), "TSUMO")
+	var committed: Array = []
+	for s2 in bc.state.scores:
+		committed.append(int(s2))
+	assert_eq(JSON.stringify(committed), JSON.stringify(hs.payload.get("scores", [])),
+		"重试后 state.scores == HAND_SETTLED.scores")
+	var tr2 = server.get("_settlement_tracker")
+	assert_eq(int((tr2 as Dictionary).get("committed_hand_seq", -1)), int(bc.state.hand_seq))
+
+
 ## Red：直接 _emit_settled_if_needed 在 recipient 中途失败时零 mutation（禁 alloc+半 append）。
+
 func test_emit_settled_recipient_mid_fail_zero_seq_and_journal() -> void:
 	if not _contract_ok():
 		return
@@ -2969,7 +3238,185 @@ func test_emit_settled_recipient_mid_fail_zero_seq_and_journal() -> void:
 		"失败：四席 journal 零变化（禁半 append）")
 
 
+## #375 Round5：start 内 AI TSUMO 后 HAND_SETTLED 失败须恢复全部 _hand_start_*（含 honba/riichi）。
+func test_start_ai_tsumo_hand_settled_fail_restores_all_hand_start_fields() -> void:
+	if not _contract_ok():
+		return
+	var cfg := _cfg()
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	var bc := BattleController.new(int(cfg.seed), 1, false, TileId.E, 0)
+	assert_not_null(bc)
+	if bc == null or bc.state == null:
+		return
+	# 非零局前本场/立直棒；立直棒须伴随 scores 扣 1000 以保持 STANDARD 守恒
+	bc.state.honba = 2
+	bc.state.riichi_sticks = 1
+	bc.state.scores[0] = int(bc.state.scores[0]) - 1000
+	var used: Dictionary = {}
+	var wall_floor: int = _prep_live(bc)
+	bc.state.seats[1].hand = _hand_live(bc, _chiitoi_13(), used)
+	bc.state.first_round_active = false
+	var win_t: Tile = _draw_live_tid(bc, TileId.W9, used)
+	assert_not_null(win_t)
+	if win_t == null:
+		return
+	assert_true(bc.state.seats[1].hand.add(win_t))
+	bc.state.seats[1].last_drawn_instance_id = win_t.instance_id
+	bc.state.dealer_seat = 1
+	bc.state.current_seat = 1
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	bc.set("_settled", false)
+	bc.set("_active_window", null)
+	_seal_live_wall_draw_index(bc, wall_floor)
+	assert_true(bc.decision_context_for_seat(1).has_kind("TSUMO"))
+
+	var server := FailingHandSettledServer.new(cfg, 1, bc)
+	server.enabled = true
+	server.fail_seat = 2
+	# 调用前：未 start 成功时三项应为未冻结
+	assert_true(
+		server.get("_hand_start_scores") == null
+		or (typeof(server.get("_hand_start_scores")) == TYPE_ARRAY
+			and (server.get("_hand_start_scores") as Array).is_empty()),
+		"start 前 _hand_start_scores 未冻结"
+	)
+	assert_eq(int(server.get("_hand_start_honba")), 0)
+	assert_eq(int(server.get("_hand_start_riichi_sticks")), 0)
+	assert_false(bool(server.get("_started")))
+	var seq0: int = int(server.call("current_server_seq"))
+	var j0: Array = _journal_dicts(server, "pre_fail_start")
+
+	assert_false(bool(server.call("start")), "HAND_SETTLED recipient 失败须 start==false")
+	assert_gt(server.fail_hit, 0, "须命中 HAND_SETTLED 失败注入")
+	assert_false(bool(server.get("_started")), "失败后 _started 须 false")
+	assert_false(bool(server.get("_hand_settled_emitted")))
+	assert_eq(int((server.get("_settlement_tracker") as Dictionary).get("committed_hand_seq", 99)), -1)
+	assert_eq(int(server.call("current_server_seq")), seq0, "seq 零推进")
+	assert_eq(JSON.stringify(_journal_dicts(server, "post_fail_start")), JSON.stringify(j0),
+		"journal 零变化")
+	# P2：失败后三项起分须全部恢复调用前（空/0）
+	var hs_scores = server.get("_hand_start_scores")
+	assert_true(
+		hs_scores == null
+		or (typeof(hs_scores) == TYPE_ARRAY and (hs_scores as Array).is_empty()),
+		"失败后 _hand_start_scores 须恢复为空"
+	)
+	assert_eq(int(server.get("_hand_start_honba")), 0,
+		"失败后 _hand_start_honba 须恢复 0（不得残留 2）")
+	assert_eq(int(server.get("_hand_start_riichi_sticks")), 0,
+		"失败后 _hand_start_riichi_sticks 须恢复 0（不得残留 1）")
+	# 重试：新 server + 守恒局前状态（seat0 已付棒）
+	var bc2 := BattleController.new(int(cfg.seed) + 1, 1, false, TileId.E, 0)
+	assert_not_null(bc2)
+	if bc2 == null or bc2.state == null:
+		return
+	bc2.state.honba = 2
+	bc2.state.riichi_sticks = 1
+	bc2.state.scores[0] = int(bc2.state.scores[0]) - 1000
+	used = {}
+	wall_floor = _prep_live(bc2)
+	bc2.state.seats[1].hand = _hand_live(bc2, _chiitoi_13(), used)
+	bc2.state.first_round_active = false
+	win_t = _draw_live_tid(bc2, TileId.W9, used)
+	assert_not_null(win_t)
+	if win_t == null:
+		return
+	assert_true(bc2.state.seats[1].hand.add(win_t))
+	bc2.state.seats[1].last_drawn_instance_id = win_t.instance_id
+	bc2.state.dealer_seat = 1
+	bc2.state.current_seat = 1
+	bc2.state.phase = BattlePhase.Kind.DISCARD
+	bc2.set("_settled", false)
+	bc2.set("_active_window", null)
+	_seal_live_wall_draw_index(bc2, wall_floor)
+	assert_true(bc2.decision_context_for_seat(1).has_kind("TSUMO"))
+	var server2 := FailingHandSettledServer.new(cfg, 1, bc2)
+	server2.enabled = false
+	assert_true(bool(server2.call("start")), "关闭注入后 start 须成功")
+	assert_true(bool(bc2.get("_settled")))
+	var hs := _assert_four_seat_hand_settled_same_seq(server2, "start_fail_retry")
+	assert_not_null(hs)
+	if hs != null:
+		assert_eq(str(hs.payload.get("outcome", "")), "TSUMO")
+	assert_eq(int(server2.get("_hand_start_honba")), 2, "成功 start 须冻结非零 honba")
+	assert_eq(int(server2.get("_hand_start_riichi_sticks")), 1, "成功 start 须冻结非零 riichi")
+
+
+## #375 Round4：start() 内 AI 庄真实 TSUMO 必须同事务发布 HAND_SETTLED（不得依赖 reconnect）。
+
+func test_start_ai_dealer_tsumo_emits_hand_settled() -> void:
+	if not _contract_ok():
+		return
+	var cfg := _cfg()  # seat0 HUMAN, 1..3 AI
+	assert_not_null(cfg)
+	if cfg == null:
+		return
+	# dealer=1 → AI 庄；注入真实 BC + 真实七对 14 张（DISCARD 可 TSUMO）
+	# start→_auto_advance_ai 优先 TSUMO（与 step_ai 同源 _build_ai_turn_action）
+	var bc := BattleController.new(int(cfg.seed), 1, false, TileId.E, 0)
+	assert_not_null(bc)
+	assert_not_null(bc.state)
+	if bc == null or bc.state == null:
+		return
+	var used: Dictionary = {}
+	var wall_floor: int = _prep_live(bc)
+	bc.state.seats[1].hand = _hand_live(bc, _chiitoi_13(), used)
+	bc.state.first_round_active = false
+	var win_t: Tile = _draw_live_tid(bc, TileId.W9, used)
+	assert_not_null(win_t, "须真实从 wall 摸入 W9")
+	if win_t == null:
+		return
+	assert_true(bc.state.seats[1].hand.add(win_t))
+	bc.state.seats[1].last_drawn_instance_id = win_t.instance_id
+	bc.state.dealer_seat = 1
+	bc.state.current_seat = 1
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	bc.set("_settled", false)
+	bc.set("_active_window", null)
+	_seal_live_wall_draw_index(bc, wall_floor)
+	# 注入前确认真实规则路径可 TSUMO（禁 mock ScoreCalc）
+	var pre_ctx: DecisionContext = bc.decision_context_for_seat(1)
+	assert_not_null(pre_ctx, "seat1 须有 TURN 上下文")
+	if pre_ctx == null:
+		return
+	assert_true(pre_ctx.has_kind("TSUMO"), "fixture 须真实 offer TSUMO")
+
+	var server := LocalLoopbackServer.new(cfg, 1, bc)
+	assert_true(bool(server.call("start")), "start 须成功")
+	assert_true(bool(bc.get("_settled")),
+		"AI 庄自摸后 BC 须 settled phase=%d events=%d" % [
+			int(bc.state.phase), bc.events.size()
+		])
+	# 生产缺口 Red：当前 start 终局分支不发 HAND_SETTLED
+	var hs0 := _find_hand_settled(server, 0)
+	assert_not_null(hs0, "start 内 AI TSUMO 必须发布 HAND_SETTLED（不得缺账本）")
+	if hs0 == null:
+		return
+	var hs := _assert_four_seat_hand_settled_same_seq(server, "start_ai_tsumo")
+	assert_not_null(hs)
+	if hs == null:
+		return
+	assert_eq(str(hs.payload.get("outcome", "")), "TSUMO")
+	assert_eq(hs.payload.get("winner_seats"), [1])
+	var committed: Array = []
+	for s in bc.state.scores:
+		committed.append(int(s))
+	assert_eq(JSON.stringify(committed), JSON.stringify(hs.payload.get("scores", [])),
+		"BattleState.scores 须 == HAND_SETTLED.scores")
+	assert_eq(int((server.get("_settlement_tracker") as Dictionary).get("committed_hand_seq", -1)),
+		int(bc.state.hand_seq), "tracker 须保留已提交 hand_seq，不得发布后清空")
+	assert_true(bool(server.get("_hand_settled_emitted")))
+	# 幂等：再 settle 不得重复
+	var seq1: int = int(server.call("current_server_seq"))
+	assert_true(bool(server.call("_emit_settled_if_needed")))
+	assert_eq(int(server.call("current_server_seq")), seq1)
+	assert_eq(_count_kind(server, 0, "HAND_SETTLED"), 1)
+
+
 ## #241 round-3：AI TSUMO 终局必须在同一步内发布唯一 HAND_SETTLED；重复 settle 幂等。
+
 func test_ai_tsumo_step_emits_unique_hand_settled() -> void:
 	if not _contract_ok():
 		return
