@@ -11,12 +11,10 @@ const VIEW := Vector2(1600.0, 900.0)
 
 # #326 方案 A：左右各两槽，避开中央/牌河/四向手牌。
 const HUD_RECTS := [
-	Rect2(24.0, 132.0, 52.0, 52.0),
-	Rect2(24.0, 192.0, 52.0, 52.0),
-	Rect2(1524.0, 132.0, 52.0, 52.0),
-	Rect2(1524.0, 192.0, 52.0, 52.0),
+	Rect2(16.0, 124.0, 208.0, 152.0),
+	Rect2(1376.0, 124.0, 208.0, 152.0),
 ]
-const DRAWER_RECT := Rect2(1384.0, 456.0, 200.0, 312.0)
+const DRAWER_RECT := Rect2(1384.0, 480.0, 200.0, 288.0)
 const PTT_RECT := Rect2(1424.0, 820.0, 160.0, 40.0)
 const ACTION_RECT := Rect2(
 	(1600.0 - 720.0) / 2.0,
@@ -38,7 +36,7 @@ func test_hud_rect_matches_scheme_a() -> void:
 	await get_tree().process_frame
 	var hud: Control = table.get_node_or_null("RewardPoolHud") as Control
 	assert_not_null(hud)
-	assert_eq(hud.prize_icon_rects(), HUD_RECTS)
+	assert_eq(hud.pool_group_rects(), HUD_RECTS)
 	assert_eq(HudScr.PRIZE_ICON_SIZE, Vector2(52.0, 52.0))
 
 
@@ -59,7 +57,7 @@ func test_drawer_rect_matches_scheme_a_and_default_closed() -> void:
 	assert_eq(r.size.x, DRAWER_RECT.size.x)
 	assert_eq(r.size.y, DRAWER_RECT.size.y)
 	assert_eq(DrawerScr.DRAWER_W, 200.0)
-	assert_eq(DrawerScr.DRAWER_H, 312.0)
+	assert_eq(DrawerScr.DRAWER_H, 288.0)
 
 
 func test_no_overlap_hud_captions_hand_action_ptt() -> void:
@@ -85,6 +83,8 @@ func test_no_overlap_hud_captions_hand_action_ptt() -> void:
 		var cap2: Rect2 = overlay.slot_rect(seat)
 		assert_false(_rects_overlap(DRAWER_RECT, cap2),
 			"抽屉不得与 seat%d 字幕重叠" % seat)
+		assert_false(_rects_overlap(DRAWER_RECT, TableLayout.SEAT_HUD_RECTS[seat]),
+			"抽屉不得与 seat%d 状态印重叠" % seat)
 
 	var table = TableScr.new()
 	add_child_autofree(table)

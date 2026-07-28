@@ -294,6 +294,7 @@ func _build_layout() -> void:
 	item_inventory_drawer = ITEM_INVENTORY_DRAWER_SCR.new()
 	item_inventory_drawer.name = "ItemInventoryDrawer"
 	item_inventory_drawer.use_item_requested.connect(_on_inventory_use_requested)
+	item_inventory_drawer.close_requested.connect(_on_inventory_drawer_close_requested)
 	add_child(item_inventory_drawer)
 
 	# #326：真实角色视图驱动的紧凑技能徽章；不接线隐藏 AbilityPanel。
@@ -305,7 +306,7 @@ func _build_layout() -> void:
 	_inventory_btn = Button.new()
 	_inventory_btn.name = "InventoryButton"
 	_inventory_btn.text = ""
-	_inventory_btn.focus_mode = Control.FOCUS_NONE
+	_inventory_btn.focus_mode = Control.FOCUS_ALL
 	_inventory_btn.position = Vector2(1536.0, 8.0)
 	_inventory_btn.size = Vector2(48.0, 48.0)
 	_inventory_btn.custom_minimum_size = Vector2(48.0, 48.0)
@@ -483,6 +484,8 @@ func open_inventory_drawer() -> void:
 		item_inventory_drawer.open_drawer()
 	else:
 		item_inventory_drawer.visible = true
+	if item_inventory_drawer.has_method("focus_first"):
+		item_inventory_drawer.call_deferred("focus_first")
 
 
 func close_inventory_drawer() -> void:
@@ -598,6 +601,11 @@ func _on_inventory_btn_pressed() -> void:
 		close_inventory_drawer()
 	else:
 		open_inventory_drawer()
+
+
+func _on_inventory_drawer_close_requested() -> void:
+	if _inventory_btn != null:
+		_inventory_btn.grab_focus()
 
 
 func _on_inventory_use_requested(item_instance_id: String) -> void:
