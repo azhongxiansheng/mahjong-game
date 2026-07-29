@@ -4,9 +4,10 @@
 set -euo pipefail
 
 PROJ_DIR="$(cd "$(dirname "$0")/.." && pwd)/godot"
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GODOT_BIN="${GODOT:-godot}"
 
-"$GODOT_BIN" --headless --path "$PROJ_DIR" --import
+GODOT="$GODOT_BIN" "$REPO_ROOT/scripts/godot_bootstrap.sh"
 
 "$GODOT_BIN" --headless --path "$PROJ_DIR" \
 	-s addons/gut/gut_cmdln.gd \

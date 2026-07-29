@@ -140,14 +140,14 @@
 ### 本仓库验证门禁
 
 ```bash
-# 1) class_name / 纹理缓存（改 class 或资产后必跑）
-godot --headless --path godot --import
+# 1) class_name / 纹理缓存（新 worktree 首测，以及改 class 或资产后必跑）
+scripts/godot_bootstrap.sh
 
 # 2) GUT 全量（应 0 fail / 0 parse error；仅风险触发/发布回归）
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests -ginclude_subdirs -gexit
 
-# 3) 局部（开发中）
+# 3) 局部（开发中；先执行上面的 bootstrap）
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests/<module> -gselect=<test_name> -gexit
 
@@ -165,6 +165,7 @@ godot --path godot -s tools/capture_screens.gd
 | Go 桩 `main.go` | 如修改则先写 `_test.go`；**默认不扩张职责** |
 
 日常快速门禁使用 `scripts/test_run_core.sh`；协议、服务器、整局、UI、STT 等重型回归使用 `scripts/test_run_slow.sh`。两者不可互相冒充覆盖范围。
+Codex App 受管 worktree 通过根目录 `.worktreeinclude` 复制被忽略的必要 Godot 导入缓存；仍须由 `scripts/godot_bootstrap.sh` 做两轮 import 与第二轮错误审计。禁止提交 `.godot/`，也不得把首次 import 的退出码 0 当作缓存有效。
 
 ### 分层验证与全量升级条件
 

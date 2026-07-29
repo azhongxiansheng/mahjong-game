@@ -1,0 +1,5 @@
+# Codex App managed worktrees need Godot's ignored import products before focused GUT.
+godot/.godot/.gdignore
+godot/.godot/global_script_class_cache.cfg
+godot/.godot/imported/
+godot/.godot/uid_cache.bin
