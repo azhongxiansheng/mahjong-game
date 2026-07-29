@@ -271,7 +271,7 @@ func _update_row_positions() -> void:
 
 
 func _row_gap() -> float:
-	return 4.0
+	return 7.0 if _seat_id == 0 or _seat_id == 2 else 4.0
 
 
 func _tile_gap() -> float:
@@ -370,22 +370,21 @@ func _spawn_projected_tile_contents(parent: Node2D, river_position: Vector2,
 		_seat_id, TableLayout.river_raw_rect(_seat_id),
 		Rect2(river_position, slot_size))
 	parent.set_meta("projected_quad", quad)
-	var shadow_quad := PackedVector2Array()
-	for point in quad:
-		shadow_quad.append(point + Vector2(0, 2.5))
-	var shadow := Polygon2D.new()
-	shadow.name = "TileShadow"
-	shadow.polygon = shadow_quad
-	shadow.color = Color(0, 0, 0, 0.24)
-	parent.add_child(shadow)
-	var thickness := Polygon2D.new()
-	thickness.name = "TileThickness"
-	thickness.polygon = PackedVector2Array([
-		quad[3], quad[2], quad[2] + Vector2(0, 1.8),
-		quad[3] + Vector2(0, 1.8),
-	])
-	thickness.color = Color("d8ded5")
-	parent.add_child(thickness)
+	parent.add_child(_make_projected_layer(
+		"TileShadow", quad,
+		TableLayout.public_tile_depth_offset(
+			_seat_id, TableLayout.PUBLIC_TILE_SHADOW_OFFSET),
+		Color(0, 0, 0, 0.36), "shadow"))
+	parent.add_child(_make_projected_layer(
+		"GreenSide", quad,
+		TableLayout.public_tile_depth_offset(
+			_seat_id, TableLayout.PUBLIC_TILE_GREEN_DEPTH),
+		Color("2c6b47"), "green"))
+	parent.add_child(_make_projected_layer(
+		"WhiteSide", quad,
+		TableLayout.public_tile_depth_offset(
+			_seat_id, TableLayout.PUBLIC_TILE_WHITE_DEPTH),
+		Color("d8d8ce"), "white"))
 	var face := Polygon2D.new()
 	face.name = "TileFace"
 	face.polygon = quad
@@ -415,6 +414,17 @@ func _spawn_projected_tile_contents(parent: Node2D, river_position: Vector2,
 		parent.add_child(glow)
 		_last_highlight = glow
 		_play_latest_glow(glow)
+
+
+static func _make_projected_layer(node_name: String,
+		quad: PackedVector2Array, offset: Vector2, color: Color,
+		layer_kind: String) -> Polygon2D:
+	var layer := Polygon2D.new()
+	layer.name = node_name
+	layer.polygon = TableLayout.offset_polygon(quad, offset)
+	layer.color = color
+	layer.set_meta("depth_layer", layer_kind)
+	return layer
 
 
 static func _make_projected_border(quad: PackedVector2Array, color: Color,

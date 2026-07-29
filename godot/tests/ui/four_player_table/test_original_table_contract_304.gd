@@ -41,7 +41,9 @@ func test_production_table_builds_original_stage_four_huds_and_ritual_band() -> 
 	add_child_autofree(playable)
 	await get_tree().process_frame
 	assert_true(playable._table is FourPlayerTable)
-	assert_not_null(playable._table.get_node_or_null("TableStage/BarrierField"))
+	assert_null(playable._table.get_node_or_null("TableStage/BarrierField"))
+	assert_not_null(playable._table.get_node_or_null("TableStage/TableRails"),
+		"生产牌桌必须挂载参考项目的左右斜木沿")
 	assert_eq(playable._table.seat_panels.size(), 4)
 	for seat_id in range(4):
 		var hud: Node = playable._table.seat_panels[seat_id].get_node_or_null("SeatHUD")

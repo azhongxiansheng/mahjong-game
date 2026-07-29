@@ -22,6 +22,13 @@ func _assert_rect_almost_eq(actual: Rect2, expected: Rect2, tolerance: float,
 	assert_almost_eq(actual.size.y, expected.size.y, tolerance, "%s h" % label)
 
 
+func _polygon_center(polygon: PackedVector2Array) -> Vector2:
+	var center := Vector2.ZERO
+	for point in polygon:
+		center += point
+	return center / float(polygon.size())
+
+
 func _rect_union(rects: Array[Rect2]) -> Rect2:
 	assert_false(rects.is_empty())
 	var result := rects[0]
@@ -223,6 +230,90 @@ func test_single_pon_layout_bounds_follow_hand_flex_reflow() -> void:
 	assert_lt(projected_bounds[2].size.x * projected_bounds[2].size.y,
 		projected_bounds[0].size.x * projected_bounds[0].size.y,
 		"远端副露应比近端副露小")
+
+
+func test_projected_melds_reuse_reference_directional_depth_and_shadow() -> void:
+	var depth_offsets := [
+		Vector2(0, 7), Vector2(-7, 0), Vector2(0, -7), Vector2(7, 0),
+	]
+	var white_offsets := [
+		Vector2(0, 4), Vector2(-4, 0), Vector2(0, -4), Vector2(4, 0),
+	]
+	var shadow_offsets := [
+		Vector2(0, 11), Vector2(-11, 0), Vector2(0, -11), Vector2(11, 0),
+	]
+	for seat_id in range(4):
+		var area := MeldArea.new()
+		area.set_seat_id(seat_id)
+		add_child_autofree(area)
+		var called := Tile.new(TileId.W5, false, Tile.NO_OWNER, 4600 + seat_id * 3)
+		area.set_melds([Meld.make_pon([
+			called,
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4601 + seat_id * 3),
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4602 + seat_id * 3),
+		], (seat_id + 1) % 4, seat_id, called)], seat_id)
+		area.apply_reference_layout()
+		var faces: Array = []
+		for entry in area._tile_nodes:
+			faces.append(entry.get("node"))
+		var greens: Array = []
+		var whites: Array = []
+		var shadows: Array = []
+		for node in area.find_children("*", "Polygon2D", true, false):
+			match String((node as Polygon2D).get_meta("depth_layer", "")):
+				"green":
+					greens.append(node)
+				"white":
+					whites.append(node)
+				"shadow":
+					shadows.append(node)
+		assert_eq(faces.size(), 3, "seat %d face count" % seat_id)
+		assert_eq(greens.size(), 3, "seat %d green depth count" % seat_id)
+		assert_eq(whites.size(), 3, "seat %d ivory depth count" % seat_id)
+		assert_eq(shadows.size(), 3, "seat %d shadow count" % seat_id)
+		if faces.size() != 3 or greens.size() != 3 \
+				or whites.size() != 3 or shadows.size() != 3:
+			continue
+		for tile_index in range(3):
+			var face_center := _polygon_center((faces[tile_index] as Polygon2D).polygon)
+			assert_true((_polygon_center(
+				(greens[tile_index] as Polygon2D).polygon) - face_center
+				).is_equal_approx(depth_offsets[seat_id]),
+				"seat %d tile %d 绿色厚边方向" % [seat_id, tile_index])
+			assert_true((_polygon_center(
+				(whites[tile_index] as Polygon2D).polygon) - face_center
+				).is_equal_approx(white_offsets[seat_id]),
+				"seat %d tile %d 象牙厚边方向" % [seat_id, tile_index])
+			assert_true((_polygon_center(
+				(shadows[tile_index] as Polygon2D).polygon) - face_center
+				).is_equal_approx(shadow_offsets[seat_id]),
+				"seat %d tile %d 阴影方向" % [seat_id, tile_index])
+
+
+func test_projected_added_kan_suppresses_stacked_depth_for_top_and_bottom() -> void:
+	for seat_id in range(4):
+		var area := MeldArea.new()
+		area.set_seat_id(seat_id)
+		area.rotation_degrees = SeatPanel.SEAT_ROTATION_DEGREES[seat_id]
+		add_child_autofree(area)
+		var called := Tile.new(
+			TileId.W5, false, Tile.NO_OWNER, 4800 + seat_id * 10)
+		var meld := Meld.make_pon([
+			called,
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4801 + seat_id * 10),
+			Tile.new(TileId.W5, false, Tile.NO_OWNER, 4802 + seat_id * 10),
+		], (seat_id + 1) % 4, 4900 + seat_id, called)
+		assert_true(meld.promote_to_added_kan(Tile.new(
+			TileId.W5, false, Tile.NO_OWNER, 4803 + seat_id * 10)))
+		area.set_melds([meld], seat_id)
+		area.apply_reference_layout()
+		var depth_count := 0
+		for node in area.find_children("*", "Polygon2D", true, false):
+			if String((node as Polygon2D).get_meta("depth_layer", "")) != "":
+				depth_count += 1
+		var expected_depth_count := 9 if seat_id == 0 or seat_id == 2 else 12
+		assert_eq(depth_count, expected_depth_count,
+			"seat %d 加杠叠牌的三层厚边抑制必须沿投影生产路径生效" % seat_id)
 
 
 func test_real_bind_uses_legal_concealed_count_for_one_and_two_pon() -> void:

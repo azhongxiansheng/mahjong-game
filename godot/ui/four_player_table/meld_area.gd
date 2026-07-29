@@ -346,7 +346,8 @@ static func _reference_z_index(owner_seat: int, meld_index: int,
 func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node,
 		suppress_flat_depth: bool = false, draw_z: int = 0) -> void:
 	if _uses_table_projection:
-		_spawn_projected_tile(slot, Vector2(x, y_offset), extractor, draw_z)
+		_spawn_projected_tile(slot, Vector2(x, y_offset), extractor,
+			suppress_flat_depth, draw_z)
 		return
 	var first_child_index := get_child_count()
 	if bool(slot["face_down"]):
@@ -414,35 +415,36 @@ func _spawn_tile(slot: Dictionary, x: float, y_offset: float, extractor: Node,
 
 
 func _spawn_projected_tile(slot: Dictionary, slot_position: Vector2,
-		extractor: Node, draw_z: int) -> void:
+		extractor: Node, suppress_depth: bool, draw_z: int) -> void:
 	var rotated := bool(slot["rotated"])
 	var slot_size := Vector2(TILE_H, TILE_W) if rotated \
 		else Vector2(TILE_W, TILE_H)
 	var quad := TableLayout.project_seat_local_rect(
 		_seat_id, _projection_raw_host, Rect2(slot_position, slot_size))
-	var shadow_points := PackedVector2Array()
-	for point in quad:
-		shadow_points.append(point + Vector2(0, 2.5))
-	var shadow := Polygon2D.new()
-	shadow.name = "TileShadow"
-	shadow.polygon = shadow_points
-	shadow.color = Color(0, 0, 0, 0.24)
-	shadow.z_index = draw_z
-	add_child(shadow)
-	var thickness := Polygon2D.new()
-	thickness.name = "TileThickness"
-	thickness.polygon = PackedVector2Array([
-		quad[3], quad[2], quad[2] + Vector2(0, 1.8),
-		quad[3] + Vector2(0, 1.8),
-	])
-	thickness.color = Color("d8ded5")
-	thickness.z_index = draw_z
-	add_child(thickness)
+	var face_down := bool(slot["face_down"])
+	if not suppress_depth:
+		add_child(_make_projected_layer(
+			"TileShadow", quad,
+			TableLayout.public_tile_depth_offset(
+				_seat_id, TableLayout.PUBLIC_TILE_SHADOW_OFFSET),
+			Color(0, 0, 0, 0.36), "shadow", draw_z))
+		add_child(_make_projected_layer(
+			"GreenSide", quad,
+			TableLayout.public_tile_depth_offset(
+				_seat_id, TableLayout.PUBLIC_TILE_GREEN_DEPTH),
+			Color("d8d8ce") if face_down else Color("2c6b47"),
+			"green", draw_z))
+		add_child(_make_projected_layer(
+			"WhiteSide", quad,
+			TableLayout.public_tile_depth_offset(
+				_seat_id, TableLayout.PUBLIC_TILE_WHITE_DEPTH),
+			Color("2c5e3f") if face_down else Color("d8d8ce"),
+			"white", draw_z))
 	var face := Polygon2D.new()
-	face.name = "TileBackFace" if bool(slot["face_down"]) else "TileFace"
+	face.name = "TileBackFace" if face_down else "TileFace"
 	face.polygon = quad
 	face.z_index = draw_z
-	if bool(slot["face_down"]):
+	if face_down:
 		face.color = Color("2c5e3f")
 		add_child(face)
 		return
@@ -477,6 +479,18 @@ func _spawn_projected_tile(slot: Dictionary, slot_position: Vector2,
 		"node": face,
 		"was_red_tint": false,
 	})
+
+
+static func _make_projected_layer(node_name: String,
+		quad: PackedVector2Array, offset: Vector2, color: Color,
+		layer_kind: String, draw_z: int) -> Polygon2D:
+	var layer := Polygon2D.new()
+	layer.name = node_name
+	layer.polygon = TableLayout.offset_polygon(quad, offset)
+	layer.color = color
+	layer.z_index = draw_z
+	layer.set_meta("depth_layer", layer_kind)
+	return layer
 
 
 func _set_new_children_z(first_child_index: int, draw_z: int) -> void:

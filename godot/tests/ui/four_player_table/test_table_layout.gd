@@ -1,7 +1,7 @@
 extends GutTest
 
-# 1600×900 原创结界舞台的生产布局契约。
-# 只验证可读性、边界、真实节点和资产，不锁定第三方像素坐标。
+# 1600×900 参考桌布舞台的生产布局契约。
+# 只验证可读性、边界、真实节点和用户自有资产。
 
 const VIEW_RECT := Rect2(Vector2.ZERO, Vector2(1600, 900))
 
@@ -90,13 +90,16 @@ func test_four_player_table_uses_original_stage_and_four_huds() -> void:
 	var stage := table.get_node_or_null("TableStage")
 	assert_not_null(stage)
 	assert_not_null(stage.get_node_or_null("TableFelt"))
-	assert_not_null(stage.get_node_or_null("BarrierField"))
+	assert_null(stage.get_node_or_null("BarrierField"),
+		"参考桌布已有中心纹样，不再叠加青色结界")
+	assert_not_null(stage.get_node_or_null("TableRails"),
+		"参考牌桌只保留左右深色木沿")
 	assert_eq(table.seat_panels.size(), 4)
 	for seat_id in range(4):
 		assert_not_null(table.seat_panels[seat_id].get_node_or_null("SeatHUD"))
 
 
-func test_table_stage_uses_repo_felt_and_layered_barrier() -> void:
+func test_table_stage_uses_reference_felt_and_tapered_side_rails() -> void:
 	assert_eq(TableStage.FELT_PATH, "res://assets/table_felt.png")
 	assert_eq(TableStage.FELT_FALLBACK, "res://assets/mahjong_table_bg.png")
 	var expected_path: String = TableStage.FELT_PATH \
@@ -114,22 +117,95 @@ func test_table_stage_uses_repo_felt_and_layered_barrier() -> void:
 		assert_eq(felt.texture.get_width(), 1600,
 			"生产桌布必须直接匹配 1600×900，禁止再拉伸旧 4:3 背景")
 		assert_eq(felt.texture.get_height(), 900)
-	var barrier := stage.get_node_or_null("BarrierField") as Node2D
-	assert_not_null(barrier)
-	if barrier != null:
-		assert_not_null(barrier.get_node_or_null("SealDiamond"))
-		assert_eq(barrier.get_child_count(), 5,
-			"中心菱形与四席方向线组成原创结界")
-	assert_null(stage.get_node_or_null("TableRails"),
-		"完整四边框已在选定桌布中，不得重复叠加程序化斜轨")
+	assert_null(stage.get_node_or_null("BarrierField"),
+		"龙纹桌布不得再被青色结界线抢占视觉中心")
+	var raw_top: float = TableLayout.TABLE_PLANE_RECT.position.y
+	var raw_bottom: float = TableLayout.TABLE_PLANE_RECT.end.y
+	var masks := stage.get_node_or_null("TableClipMasks") as Node2D
+	assert_not_null(masks, "桌布投影外侧必须恢复参考图的黑色留空与内缝")
+	if masks != null:
+		var left_mask := masks.get_node_or_null("LeftOutsideMask") as Polygon2D
+		var right_mask := masks.get_node_or_null("RightOutsideMask") as Polygon2D
+		assert_not_null(left_mask)
+		assert_not_null(right_mask)
+		if left_mask != null:
+			var left_top := TableLayout.project_table_point(Vector2(0, raw_top))
+			assert_eq(left_mask.polygon, PackedVector2Array([
+				Vector2(0, left_top.y),
+				left_top,
+				TableLayout.project_table_point(Vector2(0, raw_bottom)),
+			]))
+		if right_mask != null:
+			var right_top := TableLayout.project_table_point(Vector2(1600, raw_top))
+			assert_eq(right_mask.polygon, PackedVector2Array([
+				Vector2(1600, right_top.y),
+				right_top,
+				TableLayout.project_table_point(Vector2(1600, raw_bottom)),
+			]))
+	var rails := stage.get_node_or_null("TableRails") as Node2D
+	assert_not_null(rails)
+	if rails == null:
+		return
+	assert_eq(rails.z_index, 0,
+		"木沿必须留在舞台背景层，不得盖住后创建的玩家 HUD")
+	assert_eq(rails.get_child_count(), 2, "只绘制参考项目的左右两条木沿")
+	var expected_bodies := {
+		"LeftRail": PackedVector2Array([
+			TableLayout.project_table_point(Vector2(-130, raw_top)),
+			TableLayout.project_table_point(Vector2(-10, raw_top)),
+			TableLayout.project_table_point(Vector2(-10, raw_bottom)),
+			TableLayout.project_table_point(Vector2(-130, raw_bottom)),
+		]),
+		"RightRail": PackedVector2Array([
+			TableLayout.project_table_point(Vector2(1610, raw_top)),
+			TableLayout.project_table_point(Vector2(1730, raw_top)),
+			TableLayout.project_table_point(Vector2(1730, raw_bottom)),
+			TableLayout.project_table_point(Vector2(1610, raw_bottom)),
+		]),
+	}
+	for rail_name in expected_bodies:
+		var rail := rails.get_node_or_null(rail_name) as Node2D
+		assert_not_null(rail, "%s 存在" % rail_name)
+		if rail == null:
+			continue
+		var body := rail.get_node_or_null("Body") as Polygon2D
+		assert_not_null(body, "%s 有深色木质主体" % rail_name)
+		if body != null:
+			assert_eq(body.polygon, expected_bodies[rail_name],
+				"%s 必须由原始 120px 木条经过统一桌面投影" % rail_name)
+			assert_eq(body.uv.size(), 4)
+			assert_true(body.material is ShaderMaterial,
+				"%s 木体必须有可缩放的实时木纹材质" % rail_name)
+		assert_true(rail.get_node_or_null("SoftShadow") is Line2D,
+			"%s 必须向桌布投下宽软阴影" % rail_name)
+		assert_true(rail.get_node_or_null("InnerBevel") is Polygon2D,
+			"%s 有内侧深色倒角" % rail_name)
+		var glow := rail.get_node_or_null("HighlightGlow") as Line2D
+		var highlight := rail.get_node_or_null("Highlight") as Line2D
+		assert_not_null(glow, "%s 有宽柔光" % rail_name)
+		assert_not_null(highlight, "%s 有 2px 纵向高光" % rail_name)
+		if glow != null:
+			assert_eq(glow.width, 8.0)
+			assert_not_null(glow.gradient)
+			assert_eq(glow.points.size(), 9,
+				"柔光必须在渐变色标处细分，避免两端透明使整条线不可见")
+		if highlight != null:
+			assert_eq(highlight.width, 2.0)
+			assert_not_null(highlight.gradient)
+			assert_eq(highlight.points.size(), 9,
+				"主高光必须在渐变色标处细分，确保中段采到不透明颜色")
+		if glow != null and highlight != null:
+			assert_eq(highlight.points, glow.points)
 
 
 func test_single_table_frame_and_board_lines_are_structural() -> void:
 	var host := Control.new()
 	add_child_autofree(host)
 	var stage := TableStage.build(host, 1600.0, 900.0)
-	assert_null(stage.get_node_or_null("TableRails"),
-		"牌桌四周只能保留选定背景中的连续桌框")
+	var rails := stage.get_node_or_null("TableRails") as Node2D
+	assert_not_null(rails, "背景不再烘焙桌框，左右木沿必须由舞台节点提供")
+	if rails != null:
+		assert_eq(rails.get_child_count(), 2, "不得恢复上下木框")
 	var table: FourPlayerTable = load(
 		"res://ui/four_player_table/four_player_table.tscn").instantiate()
 	add_child_autofree(table)

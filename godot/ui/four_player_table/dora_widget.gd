@@ -1,50 +1,162 @@
 class_name DoraWidget extends Control
 
-# 宝牌指示窗(对标参考截图左上角):5 个指示牌槽,已翻的 face-up,
-# 未翻的牌背;槽位随杠翻新增量点亮。挂 PlayableTable 平面层左上,
-# 把 dora 信息从中心盘解放出来(中心盘只留局数/余张/回合)。
+# 参考桌面左上角：五个宝牌指示槽与本场棒计数共用一条紧凑信息框。
+# 已翻槽使用真实牌面；未翻槽使用固定深绿牌背，避免复用红色 back.png。
 
-const SLOT_W: float = 34.0
-const SLOT_H: float = 48.0
-const SLOT_GAP: float = 3.0
+const SLOT_W: float = 26.0
+const SLOT_H: float = 34.0
+const SLOT_GAP: float = 2.0
 const SLOTS: int = 5
+const WIDGET_SIZE := Vector2(204.0, 50.0)
+const GREEN_BACK_COLOR := Color("2c5e3f")
 
-# 初始哨兵值非空串:否则 update_indicators([]) 的 key="" 与初始值相同,
-# 首次空状态被去重 early-return,5 个牌背槽压根不渲染。
 var _rendered_key: String = "__unset__"
+var _honba: int = 0
+
 
 func _init() -> void:
+	name = "DoraWidget"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	size = Vector2(SLOTS * (SLOT_W + SLOT_GAP) + 16, SLOT_H + 14)
+	size = WIDGET_SIZE
+	custom_minimum_size = WIDGET_SIZE
 
-# indicators: Array[int] 已翻指示牌 id(state.dora_indicators.visible_tiles() 的 id)
+
+# 兼容旧调用；只有宝牌变化时保留当前本场数。
 func update_indicators(indicators: Array) -> void:
-	var key: String = ",".join(indicators.map(func(v): return str(v)))
+	update_state(indicators, _honba)
+
+
+func update_state(indicators: Array, honba: int) -> void:
+	_honba = maxi(0, honba)
+	var key := "%s|%d" % [
+		",".join(indicators.map(func(value): return str(value))), _honba,
+	]
 	if key == _rendered_key:
 		return
 	_rendered_key = key
 	for child in get_children():
+		remove_child(child)
 		child.queue_free()
-	# 暗底圆角条
-	var bg := Panel.new()
-	bg.position = Vector2.ZERO
-	bg.size = size
-	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.04, 0.07, 0.05, 0.66)
-	sb.border_color = Color(0.85, 0.71, 0.36, 0.30)
-	sb.set_border_width_all(1)
-	sb.set_corner_radius_all(8)
-	bg.add_theme_stylebox_override("panel", sb)
-	add_child(bg)
-	var sx: float = SLOT_W / float(CardTileBack.TILE_WIDTH)
-	var sy: float = SLOT_H / float(CardTileBack.TILE_HEIGHT)
-	for i in range(SLOTS):
-		var card := CardTileBack.new()
-		card.position = Vector2(8 + i * (SLOT_W + SLOT_GAP), 7)
-		card.scale = Vector2(sx, sy)
-		add_child(card)
-		if i < indicators.size():
-			card.set_face_up(int(indicators[i]))
-		else:
-			card.set_owner_seat(-1)  # 牌背(未翻槽)
+	add_child(_make_background())
+	for slot_index in range(SLOTS):
+		var tile_id := int(indicators[slot_index]) \
+			if slot_index < indicators.size() else -1
+		add_child(_make_indicator_slot(slot_index, tile_id))
+	add_child(_make_separator())
+	add_child(_make_honba_stick())
+	add_child(_make_honba_count())
+
+
+static func _make_background() -> Panel:
+	var background := Panel.new()
+	background.name = "PanelBackground"
+	background.size = WIDGET_SIZE
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("08110cbf")
+	style.border_color = Color("d9b65b73")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(9)
+	style.shadow_color = Color("00000066")
+	style.shadow_size = 5
+	style.shadow_offset = Vector2(0, 2)
+	background.add_theme_stylebox_override("panel", style)
+	return background
+
+
+static func _make_indicator_slot(slot_index: int, tile_id: int) -> Control:
+	var slot := Control.new()
+	slot.name = "IndicatorSlot%d" % slot_index
+	slot.position = Vector2(8 + slot_index * (SLOT_W + SLOT_GAP), 8)
+	slot.size = Vector2(SLOT_W, SLOT_H)
+	slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if tile_id >= 0:
+		var face := CardTileBack.new()
+		face.name = "Face"
+		face.scale = Vector2(
+			SLOT_W / float(CardTileBack.TILE_WIDTH),
+			SLOT_H / float(CardTileBack.TILE_HEIGHT))
+		face.set_face_up(tile_id)
+		slot.add_child(face)
+	else:
+		slot.add_child(_make_green_back())
+	return slot
+
+
+static func _make_green_back() -> Panel:
+	var back := Panel.new()
+	back.name = "GreenBack"
+	back.size = Vector2(SLOT_W, SLOT_H)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = GREEN_BACK_COLOR
+	style.border_color = Color("163522")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(2)
+	style.shadow_color = Color("00000070")
+	style.shadow_size = 3
+	style.shadow_offset = Vector2(0, 2)
+	back.add_theme_stylebox_override("panel", style)
+	var top_light := ColorRect.new()
+	top_light.name = "TopHighlight"
+	top_light.position = Vector2(2, 1)
+	top_light.size = Vector2(SLOT_W - 4, 2)
+	top_light.color = Color("c8d4cb99")
+	top_light.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	back.add_child(top_light)
+	return back
+
+
+static func _make_separator() -> ColorRect:
+	var separator := ColorRect.new()
+	separator.name = "CounterSeparator"
+	separator.position = Vector2(151, 8)
+	separator.size = Vector2(1, 34)
+	separator.color = Color("d9b65b47")
+	separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return separator
+
+
+static func _make_honba_stick() -> Control:
+	var marker := Control.new()
+	marker.name = "HonbaStick"
+	marker.position = Vector2(157, 8)
+	marker.size = Vector2(7, 34)
+	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var body := Panel.new()
+	body.name = "StickBody"
+	body.position = Vector2(1, 1)
+	body.size = Vector2(5, 32)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("ecece4")
+	style.border_color = Color("3b332b")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(2)
+	body.add_theme_stylebox_override("panel", style)
+	marker.add_child(body)
+	for dot_index in range(3):
+		var dot := ColorRect.new()
+		dot.name = "RedDot%d" % dot_index
+		dot.position = Vector2(2, 7 + dot_index * 7)
+		dot.size = Vector2(3, 3)
+		dot.color = Color("b7372e")
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		marker.add_child(dot)
+	return marker
+
+
+func _make_honba_count() -> Label:
+	var count := Label.new()
+	count.name = "HonbaCount"
+	count.position = Vector2(167, 8)
+	count.size = Vector2(33, 34)
+	count.text = "×%d" % _honba
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	count.add_theme_font_size_override("font_size", 16)
+	count.add_theme_color_override("font_color", Color("f3f0e5"))
+	count.add_theme_color_override("font_outline_color", Color("11150f"))
+	count.add_theme_constant_override("outline_size", 2)
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return count

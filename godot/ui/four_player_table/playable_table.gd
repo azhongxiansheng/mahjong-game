@@ -114,9 +114,9 @@ func _build_layout() -> void:
 	add_child(_character_status_badge)
 
 	_dora_widget = DoraWidget.new()
-	_dora_widget.position = Vector2(16, TableLayout.TOP_BAR_H + 6)
+	_dora_widget.position = Vector2(180, 100)
 	add_child(_dora_widget)
-	_dora_widget.update_indicators([])
+	_dora_widget.update_state([], 0)
 	# 操作条在牌桌、3D 视口（实验模式）及 HUD 之上。
 	move_child(_action_panel, get_child_count() - 1)
 
@@ -225,6 +225,7 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 		log_node.info("battle", "hand end last_event=%s" % str(result.get("last_event", "")))
 	_decision_adapter.present(&"idle", {"text": "本局结束"})
 	_table.bind_battle_state(bc.state, 0, 4)
+	_sync_dora_widget(bc.state)
 	# 记终身统计 + 检测成就解锁(发 achievement_unlocked signal,toast 在 _on_achievement_unlocked)
 	_record_hand_stats(bc)
 	# 胡牌或流局后弹结算 overlay：玩家点继续才推进下一局
@@ -275,6 +276,18 @@ func _bind_state_for_deal(state: BattleState, hand_index: int,
 			if panel != null:
 				panel.clear_hand_reveal()
 	_table.bind_battle_state(state, hand_index, hands_per_round)
+	_sync_dora_widget(state)
+
+
+func _sync_dora_widget(state: BattleState) -> void:
+	if _dora_widget == null or state == null:
+		return
+	var indicator_ids: Array = []
+	if state.dora_indicators != null:
+		for tile in state.dora_indicators.visible_tiles():
+			if tile != null:
+				indicator_ids.append(tile.id)
+	_dora_widget.update_state(indicator_ids, state.honba)
 
 
 # 调 StatsManager 把本局结果存进去 — 主要根据 events 找 WIN_DECLARED + 玩家
@@ -1573,13 +1586,8 @@ func _polling_loop() -> void:
 				if _pending_win_tile_id >= 0 and _table.seat_panels.size() > 0:
 					_table.seat_panels[0].mark_win_tile(_pending_win_tile_id)
 					_pending_win_tile_id = -1
-				# 宝牌指示窗同步(内部按 key 去重,无变化零开销)
-				if _dora_widget and _bc.state.dora_indicators:
-					var ind_ids: Array = []
-					for ti in _bc.state.dora_indicators.visible_tiles():
-						if ti != null:
-							ind_ids.append(ti.id)
-					_dora_widget.update_indicators(ind_ids)
+				# 宝牌/本场组合条同步（内部按 key 去重，无变化零开销）。
+				_sync_dora_widget(_bc.state)
 		if n < _last_event_count:
 			_last_event_count = 0
 		# E5-06：奖励 journal 可在无 BattleEvent 时前进（STT/grace/ITEM_*）

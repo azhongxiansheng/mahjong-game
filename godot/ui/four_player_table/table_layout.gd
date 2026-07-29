@@ -58,6 +58,12 @@ const RIVER_SIZE := Vector2(300.0, 144.0)
 const CENTER_PLATE_SIZE := Vector2(220.0, 220.0)
 const CENTER_CSS_SCALE: float = 1.04
 
+# 参考桌面公开牌的两层牌身与接触阴影。方向沿各家最终屏幕朝向，
+# 与 CSS 的 bottom/right/top/left 伪元素阴影保持一致。
+const PUBLIC_TILE_GREEN_DEPTH: float = 7.0
+const PUBLIC_TILE_WHITE_DEPTH: float = 4.0
+const PUBLIC_TILE_SHADOW_OFFSET: float = 11.0
+
 # 牌桌结构线的原始几何；位于 300×300 中轨中央，
 # 再随 table-plane 统一做 18° 透视。保留 raw 点，禁止按截图手调 screen 坐标。
 const BOARD_FRAME_SIZE := Vector2(852.0, 732.0)
@@ -273,6 +279,26 @@ static func project_table_point(point: Vector2) -> Vector2:
 		PERSPECTIVE_ORIGIN.y
 			+ (rotated_y - PERSPECTIVE_ORIGIN.y) * perspective_scale,
 	)
+
+
+static func public_tile_depth_offset(seat_id: int, distance: float) -> Vector2:
+	assert(seat_id >= 0 and seat_id <= 3)
+	match seat_id:
+		1:
+			return Vector2(-distance, 0.0)
+		2:
+			return Vector2(0.0, -distance)
+		3:
+			return Vector2(distance, 0.0)
+	return Vector2(0.0, distance)
+
+
+static func offset_polygon(points: PackedVector2Array,
+		offset: Vector2) -> PackedVector2Array:
+	var shifted := PackedVector2Array()
+	for point in points:
+		shifted.append(point + offset)
+	return shifted
 
 
 static func unproject_table_point(point: Vector2) -> Vector2:

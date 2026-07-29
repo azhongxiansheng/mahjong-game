@@ -39,6 +39,7 @@ func _run() -> void:
 		"res://assets/roguelike/characters/char_lin_yeche.png")
 	var battle = battle_script.new(42, 0, false, 27)
 	table._table.bind_battle_state(battle.state, 0, 4)
+	table._sync_dora_widget(battle.state)
 	await _frames(30)
 	await _save("normal")
 
@@ -78,6 +79,7 @@ func _run() -> void:
 	var result: Dictionary = battle.run_to_end()
 	table._bc = battle
 	table._table.bind_battle_state(battle.state, 0, 4)
+	table._sync_dora_widget(battle.state)
 	table._show_hand_result_overlay(result)
 	await _frames(220)
 	await _save("settlement_entry")
@@ -93,6 +95,7 @@ func _run() -> void:
 	var win_table = table_script.new()
 	root.add_child(win_table)
 	win_table._table.bind_battle_state(battle.state, 0, 4)
+	win_table._sync_dora_widget(battle.state)
 	await _frames(8)
 	win_table._play_call_announce(&"ron", 1)
 	await _frames(4)

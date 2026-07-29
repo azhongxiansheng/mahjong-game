@@ -36,6 +36,13 @@ func _root_at_original(index: int) -> Node:
 	return null
 
 
+func _polygon_center(polygon: PackedVector2Array) -> Vector2:
+	var center := Vector2.ZERO
+	for point in polygon:
+		center += point
+	return center / float(polygon.size())
+
+
 func _gradient_texture(root: Node, side_name: String) -> GradientTexture2D:
 	var side := root.find_child(side_name, true, false) as ColorRect
 	assert_not_null(side, "%s 存在" % side_name)
@@ -78,7 +85,7 @@ func test_compact_river_keeps_300_by_144_container_with_four_45px_rows() -> void
 		"即使为空也固定渲染四行")
 
 
-func test_all_seats_use_compact_uniform_grid() -> void:
+func test_top_and_bottom_use_reference_row_gap_to_expose_tile_depth() -> void:
 	_river.set_seat_id(0)
 	_river.set_tiles(_tiles(25))
 	var roots := _tile_roots()
@@ -88,10 +95,10 @@ func test_all_seats_use_compact_uniform_grid() -> void:
 	assert_eq(roots[0].get_meta("river_position"), Vector2(40.5, 0))
 	assert_eq(roots[5].get_meta("river_position"), Vector2(225.5, 0),
 		"普通牌横向步进 34+3")
-	assert_eq(roots[6].get_meta("river_position"), Vector2(40.5, 49),
-		"行步进 45+4")
-	assert_eq(roots[18].get_meta("river_position"), Vector2(40.5, 147))
-	assert_eq(roots[24].get_meta("river_position"), Vector2(262.5, 147),
+	assert_eq(roots[6].get_meta("river_position"), Vector2(40.5, 52),
+		"上下家行步进 45+7，密集牌河内部仍需露出实体侧面")
+	assert_eq(roots[18].get_meta("river_position"), Vector2(40.5, 156))
+	assert_eq(roots[24].get_meta("river_position"), Vector2(262.5, 156),
 		"第 4 行吸收第 25 张，不再新开第 5 行")
 	assert_eq(int(roots[24].get_meta("row")), 3)
 	assert_eq(int(roots[24].get_meta("column")), 6)
@@ -166,7 +173,8 @@ func test_whole_tile_root_enters_from_plus_16_and_zero_opacity_with_reference_sp
 		"投影后的整张牌仍从屏幕下方 16px 入场")
 	assert_eq(root.modulate.a, 0.0, "bundle initial opacity:0")
 	assert_true(root.find_child("TileFace", true, false) is Polygon2D)
-	assert_true(root.find_child("TileThickness", true, false) is Polygon2D)
+	assert_true(root.find_child("GreenSide", true, false) is Polygon2D)
+	assert_true(root.find_child("WhiteSide", true, false) is Polygon2D)
 	var constants := _constants()
 	assert_eq(constants.get("SPRING_STIFFNESS"), 360.0)
 	assert_eq(constants.get("SPRING_DAMPING"), 22.0)
@@ -188,7 +196,16 @@ func test_latest_glow_is_one_second_transient_not_permanent_border() -> void:
 		"discard-glow 结束后节点消失，不留下永久描边")
 
 
-func test_four_seats_render_projected_face_thickness_and_shadow() -> void:
+func test_four_seats_render_reference_directional_depth_and_shadow() -> void:
+	var depth_offsets := [
+		Vector2(0, 7), Vector2(-7, 0), Vector2(0, -7), Vector2(7, 0),
+	]
+	var white_offsets := [
+		Vector2(0, 4), Vector2(-4, 0), Vector2(0, -4), Vector2(4, 0),
+	]
+	var shadow_offsets := [
+		Vector2(0, 11), Vector2(-11, 0), Vector2(0, -11), Vector2(11, 0),
+	]
 	for seat_id in range(4):
 		var river := DiscardRiverView.new()
 		add_child_autofree(river)
@@ -200,12 +217,23 @@ func test_four_seats_render_projected_face_thickness_and_shadow() -> void:
 			continue
 		var root: Node = roots[0]
 		var face := root.get_node_or_null("TileFace") as Polygon2D
-		var thickness := root.get_node_or_null("TileThickness") as Polygon2D
+		var green := root.get_node_or_null("GreenSide") as Polygon2D
+		var white := root.get_node_or_null("WhiteSide") as Polygon2D
 		var shadow := root.get_node_or_null("TileShadow") as Polygon2D
 		assert_not_null(face, "seat %d face" % seat_id)
-		assert_not_null(thickness, "seat %d thickness" % seat_id)
+		assert_not_null(green, "seat %d green depth" % seat_id)
+		assert_not_null(white, "seat %d ivory depth" % seat_id)
 		assert_not_null(shadow, "seat %d shadow" % seat_id)
-		if face != null:
+		if face != null and green != null and white != null and shadow != null:
 			assert_eq(face.polygon, root.get_meta("projected_quad"),
 				"牌面必须使用四角桌面投影，不得退回 AABB")
 			assert_eq(face.uv.size(), 4)
+			var face_center := _polygon_center(face.polygon)
+			assert_true((_polygon_center(green.polygon) - face_center).is_equal_approx(
+				depth_offsets[seat_id]), "seat %d 绿色厚边方向" % seat_id)
+			assert_true((_polygon_center(white.polygon) - face_center).is_equal_approx(
+				white_offsets[seat_id]), "seat %d 象牙厚边方向" % seat_id)
+			assert_true((_polygon_center(shadow.polygon) - face_center).is_equal_approx(
+				shadow_offsets[seat_id]), "seat %d 接触阴影方向" % seat_id)
+			assert_eq(green.color, Color("2c6b47"))
+			assert_eq(white.color, Color("d8d8ce"))
