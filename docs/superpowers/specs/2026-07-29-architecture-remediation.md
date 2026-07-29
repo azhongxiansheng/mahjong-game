@@ -2,9 +2,9 @@
 
 > 日期：2026-07-29
 >
-> 状态：Proposed，待 Epic 与执行 Issue 建立后进入实施
+> 状态：Accepted（#390 建立依赖适应度基线后进入实施）
 >
-> 关联：多人桌面 Alpha Master Epic #213、公共可玩闭环 Epic #373、原创牌桌 Epic #386
+> 关联：架构整改 Epic #389、多人桌面 Alpha Master Epic #213、公共可玩闭环 Epic #373、原创牌桌 Epic #386
 >
 > 事实基线：`docs/superpowers/specs/2026-07-22-e0-03-architecture-protocol-adr.md`
 
@@ -233,18 +233,20 @@ Godot 没有等价的程序集边界，因此本项目使用架构适应度测�
 
 | Issue | 目标 | 主要范围 | 依赖 |
 |---|---|---|---|
-| ARCH-00 | 冻结 Spec、依赖矩阵和验收基线 | docs + health tests | 无 |
-| ARCH-01 | 建立统一 `TableGameplayPort` 与本地/远端适配器 | battle/session/ui seam | #378、#380、#381、ARCH-00 |
-| ARCH-02 | 拆分权威命令、事务、发布和推进组件 | server authority | #379–#381、ARCH-00 |
-| ARCH-03 | 拆分 `NetworkedEvent` payload codec | protocol | #379–#381、ARCH-00 |
-| ARCH-04 | 拆分 `PlayableTable` 子控制器 | ui/four_player_table | #386 执行 Issue、ARCH-01 |
-| ARCH-05 | 收口道具/遗物/角色能力的效果执行边界 | items/skills/session | #379、ARCH-02 |
-| ARCH-06 | 模块化内部权威 snapshot/replay 状态 | battle/server | ARCH-02、ARCH-03 |
-| ARCH-07 | 整体迁移验收、文档收口与债务清单 | cross-module tests/docs | ARCH-01–ARCH-06 |
+| #390 ARCH-00 | 冻结 Spec、依赖矩阵和验收基线 | docs + health tests | 无 |
+| #399 ARCH-CORE | 消除 `core/` 对 `BattleState` 的跨层依赖 | core/battle state boundary | #381、#390 |
+| #391 ARCH-01 | 建立统一 `TableGameplayPort` 与本地/远端适配器 | battle/session/ui seam | #378、#380、#381、#390 |
+| #392 ARCH-02 | 拆分权威命令、事务、发布和推进组件 | server authority | #379–#381、#390 |
+| #393 ARCH-03 | 拆分 `NetworkedEvent` payload codec | protocol | #379–#381、#390 |
+| #394 ARCH-04 | 拆分 `PlayableTable` 子控制器 | ui/four_player_table | #386 执行 Issue、#391 |
+| #395 ARCH-05 | 收口道具/遗物/角色能力的效果执行边界 | items/skills/session | #379、#392 |
+| #396 ARCH-06 | 模块化内部权威 snapshot/replay 状态 | battle/server | #392、#393 |
+| #397 ARCH-07 | 整体迁移验收、文档收口与债务清单 | cross-module tests/docs | #391–#396、#399 |
 
 ```mermaid
 flowchart LR
     A0["ARCH-00 Spec + fitness"]
+    AC["ARCH-CORE Core State Boundary"]
     E8["Epic #373 complete"]
     UIE["Epic #386 complete"]
     A1["ARCH-01 Gameplay Port"]
@@ -255,6 +257,8 @@ flowchart LR
     A6["ARCH-06 Internal Snapshot"]
     A7["ARCH-07 Acceptance"]
 
+    A0 --> AC
+    E8 --> AC
     A0 --> A1
     A0 --> A2
     A0 --> A3
@@ -272,6 +276,7 @@ flowchart LR
     A4 --> A7
     A5 --> A7
     A6 --> A7
+    AC --> A7
 ```
 
 ## 8. 各 Issue 统一交付合同
@@ -298,6 +303,19 @@ flowchart LR
 - 扫描当前允许的历史例外并以精确 allowlist 冻结，禁止使用宽泛目录豁免
 - 文档人工核对：所有路径、依赖和 Issue 关系与当前仓库一致
 
+Accepted 基线（`origin/main` 5090ac2，生产 GDScript 210 个）：
+
+| 扫描边界 | 零豁免命中 | 精确历史例外 | 归属 Issue |
+|---|---:|---|---|
+| `core/` → `battle/session/protocol/server/ui` 路径或具体类型 | 7 | `nagashi_mangan.gd` 的 `BattleState` 1；`draw_detector.gd` 4；`turn_engine.gd` 2 | #399 |
+| `battle/` → `ui/server`、WebSocket/Control Plane 适配器 | 0 | 无 | — |
+| `protocol/` → `ui/server`、场景节点或服务生命周期类型 | 0 | 无 | — |
+| `session/` 新建 `TurnEngine`、`ScoreCalc`、`SkillScheduler` 权威入口 | 0 | 无 | — |
+| `local_authority` metadata seam | 11 | `battle_controller.gd` 2；`practice_session_launcher.gd` 2；`playable_table.gd` 7 | #391 |
+| `ui/` 读取权威内部字段/方法 | 4 | `playable_table.gd` 的 `_room_id` 2、`event_journal` 2 | #391 |
+
+allowlist 以“文件 + 规则 + 精确匹配文本 + 次数 + 归属 Issue”登记；没有目录、后缀或通配豁免。同一文件新增相同匹配也会因次数超出而失败。扫描只覆盖显式 `.gd` 文本依赖，逐行忽略注释，并排除测试与插件目录；动态拼接路径和反射式调用仍由 Review 与后续迁移验证覆盖。
+
 ### 9.2 生产迁移共同门禁
 
 - 受影响模块 GUT + 直接调用方/被调用方契约测试；
@@ -309,7 +327,7 @@ flowchart LR
 
 ### 9.3 Epic 完成判据
 
-- ARCH-00–ARCH-07 全部关闭，P0–P2 清零；
+- ARCH-00–ARCH-07 与 ARCH-CORE 全部关闭，P0–P2 清零；
 - `local_authority` metadata 生产后门清零；
 - UI 生产代码不引用 `LocalLoopbackServer` 或权威内部字段；
 - `LocalLoopbackServer` façade 的命令/事务/事件/奖励/快照职责已委托独立组件；
