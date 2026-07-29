@@ -19,6 +19,7 @@ func testBootstrap() RoomBootstrap {
 		RoundKind:    "EAST",
 		GameMode:     "STANDARD",
 		Participants: []string{"HUMAN", "AI", "AI", "AI"},
+		CharacterIDs: []string{"lin_yeche", "an_cheng", "bai_touli", "hua_ling"},
 	}
 }
 
@@ -171,6 +172,7 @@ func TestIssueAndVerifyRoomToken_Bound(t *testing.T) {
 		RoundKind:    "HANCHAN",
 		GameMode:     "TRASH_TALK",
 		Participants: []string{"HUMAN", "HUMAN", "AI", "AI"},
+		CharacterIDs: []string{"lin_yeche", "qiu_jue", "an_cheng", "bai_touli"},
 	}
 	token, exp, err := svc.IssueRoomTokenBootstrap("sess-1", "room-a", 2, boot)
 	if err != nil {
@@ -193,6 +195,9 @@ func TestIssueAndVerifyRoomToken_Bound(t *testing.T) {
 	}
 	if len(claims.Participants) != 4 || claims.Participants[0] != "HUMAN" || claims.Participants[2] != "AI" {
 		t.Fatalf("participants = %#v", claims.Participants)
+	}
+	if len(claims.CharacterIDs) != 4 || claims.CharacterIDs[0] != "lin_yeche" {
+		t.Fatalf("character_ids = %#v", claims.CharacterIDs)
 	}
 	if !claims.ExpiresAt.Equal(wantExp) {
 		t.Fatalf("claims.ExpiresAt = %v", claims.ExpiresAt)
@@ -276,7 +281,8 @@ func TestIssueRoomToken_InvalidBootstrap(t *testing.T) {
 	now := time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)
 	svc := newTestService(t, now)
 	cases := []RoomBootstrap{
-		{RoundKind: "east", GameMode: "STANDARD", Participants: []string{"HUMAN", "AI", "AI", "AI"}},
+		{RoundKind: "east", GameMode: "STANDARD", CharacterIDs: []string{"lin_yeche", "qiu_jue", "an_cheng", "bai_touli"},
+		Participants: []string{"HUMAN", "AI", "AI", "AI"}},
 		{RoundKind: "EAST", GameMode: "standard", Participants: []string{"HUMAN", "AI", "AI", "AI"}},
 		{RoundKind: "EAST", GameMode: "STANDARD", Participants: []string{"HUMAN", "AI"}},
 		{RoundKind: "EAST", GameMode: "STANDARD", Participants: []string{"BOT", "AI", "AI", "AI"}},
@@ -384,6 +390,7 @@ func issueCrossLangFixtureToken(t *testing.T) (token string, issuedAt, expiresAt
 		RoundKind:    "EAST",
 		GameMode:     "STANDARD",
 		Participants: []string{"HUMAN", "HUMAN", "AI", "AI"},
+		CharacterIDs: []string{"lin_yeche", "qiu_jue", "an_cheng", "bai_touli"},
 	}
 	tok, exp, err := svc.IssueRoomTokenBootstrap("sess-fixture", "room-fixture", 1, boot)
 	if err != nil {
@@ -438,13 +445,14 @@ func TestUpdateCrossLangRoomTokenFixture(t *testing.T) {
 		"issued_at_unix":  issuedAt,
 		"expires_at_unix": expiresAt,
 		"claims": map[string]any{
-			"room_id":      claims.RoomID,
-			"seat":         claims.Seat,
-			"session_id":   claims.SessionID,
-			"round_kind":   claims.RoundKind,
-			"game_mode":    claims.GameMode,
-			"participants": claims.Participants,
-			"exp":          claims.ExpiresAt.Unix(),
+			"room_id":       claims.RoomID,
+			"seat":          claims.Seat,
+			"session_id":    claims.SessionID,
+			"round_kind":    claims.RoundKind,
+			"game_mode":     claims.GameMode,
+			"participants":  claims.Participants,
+			"character_ids": claims.CharacterIDs,
+			"exp":           claims.ExpiresAt.Unix(),
 		},
 		"session_token_must_fail_as_room": true,
 		"note":                           "Go tokens 真实签发；GDScript 只验不重签。UPDATE_CROSSLANG_FIXTURE=1 维护。网络端到端未验证。",

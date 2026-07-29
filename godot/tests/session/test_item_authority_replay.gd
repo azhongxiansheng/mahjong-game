@@ -548,6 +548,7 @@ func test_worker_headless_room_vs_practice_full_grant_item_use() -> void:
 		"game_mode": "TRASH_TALK",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
 		"expires_at_unix": 2_000_000_000,
+		"character_ids": ["qiu_jue", "bao_luo", "lin_yeche", "lian_yao"],
 	}))
 	var wcfg: GameSessionConfig = session.config
 	assert_not_null(wcfg)

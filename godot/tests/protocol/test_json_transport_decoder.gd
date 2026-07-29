@@ -705,6 +705,11 @@ func test_decode_event_strict_recipient_dtos_convert_json_numbers() -> void:
 			"loser_seat": 1,
 			"score_deltas": [-1000, 0, 1000, 0],
 			"scores": [24000, 25000, 26000, 25000],
+			"dealer_seat": 0,
+			"renchan": false,
+			"honba": 0,
+			"riichi_sticks": 0,
+			"adjustments": [],
 		})
 	))
 	assert_not_null(hand, "HAND_SETTLED JSON 整数与数组应转换")
@@ -745,6 +750,11 @@ func test_decode_event_strict_recipient_dtos_reject_fractional_numbers() -> void
 		"loser_seat": -1,
 		"score_deltas": [3000, -1000.5, -1000, -1000],
 		"scores": [28000, 24000, 24000, 24000],
+		"dealer_seat": 0,
+		"renchan": true,
+		"honba": 1,
+		"riichi_sticks": 0,
+		"adjustments": [],
 	})
 	assert_null(JsonTransportDecoder.decode_event(_event_json_from_wire(bad_hand)))
 

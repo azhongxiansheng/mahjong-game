@@ -82,6 +82,7 @@ func test_intent_does_not_define_formal_session_or_authority_fields() -> void:
 		"session_id",
 		"rule_version",
 		"participants",
+		"character_ids",
 		"credential",
 		"ticket",
 		"worker",

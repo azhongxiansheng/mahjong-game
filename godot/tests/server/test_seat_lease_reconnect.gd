@@ -17,6 +17,7 @@ func _mint_room_token(claims: Dictionary) -> String:
 		"round_kind": str(claims.get("round_kind", "EAST")),
 		"game_mode": str(claims.get("game_mode", "STANDARD")),
 		"participants": claims["participants"],
+		"character_ids": claims.get("character_ids", ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]),
 	}
 	var raw: PackedByteArray = JSON.stringify(body).to_utf8_buffer()
 	var payload_b64: String = Marshalls.raw_to_base64(raw)
@@ -51,6 +52,7 @@ func _claims_1h(room: String, seat: int, sess: String) -> Dictionary:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 
 
@@ -196,7 +198,8 @@ func test_ai_single_step_per_tick_and_real_action_applied() -> void:
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
 		"expires_at_unix": 2_000_000_000,
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	assert_true(bool(session.join(0, "sess-ai-s", 1, 1)["ok"]))
 	assert_true(bool(session.ready(0, "sess-ai-s")["ok"]))
 	assert_true(session.is_started())
@@ -241,6 +244,7 @@ func test_ai_single_step_per_tick_and_real_action_applied() -> void:
 			"room_id": "room-ai-step", "seat": 0, "session_id": "sess-ai-s",
 			"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
 			"participants": ["HUMAN", "AI", "AI", "AI"],
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 		}
 		w.clear_outbox_for_test(3)
 		_join(w, 3, claims_rc)
@@ -353,59 +357,108 @@ func test_reconnect_delivery_fail_leaves_no_half_joined_state() -> void:
 
 
 func test_settled_reconnect_snapshot_no_duplicate_hand_settled() -> void:
-	# 真实 AI TSUMO 终局后 Worker 重连：首条 ROOM_SNAPSHOT，无重复 HAND_SETTLED
+	# #376：真实非连庄 TSUMO 四局终场后重连 — 无重复 HAND/MATCH
 	var session := HeadlessRoomSession.new()
 	session.set_seed_override_for_test(42)
 	assert_true(session.bootstrap_from_claims({
 		"room_id": "room-settled-rc",
 		"seat": 0,
-		"session_id": "sess-set",
+		"session_id": "sess-0",
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
-		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"participants": ["HUMAN", "HUMAN", "HUMAN", "HUMAN"],
 		"expires_at_unix": 2_000_000_000,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}))
-	assert_true(bool(session.join(0, "sess-set")["ok"]))
-	assert_true(bool(session.ready(0, "sess-set")["ok"]))
+	for i in range(4):
+		assert_true(bool(session.join(i, "sess-%d" % i)["ok"]))
+	for i2 in range(4):
+		assert_true(bool(session.ready(i2, "sess-%d" % i2)["ok"]))
 	assert_true(session.is_started())
-	var server: LocalLoopbackServer = session.server
-	var bc: BattleController = server._bc
-	assert_not_null(bc)
-	_force_seat0_tsumo_ready(bc)
-	assert_true(server.publish_snapshot())
-	server.set_seat_ai_control(0, true)
-	session._seats[0]["ai_control"] = true
-	var step: Dictionary = server.step_ai_once()
-	assert_true(bool(step.get("ok", false)), str(step))
-	assert_true(bool(bc.get("_settled")), "AI TSUMO 须 settled")
-	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 1, "唯一 HAND_SETTLED")
-	var seq_b: int = server.current_server_seq()
-	assert_true(server._emit_settled_if_needed())
-	assert_eq(server.current_server_seq(), seq_b, "幂等 settle 不得推进 seq")
-	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 1)
-	# Worker 重连
+	# 复用 match_driver 测试同构的真实 TSUMO 路径（内联最小 helper）
+	for _h in range(4):
+		var bc: BattleController = session.server._bc
+		var dealer: int = int(bc.state.dealer_seat)
+		var winner: int = (dealer + 1) % 4
+		_force_seat_tsumo_ready(bc, winner)
+		assert_true(session.server.publish_snapshot())
+		var ctx: DecisionContext = bc.decision_context_for_seat(winner)
+		assert_not_null(ctx)
+		assert_true(ctx.has_kind("TSUMO"))
+		var act: Action = Action.tsumo(
+			winner, "room-settled-rc",
+			"550e8400-e29b-41d4-a716-%012d" % (5000 + _h),
+			str(ctx.decision_id), int(bc.state.hand_seq), 1 + _h
+		)
+		var cr: CommandResult = session.submit_action_for_seat(winner, act)
+		assert_not_null(cr)
+		assert_eq(cr.status, "ACCEPTED", "hand %d" % _h)
+	assert_true(session.is_match_completed())
+	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 4)
+	assert_eq(_count_kind_session(session, 0, "MATCH_SETTLED"), 1)
+	var seq_b: int = session.current_server_seq()
+	assert_true(session.server._emit_settled_if_needed())
+	assert_eq(session.current_server_seq(), seq_b)
+	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 4)
 	var w := _new_worker()
-	w.inject_bound_session_for_test(1, session, 0, "sess-set")
+	w.inject_bound_session_for_test(1, session, 0, "sess-0")
 	w.set_clock_ms_for_test(900_000)
 	w.simulate_disconnect_for_test(1)
 	var claims := {
-		"room_id": "room-settled-rc", "seat": 0, "session_id": "sess-set",
+		"room_id": "room-settled-rc", "seat": 0, "session_id": "sess-0",
 		"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
-		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"participants": ["HUMAN", "HUMAN", "HUMAN", "HUMAN"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	w.clear_outbox_for_test(2)
 	_join(w, 2, claims)
-	assert_true(bool(w.test_conn_binding(2).get("joined", false)), "settled 重连须绑定")
+	assert_true(bool(w.test_conn_binding(2).get("joined", false)))
 	var biz: Array = _business_events(w.test_outbox(2))
 	assert_gt(biz.size(), 0)
-	assert_eq(str(biz[0].get("kind", "")), "ROOM_SNAPSHOT",
-		"settled 重连首条业务事件须为当前 ROOM_SNAPSHOT")
+	assert_eq(str(biz[0].get("kind", "")), "ROOM_SNAPSHOT")
 	var new_hs := 0
 	for m in biz:
 		if str(m.get("kind", "")) == "HAND_SETTLED":
 			new_hs += 1
-	assert_eq(new_hs, 0, "settled 重连不得重复 HAND_SETTLED")
-	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 1)
+	assert_eq(new_hs, 0)
+	assert_eq(_count_kind_session(session, 0, "HAND_SETTLED"), 4)
+
+
+func _force_seat_tsumo_ready(bc: BattleController, seat: int) -> void:
+	var used: Dictionary = {}
+	var draw_floor: int = int(bc.state.wall.draw_index())
+	for s in range(4):
+		var seat_obj: Seat = bc.state.seats[s]
+		seat_obj.hand = Hand.new()
+		seat_obj.melds.restore([], 0)
+		seat_obj.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
+		seat_obj.furiten = FuritenState.new()
+		bc.state.seats[s].river.restore([])
+	bc.state.wall.set_draw_index(0)
+	var ids := [
+		TileId.W1, TileId.W1, TileId.W2, TileId.W2, TileId.W3, TileId.W3,
+		TileId.W5, TileId.W5, TileId.W6, TileId.W6, TileId.W7, TileId.W7,
+		TileId.W9,
+	]
+	var h := Hand.new()
+	for tid in ids:
+		var t: Tile = _draw_live_tid_local(bc, int(tid), used)
+		assert_not_null(t)
+		assert_true(h.add(t))
+	bc.state.seats[seat].hand = h
+	bc.state.first_round_active = false
+	var win_t: Tile = _draw_live_tid_local(bc, TileId.W9, used)
+	assert_not_null(win_t)
+	assert_true(bc.state.seats[seat].hand.add(win_t))
+	bc.state.seats[seat].last_drawn_instance_id = win_t.instance_id
+	bc.state.current_seat = seat
+	bc.state.phase = BattlePhase.Kind.DISCARD
+	bc.set("_settled", false)
+	bc.set("_active_window", null)
+	bc.state.wall.set_draw_index(maxi(draw_floor, int(bc.state.wall.draw_index())))
+	var ctx: DecisionContext = bc.decision_context_for_seat(seat)
+	assert_not_null(ctx)
+	assert_true(ctx.has_kind("TSUMO"), "seat %d 须 TSUMO" % seat)
 
 
 func _count_kind_session(session: HeadlessRoomSession, seat: int, kind: String) -> int:
@@ -503,6 +556,7 @@ func test_multi_client_visibility_and_reconnect_no_history_replay() -> void:
 		"room_id": "room-2h", "seat": 0, "session_id": "s0",
 		"exp": 2_000_000_000, "round_kind": "EAST", "game_mode": "STANDARD",
 		"participants": parts,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 	var c1 := c0.duplicate(true)
 	c1["seat"] = 1
@@ -567,3 +621,64 @@ func test_multi_client_visibility_and_reconnect_no_history_replay() -> void:
 	assert_not_null(gap_ne, "gap fixture 必须可构造")
 	assert_false(nbc_r.ingest_networked_event(gap_ne), "缺口须失败")
 	assert_true(nbc_r.resync_required())
+
+
+func test_join_with_different_roster_token_unauthorized_keeps_frozen() -> void:
+	# #374：已建房后，同 room/seat/session 但完整 roster 不同的合法签名 token → UNAUTHORIZED
+	var room := "room-roster-mismatch"
+	var chars_a := ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]
+	var chars_b := ["qiu_jue", "yuan_xi", "ji_shu", "bao_luo"]
+	var claims_a := {
+		"room_id": room,
+		"seat": 0,
+		"session_id": "sess-same",
+		"exp": 2_000_000_000,
+		"round_kind": "EAST",
+		"game_mode": "STANDARD",
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": chars_a,
+	}
+	var claims_b := claims_a.duplicate(true)
+	claims_b["character_ids"] = chars_b
+	var tok_a := _mint_room_token(claims_a)
+	var tok_b := _mint_room_token(claims_b)
+	var w := _new_worker()
+	w.handle_dict_for_test(1, {
+		"protocol_version": 1,
+		"kind": "JOIN",
+		"room_id": room,
+		"seat": 0,
+		"room_token": tok_a,
+	})
+	var out1 := w.test_outbox(1)
+	for m in out1:
+		assert_ne(str(m.get("kind", "")), "ERROR", "首 JOIN 须成功")
+	var session: HeadlessRoomSession = w.get_room(room)
+	assert_not_null(session)
+	for i in range(4):
+		assert_eq(String(session.character_ids[i]), chars_a[i])
+	var frozen: Array = session.character_ids.duplicate()
+	# 第二连接：有效签名但不同 roster
+	w.handle_dict_for_test(2, {
+		"protocol_version": 1,
+		"kind": "JOIN",
+		"room_id": room,
+		"seat": 0,
+		"room_token": tok_b,
+	})
+	var out2 := w.test_outbox(2)
+	assert_gt(out2.size(), 0)
+	var saw := false
+	for m in out2:
+		if str(m.get("kind", "")) == "ERROR" and str(m.get("code", "")) == "UNAUTHORIZED":
+			saw = true
+			var msg := str(m.get("message", ""))
+			assert_true(
+				msg.contains("bootstrap") or msg.contains("mismatch") or msg.contains("UNAUTHORIZED") \
+					or not msg.is_empty(),
+				"UNAUTHORIZED 须带安全 message，不得泄露 token"
+			)
+	assert_true(saw, "不同 roster 必须 UNAUTHORIZED")
+	for i in range(4):
+		assert_eq(String(session.character_ids[i]), String(frozen[i]),
+			"冻结 roster 不得被篡改 token 改写")

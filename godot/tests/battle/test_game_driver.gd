@@ -271,3 +271,121 @@ func test_full_east_round_score_conservation():
 	d.advance_or_finish(d.apply_result(_make_ron_events(0, 3, {3: 8000}, 8000)))
 	assert_true(d.finished)
 	assert_true(d.is_score_conserved())
+
+
+# ---- #376：已提交 settlement 推进（不二次计分）----
+
+func _committed_settlement(
+	outcome: String,
+	scores: Array,
+	renchan: bool,
+	dealer: int = 0,
+	honba_next: int = 0,
+	sticks: int = 0,
+	hand_seq: int = 0
+) -> Dictionary:
+	return {
+		"hand_seq": hand_seq,
+		"outcome": outcome,
+		"winner_seats": [0] if outcome in ["RON", "TSUMO", "NAGASHI_MANGAN"] else [],
+		"loser_seat": 1 if outcome == "RON" else -1,
+		"score_deltas": [
+			int(scores[0]) - 25000,
+			int(scores[1]) - 25000,
+			int(scores[2]) - 25000,
+			int(scores[3]) - 25000,
+		],
+		"scores": scores.duplicate(),
+		"dealer_seat": dealer,
+		"renchan": renchan,
+		"honba": honba_next,
+		"riichi_sticks": sticks,
+		"adjustments": [],
+	}
+
+
+func test_will_finish_after_settlement_east_last_non_renchan() -> void:
+	var d := GameDriver.new(7, 4, 4)
+	d.hand_index = 3
+	var s_end := _committed_settlement("RON", [30000, 20000, 25000, 25000], false, 3)
+	assert_true(d.will_finish_after_settlement(s_end))
+	var s_ren := _committed_settlement("TSUMO", [30000, 20000, 25000, 25000], true, 3)
+	assert_false(d.will_finish_after_settlement(s_ren), "连庄不得终场")
+	d.hand_index = 2
+	assert_false(d.will_finish_after_settlement(s_end), "未到东四不得终场")
+
+
+func test_advance_from_committed_settlement_no_double_score() -> void:
+	var d := GameDriver.new(9, 4, 4)
+	d.cumulative_scores = [25000, 25000, 25000, 25000]
+	d.battle = BattleController.new(1, 0, false, TileId.E, 0)
+	var settled := _committed_settlement(
+		"TSUMO", [28000, 24000, 24000, 24000], true, 0, 1, 0, 0
+	)
+	var adv: Dictionary = d.advance_from_committed_settlement(settled)
+	assert_true(bool(adv.get("renchan", false)))
+	assert_false(bool(adv.get("finished", true)))
+	assert_eq(d.cumulative_scores[0], 28000)
+	assert_eq(d.honba, 1)
+	assert_eq(d.hand_index, 0)
+	assert_eq(d.dealer_seat, 0)
+	assert_null(d.battle)
+	# 再推进一次非连庄 → hand_index+1
+	var s2 := _committed_settlement(
+		"RON", [30000, 22000, 24000, 24000], false, 0, 0, 0, 1
+	)
+	var adv2: Dictionary = d.advance_from_committed_settlement(s2)
+	assert_false(bool(adv2.get("renchan", true)))
+	assert_eq(d.hand_index, 1)
+	assert_eq(d.dealer_seat, 1)
+	assert_eq(d.honba, 0)
+	assert_eq(d.cumulative_scores[0], 30000)
+
+
+func test_advance_from_committed_settlement_finishes_east() -> void:
+	var d := GameDriver.new(3, 4, 4)
+	d.hand_index = 3
+	d.dealer_seat = 3
+	var settled := _committed_settlement(
+		"RON", [40000, 20000, 20000, 20000], false, 3, 0, 0, 3
+	)
+	assert_true(d.will_finish_after_settlement(settled))
+	var adv: Dictionary = d.advance_from_committed_settlement(settled)
+	assert_true(bool(adv.get("finished", false)))
+	assert_true(d.finished)
+	assert_eq(d.hand_index, 4)
+	var snap: Dictionary = d.export_match_state()
+	assert_true(bool(snap.get("finished", false)))
+	assert_eq(int(snap.get("hand_index", -1)), 4)
+	assert_eq(int(snap.get("round_wind", -1)), TileId.E, "东风终场 round_wind 仍为东")
+
+
+func test_hanchan_finished_round_wind_stays_south() -> void:
+	var d := GameDriver.new(5, 8, 4)
+	d.hand_index = 7
+	var settled := _committed_settlement(
+		"RON", [40000, 20000, 20000, 20000], false, 3, 0, 0, 7
+	)
+	assert_true(d.will_finish_after_settlement(settled))
+	d.advance_from_committed_settlement(settled)
+	assert_true(d.finished)
+	assert_eq(int(d.export_match_state().get("round_wind", -1)), TileId.S_WIND)
+
+
+func test_capture_restore_authority_state_roundtrip() -> void:
+	var d := GameDriver.new(9, 4, 4)
+	d.hand_index = 2
+	d.honba = 1
+	d.dealer_seat = 2
+	d.cumulative_scores = [30000, 20000, 25000, 25000]
+	var cap: Dictionary = d.capture_authority_state()
+	d.hand_index = 3
+	d.honba = 0
+	d.dealer_seat = 0
+	d.finished = true
+	assert_true(d.restore_authority_state(cap))
+	assert_eq(d.hand_index, 2)
+	assert_eq(d.honba, 1)
+	assert_eq(d.dealer_seat, 2)
+	assert_false(d.finished)
+	assert_eq(d.cumulative_scores[0], 30000)

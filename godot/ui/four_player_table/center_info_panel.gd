@@ -184,6 +184,16 @@ func set_turn_name(name_: String) -> void:
 	if is_inside_tree():
 		_refresh_labels()
 
+
+## #377：权威 phase 只读展示（与 turn 名并列）
+var _public_phase: String = ""
+
+
+func set_public_phase(phase: String) -> void:
+	_public_phase = str(phase)
+	if is_inside_tree():
+		_refresh_labels()
+
 func _ensure_turn_label() -> void:
 	if _turn_label and is_instance_valid(_turn_label):
 		return
@@ -269,9 +279,11 @@ func bind_state(state: BattleState, hand_index_arg: int, hands_per_round_arg: in
 	var summary: Array = []
 	for i in range(4):
 		var seat: Seat = state.seats[i]
+		# #375：权威分 BattleState.scores（Seat.points 可能漂移）
+		var score_i: int = int(state.scores[i]) if i < state.scores.size() else seat.points
 		summary.append({
 			"wind": seat.seat_wind,
-			"score": seat.points,
+			"score": score_i,
 			"riichi": seat.riichi.declared,
 			"active": i == state.current_seat,
 		})
@@ -326,7 +338,12 @@ func _refresh_labels() -> void:
 	# 当前回合家名(参考截图「北原 回合」行)
 	_ensure_turn_label()
 	if _turn_label:
-		_turn_label.text = "%s 回合" % _turn_name if _turn_name != "" else ""
+		if _turn_name != "":
+			_turn_label.text = "%s 回合" % _turn_name
+		elif not _public_phase.is_empty():
+			_turn_label.text = "阶段 %s" % _public_phase
+		else:
+			_turn_label.text = ""
 	# 池里有立直棒时高亮金色,强调"赢家可独吞"。
 	if _riichi_sticks > 0:
 		_label_riichi.add_theme_color_override("font_color", Color(1, 0.85, 0.3))

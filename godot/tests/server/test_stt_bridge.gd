@@ -28,14 +28,15 @@ func _make(room_id: String) -> Dictionary:
 		"room_id": room_id, "seat": 0, "session_id": "s0", "exp": 2_000_000_000,
 		"round_kind": "EAST", "game_mode": "TRASH_TALK",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
-	}).get("ok", false)))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}).get("ok", false)))
 	var session: HeadlessRoomSession = w.get_room(room_id)
 	var rw: RewardWindowModule = session.server.mode_modules.reward_window
 	assert_true(bool(rw.open({
 		"room_id": room_id, "hand_seq": 0, "window_index": 0,
 		"seed": int(session.authority_seed), "rule_version": RULE_VERSION,
-		"character_ids": session.character_ids, "language": "zh",
-		"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0,
+				"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0,
+				"character_ids": session.character_ids, "language": "zh",
 	}).get("ok", false)))
 	var bridge := SttBridge.new()
 	w.add_child(bridge)
@@ -319,8 +320,8 @@ func test_partial_rejected_on_window_switch() -> void:
 	assert_true(bool(rw.open({
 		"room_id": "room_sw", "hand_seq": 1, "window_index": 1,
 		"seed": 42, "rule_version": RULE_VERSION,
-		"character_ids": CHARS, "language": "zh",
-		"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0 + 1000,
+				"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0 + 1000,
+				"character_ids": CHARS, "language": "zh",
 	}).get("ok", false)))
 	var p0: int = bridge.partials_broadcast
 	bridge.handle_stt_result_for_test({

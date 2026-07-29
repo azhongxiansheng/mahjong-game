@@ -425,9 +425,11 @@ func test_game_driver_propagates_skill_transfer_to_cumulative() -> void:
 	# 模拟一次 transfer：state.scores 分布变化（无需真胡）
 	bc.state.scores[0] += 1000
 	bc.state.scores[1] -= 1000
-	# 模拟空 events 走 exhaustive_draw 路径
+	# 模拟空 events 走 exhaustive_draw 路径；#375 流局在 advance 时统一提交（含 in-hand 转分）
 	var apply_res := driver.apply_result([])
 	assert_eq(apply_res.kind, "exhaustive_draw")
+	apply_res["tenpai_array"] = [true, true, true, true]  # 全听 0 罚符，只暴露 transfer
+	driver.advance_or_finish(apply_res)
 	# cumulative 应反映 transfer
 	assert_eq(driver.cumulative_scores[0], 25000 + 1000, "in-hand transfer 应进入 cumulative")
 	assert_eq(driver.cumulative_scores[1], 25000 - 1000)

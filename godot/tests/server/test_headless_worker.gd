@@ -230,7 +230,8 @@ func test_invalid_command_id_rejected_at_worker_entry_no_state_change() -> void:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	assert_true(bool(session.join(0, "s0")["ok"]))
 	assert_true(bool(session.ready(0, "s0")["ok"]))
 	assert_true(session.is_started())
@@ -275,7 +276,8 @@ func test_domain_reject_maps_to_error_without_server_seq() -> void:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
-	}))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}))
 	assert_true(bool(session.join(0, "s0")["ok"]))
 	assert_true(bool(session.ready(0, "s0")["ok"]))
 	assert_true(session.is_started())

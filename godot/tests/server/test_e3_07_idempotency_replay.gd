@@ -56,6 +56,7 @@ func _bootstrap_session(
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}))
 	assert_true(bool(session.join(0, client_session)["ok"]))
 	if do_ready:
@@ -372,6 +373,7 @@ func test_cid_session_id_binds_via_room_session_path() -> void:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}))
 	assert_eq(session.config.session_id, room_id)
 	assert_true(bool(session.join(0, "sess-bind-A")["ok"]))
@@ -761,15 +763,17 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var server_tt := LocalLoopbackServer.new(cfg_tt, 0)
 	assert_true(server_tt.snapshot_registry.is_trash_talk_registry())
 	var keys_tt: Array = server_tt.snapshot_registry.registered_keys()
-	# #344/#345/#346/#347：注册表含四个 optional viewer 模块；无私有信息时仍省略。
-	assert_eq(keys_tt.size(), 7)
+	# #344/#345/#346/#347+#376：注册表含 match_authority + 四个 optional viewer。
+	assert_eq(keys_tt.size(), 9)
 	assert_eq(str(keys_tt[0]), "core_table")
 	assert_eq(str(keys_tt[1]), "item_inventory")
-	assert_eq(str(keys_tt[2]), "reward_window")
-	assert_eq(str(keys_tt[3]), "viewer_next_draw")
-	assert_eq(str(keys_tt[4]), "viewer_seat_draw_forecast")
-	assert_eq(str(keys_tt[5]), "viewer_tenpai_waits")
-	assert_eq(str(keys_tt[6]), "viewer_wall_top")
+	assert_eq(str(keys_tt[2]), "match_authority")
+	assert_eq(str(keys_tt[3]), "matching_meta")
+	assert_eq(str(keys_tt[4]), "reward_window")
+	assert_eq(str(keys_tt[5]), "viewer_next_draw")
+	assert_eq(str(keys_tt[6]), "viewer_seat_draw_forecast")
+	assert_eq(str(keys_tt[7]), "viewer_tenpai_waits")
+	assert_eq(str(keys_tt[8]), "viewer_wall_top")
 	assert_true(server_tt.start())
 	assert_true(server_tt.publish_snapshot())
 	var snap_tt: NetworkedEvent = null
@@ -782,10 +786,12 @@ func test_snapshot_provider_roundtrip_standard_and_reward_compat() -> void:
 	var tt_keys: Array = []
 	for m2 in snap_tt.payload.get("modules", []):
 		tt_keys.append(str((m2 as Dictionary).get("module_key", "")))
-	assert_eq(tt_keys.size(), 3)
+	assert_eq(tt_keys.size(), 5)
 	assert_eq(str(tt_keys[0]), "core_table")
 	assert_eq(str(tt_keys[1]), "item_inventory")
-	assert_eq(str(tt_keys[2]), "reward_window")
+	assert_eq(str(tt_keys[2]), "match_authority")
+	assert_eq(str(tt_keys[3]), "matching_meta")
+	assert_eq(str(tt_keys[4]), "reward_window")
 	var room_tt: String = str(server_tt.get("_room_id"))
 	var nbc_tt := NetworkedBattleController.new(room_tt, 0)
 	nbc_tt.configure_snapshot_registry_for_mode(str(GameSessionConfig.MODE_TRASH_TALK))
@@ -836,6 +842,7 @@ func _run_core_digest_once(seed: int, room_id: String, sess: String) -> String:
 		"round_kind": "EAST",
 		"game_mode": "STANDARD",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}))
 	assert_true(bool(session.join(0, sess)["ok"]))
 	assert_true(bool(session.ready(0, sess)["ok"]))

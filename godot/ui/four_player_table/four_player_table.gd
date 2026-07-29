@@ -109,6 +109,9 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 		var seat: Seat = state.seats[i]
 		sp.set_dora_ids(dora_ids)
 		sp.bind_seat(seat)
+		# #375：权威分来自 BattleState.scores，不读可能漂移的 Seat.points
+		if i < state.scores.size():
+			sp.set_score(int(state.scores[i]))
 		if tenpai_by_subject.has(i):
 			sp.set_viewer_wait_tiles(tenpai_by_subject.get(i, []))
 		else:
@@ -511,6 +514,18 @@ func set_local_seat(seat: int) -> void:
 	_local_seat = seat
 	if _reward_feedback_projector != null:
 		_reward_feedback_projector.set_local_seat(seat)
+
+
+## #377：屏幕槽 → 绝对 seat（公共投影旋转后）。
+func screen_seat_absolute(relative_slot: int) -> int:
+	var recip: int = int(get_meta("public_recipient_seat", _local_seat))
+	return (relative_slot + recip) % 4
+
+
+## #377：直接消费 committed core_table@1，不重建 BattleState。
+func bind_core_table_view(core: Dictionary) -> void:
+	const AdapterScr := preload("res://ui/four_player_table/public_table_projection_adapter.gd")
+	AdapterScr.apply_core_table(self, core)
 
 
 func set_viewer_reveal_label(value: String) -> void:

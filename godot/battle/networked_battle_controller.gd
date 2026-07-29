@@ -218,7 +218,29 @@ func get_item_inventory_view() -> Dictionary:
 	return {}
 
 
-## 按模式切换客户端 registry（STANDARD 仅 core_table；TRASH_TALK + reward_window）。
+## #374：权威四席角色 roster（独立 matching_meta；两模式一致）。
+func get_matching_meta_view() -> Dictionary:
+	if _applied_modules.has(MatchingMetaSnapshotProvider.MODULE_KEY):
+		var ap = _applied_modules[MatchingMetaSnapshotProvider.MODULE_KEY]
+		if typeof(ap) == TYPE_DICTIONARY:
+			return (ap as Dictionary).duplicate(true)
+	if _public_view.is_empty():
+		return {}
+	var mods2: Variant = _public_view.get("modules", [])
+	if typeof(mods2) != TYPE_ARRAY:
+		return {}
+	for m2 in mods2:
+		if typeof(m2) != TYPE_DICTIONARY:
+			continue
+		var md2: Dictionary = m2
+		if str(md2.get("module_key", "")) == MatchingMetaSnapshotProvider.MODULE_KEY:
+			var pay2 = md2.get("payload", {})
+			if typeof(pay2) == TYPE_DICTIONARY:
+				return (pay2 as Dictionary).duplicate(true)
+	return {}
+
+
+## 按模式切换客户端 registry（STANDARD: core_table+matching_meta；TRASH_TALK 全量）。
 func configure_snapshot_registry_for_mode(game_mode: String) -> void:
 	if game_mode == str(GameSessionConfig.MODE_TRASH_TALK):
 		snapshot_registry = SnapshotModuleRegistry.make_trash_talk()

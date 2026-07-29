@@ -137,6 +137,23 @@ func _core_payload(seat: int) -> Dictionary:
 	}
 
 
+
+
+func _matching_meta_module() -> Dictionary:
+	return MatchingMetaSnapshotProvider.fixture_module()
+
+
+func _modules_core(payload: Dictionary) -> Array:
+	return [
+		{
+			"module_key": "core_table",
+			"schema_version": 1,
+			"payload": payload,
+		},
+		_matching_meta_module(),
+	]
+
+
 func test_register_rejects_duplicate_module_key() -> void:
 	var reg := SnapshotModuleRegistry.make_standard()
 	assert_true(reg.is_standard_only())
@@ -155,11 +172,14 @@ func test_standard_does_not_register_fun_keys() -> void:
 func test_required_unknown_schema_version_fails_zero_restore() -> void:
 	var reg := SnapshotModuleRegistry.make_standard()
 	var sink := RestoreSink.new()
-	var modules := [{
-		"module_key": "core_table",
-		"schema_version": 99,
-		"payload": _core_payload(0),
-	}]
+	var modules := [
+		{
+			"module_key": "core_table",
+			"schema_version": 99,
+			"payload": _core_payload(0),
+		},
+		_matching_meta_module(),
+	]
 	var r: Dictionary = reg.restore_modules(modules, 0, sink)
 	assert_false(bool(r["ok"]))
 	assert_eq(str(r["code"]), SnapshotModuleRegistry.ERR_SCHEMA_UNSUPPORTED)
@@ -180,6 +200,7 @@ func test_restore_failure_is_atomic() -> void:
 			"schema_version": 1,
 			"payload": _core_payload(1),
 		},
+		_matching_meta_module(),
 		{
 			"module_key": "test_opaque",
 			"schema_version": 1,
@@ -200,14 +221,11 @@ func test_runtime_commit_failure_rolls_back_prior_provider() -> void:
 	assert_true(bool(reg.register(opaque)["ok"]))
 	var sink := RestoreSink.new()
 	# 先成功应用一次，验证回滚回到调用前
-	var pre: Dictionary = reg.restore_modules([{
-		"module_key": "core_table",
-		"schema_version": 1,
-		"payload": _core_payload(0),
-	}], 0, sink)
+	var pre: Dictionary = reg.restore_modules(_modules_core(_core_payload(0)), 0, sink)
 	assert_true(bool(pre["ok"]))
-	assert_eq(sink.apply_count, 1)
+	assert_eq(sink.apply_count, 2)
 	assert_true(sink.applied.has("core_table"))
+	assert_true(sink.applied.has(MatchingMetaSnapshotProvider.MODULE_KEY))
 	var before: Dictionary = sink.capture_module_restore_state()
 	var modules := [
 		{
@@ -215,6 +233,7 @@ func test_runtime_commit_failure_rolls_back_prior_provider() -> void:
 			"schema_version": 1,
 			"payload": _core_payload(0),
 		},
+		_matching_meta_module(),
 		{
 			"module_key": "test_opaque",
 			"schema_version": 1,
@@ -241,6 +260,7 @@ func test_unknown_unregistered_module_skipped() -> void:
 			"schema_version": 1,
 			"payload": _core_payload(0),
 		},
+		_matching_meta_module(),
 		{
 			"module_key": "future_fun",
 			"schema_version": 3,
@@ -250,6 +270,7 @@ func test_unknown_unregistered_module_skipped() -> void:
 	var r: Dictionary = reg.restore_modules(modules, 0, sink)
 	assert_true(bool(r["ok"]), str(r))
 	assert_true(sink.applied.has("core_table"))
+	assert_true(sink.applied.has(MatchingMetaSnapshotProvider.MODULE_KEY))
 	assert_false(sink.applied.has("future_fun"), "未知模块不应用")
 
 
@@ -265,11 +286,18 @@ func test_snap_01_to_05_field_contract_and_round_trip() -> void:
 	var bc := BattleController.new(42, 0, false)
 	assert_not_null(bc)
 	assert_not_null(bc.state)
-	var ser: Dictionary = reg.serialize_modules({"state": bc.state, "marker": "m1"}, seat)
+	var ser_ctx := {
+		"state": bc.state,
+		"marker": "m1",
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}
+	var ser: Dictionary = reg.serialize_modules(ser_ctx, seat)
 	assert_true(bool(ser["ok"]), str(ser))
 	var modules: Array = ser["modules"]
-	assert_gte(modules.size(), 1)
+	assert_gte(modules.size(), 2)
 	assert_eq(str((modules[0] as Dictionary)["module_key"]), "core_table")
+	assert_eq(str((modules[1] as Dictionary)["module_key"]), MatchingMetaSnapshotProvider.MODULE_KEY)
 
 	var snap_seq := 7
 	var payload := {
@@ -306,6 +334,7 @@ func test_snap_01_to_05_field_contract_and_round_trip() -> void:
 	var rr: Dictionary = reg.restore_modules(back.payload["modules"], seat, sink)
 	assert_true(bool(rr["ok"]), str(rr))
 	assert_true(sink.applied.has("core_table"))
+	assert_true(sink.applied.has(MatchingMetaSnapshotProvider.MODULE_KEY))
 	assert_true(sink.applied.has("test_opaque"))
 	assert_eq(int((sink.applied["test_opaque"]["payload"] as Dictionary)["seat"]), seat)
 
@@ -334,7 +363,7 @@ func test_serialize_compose_does_not_rewrite_payload() -> void:
 	var opaque := TestOpaqueProvider.new()
 	opaque._blob = {"frozen": 42, "nested": {"a": 1}}
 	assert_true(bool(reg.register(opaque)["ok"]))
-	var ser: Dictionary = reg.serialize_modules({"marker": "x"}, 2)
+	var ser: Dictionary = reg.serialize_modules({"marker": "x", "character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"], "participants": ["HUMAN", "AI", "AI", "AI"]}, 2)
 	assert_true(bool(ser["ok"]))
 	var mod: Dictionary = (ser["modules"] as Array)[0]
 	assert_eq(int((mod["payload"] as Dictionary)["frozen"]), 42)
@@ -354,6 +383,7 @@ func test_optional_unknown_schema_skipped_required_unknown_rejected() -> void:
 			"schema_version": 1,
 			"payload": _core_payload(0),
 		},
+		_matching_meta_module(),
 		{
 			"module_key": "test_opaque",
 			"schema_version": 99,
@@ -363,14 +393,18 @@ func test_optional_unknown_schema_skipped_required_unknown_rejected() -> void:
 	var r1: Dictionary = reg.restore_modules(modules_opt, 0, sink)
 	assert_true(bool(r1["ok"]), str(r1))
 	assert_true(sink.applied.has("core_table"))
+	assert_true(sink.applied.has(MatchingMetaSnapshotProvider.MODULE_KEY))
 	assert_false(sink.applied.has("test_opaque"), "可选未知 schema 不应用")
 	# 必需 core_table schema 99：稳定拒绝、零应用
 	var sink2 := RestoreSink.new()
-	var modules_req := [{
-		"module_key": "core_table",
-		"schema_version": 99,
-		"payload": _core_payload(0),
-	}]
+	var modules_req := [
+		{
+			"module_key": "core_table",
+			"schema_version": 99,
+			"payload": _core_payload(0),
+		},
+		_matching_meta_module(),
+	]
 	var r2: Dictionary = reg.restore_modules(modules_req, 0, sink2)
 	assert_false(bool(r2["ok"]))
 	assert_eq(str(r2["code"]), SnapshotModuleRegistry.ERR_SCHEMA_UNSUPPORTED)
@@ -405,6 +439,7 @@ func test_target_without_rollback_protocol_zero_commit() -> void:
 			"schema_version": 1,
 			"payload": _core_payload(0),
 		},
+		_matching_meta_module(),
 		{
 			"module_key": "test_opaque",
 			"schema_version": 1,

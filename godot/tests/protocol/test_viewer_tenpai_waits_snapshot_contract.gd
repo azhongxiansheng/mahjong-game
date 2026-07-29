@@ -41,10 +41,10 @@ func test_optional_module_exists_and_coexists_with_existing_viewer_modules() -> 
 		"纪枢必须使用独立 viewer_tenpai_waits@1 optional module")
 	var registry := SnapshotModuleRegistry.make_trash_talk()
 	assert_eq(registry.registered_keys(), [
-		"core_table", "item_inventory", "reward_window",
+		"core_table", "item_inventory", "match_authority", "matching_meta", "reward_window",
 		"viewer_next_draw", "viewer_seat_draw_forecast",
 		"viewer_tenpai_waits", "viewer_wall_top",
-	], "core_table@1 与四个 viewer optional module 必须并存")
+	], "core_table@1 + match_authority + matching_meta 与四个 viewer optional module 必须并存")
 
 
 func test_serialize_is_recipient_private_and_absent_without_authorization() -> void:
@@ -76,7 +76,10 @@ func test_real_wire_json_nbc_restore_and_optional_absence_clears_old_value() -> 
 	state.tenpai_wait_reveals = {2: {1: [TileId.S_WIND]}}
 	state.tenpai_flags[1] = true
 	var registry := _registry()
-	var serialized := registry.serialize_modules({"state": state}, 2)
+	var serialized := registry.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 2)
 	assert_true(bool(serialized.get("ok", false)), str(serialized))
 	var wire := _wire(serialized.get("modules", []), 2, 1)
 	var event := NetworkedEvent.from_dict(wire)
@@ -88,7 +91,10 @@ func test_real_wire_json_nbc_restore_and_optional_absence_clears_old_value() -> 
 	assert_true(nbc.ingest_networked_event(decoded), nbc.last_snapshot_error())
 	assert_eq(nbc.get_viewer_tenpai_waits_view().get("subjects", []).size(), 1)
 	state.tenpai_wait_reveals.clear()
-	var cleared := registry.serialize_modules({"state": state}, 2)
+	var cleared := registry.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 2)
 	assert_true(_module(cleared.get("modules", []), "viewer_tenpai_waits").is_empty())
 	var cleared_event := NetworkedEvent.from_dict(
 		_wire(cleared.get("modules", []), 2, 2))
@@ -103,7 +109,10 @@ func test_wrong_recipient_unsorted_duplicate_and_cross_hand_fail_closed() -> voi
 	state.tenpai_wait_reveals = {0: {1: [TileId.T3, TileId.T6]}}
 	state.tenpai_flags[1] = true
 	var registry := _registry()
-	var modules := (registry.serialize_modules({"state": state}, 0)
+	var modules := (registry.serialize_modules({"state": state,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+	}, 0)
 		.get("modules", []) as Array)
 	var cases: Array = []
 	var wrong_recipient := modules.duplicate(true)

@@ -450,7 +450,10 @@ func _round_wind_char(wind: int) -> String:
 func _seat_points(state: BattleState, seat_id: int) -> int:
 	if _scores_override.size() > seat_id:
 		return int(_scores_override[seat_id])
-	if state.seats.size() > seat_id:
+	# #375：权威分 BattleState.scores
+	if state != null and seat_id < state.scores.size():
+		return int(state.scores[seat_id])
+	if state != null and state.seats.size() > seat_id:
 		return int(state.seats[seat_id].points)
 	return 25000
 

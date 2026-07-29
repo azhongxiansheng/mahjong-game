@@ -114,7 +114,7 @@ func test_real_http_guest_enqueue_poll_and_private_tokens() -> void:
 	client.configure(_fixture.base_url())
 	var tickets: Array[Dictionary] = []
 	client.ticket_updated.connect(func(ticket: Dictionary): tickets.append(ticket.duplicate(true)))
-	client.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD"))
+	client.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD", &"lin_yeche"))
 	assert_true(await _wait_until(func(): return tickets.size() == 1))
 	assert_eq(tickets[0].get("status"), "waiting")
 	assert_eq(client.get_session_id(), "guest-323")
@@ -134,10 +134,34 @@ func test_real_http_cancel_uses_delete_and_waits_for_authority_response() -> voi
 	client.configure(_fixture.base_url())
 	var statuses: Array[String] = []
 	client.ticket_updated.connect(func(ticket: Dictionary): statuses.append(str(ticket.get("status", ""))))
-	client.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD"))
+	client.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD", &"lin_yeche"))
 	assert_true(await _wait_until(func(): return statuses.size() == 1))
 	client.cancel_ticket()
 	assert_eq(statuses, ["waiting"], "DELETE 返回前不得乐观伪造 cancelled")
 	assert_true(await _wait_until(func(): return statuses.size() == 2))
 	assert_eq(statuses, ["waiting", "cancelled"])
 	assert_true(_fixture.requests[2].begins_with("DELETE /v1/queues/casual/ticket-323 "))
+
+
+func test_enqueue_body_includes_own_character_id_only() -> void:
+	var client := CasualQueueClient.new()
+	add_child_autofree(client)
+	client.configure(_fixture.base_url())
+	var tickets: Array[Dictionary] = []
+	client.ticket_updated.connect(func(ticket: Dictionary): tickets.append(ticket.duplicate(true)))
+	assert_true(client.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD", &"qiu_jue")))
+	assert_true(await _wait_until(func(): return tickets.size() == 1))
+	var enqueue_raw := ""
+	for r in _fixture.requests:
+		if str(r).begins_with("POST /v1/queues/casual "):
+			enqueue_raw = str(r)
+			break
+	assert_false(enqueue_raw.is_empty(), "must POST enqueue")
+	assert_true(enqueue_raw.contains("\"character_id\":\"qiu_jue\""), enqueue_raw)
+	assert_false(enqueue_raw.contains("ability_id"), "不得提交 ability_id")
+	assert_false(enqueue_raw.contains("character_ids"), "不得提交四席 character_ids")
+	# 空角色拒绝
+	var client2 := CasualQueueClient.new()
+	add_child_autofree(client2)
+	client2.configure(_fixture.base_url())
+	assert_false(client2.begin(SessionIntent.new(&"PUBLIC_CASUAL", &"EAST", &"STANDARD")))

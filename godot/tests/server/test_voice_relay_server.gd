@@ -42,6 +42,7 @@ func _mint_room_token(claims: Dictionary) -> String:
 		"round_kind": str(claims.get("round_kind", "EAST")),
 		"game_mode": str(claims.get("game_mode", "TRASH_TALK")),
 		"participants": claims["participants"],
+		"character_ids": claims.get("character_ids", ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"]),
 	}
 	var raw: PackedByteArray = JSON.stringify(body).to_utf8_buffer()
 	var payload_b64: String = Marshalls.raw_to_base64(raw)
@@ -73,6 +74,7 @@ func _claims(
 		"round_kind": "EAST",
 		"game_mode": mode,
 		"participants": parts,
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
 	}
 
 

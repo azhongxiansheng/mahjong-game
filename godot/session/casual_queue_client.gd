@@ -29,6 +29,10 @@ func configure(base_url: String) -> bool:
 func begin(intent: SessionIntent) -> bool:
 	if intent == null or intent.room_kind != &"PUBLIC_CASUAL" or is_busy() or _base_url.is_empty():
 		return false
+	# #374：仅允许本席规范 character_id；空/未知拒绝入队。
+	var cid := StringName(intent.selected_character_id)
+	if String(cid).is_empty() or CharacterPool.find(cid) == null:
+		return false
 	_intent = intent
 	_guest_id = ""
 	_session_token = ""
@@ -97,6 +101,7 @@ func _request_enqueue() -> bool:
 	var body := JSON.stringify({
 		"round_kind": String(_intent.round_kind),
 		"game_mode": String(_intent.game_mode),
+		"character_id": String(_intent.selected_character_id),
 	})
 	return _request("enqueue", "/v1/queues/casual", HTTPClient.METHOD_POST, body)
 

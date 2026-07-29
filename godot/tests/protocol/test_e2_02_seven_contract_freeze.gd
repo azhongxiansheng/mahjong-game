@@ -230,6 +230,11 @@ func _hand_settled_payload() -> Dictionary:
 		"loser_seat": 1,
 		"score_deltas": [8000, -8000, 0, 0],
 		"scores": [33000, 17000, 25000, 25000],
+		"dealer_seat": 0,
+		"renchan": true,
+		"honba": 1,
+		"riichi_sticks": 0,
+		"adjustments": [],
 	}
 
 

@@ -306,13 +306,24 @@ func _stop_countdown(_user_cancel: bool = true) -> void:
 # ---- 公开 API（TableDecisionAdapter 调） ----
 
 # 进入"等玩家切牌"状态。can_tsumo 由 BC 的 _check_tsumo 算。
-# 立直在切完牌之后再问（与 BC 决策顺序对齐），所以这里不显示立直按钮。
-func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_kan: bool = false, _has_consumable: bool = false) -> void:
+# 立直在切完牌之后再问（与 BC 决策顺序对齐），所以默认不显示立直按钮。
+# #377：公共只读 TURN_PROMPT 可额外展示 RIICHI / KYUUSYU（末尾可选，既有调用兼容）。
+func enter_waiting_discard(
+	can_tsumo: bool,
+	can_ankan: bool = false,
+	can_added_kan: bool = false,
+	_has_consumable: bool = false,
+	can_riichi: bool = false,
+	can_kyuusyu: bool = false
+) -> void:
 	_stop_dots_animation()
 	_stop_countdown()
 	_state = State.WAITING_DISCARD
 	_label_status.text = "轮到你出牌（点手牌切）"
-	_hide_btn(_btn_riichi)
+	if can_riichi:
+		_show_btn(_btn_riichi)
+	else:
+		_hide_btn(_btn_riichi)
 	if can_tsumo:
 		_show_btn(_btn_tsumo)
 		# 自摸是最高价值决策,pulse 一次防玩家漏看
@@ -323,7 +334,10 @@ func enter_waiting_discard(can_tsumo: bool, can_ankan: bool = false, can_added_k
 	_hide_btn(_btn_chi)
 	_hide_btn(_btn_pon)
 	_hide_btn(_btn_minkan)
-	_hide_btn(_btn_kyuusyu)
+	if can_kyuusyu:
+		_show_btn(_btn_kyuusyu)
+	else:
+		_hide_btn(_btn_kyuusyu)
 	_hide_btn(_btn_skip)
 	if can_ankan:
 		_show_btn(_btn_ankan)

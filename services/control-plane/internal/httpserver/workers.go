@@ -10,11 +10,12 @@ import (
 	"github.com/lov-team/mahjong-game/services/control-plane/internal/workers"
 )
 
-// WorkerRegistrar 内部 Worker 注册/续租/房间完成能力。
+// WorkerRegistrar 内部 Worker 注册/续租/房间完成/失败能力。
 type WorkerRegistrar interface {
 	Register(ctx context.Context, reg workers.Registration) (workers.LeaseResult, error)
 	LeaseTTL() time.Duration
 	CompleteRoom(ctx context.Context, workerID, roomID string) (string, error)
+	FailRoom(ctx context.Context, workerID, roomID, failCode string) (string, error)
 }
 
 type workerRegisterRequest struct {
@@ -40,6 +41,19 @@ type workerCompleteResponse struct {
 	WorkerID string `json:"worker_id"`
 	RoomID   string `json:"room_id"`
 	Status   string `json:"status"`
+}
+
+type workerFailRequest struct {
+	WorkerID string `json:"worker_id"`
+	RoomID   string `json:"room_id"`
+	FailCode string `json:"fail_code"`
+}
+
+type workerFailResponse struct {
+	WorkerID string `json:"worker_id"`
+	RoomID   string `json:"room_id"`
+	Status   string `json:"status"`
+	FailCode string `json:"fail_code"`
 }
 
 func (s *Server) handleRegisterWorker(w http.ResponseWriter, r *http.Request) {
@@ -127,6 +141,60 @@ func (s *Server) handleWorkersFallback(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCompleteRoomFallback(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodPost {
 		s.handleCompleteWorkerRoom(w, r)
+		return
+	}
+	w.Header().Set("Allow", http.MethodPost)
+	writeError(w, r, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+}
+
+func (s *Server) handleFailWorkerRoom(w http.ResponseWriter, r *http.Request) {
+	if !s.requireWorkerRegistrationAuth(w, r) {
+		return
+	}
+	if s.workerRegistry == nil {
+		writeError(w, r, http.StatusInternalServerError, "INTERNAL", "worker registry unavailable")
+		return
+	}
+	var req workerFailRequest
+	if err := decodeJSONBody(r, &req); err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid request body")
+		return
+	}
+	failCode := strings.TrimSpace(req.FailCode)
+	if failCode == "" {
+		failCode = workers.FailCodeRoomFailed
+	}
+	if failCode != workers.FailCodeRoomFailed {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "fail_code must be ROOM_FAILED")
+		return
+	}
+	kind, err := s.workerRegistry.FailRoom(r.Context(), req.WorkerID, req.RoomID, failCode)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "invalid room fail")
+		return
+	}
+	switch kind {
+	case workers.FailOK, workers.FailIdempotent:
+		writeJSON(w, http.StatusOK, workerFailResponse{
+			WorkerID: strings.TrimSpace(req.WorkerID),
+			RoomID:   strings.TrimSpace(req.RoomID),
+			Status:   workers.StatusFailed,
+			FailCode: failCode,
+		})
+	case workers.FailNotFound:
+		writeError(w, r, http.StatusNotFound, "NOT_FOUND", "room not found")
+	case workers.FailWrongWorker:
+		writeError(w, r, http.StatusForbidden, "FORBIDDEN", "room not owned by worker")
+	case workers.FailAlreadyDone:
+		writeError(w, r, http.StatusConflict, "ALREADY_COMPLETED", "room already completed")
+	default:
+		writeError(w, r, http.StatusConflict, "INVALID_REQUEST", "room not failable")
+	}
+}
+
+func (s *Server) handleFailRoomFallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost {
+		s.handleFailWorkerRoom(w, r)
 		return
 	}
 	w.Header().Set("Allow", http.MethodPost)

@@ -95,8 +95,13 @@ const PLAYER_JOINED_KEYS := ["seat", "participant_kind", "display_name", "connec
 const PARTICIPANT_KINDS := ["HUMAN", "AI"]
 const HAND_SETTLED_KEYS := [
 	"hand_seq", "outcome", "winner_seats", "loser_seat", "score_deltas", "scores",
+	"dealer_seat", "renchan", "honba", "riichi_sticks", "adjustments",
 ]
-const HAND_OUTCOMES := ["RON", "TSUMO", "EXHAUSTIVE_DRAW", "ABORTIVE_DRAW"]
+const HAND_OUTCOMES := [
+	"RON", "TSUMO", "EXHAUSTIVE_DRAW", "ABORTIVE_DRAW", "NAGASHI_MANGAN",
+]
+const HAND_SETTLED_ADJUSTMENT_KEYS := ["kind", "seat", "delta", "source"]
+const HAND_SETTLED_ADJUSTMENT_KINDS := ["IN_HAND", "EXTERNAL"]
 const MATCH_SETTLED_KEYS := ["round_kind", "final_scores", "seat_order"]
 const MATCH_ROUND_KINDS := ["EAST", "HANCHAN"]
 
@@ -1879,7 +1884,7 @@ static func _validate_hand_settled(p: Dictionary) -> Variant:
 				return null
 			if seen_w.has(loser):
 				return null
-		"TSUMO":
+		"TSUMO", "NAGASHI_MANGAN":
 			if winners.size() != 1:
 				return null
 			if loser != -1:
@@ -1902,6 +1907,32 @@ static func _validate_hand_settled(p: Dictionary) -> Variant:
 	if scores == null:
 		return null
 
+	if typeof(p["dealer_seat"]) != TYPE_INT:
+		return null
+	var dealer_seat: int = p["dealer_seat"]
+	if dealer_seat < 0 or dealer_seat > 3:
+		return null
+
+	if typeof(p["renchan"]) != TYPE_BOOL:
+		return null
+	var renchan: bool = p["renchan"]
+
+	if typeof(p["honba"]) != TYPE_INT:
+		return null
+	var honba: int = p["honba"]
+	if honba < 0 or honba > ProtocolConstants.MAX_SAFE_INT:
+		return null
+
+	if typeof(p["riichi_sticks"]) != TYPE_INT:
+		return null
+	var riichi_sticks: int = p["riichi_sticks"]
+	if riichi_sticks < 0 or riichi_sticks > ProtocolConstants.MAX_SAFE_INT:
+		return null
+
+	var adjustments: Variant = _validate_hand_settled_adjustments(p["adjustments"])
+	if adjustments == null:
+		return null
+
 	return {
 		"hand_seq": hs,
 		"outcome": outcome,
@@ -1909,7 +1940,51 @@ static func _validate_hand_settled(p: Dictionary) -> Variant:
 		"loser_seat": loser,
 		"score_deltas": deltas,
 		"scores": scores,
+		"dealer_seat": dealer_seat,
+		"renchan": renchan,
+		"honba": honba,
+		"riichi_sticks": riichi_sticks,
+		"adjustments": adjustments,
 	}
+
+
+static func _validate_hand_settled_adjustments(raw: Variant) -> Variant:
+	if typeof(raw) != TYPE_ARRAY:
+		return null
+	var out: Array = []
+	for item in raw:
+		if typeof(item) != TYPE_DICTIONARY:
+			return null
+		var d: Dictionary = item
+		if not _has_exact_keys(d, HAND_SETTLED_ADJUSTMENT_KEYS):
+			return null
+		if typeof(d["kind"]) != TYPE_STRING:
+			return null
+		var kind: String = d["kind"]
+		if kind not in HAND_SETTLED_ADJUSTMENT_KINDS:
+			return null
+		if typeof(d["seat"]) != TYPE_INT:
+			return null
+		var seat: int = d["seat"]
+		if seat < 0 or seat > 3:
+			return null
+		if typeof(d["delta"]) != TYPE_INT:
+			return null
+		var delta: int = d["delta"]
+		if delta < -ProtocolConstants.MAX_SAFE_INT or delta > ProtocolConstants.MAX_SAFE_INT:
+			return null
+		if typeof(d["source"]) != TYPE_STRING:
+			return null
+		var source: String = d["source"]
+		if source.is_empty() or source.length() > 64:
+			return null
+		out.append({
+			"kind": kind,
+			"seat": seat,
+			"delta": delta,
+			"source": source,
+		})
+	return out
 
 
 static func _validate_match_settled(p: Dictionary) -> Variant:

@@ -319,7 +319,8 @@ static func _load_stream(path: String) -> Array:
 		if typeof(raw) != TYPE_DICTIONARY:
 			return []
 		out.append(_coerce_event_ints(raw as Dictionary))
-	return out
+	# #374：与 item_inventory gold stream 同策略——注入 matching_meta 并重算 hash
+	return ItemInventoryGoldFixtures._ensure_matching_meta_on_snapshots(out)
 
 
 static func _coerce_event_ints(d: Dictionary) -> Dictionary:

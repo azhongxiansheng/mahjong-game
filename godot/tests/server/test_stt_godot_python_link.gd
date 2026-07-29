@@ -52,14 +52,15 @@ func test_godot_bridge_to_python_real_model_en() -> void:
 		"room_id": "room_e2e", "seat": 0, "session_id": "s0", "exp": 2_000_000_000,
 		"round_kind": "EAST", "game_mode": "TRASH_TALK",
 		"participants": ["HUMAN", "AI", "AI", "AI"],
-	}).get("ok", false)))
+			"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+}).get("ok", false)))
 	var session: HeadlessRoomSession = _worker.get_room("room_e2e")
 	var rw: RewardWindowModule = session.server.mode_modules.reward_window
 	assert_true(bool(rw.open({
 		"room_id": "room_e2e", "hand_seq": 0, "window_index": 0,
 		"seed": int(session.authority_seed), "rule_version": RULE_VERSION,
-		"character_ids": session.character_ids, "language": "en",
-		"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0,
+				"participants": ["HUMAN", "AI", "AI", "AI"], "now_ms": NOW0,
+				"character_ids": session.character_ids, "language": "en",
 	}).get("ok", false)))
 	_bridge = _worker.get_stt_bridge()
 	assert_not_null(_bridge)

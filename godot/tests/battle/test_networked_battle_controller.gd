@@ -123,8 +123,16 @@ func _mod(key: String, payload: Dictionary) -> Dictionary:
 	var m := {"module_key": key, "schema_version": 1, "payload": payload.duplicate(true)}
 	assert_true(_exact(m, MOD_KEYS))
 	return m
+func _meta_mod() -> Dictionary:
+	return MatchingMetaSnapshotProvider.fixture_module()
+
+
+func _default_modules(recip := 0) -> Array:
+	return [_mod("core_table", _core(recip)), _meta_mod()]
+
+
 func _snap(seq: int, recip := 0, modules: Array = []) -> Dictionary:
-	var mods: Array = modules if not modules.is_empty() else [_mod("core_table", _core(recip))]
+	var mods: Array = modules if not modules.is_empty() else _default_modules(recip)
 	var p := {
 		"snapshot_server_seq": seq, "next_server_seq": seq + 1,
 		"seat_view": recip, "modules": mods,
@@ -136,7 +144,7 @@ func _snap_var(seq: int, phase: String, wall: int, recip := 0) -> Dictionary:
 	var core := _core(recip)
 	core["phase"] = phase
 	core["live_wall_count"] = wall
-	return _snap(seq, recip, [_mod("core_table", core)])
+	return _snap(seq, recip, [_mod("core_table", core), _meta_mod()])
 func _rs(seq: int, payload: Dictionary, room := ROOM, vh := "") -> NetworkedEvent:
 	var h := vh if not vh.is_empty() else ProtocolViewCodec.compute_view_hash(payload)
 	assert_eq(h.length(), 64)

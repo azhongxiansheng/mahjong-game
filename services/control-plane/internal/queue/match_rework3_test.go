@@ -42,14 +42,14 @@ func TestRework3_P1_StaleHeadMustNotAIFillWhenFourthHumanExists(t *testing.T) {
 	// 3 个有效（score 高于 stale）
 	humans := make([]Ticket, 0, 4)
 	for i := 0; i < 3; i++ {
-		tk, err := f.svc.Enqueue(ctx, fmt.Sprintf("h-%d", i), RoundKindEast, GameModeStandard)
+		tk, err := f.svc.Enqueue(ctx, fmt.Sprintf("h-%d", i), RoundKindEast, GameModeStandard, "lin_yeche")
 		if err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
 		humans = append(humans, tk)
 	}
 	// 第 4 真人（将成为清 stale 后的第 4 有效）
-	tk4, err := f.svc.Enqueue(ctx, "h-3", RoundKindEast, GameModeStandard)
+	tk4, err := f.svc.Enqueue(ctx, "h-3", RoundKindEast, GameModeStandard, "lin_yeche")
 	if err != nil {
 		t.Fatalf("enqueue4: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestRework3_P1_ConcurrentIndependentClientsCleanStale(t *testing.T) {
 	}
 	tickets := make([]Ticket, 0, 4)
 	for i := 0; i < 4; i++ {
-		tk, err := svcs[0].Enqueue(ctx, fmt.Sprintf("indep-g-%d", i), RoundKindEast, GameModeStandard)
+		tk, err := svcs[0].Enqueue(ctx, fmt.Sprintf("indep-g-%d", i), RoundKindEast, GameModeStandard, "lin_yeche")
 		if err != nil {
 			t.Fatalf("enqueue: %v", err)
 		}
@@ -295,7 +295,7 @@ func TestRework3_P2_OnErrorNeverLeaksSecretOrToken(t *testing.T) {
 
 	const rawSecret = "raw-secret-value-should-never-log"
 	const leakTok = "v1.r.eyJ0eXAiOiJyb29tIn0.signaturepart"
-	leaky := RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error) {
+	leaky := RoomTokenIssuerFunc(func(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (string, time.Time, error) {
 		return "", time.Time{}, fmt.Errorf("issuer boom secret=%s token=%s extra=%s", matchTestSecret, leakTok, rawSecret)
 	})
 

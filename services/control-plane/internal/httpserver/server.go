@@ -21,7 +21,7 @@ type Pinger interface {
 type TokenService interface {
 	IssueGuestSession() (tokens.GuestSession, error)
 	VerifyGuestToken(token string) (tokens.GuestClaims, error)
-	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants []string) (string, time.Time, error)
+	IssueRoomToken(sessionID, roomID string, seat int, roundKind, gameMode string, participants, characterIDs []string) (string, time.Time, error)
 	VerifyRoomToken(token, expectedRoomID string, expectedSeat int) (tokens.RoomClaims, error)
 }
 
@@ -70,6 +70,8 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("/v1/internal/workers/register", s.handleWorkersFallback)
 	mux.HandleFunc("POST /v1/internal/workers/rooms/complete", s.handleCompleteWorkerRoom)
 	mux.HandleFunc("/v1/internal/workers/rooms/complete", s.handleCompleteRoomFallback)
+	mux.HandleFunc("POST /v1/internal/workers/rooms/fail", s.handleFailWorkerRoom)
+	mux.HandleFunc("/v1/internal/workers/rooms/fail", s.handleFailRoomFallback)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,

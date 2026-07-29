@@ -139,6 +139,8 @@ func _start_network(assigned: Dictionary) -> void:
 	_session.reconnecting.connect(_on_reconnecting)
 	_session.recovered.connect(_on_recovered)
 	_session.terminal_error.connect(_on_terminal_error)
+	if not _session.room_started_hint.is_connected(_on_room_started_hint):
+		_session.room_started_hint.connect(_on_room_started_hint)
 	_mount_table()
 	if _table == null:
 		_fail_network_start("TABLE_MOUNT_FAILED", "牌桌挂载失败")
@@ -168,11 +170,22 @@ func _on_reconnecting(code: String, message: String) -> void:
 
 
 func _on_recovered() -> void:
+	# #377：新合法 committed snapshot 触发 recovered → 回到 playing 并把焦点交还牌桌
 	consume_connection_fact_for_test(&"recovered")
+
+
+func _on_room_started_hint() -> void:
+	# 仅 session 在 NBC 成功提交 ROOM_SNAPSHOT 后发出
+	notify_public_snapshot_committed_for_test()
 
 
 func _on_terminal_error(code: String, message: String) -> void:
 	consume_connection_fact_for_test(&"terminal_error", code, message)
+
+
+## #377：首个/恢复 committed snapshot → playing（解除 matched 遮罩）。
+func notify_public_snapshot_committed_for_test() -> void:
+	consume_connection_fact_for_test(&"playing")
 
 
 func consume_connection_fact_for_test(fact: StringName, code: String = "", message: String = "") -> void:
@@ -181,10 +194,38 @@ func consume_connection_fact_for_test(fact: StringName, code: String = "", messa
 			var next := _context_view("reconnecting")
 			next.merge({"error_code": code, "message": message, "can_retry": true}, true)
 			_set_view(next)
+			_freeze_public_table_if_any()
 		&"recovered":
+			# #301 非阻断 recovered 提示；#377 同时把焦点交还牌桌（committed 已由 session 保证）
 			_set_view(_context_view("recovered"))
+			_focus_public_table()
+		&"playing", &"entered":
+			# 仅 matched → 首个合法 committed 使用（非 reconnect 路径）
+			_enter_playing_view()
 		&"terminal_error":
 			_set_terminal(code, message)
+
+
+func _enter_playing_view() -> void:
+	var next := _context_view("playing")
+	next.merge({"error_code": "", "message": "", "can_retry": false, "can_cancel": false}, true)
+	_set_view(next)
+	_focus_public_table()
+
+
+func _freeze_public_table_if_any() -> void:
+	if _table != null and is_instance_valid(_table) and _table.has_method("sync_public_table_projection"):
+		# 触发冻结判定（NBC resync / reconnecting 时不改最后 committed 画面）
+		if _session != null and _session.nbc != null and _session.nbc.resync_required():
+			_table.sync_public_table_projection()
+
+
+func _focus_public_table() -> void:
+	if _table == null or not is_instance_valid(_table):
+		return
+	if _table is Control:
+		(_table as Control).focus_mode = Control.FOCUS_ALL
+		(_table as Control).grab_focus()
 
 
 func _on_queue_failed(code: String, message: String) -> void:
