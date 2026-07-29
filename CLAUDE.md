@@ -68,7 +68,7 @@ godot --path godot -s tools/capture_screens.gd   # /tmp/shot_*.png
 ### GDScript 单元测试（GUT）
 
 ```bash
-godot --headless --path godot --import
+scripts/godot_bootstrap.sh  # 新 worktree 首测；两轮 import，仅第二轮作为门禁
 
 scripts/test_run_core.sh  # 日常：core/battle/skills/ai/meta/health
 scripts/test_run_slow.sh  # 显式：integration/protocol/server/session/UI/STT 等
