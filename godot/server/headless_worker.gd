@@ -37,6 +37,9 @@ var _next_conn_id: int = 1
 var _next_generation: int = 1
 # room_id -> HeadlessRoomSession
 var _rooms: Dictionary = {}
+## #378 R4 测试：ACCEPTED 后暂缓业务事件 broadcast，便于分离 CR 与 committed
+var _test_hold_event_broadcast: bool = false
+var _test_held_broadcast_rooms: Dictionary = {}
 
 
 func configure(
@@ -769,7 +772,11 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 		return
 	# 仅 ACCEPTED 发送 CommandResult 并广播权威事件
 	_send_json(cid, cr.to_dict())
-	_broadcast_room_events(room_id)
+	# #378 R4 测试：可先只交付 CR，稍后再 flush 业务事件，以分离 ACCEPTED 与 committed
+	if _test_hold_event_broadcast:
+		_test_held_broadcast_rooms[room_id] = true
+	else:
+		_broadcast_room_events(room_id)
 
 
 ## #242：CommandResult 拒绝 → ERROR 控制响应（无 server_seq / view_hash / state_hash）。
@@ -1160,6 +1167,31 @@ func set_conn_last_seq_for_test(cid: int, seq: int) -> void:
 	var st: Dictionary = _conns[cid]
 	st["last_seq"] = maxi(0, int(seq))
 	_conns[cid] = st
+
+
+## #378 测试：按 last_seq 重放 seat journal 增量到指定连接。
+func flush_events_for_test(cid: int) -> void:
+	_flush_events(cid)
+
+
+## #378 R4 测试：hold=true 时 ACCEPTED 只发 CR；release 后补 flush 业务事件。
+func set_hold_event_broadcast_for_test(hold: bool) -> void:
+	_test_hold_event_broadcast = hold
+	if hold:
+		return
+	# 释放：补发所有暂缓房间
+	var rooms: Array = _test_held_broadcast_rooms.keys()
+	_test_held_broadcast_rooms.clear()
+	for rid in rooms:
+		_broadcast_room_events(str(rid))
+
+
+## #378 R4 测试：仅 flush 指定 room 的暂缓 broadcast。
+func release_held_broadcast_for_test(room_id: String) -> void:
+	var rid := str(room_id)
+	if _test_held_broadcast_rooms.has(rid):
+		_test_held_broadcast_rooms.erase(rid)
+	_broadcast_room_events(rid)
 
 
 func _conn_room(cid: int) -> String:

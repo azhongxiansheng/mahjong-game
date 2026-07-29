@@ -57,6 +57,8 @@ func _run() -> void:
 	await _capture_reward_feedback_254()
 	# E8-04 / #377：公共 committed 投影 playing / recipient≠0 / reconnecting 冻结。
 	await _capture_public_table_projection_377()
+	# E8-05 / #378：可操作 decision / multi-option pick / pending lock / ERROR 恢复。
+	await _capture_public_command_loop_378()
 	print("[capture] done")
 	quit()
 
@@ -704,6 +706,327 @@ func _capture_public_table_projection_377() -> void:
 	sess_t.release()
 	sess_t.queue_free()
 	table_t.queue_free()
+	await process_frame
+
+
+func _capture_public_command_loop_378() -> void:
+	# #378：可操作 decision / multi-option pick / pending 锁 / ERROR 恢复 — 须可见控件态。
+	# 对齐 #377：先 add_child 等 _ready，再 NBC ingest SNAP/decision，再 bind+sync。
+	var PlayableScr = load("res://ui/four_player_table/playable_table.gd")
+	var decision := "550e8400-e29b-41d4-a716-4466554400aa"
+	var make_tile := func(tile_id: int, copy_index: int, red: bool = false) -> Dictionary:
+		return {
+			"instance_id": TileId.ALL.find(tile_id) * 4 + copy_index,
+			"tile_id": tile_id, "is_red_dora": red, "owner_seat": copy_index,
+		}
+	var fail := func(msg: String) -> void:
+		push_error("[capture#378] HARD FAIL: " + msg)
+		print("[capture#378] HARD FAIL: ", msg)
+		quit(1)
+	var room := "capture-378"
+	var table = PlayableScr.new()
+	root.add_child(table)
+	# 等待真实 _ready：FourPlayerTable + action panel + seat panels
+	for _w in range(40):
+		await process_frame
+		if table._table != null and table._action_panel != null \
+				and table._table is FourPlayerTable \
+				and (table._table as FourPlayerTable).seat_panels.size() >= 1:
+			break
+	if table._table == null or table._action_panel == null:
+		fail.call("table/action_panel not ready")
+		return
+	var fpt: FourPlayerTable = table._table as FourPlayerTable
+	if fpt.seat_panels.is_empty():
+		fail.call("seat_panels empty")
+		return
+	# 与 #377 turn_actions 完全同形的 fixture（已验证 tsumo 可见）
+	var t0: Dictionary = make_tile.call(TileId.W1, 0)
+	var t1: Dictionary = make_tile.call(TileId.S2, 0)
+	var a0: Dictionary = make_tile.call(TileId.W5, 0, true)
+	var a1: Dictionary = make_tile.call(TileId.W5, 1)
+	var a2: Dictionary = make_tile.call(TileId.W5, 2)
+	var a3: Dictionary = make_tile.call(TileId.W5, 3)
+	var added: Dictionary = make_tile.call(TileId.HAKU, 0)
+	var hand_tiles: Array = [t0, t1, a0, a1, a2, a3, added]
+	var iid_of := func(d: Dictionary) -> int:
+		return int(d["instance_id"])
+	var seats: Array = []
+	for s in range(4):
+		var concealed: Array = hand_tiles.duplicate() if s == 0 else []
+		seats.append({
+			"seat": s,
+			"seat_wind": [TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N][s],
+			"score": 25000 + s * 100,
+			"concealed_tiles": concealed,
+			"concealed_count": concealed.size() if s == 0 else 13,
+			"last_drawn_tile_instance_id": iid_of.call(t1) if s == 0 else -1,
+			"river": [make_tile.call(TileId.W4, s)],
+			"melds": [],
+			"riichi_declared": false,
+			"riichi_double": false,
+			"riichi_discard_index": -1,
+		})
+	var core := {
+		"recipient_seat": 0, "hand_seq": 0, "dealer_seat": 0, "current_seat": 0,
+		"phase": "DISCARD", "round_wind": TileId.E, "hand_number": 1, "honba": 2,
+		"riichi_sticks": 1, "live_wall_count": 66,
+		"dora_indicators": [make_tile.call(TileId.S1, 0)], "seats": seats,
+	}
+	var snap_pay := {
+		"snapshot_server_seq": 1, "next_server_seq": 2, "seat_view": 0,
+		"modules": [
+			{"module_key": "core_table", "schema_version": 1, "payload": core},
+			MatchingMetaSnapshotProvider.fixture_module(
+				["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+				["HUMAN", "AI", "AI", "AI"]),
+		],
+	}
+	var vh := ProtocolViewCodec.compute_view_hash(snap_pay)
+	var ne_snap := NetworkedEvent.make("ROOM_SNAPSHOT", 1, room, snap_pay, vh)
+	var turn_pay := {
+		"hand_seq": 0, "decision_id": decision, "seat": 0,
+		"hand": hand_tiles.duplicate(),
+		"last_drawn_tile_instance_id": iid_of.call(t1),
+		"allowed_actions": [
+			{"kind": "DISCARD", "payload_options": [
+				{"tile_instance_id": iid_of.call(t0)},
+				{"tile_instance_id": iid_of.call(t1)},
+			]},
+			{"kind": "TSUMO", "payload_options": [{}]},
+			{"kind": "RIICHI", "payload_options": [
+				{"tile_instance_id": iid_of.call(t0)},
+			]},
+			{"kind": "KAN", "payload_options": [
+				{"kan_kind": "ANKAN", "tile_instance_ids": [
+					iid_of.call(a0), iid_of.call(a1), iid_of.call(a2), iid_of.call(a3),
+				]},
+				{"kan_kind": "ADDED_KAN", "meld_id": 1,
+					"added_tile_instance_id": iid_of.call(added)},
+			]},
+		],
+	}
+	var ne_turn := NetworkedEvent.make("TURN_PROMPT", 2, room, turn_pay, vh)
+	var nbc := NetworkedBattleController.new(room, 0)
+	# STANDARD 必需 core_table + matching_meta（#374）
+	snap_pay = {
+		"snapshot_server_seq": 1, "next_server_seq": 2, "seat_view": 0,
+		"modules": [
+			{"module_key": "core_table", "schema_version": 1, "payload": core},
+			MatchingMetaSnapshotProvider.fixture_module(
+				["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+				["HUMAN", "AI", "AI", "AI"]),
+		],
+	}
+	vh = ProtocolViewCodec.compute_view_hash(snap_pay)
+	ne_snap = NetworkedEvent.make("ROOM_SNAPSHOT", 1, room, snap_pay, vh)
+	ne_turn = NetworkedEvent.make("TURN_PROMPT", 2, room, turn_pay, vh)
+	var sess := PublicCasualNetworkSession.new()
+	root.add_child(sess)
+	sess.room_id = room
+	sess.seat = 0
+	sess.nbc = nbc
+	if sess.seq_bridge != null:
+		sess.seq_bridge.bind_networked_controller(nbc)
+	sess.bind_playable_table(table)
+	# bind 会启动 reward sync；必须事后关闭，避免覆盖手动库存 rows
+	table._reward_sync_active = false
+	if ne_snap == null:
+		fail.call("ne_snap null")
+		return
+	if not nbc.ingest_networked_event(ne_snap):
+		fail.call("SNAP ingest failed err=%s" % nbc.last_snapshot_error())
+		return
+	if ne_turn == null or not nbc.ingest_networked_event(ne_turn):
+		fail.call("TURN ingest failed resync=%s" % str(nbc.resync_required()))
+		return
+	if table.has_method("sync_public_table_projection"):
+		table.sync_public_table_projection()
+	var core_view: Dictionary = nbc.get_core_table_view()
+	if core_view.is_empty():
+		fail.call("core empty")
+		return
+	fpt.bind_core_table_view(core_view)
+	table._reward_sync_active = false
+	# 库存：open 会 _sync_drawer_rows 清空；必须 open 后再 set_instances，并再关 sync
+	if fpt.item_inventory_drawer != null:
+		fpt.open_inventory_drawer()
+		fpt.item_inventory_drawer.set_instances([{
+			"item_instance_id": "ii_cap_378",
+			"item_id": "wall_collapse_v1",
+			"display_name": "牌墙崩塌",
+			"status": "held",
+			"effect_summary": "开局减墙",
+		}])
+		fpt.set_inventory_use_locked(false)
+	for _i in range(24):
+		await process_frame
+		table._reward_sync_active = false
+	await RenderingServer.frame_post_draw
+	# 硬断言 decision 态
+	var hand_n := 0
+	var bottom = fpt.seat_panels[0]
+	if bottom != null:
+		for s in bottom.get("_hand_slots"):
+			if s != null and is_instance_valid(s):
+				hand_n += 1
+	var ap = table._action_panel
+	var tsumo_vis: bool = ap != null and ap.get("_btn_tsumo") != null and bool(ap.get("_btn_tsumo").visible)
+	var riichi_vis: bool = ap != null and ap.get("_btn_riichi") != null and bool(ap.get("_btn_riichi").visible)
+	var inv_n := 0
+	var use_vis := false
+	if fpt.item_inventory_drawer != null:
+		inv_n = int(fpt.item_inventory_drawer.get("_visible_count"))
+		var ub = fpt.item_inventory_drawer.find_child("UseButton", true, false)
+		use_vis = ub != null and ub.visible and not ub.disabled
+	if hand_n <= 0 or not (tsumo_vis or riichi_vis) or inv_n < 1 or not use_vis:
+		fail.call("decision hard assert hand=%d tsumo=%s riichi=%s inv=%d use=%s" % [
+			hand_n, str(tsumo_vis), str(riichi_vis), inv_n, str(use_vis)])
+		return
+	var img1 := root.get_texture().get_image()
+	var out1 := "/tmp/shot_public_command_378_decision.png"
+	img1.save_png(out1)
+	print("[capture] saved ", out1, " size=", img1.get_width(), "x", img1.get_height(),
+		" state=operable_decision tsumo_visible=", tsumo_vis, " hand=", hand_n, " inv=", inv_n)
+
+	# multi-option pick
+	var claim_pay := {
+		"hand_seq": 0, "decision_id": decision, "discarded_by_seat": 1,
+		"discarded_tile": make_tile.call(TileId.W3, 1),
+		"allowed_actions": [
+			{"kind": "PASS", "payload_options": [{}]},
+			{"kind": "PON", "payload_options": [{
+				"companion_tile_instance_ids": [iid_of.call(a0), iid_of.call(a1)],
+			}]},
+			{"kind": "CHI", "payload_options": [
+				{"companion_tile_instance_ids": [iid_of.call(t0), iid_of.call(t1)]},
+				{"companion_tile_instance_ids": [iid_of.call(t1), iid_of.call(a0)]},
+			]},
+			{"kind": "KAN", "payload_options": [{
+				"kan_kind": "MINKAN",
+				"companion_tile_instance_ids": [iid_of.call(a0), iid_of.call(a1), iid_of.call(a2)],
+			}]},
+		],
+	}
+	var ne_claim := NetworkedEvent.make("CLAIM_WINDOW", 3, room, claim_pay, vh)
+	if ne_claim == null or not nbc.ingest_networked_event(ne_claim):
+		fail.call("CLAIM ingest failed")
+		return
+	table.sync_public_table_projection()
+	for _j0 in range(12):
+		await process_frame
+	var chi_before: bool = ap != null and ap.get("_btn_chi") != null and bool(ap.get("_btn_chi").visible)
+	if not chi_before:
+		fail.call("claim CHI button not visible before pick")
+		return
+	table._action_panel.player_action_chosen.emit({"action": "chi"})
+	if table._seat_panel_player != null and table._seat_panel_player.has_method("dim_hand_except"):
+		table._seat_panel_player.dim_hand_except([iid_of.call(t0), iid_of.call(t1), iid_of.call(a0)])
+	for _j in range(16):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var dim_count := 0
+	var bright_count := 0
+	if table._seat_panel_player != null:
+		for slot in table._seat_panel_player.get("_hand_slots"):
+			if slot == null or not is_instance_valid(slot):
+				continue
+			var tile_n = slot.get_node_or_null("Tile")
+			if tile_n == null:
+				# 部分实现把 modulate 放在 slot 上
+				if slot is CanvasItem:
+					var sm: Color = (slot as CanvasItem).modulate
+					if sm.r < 0.9 or sm.a < 0.9:
+						dim_count += 1
+					else:
+						bright_count += 1
+				continue
+			var is_dimmed := false
+			if tile_n.has_method("is_dim"):
+				is_dimmed = bool(tile_n.is_dim())
+			elif tile_n is CanvasItem:
+				var mod: Color = (tile_n as CanvasItem).modulate
+				is_dimmed = mod.r < 0.9 or mod.a < 0.9
+			if is_dimmed:
+				dim_count += 1
+			else:
+				bright_count += 1
+	if dim_count <= 0 or bright_count <= 0:
+		fail.call("multi_pick dim/bright hard assert dim=%d bright=%d pick=%s" % [
+			dim_count, bright_count, str(table.get("_public_pick_kind"))])
+		return
+	var img2 := root.get_texture().get_image()
+	var out2 := "/tmp/shot_public_command_378_multi_pick.png"
+	img2.save_png(out2)
+	print("[capture] saved ", out2, " size=", img2.get_width(), "x", img2.get_height(),
+		" state=multi_option_pick dim=", dim_count, " bright=", bright_count)
+
+	# pending lock
+	table._lock_public_inputs("命令处理中…")
+	fpt.open_inventory_drawer()
+	fpt.item_inventory_drawer.set_instances([{
+		"item_instance_id": "ii_cap_378",
+		"item_id": "wall_collapse_v1",
+		"display_name": "牌墙崩塌",
+		"status": "held",
+		"effect_summary": "开局减墙",
+	}])
+	fpt.set_inventory_use_locked(true)
+	for _k in range(12):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var use_locked := bool(fpt.is_inventory_use_locked())
+	var hand_clickable := true
+	if table._seat_panel_player != null and table._seat_panel_player.has_method("is_hand_clickable"):
+		hand_clickable = bool(table._seat_panel_player.is_hand_clickable())
+	elif table._seat_panel_player != null:
+		hand_clickable = false  # lock 路径 set_hand_clickable(false)
+	var skip_vis := ap != null and ap.get("_btn_skip") != null and bool(ap.get("_btn_skip").visible)
+	var chi_locked_vis := ap != null and ap.get("_btn_chi") != null and bool(ap.get("_btn_chi").visible)
+	if not use_locked or chi_locked_vis:
+		fail.call("pending lock hard assert use_locked=%s chi_vis=%s" % [str(use_locked), str(chi_locked_vis)])
+		return
+	var img3 := root.get_texture().get_image()
+	var out3 := "/tmp/shot_public_command_378_pending_lock.png"
+	img3.save_png(out3)
+	print("[capture] saved ", out3, " size=", img3.get_width(), "x", img3.get_height(),
+		" state=pending_lock inventory_use_locked=", use_locked, " skip_visible=", skip_vis)
+
+	# ERROR restore
+	table._unlock_public_inputs_restore_decision()
+	table.sync_public_table_projection()
+	fpt.set_inventory_use_locked(false)
+	fpt.open_inventory_drawer()
+	fpt.item_inventory_drawer.set_instances([{
+		"item_instance_id": "ii_cap_378",
+		"item_id": "wall_collapse_v1",
+		"display_name": "牌墙崩塌",
+		"status": "held",
+		"effect_summary": "开局减墙",
+	}])
+	for _m in range(16):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var chi_vis := ap != null and ap.get("_btn_chi") != null and bool(ap.get("_btn_chi").visible)
+	var pon_vis := ap != null and ap.get("_btn_pon") != null and bool(ap.get("_btn_pon").visible)
+	var pass_vis := ap != null and ap.get("_btn_skip") != null and bool(ap.get("_btn_skip").visible)
+	var use_ok := false
+	if fpt.item_inventory_drawer != null:
+		var ub2 = fpt.item_inventory_drawer.find_child("UseButton", true, false)
+		use_ok = ub2 != null and ub2.visible and not ub2.disabled
+	if not chi_vis or not (pon_vis or pass_vis) or not use_ok:
+		fail.call("error_restore hard assert chi=%s pon=%s pass=%s use=%s" % [
+			str(chi_vis), str(pon_vis), str(pass_vis), str(use_ok)])
+		return
+	var img4 := root.get_texture().get_image()
+	var out4 := "/tmp/shot_public_command_378_error_restore.png"
+	img4.save_png(out4)
+	print("[capture] saved ", out4, " size=", img4.get_width(), "x", img4.get_height(),
+		" state=error_restore chi_visible=", chi_vis)
+	table._reward_sync_active = false
+	sess.release()
+	sess.queue_free()
+	table.queue_free()
 	await process_frame
 
 

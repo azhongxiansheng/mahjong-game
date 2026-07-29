@@ -6,6 +6,7 @@ extends Node
 # 绑定调用方提供的 ModeModuleBundle.voice_port（仅 TRASH_TALK）；生产不强制 fixture。
 # 协议：JOIN → READY → 消费业务事件；语音独立 WS + AuthoritySeqBridge。
 # #323：由 PublicMatchCoordinator 在 CP assigned 后接入生产大厅与牌桌。
+# #378：submit_action(Action) 为公共客户端唯一命令出口；ACCEPTED/ERROR 结果信号。
 # 网络端到端未验证。
 
 const JsonTransportDecoder := preload("res://protocol/json_transport_decoder.gd")
@@ -21,6 +22,14 @@ signal terminal_error(code: String, message: String)
 signal authority_ptt_end(msg: Dictionary)
 ## #247：服务端字幕 → 调用方可接 PlayableTable.inject_caption_display
 signal transcript_caption(msg: Dictionary)
+## #378：Worker CommandResult ACCEPTED（五键）；不乐观改牌。
+signal command_accepted(result: CommandResult)
+## #378：Worker ERROR / REJECTED 控制结果；恢复权威 decision。
+signal command_rejected(code: String, command_id: String, message: String)
+## #378：统一结果旁路（status=ACCEPTED|REJECTED）。
+signal command_result_received(status: String, code: String, command_id: String)
+## #378：pending 因 decision 不匹配 / 代际失效被丢弃。
+signal command_pending_dropped(reason: String)
 
 var game_mode: String = ""
 var room_id: String = ""
@@ -49,6 +58,18 @@ var _has_committed_snapshot: bool = false
 var _terminal_notified: bool = false
 ## #377：权威 resync 只发一次 reconnecting，直到合法 ROOM_SNAPSHOT 恢复。
 var _resync_reconnect_notified: bool = false
+## #378：连接代际；重连递增；旧代际不得提交。
+var _connection_generation: int = 0
+## #378：client_seq 单调有界（1..MAX_SAFE_INT）。
+var _client_seq: int = 0
+## #378：至多一条 in-flight 业务命令（冻结 Action 副本 + 发送时代际）。
+var _pending_action: Action = null
+var _pending_generation: int = -1
+var _pending_awaiting_result: bool = false
+var _pending_retry_on_recover: bool = false
+## #378 R4：ACCEPTED 后至 matching committed 事件/seq 到达前，禁止第二条命令。
+var _awaiting_committed: bool = false
+var _accepted_commit_seq: int = 0
 
 
 ## E5-06：可选只读 UI 绑定。不改 schema/权威；展示侧消费 nbc committed journal。
@@ -139,6 +160,8 @@ func start() -> Error:
 	_has_committed_snapshot = false
 	_terminal_notified = false
 	_resync_reconnect_notified = false
+	_connection_generation = 1
+	_clear_pending("start")
 	nbc = NetworkedBattleController.new(room_id, seat)
 	if game_mode == "TRASH_TALK":
 		nbc.configure_snapshot_registry_for_mode("TRASH_TALK")
@@ -198,12 +221,125 @@ func ingest_authority_wire_for_test(text: String) -> void:
 	_on_game_text(text)
 
 
+## #378：公共客户端唯一 Action 命令出口。成功发送后 pending 直到 ACCEPTED/ERROR。
+## 仅在已 JOIN 且非重连恢复窗口时可提交；不得仅凭 join_sent 放行。
+func submit_action(action: Action) -> Error:
+	if _released or action == null:
+		return ERR_INVALID_PARAMETER
+	if _pending_awaiting_result or _pending_action != null:
+		return ERR_BUSY
+	if _pending_retry_on_recover:
+		return ERR_BUSY
+	if _awaiting_committed:
+		return ERR_BUSY
+	if _recovering:
+		return ERR_CONNECTION_ERROR
+	if action.room_id != room_id or int(action.seat) != seat:
+		return ERR_INVALID_PARAMETER
+	if _game_peer == null or _game_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return ERR_CONNECTION_ERROR
+	# #378 P1：必须已完成权威 JOIN；重连后亦须等 game_joined
+	if not _game_joined:
+		return ERR_CONNECTION_ERROR
+	# 冻结发送快照（只读 Action）
+	var frozen: Action = Action.from_dict(action.to_dict())
+	if frozen == null:
+		return ERR_INVALID_PARAMETER
+	var payload_text := JSON.stringify(frozen.to_dict())
+	var err: Error = _game_peer.send_text(payload_text)
+	if err != OK:
+		return err
+	_pending_action = frozen
+	_pending_generation = _connection_generation
+	_pending_awaiting_result = true
+	_pending_retry_on_recover = false
+	_awaiting_committed = false
+	_accepted_commit_seq = 0
+	return OK
+
+
+func is_command_pending() -> bool:
+	return _pending_action != null
+
+
+## #378 R4：ACCEPTED 后等待 matching committed（CR.server_seq 入账）期间仍不可新提交。
+func is_awaiting_authority_commit() -> bool:
+	return _awaiting_committed
+
+
+## #378：重连后等待新 TURN/CLAIM 匹配中（尚不可新提交）。
+func is_awaiting_pending_retry() -> bool:
+	return _pending_retry_on_recover and _pending_action != null
+
+
+func get_pending_command_id() -> String:
+	if _pending_action == null:
+		return ""
+	return _pending_action.command_id
+
+
+func get_pending_action() -> Action:
+	if _pending_action == null:
+		return null
+	return Action.from_dict(_pending_action.to_dict())
+
+
+func get_connection_generation() -> int:
+	return _connection_generation
+
+
+## 分配单调 client_seq（1..MAX_SAFE_INT）；耗尽返回 -1。
+func allocate_client_seq() -> int:
+	if _client_seq >= ProtocolConstants.MAX_SAFE_INT:
+		return -1
+	_client_seq += 1
+	return _client_seq
+
+
+## 分配 canonical lowercase UUID v4 command_id。
+func allocate_command_id() -> String:
+	return _new_canonical_v4()
+
+
+func _new_canonical_v4() -> String:
+	var c := Crypto.new()
+	var b: PackedByteArray = c.generate_random_bytes(16)
+	b[6] = (b[6] & 0x0f) | 0x40
+	b[8] = (b[8] & 0x3f) | 0x80
+	return "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x" % [
+		b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+		b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15],
+	]
+
+
+func _clear_pending(reason: String) -> void:
+	var had := _pending_action != null
+	_pending_action = null
+	_pending_generation = -1
+	_pending_awaiting_result = false
+	_pending_retry_on_recover = false
+	_awaiting_committed = false
+	_accepted_commit_seq = 0
+	if had and not reason.is_empty() and reason != "result" and reason != "start" \
+			and reason != "release":
+		command_pending_dropped.emit(reason)
+
+
+func _try_clear_awaiting_committed() -> void:
+	if not _awaiting_committed or nbc == null:
+		return
+	if int(nbc.current_seq()) >= _accepted_commit_seq and _accepted_commit_seq > 0:
+		_awaiting_committed = false
+		_accepted_commit_seq = 0
+
+
 func _observe_bridge_result(result: Dictionary) -> void:
 	if result.is_empty():
 		return
 	if bool(result.get("resync", false)):
 		_emit_authority_resync(str(result.get("reason", "RESYNC_REQUIRED")))
 		return
+	_try_clear_awaiting_committed()
 	if nbc != null and nbc.resync_required() and not bool(result.get("ok", true)):
 		_emit_authority_resync(str(result.get("reason", "RESYNC_REQUIRED")))
 
@@ -254,6 +390,12 @@ func _poll_game() -> void:
 		if _want_open and not _released and not _closed_notified:
 			_closed_notified = true
 			_recovering = true
+			# #378：断线时若仍 awaiting，标记待重连匹配后重试；否则丢弃
+			if _pending_action != null and _pending_awaiting_result:
+				_pending_retry_on_recover = true
+				_pending_awaiting_result = false
+			elif _pending_action != null and not _pending_retry_on_recover:
+				_clear_pending("ws_closed")
 			reconnecting.emit("WS_CLOSED", "game ws closed")
 
 
@@ -264,10 +406,18 @@ func _on_game_text(text: String) -> void:
 	var d: Dictionary = parsed
 	var kind: String = str(d.get("kind", ""))
 	if kind == "ERROR":
-		if not _game_joined:
-			_emit_terminal(str(d.get("code", "ERROR")), str(d.get("message", "")))
+		_handle_control_error(d)
 		return
-	if kind == "COMMAND_RESULT" or str(d.get("status", "")) in ["ACCEPTED", "REJECTED"]:
+	# #378：CommandResult 五键（无 kind）；不得把带 view_hash 的业务事件误判为 CR
+	if kind == "COMMAND_RESULT" \
+			or (
+				not d.has("view_hash")
+				and not d.has("kind")
+				and str(d.get("status", "")) in ["ACCEPTED", "REJECTED"]
+				and d.has("command_id")
+				and d.has("error_code")
+			):
+		_handle_command_result_wire(text, d)
 		return
 	# JOIN 成功：尚无业务事件时也允许发 READY（房间未开局）
 	if not _game_joined and _game_join_sent:
@@ -303,7 +453,139 @@ func _on_game_text(text: String) -> void:
 				_recovering = false
 				_resync_reconnect_notified = false
 				recovered.emit()
+				# #378 P1：snapshot 只标记恢复；不得在尚无 TURN/CLAIM 时判 mismatch
+			return
+		# #378：仅当新代际收到真实 TURN/CLAIM 后比较 decision，匹配才重试
+		if _pending_retry_on_recover and (
+			str(d.get("kind", "")) == "TURN_PROMPT" or str(d.get("kind", "")) == "CLAIM_WINDOW"
+		):
+			_maybe_retry_pending_after_recover()
 		return
+
+
+func _handle_control_error(d: Dictionary) -> void:
+	var code := str(d.get("code", "ERROR"))
+	var message := str(d.get("message", ""))
+	var cmd_raw: Variant = d.get("command_id", null)
+	var cmd := ""
+	if typeof(cmd_raw) == TYPE_STRING:
+		cmd = str(cmd_raw)
+	# #378 P2：仅 canonical 且精确匹配 pending.command_id 的 ERROR 才消费 pending
+	# 空/异 command_id 可能是 JOIN/房间 terminal，不得伪装成该命令拒绝
+	if _pending_awaiting_result and _pending_action != null:
+		if ProtocolUuid.is_canonical_v4(cmd) and cmd == _pending_action.command_id:
+			var pending_cmd := _pending_action.command_id
+			_pending_awaiting_result = false
+			_pending_retry_on_recover = false
+			_pending_action = null
+			_pending_generation = -1
+			command_rejected.emit(code, pending_cmd, message)
+			command_result_received.emit("REJECTED", code, pending_cmd)
+			return
+	# JOIN 前 ERROR → terminal（既有语义）
+	if not _game_joined:
+		_emit_terminal(code, message)
+
+
+func _handle_command_result_wire(text: String, d: Dictionary) -> void:
+	# 仅严格五键 CommandResult；伪造字段不得当权威
+	var cr: CommandResult = JsonTransportDecoder.decode_command_result(text)
+	if cr == null:
+		# REJECTED 不应走五键 ACCEPTED 路径；忽略畸形
+		return
+	if not _pending_awaiting_result or _pending_action == null:
+		return
+	if cr.command_id != _pending_action.command_id:
+		return
+	if cr.status == "ACCEPTED":
+		_pending_awaiting_result = false
+		_pending_retry_on_recover = false
+		_pending_action = null
+		_pending_generation = -1
+		# ACCEPTED 后仍锁定出口直到 CR.server_seq 对应业务事件入账
+		_awaiting_committed = true
+		_accepted_commit_seq = int(cr.server_seq)
+		command_accepted.emit(cr)
+		command_result_received.emit("ACCEPTED", "", cr.command_id)
+		_try_clear_awaiting_committed()
+		return
+	if cr.status == "REJECTED":
+		var ec := cr.error_code
+		_pending_awaiting_result = false
+		_pending_retry_on_recover = false
+		_pending_action = null
+		_pending_generation = -1
+		_awaiting_committed = false
+		_accepted_commit_seq = 0
+		command_rejected.emit(ec, cr.command_id, "rejected")
+		command_result_received.emit("REJECTED", ec, cr.command_id)
+
+
+func _maybe_retry_pending_after_recover() -> void:
+	if not _pending_retry_on_recover or _pending_action == null:
+		return
+	if _pending_generation == _connection_generation:
+		# 同代际已发送，不应再 recover 重试
+		return
+	if _game_peer == null or _game_peer.get_ready_state() != WebSocketPeer.STATE_OPEN:
+		return
+	if not _game_joined:
+		return
+	var pending: Action = _pending_action
+	# 尚无本席 TURN/CLAIM：继续等待新 prompt，不得提前 mismatch 丢弃
+	var last: NetworkedEvent = _latest_self_decision_event()
+	if last == null:
+		return
+	if not _pending_matches_current_authority(pending):
+		_clear_pending("decision_mismatch")
+		return
+	# 原 command_id + 原 payload 安全重试（新代际）
+	var payload_text := JSON.stringify(pending.to_dict())
+	var err: Error = _game_peer.send_text(payload_text)
+	if err != OK:
+		_clear_pending("retry_send_failed")
+		return
+	_pending_generation = _connection_generation
+	_pending_awaiting_result = true
+	_pending_retry_on_recover = false
+
+
+func _pending_matches_current_authority(pending: Action) -> bool:
+	if pending == null or nbc == null:
+		return false
+	if pending.room_id != room_id or int(pending.seat) != seat:
+		return false
+	var last: NetworkedEvent = _latest_self_decision_event()
+	if last == null:
+		return false
+	var p: Dictionary = last.payload
+	if str(p.get("decision_id", "")) != pending.decision_id:
+		return false
+	if int(p.get("hand_seq", -1)) != pending.hand_seq:
+		return false
+	if last.kind == "TURN_PROMPT" and int(p.get("seat", -1)) != seat:
+		return false
+	return true
+
+
+func _latest_self_decision_event() -> NetworkedEvent:
+	if nbc == null:
+		return null
+	var last: NetworkedEvent = null
+	for item in nbc.get_event_journal():
+		if not (item is NetworkedEvent):
+			continue
+		var ne: NetworkedEvent = item as NetworkedEvent
+		if ne.kind == "ROOM_SNAPSHOT":
+			last = null
+			continue
+		if ne.kind == "TURN_PROMPT":
+			if int(ne.payload.get("seat", -1)) == seat:
+				last = ne
+			continue
+		if ne.kind == "CLAIM_WINDOW":
+			last = ne
+	return last
 
 
 func retry_reconnect() -> Error:
@@ -322,6 +604,16 @@ func retry_reconnect() -> Error:
 	_game_ready_sent = false
 	_closed_notified = false
 	_terminal_notified = false
+	# #378：新连接代际；旧连接 generation 绝不可再提交
+	_connection_generation += 1
+	if _pending_action != null:
+		# 保留 pending：仍 awaiting，或断线时已标记待重试。
+		# 不得在已设 _pending_retry_on_recover 时误清（否则同 decision 重试永远不发生）。
+		if _pending_awaiting_result or _pending_retry_on_recover:
+			_pending_retry_on_recover = true
+			_pending_awaiting_result = false
+		else:
+			_clear_pending("reconnect_no_await")
 	var err := _game_peer.connect_to_url(worker_url)
 	if err != OK:
 		_closed_notified = true
@@ -416,6 +708,7 @@ func release() -> void:
 		return
 	_released = true
 	_want_open = false
+	_clear_pending("release")
 	if _voice_client != null:
 		_voice_client.disconnect_voice()
 		if is_instance_valid(_voice_client):
@@ -441,6 +734,8 @@ func release() -> void:
 	_has_committed_snapshot = false
 	_terminal_notified = false
 	_resync_reconnect_notified = false
+	_connection_generation = 0
+	_client_seq = 0
 
 
 func _exit_tree() -> void:

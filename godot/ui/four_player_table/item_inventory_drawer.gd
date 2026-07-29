@@ -22,6 +22,8 @@ var _title: Label
 var _empty: Label
 var _rows_by_id: Dictionary = {}
 var _visible_count := 0
+## #378：命令 pending 时仅禁用 Use；关闭/查看仍可用
+var _use_locked: bool = false
 
 
 func _ready() -> void:
@@ -74,6 +76,35 @@ func set_instances(rows: Array) -> void:
 	_empty.visible = valid_count == 0
 	_visible_count = valid_count
 	_sync_panel_height()
+	# 重建 rows 后锁仍生效
+	_apply_use_lock_to_rows()
+
+
+## #378：命令 pending 时禁用全部 Use；解锁后按 can_request_use 恢复。
+func set_use_locked(locked: bool) -> void:
+	_use_locked = locked
+	_apply_use_lock_to_rows()
+
+
+func is_use_locked() -> bool:
+	return _use_locked
+
+
+func _apply_use_lock_to_rows() -> void:
+	for iid in _rows_by_id.keys():
+		var cell: Control = _rows_by_id[iid] as Control
+		if cell == null or not is_instance_valid(cell):
+			continue
+		var use_button := cell.find_child("UseButton", true, false) as Button
+		if use_button == null:
+			continue
+		if _use_locked:
+			use_button.disabled = true
+			continue
+		var row: Dictionary = {}
+		if cell.has_meta("row"):
+			row = cell.get_meta("row") as Dictionary
+		use_button.disabled = not can_request_use(row)
 
 
 func row_ids() -> Array:
@@ -246,6 +277,8 @@ func _make_row(row: Dictionary) -> PanelContainer:
 		else "%s：%s" % [display_name, _state_label(status, item_id)]
 	use_button.pressed.connect(func() -> void:
 		_select_instance(iid)
+		if _use_locked:
+			return
 		if can_request_use(row):
 			use_item_requested.emit(iid)
 	)
