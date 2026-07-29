@@ -601,3 +601,132 @@ func TestReportedRoomsMakesOccupancyConservative(t *testing.T) {
 	//  sanity
 	_ = fmt.Sprintf("ok")
 }
+
+func TestFailRoom_ReleasesCapacityIdempotent_TicketsFailed(t *testing.T) {
+	f := newRegFixture(t)
+	ctx := context.Background()
+	_, err := f.reg.Register(ctx, workersRegistration("w-fail1", 2))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := f.rdb.HSet(ctx, f.reg.WorkerKey("w-fail1"), "reserved_rooms", "1").Err(); err != nil {
+		t.Fatalf("reserved: %v", err)
+	}
+	roomID := "room-ready-timeout"
+	rkey := f.casual + "room:" + roomID
+	tid0 := "ticket-rt-0"
+	if err := f.rdb.HSet(ctx, rkey, map[string]interface{}{
+		"room_id": roomID, "worker_id": "w-fail1", "status": StatusActive,
+		"human_count": "1", "seat_0_ticket_id": tid0,
+	}).Err(); err != nil {
+		t.Fatalf("seed room: %v", err)
+	}
+	tkey := f.casual + "ticket:" + tid0
+	if err := f.rdb.HSet(ctx, tkey, map[string]interface{}{
+		"ticket_id": tid0, "status": StatusAssigned, "room_id": roomID, "seat": "0",
+	}).Err(); err != nil {
+		t.Fatalf("seed ticket: %v", err)
+	}
+	if err := f.rdb.SAdd(ctx, f.reg.RoomsKey("w-fail1"), roomID).Err(); err != nil {
+		t.Fatalf("sadd: %v", err)
+	}
+
+	kind, err := f.reg.FailRoom(ctx, "w-fail1", roomID, FailCodeRoomFailed)
+	if err != nil || kind != FailOK {
+		t.Fatalf("FailRoom: kind=%s err=%v", kind, err)
+	}
+	rec, ok, err := f.reg.Get(ctx, "w-fail1")
+	if err != nil || !ok {
+		t.Fatalf("Get: %v", err)
+	}
+	if rec.ReservedRooms != 0 {
+		t.Fatalf("reserved after fail=%d want 0", rec.ReservedRooms)
+	}
+	st, _ := f.rdb.HGet(ctx, rkey, "status").Result()
+	if st != StatusFailed {
+		t.Fatalf("status=%q want failed", st)
+	}
+	fc, _ := f.rdb.HGet(ctx, rkey, "fail_code").Result()
+	if fc != FailCodeRoomFailed {
+		t.Fatalf("fail_code=%q", fc)
+	}
+	tst, _ := f.rdb.HGet(ctx, tkey, "status").Result()
+	if tst != StatusFailed {
+		t.Fatalf("ticket status=%q want failed", tst)
+	}
+	// 幂等
+	kind2, err := f.reg.FailRoom(ctx, "w-fail1", roomID, FailCodeRoomFailed)
+	if err != nil || kind2 != FailIdempotent {
+		t.Fatalf("idempotent fail: kind=%s err=%v", kind2, err)
+	}
+	rec, _, _ = f.reg.Get(ctx, "w-fail1")
+	if rec.ReservedRooms != 0 {
+		t.Fatalf("reserved after idempotent fail=%d", rec.ReservedRooms)
+	}
+	// completed 不得变 failed
+	room2 := "room-completed"
+	r2 := f.casual + "room:" + room2
+	if err := f.rdb.HSet(ctx, r2, map[string]interface{}{
+		"room_id": room2, "worker_id": "w-fail1", "status": StatusCompleted,
+	}).Err(); err != nil {
+		t.Fatalf("seed completed: %v", err)
+	}
+	kind3, err := f.reg.FailRoom(ctx, "w-fail1", room2, FailCodeRoomFailed)
+	if err != nil || kind3 != FailAlreadyDone {
+		t.Fatalf("completed must not fail: kind=%s err=%v", kind3, err)
+	}
+}
+
+func TestFailRoom_WrongWorkerOnFailed_Rejected(t *testing.T) {
+	f := newRegFixture(t)
+	ctx := context.Background()
+	_, err := f.reg.Register(ctx, workersRegistration("w-own", 1))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	_, err = f.reg.Register(ctx, workersRegistration("w-other", 1))
+	if err != nil {
+		t.Fatalf("Register other: %v", err)
+	}
+	roomID := "room-failed-owner"
+	rkey := f.casual + "room:" + roomID
+	if err := f.rdb.HSet(ctx, rkey, map[string]interface{}{
+		"room_id": roomID, "worker_id": "w-own", "status": StatusFailed,
+		"fail_code": FailCodeRoomFailed,
+	}).Err(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	kind, err := f.reg.FailRoom(ctx, "w-other", roomID, FailCodeRoomFailed)
+	if err != nil || kind != FailWrongWorker {
+		t.Fatalf("wrong worker on failed: kind=%s err=%v", kind, err)
+	}
+	// owner idempotent still ok
+	kind2, err := f.reg.FailRoom(ctx, "w-own", roomID, FailCodeRoomFailed)
+	if err != nil || kind2 != FailIdempotent {
+		t.Fatalf("owner idempotent: kind=%s err=%v", kind2, err)
+	}
+}
+
+func TestFailRoom_RejectsNonROOM_FAILEDCode(t *testing.T) {
+	f := newRegFixture(t)
+	ctx := context.Background()
+	_, err := f.reg.Register(ctx, workersRegistration("w-fc", 1))
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	roomID := "room-bad-code"
+	rkey := f.casual + "room:" + roomID
+	if err := f.rdb.HSet(ctx, rkey, map[string]interface{}{
+		"room_id": roomID, "worker_id": "w-fc", "status": StatusActive,
+	}).Err(); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	kind, err := f.reg.FailRoom(ctx, "w-fc", roomID, "CUSTOM_FAIL")
+	if err == nil || kind != FailBadState {
+		t.Fatalf("want BAD_STATE for custom code, got kind=%s err=%v", kind, err)
+	}
+	st, _ := f.rdb.HGet(ctx, rkey, "status").Result()
+	if st != StatusActive {
+		t.Fatalf("status must stay active, got %q", st)
+	}
+}

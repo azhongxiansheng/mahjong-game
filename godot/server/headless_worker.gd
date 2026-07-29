@@ -117,6 +117,14 @@ func ensure_room_from_claims(claims: Dictionary) -> Dictionary:
 	var room_id: String = str(claims.get("room_id", ""))
 	if room_id.is_empty():
 		return {"ok": false, "message": "no room_id"}
+	# #376：tombstone / failed session 不得重建
+	if is_room_failed_terminal(room_id):
+		var fe: Dictionary = failed_room_error(room_id)
+		return {
+			"ok": false,
+			"code": str(fe.get("code", "ROOM_FAILED")),
+			"message": str(fe.get("message", "room failed")),
+		}
 	if _rooms.has(room_id):
 		var existing: HeadlessRoomSession = _rooms[room_id] as HeadlessRoomSession
 		if existing.round_kind != str(claims.get("round_kind", "")) \
@@ -125,7 +133,7 @@ func ensure_room_from_claims(claims: Dictionary) -> Dictionary:
 			return {"ok": false, "message": "bootstrap mismatch"}
 		return {"ok": true, "message": ""}
 	var session := HeadlessRoomSession.new()
-	if not session.bootstrap_from_claims(claims):
+	if not session.bootstrap_from_claims(claims, now_ms()):
 		return {"ok": false, "message": "bootstrap failed"}
 	_rooms[room_id] = session
 	return {"ok": true, "message": ""}
@@ -138,9 +146,23 @@ func allocate_ptt_end_authority(
 	session_id: String,
 	utterance_id: String
 ) -> Dictionary:
+	# #376 P2-2：tombstone 后稳定 ROOM_FAILED
+	if is_room_failed_terminal(room_id):
+		var fe: Dictionary = failed_room_error(room_id)
+		return {
+			"ok": false,
+			"code": str(fe.get("code", "ROOM_FAILED")),
+			"message": str(fe.get("message", "room failed")),
+		}
 	var session: HeadlessRoomSession = get_room(room_id)
 	if session == null or session.server == null:
 		return {"ok": false, "code": "COMMAND_REJECTED", "message": "no room"}
+	if session.is_room_failed():
+		return {
+			"ok": false,
+			"code": "ROOM_FAILED",
+			"message": session.fail_message(),
+		}
 	if str(session.game_mode) != "TRASH_TALK":
 		return {"ok": false, "code": "UNAUTHORIZED", "message": "voice only TRASH_TALK"}
 	if not session.is_human_seat(seat):
@@ -225,14 +247,20 @@ func is_listening() -> bool:
 	return _listening and _tcp.is_listening()
 
 
-## #256：当前未结束房间数。完成态由 session 游标缓存 O(1) 读取。
+## #376：失败房间 tombstone（room_id → {code,message}）；旧 token 不得重建权威。
+var _failed_room_tombstones: Dictionary = {}
+
+
+## #256/#376：当前未结束房间数。完成/失败终态/tombstone 均不计活跃容量。
 func room_count() -> int:
 	var n: int = 0
 	for rid in _rooms.keys():
 		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
 		if session == null:
 			continue
-		if session.is_match_completed():
+		if session.is_match_completed() or session.is_room_failed():
+			continue
+		if _failed_room_tombstones.has(str(rid)):
 			continue
 		n += 1
 	return n
@@ -242,6 +270,30 @@ func get_room(room_id: String) -> HeadlessRoomSession:
 	if _rooms.has(room_id):
 		return _rooms[room_id] as HeadlessRoomSession
 	return null
+
+
+## #376：房间是否已 terminal failed（含 tombstone）。
+func is_room_failed_terminal(room_id: String) -> bool:
+	if _failed_room_tombstones.has(room_id):
+		return true
+	var s: HeadlessRoomSession = get_room(room_id)
+	return s != null and s.is_room_failed()
+
+
+func failed_room_error(room_id: String) -> Dictionary:
+	if _failed_room_tombstones.has(room_id):
+		var t: Dictionary = _failed_room_tombstones[room_id]
+		return {
+			"code": str(t.get("code", "ROOM_FAILED")),
+			"message": str(t.get("message", "room failed")),
+		}
+	var s: HeadlessRoomSession = get_room(room_id)
+	if s != null and s.is_room_failed():
+		return {
+			"code": s.fail_code() if not s.fail_code().is_empty() else "ROOM_FAILED",
+			"message": s.fail_message() if not s.fail_message().is_empty() else "room failed",
+		}
+	return {}
 
 
 func _process(_delta: float) -> void:
@@ -302,6 +354,35 @@ func poll() -> void:
 		_close_conn(int(id))
 	# #241：掉线 lease / AI 接管（真实生产路径）
 	_tick_all_leases()
+	# #376：READY 超时 → 权威失败 + 先通知客户端再上报 CP
+	_tick_ready_timeouts()
+	# #376 R5：TRASH_TALK RewardWindow 权威时钟（Worker 单调 ms 映射）
+	_tick_reward_authority_clocks()
+
+
+## #376 R5：对已开局、非 terminal 房间推进 Reward 权威时钟。
+## seq/journal 变化则广播；MATCH 完成则 finalize；tick 失败 → ROOM_FAILED。
+func _tick_reward_authority_clocks() -> void:
+	var now: int = now_ms()
+	var failed_ids: Array = []
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null:
+			continue
+		if not session.is_started() or session.is_room_failed() or session.is_match_completed():
+			continue
+		var seq0: int = session.current_server_seq()
+		if not session.tick_reward_authority(now):
+			session.mark_room_failed(
+				HeadlessRoomSession.ERR_ROOM_FAILED,
+				"reward authority tick failed"
+			)
+			failed_ids.append(str(rid))
+			continue
+		if session.current_server_seq() != seq0 or session.is_match_completed():
+			_broadcast_room_events(str(rid))
+	for rid2 in failed_ids:
+		_finalize_failed_room(str(rid2))
 
 
 func _ensure_stt_bridge() -> void:
@@ -448,6 +529,15 @@ func _handle_join(cid: int, d: Dictionary) -> void:
 	if claims.is_empty():
 		_send_error(cid, room_id, "", "UNAUTHORIZED", "room token rejected")
 		return
+	# #376：失败 tombstone 稳定 terminal，旧 token 不得 bootstrap 复活
+	if is_room_failed_terminal(room_id):
+		var fe: Dictionary = failed_room_error(room_id)
+		_send_error(
+			cid, room_id, "",
+			str(fe.get("code", "ROOM_FAILED")),
+			str(fe.get("message", "room failed"))
+		)
+		return
 	var session: HeadlessRoomSession = null
 	if _rooms.has(room_id):
 		session = _rooms[room_id] as HeadlessRoomSession
@@ -458,9 +548,12 @@ func _handle_join(cid: int, d: Dictionary) -> void:
 				or not _character_ids_equal(session.character_ids, claims.get("character_ids", [])):
 			_send_error(cid, room_id, "", "UNAUTHORIZED", "bootstrap mismatch")
 			return
+		if session.is_room_failed():
+			_send_error(cid, room_id, "", "ROOM_FAILED", session.fail_message())
+			return
 	else:
 		session = HeadlessRoomSession.new()
-		if not session.bootstrap_from_claims(claims):
+		if not session.bootstrap_from_claims(claims, now_ms()):
 			_send_error(cid, room_id, "", "COMMAND_REJECTED", "bootstrap failed")
 			return
 		_rooms[room_id] = session
@@ -542,9 +635,20 @@ func _handle_ready(cid: int, d: Dictionary) -> void:
 	if room_id != str(st["room_id"]) or seat != int(st["seat"]):
 		_send_error(cid, room_id, "", "UNAUTHORIZED", "seat/room binding mismatch")
 		return
+	if is_room_failed_terminal(room_id):
+		var fe_r: Dictionary = failed_room_error(room_id)
+		_send_error(
+			cid, room_id, "",
+			str(fe_r.get("code", "ROOM_FAILED")),
+			str(fe_r.get("message", "room failed"))
+		)
+		return
 	var session: HeadlessRoomSession = get_room(room_id)
 	if session == null:
 		_send_error(cid, room_id, "", "COMMAND_REJECTED", "no room")
+		return
+	if session.is_room_failed():
+		_send_error(cid, room_id, "", "ROOM_FAILED", session.fail_message())
 		return
 	var was_started: bool = session.is_started()
 	var rr: Dictionary = session.ready(seat, str(st["session_id"]))
@@ -610,6 +714,15 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 
 	var room_id: String = bound_room
 	var seat: int = bound_seat
+	# #376 P2-2：tombstone 后合法 Action 稳定 ROOM_FAILED（schema/forgery 已在更前拦截）
+	if is_room_failed_terminal(room_id):
+		var fe_a: Dictionary = failed_room_error(room_id)
+		_send_error(
+			cid, room_id, action.command_id,
+			str(fe_a.get("code", "ROOM_FAILED")),
+			str(fe_a.get("message", "room failed"))
+		)
+		return
 	var session: HeadlessRoomSession = get_room(room_id)
 
 	# #242：已 JOIN 且 Action 可形成指纹后，越权 seat/room / 未开局 / stale 走同一缓存语义
@@ -624,6 +737,9 @@ func _handle_action(cid: int, d: Dictionary) -> void:
 		return
 	if session == null:
 		_send_error(cid, room_id, action.command_id, "COMMAND_REJECTED", "not started")
+		return
+	if session.is_room_failed():
+		_send_error(cid, room_id, action.command_id, "ROOM_FAILED", session.fail_message())
 		return
 	if not session.is_started():
 		var cr_ns: CommandResult = session.server.reject_action_cached(
@@ -715,10 +831,65 @@ func _cleanup_completed_rooms() -> void:
 		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
 		if session == null:
 			continue
+		# 仅正常 MATCH_SETTLED 完成可物理移除；失败房间改 tombstone 保留拒绝
 		if bool(session.get_meta("cp_complete_cleanup_pending", false)) and session.is_match_completed():
+			to_drop.append(str(rid))
+			continue
+		# #376：失败房转 tombstone 后从 _rooms 摘掉 session，但保留拒绝合同
+		if bool(session.get_meta("cp_fail_tombstone_pending", false)) and session.is_room_failed():
+			var code := session.fail_code()
+			if code.is_empty():
+				code = "ROOM_FAILED"
+			var msg := session.fail_message()
+			if msg.is_empty():
+				msg = "room failed"
+			_failed_room_tombstones[str(rid)] = {"code": code, "message": msg}
 			to_drop.append(str(rid))
 	for rid2 in to_drop:
 		_rooms.erase(str(rid2))
+
+
+## #376：poll 路径检查 READY 超时；失败则 terminal ERROR + CP fail + 释放容量。
+func _tick_ready_timeouts() -> void:
+	var now: int = now_ms()
+	var failed_ids: Array = []
+	for rid in _rooms.keys():
+		var session: HeadlessRoomSession = _rooms[rid] as HeadlessRoomSession
+		if session == null:
+			continue
+		if session.tick_ready_timeout(now):
+			failed_ids.append(str(rid))
+	for rid2 in failed_ids:
+		_finalize_failed_room(str(rid2))
+
+
+## #376：先向已连接客户端发稳定 terminal ERROR，再 enqueue CP fail（一次），
+## 下一 poll 转 tombstone；旧 token 仍稳定 ROOM_FAILED，不重建权威。
+func _finalize_failed_room(room_id: String) -> void:
+	var session: HeadlessRoomSession = get_room(room_id)
+	if session == null or not session.is_room_failed():
+		return
+	if bool(session.get_meta("cp_fail_enqueued", false)):
+		return
+	session.set_meta("cp_fail_enqueued", true)
+	var code := session.fail_code()
+	if code.is_empty():
+		code = "ROOM_FAILED"
+	var msg := session.fail_message()
+	if msg.is_empty():
+		msg = "room failed"
+	# 立即写入 tombstone，防止同 poll 内其它路径 bootstrap 复活
+	_failed_room_tombstones[room_id] = {"code": code, "message": msg}
+	for cid in _conns.keys():
+		var st: Dictionary = _conns[cid]
+		if str(st.get("room_id", "")) != room_id:
+			continue
+		if not bool(st.get("joined", false)) or bool(st.get("superseded", false)):
+			continue
+		_send_error(int(cid), room_id, "", code, msg)
+	if _cp_client != null and _cp_client.is_started():
+		_cp_client.enqueue_room_fail(room_id)
+	session.set_meta("cp_fail_tombstone_pending", true)
 
 
 func _flush_events(cid: int) -> void:
@@ -979,6 +1150,15 @@ func clear_outbox_for_test(cid: int) -> void:
 		return
 	var st: Dictionary = _conns[cid]
 	st["outbox"] = []
+	_conns[cid] = st
+
+
+## #376 R6 测试：设置连接 last_seq，使后续 flush 仅投递增量事件。
+func set_conn_last_seq_for_test(cid: int, seq: int) -> void:
+	if not _conns.has(cid):
+		return
+	var st: Dictionary = _conns[cid]
+	st["last_seq"] = maxi(0, int(seq))
 	_conns[cid] = st
 
 

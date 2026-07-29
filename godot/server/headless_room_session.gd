@@ -4,6 +4,7 @@ extends RefCounted
 # #240：单房间权威会话。惰性建房后持有 LocalLoopbackServer；
 # 全部 HUMAN READY 才 start。客户端不得注入 seed/牌墙/结果。
 # #241：座位连接代际、30s lease、AI 接管/归还。
+# #376：整场 match owner（GameDriver + 跨局 LocalLoopback + READY 超时）。
 # 网络端到端未验证。
 
 const RULE_VERSION := "riichi-v1"
@@ -12,8 +13,14 @@ const ERR_COMMAND_REJECTED := "COMMAND_REJECTED"
 const ERR_FORGERY_REJECTED := "FORGERY_REJECTED"
 const ERR_NOT_READY := "COMMAND_REJECTED"
 const ERR_PROTOCOL := "PROTOCOL_VERSION_UNSUPPORTED"
+const ERR_ROOM_FAILED := "ROOM_FAILED"
 ## #241：掉线后保留座位的宽限（毫秒）
 const RECONNECT_LEASE_MS := 30000
+## #376：assigned 后真人 JOIN+READY 宽限（毫秒）；起点=首次合法 bootstrap 单调时钟
+const HUMAN_READY_TIMEOUT_MS := 30000
+const HANDS_PER_ROUND := 4
+const EAST_TOTAL_HANDS := 4
+const HANCHAN_TOTAL_HANDS := 8
 
 var room_id: String = ""
 var round_kind: String = ""
@@ -23,11 +30,23 @@ var authority_seed: int = 0
 var character_ids: Array = []
 var config: GameSessionConfig = null
 var server: LocalLoopbackServer = null
+## #376：整场权威驱动（hand_index/dealer/honba/…）；客户端不可提交覆盖
+var match_driver: GameDriver = null
+## #376：与整场共享的模式模块（TT 跨局保留；STANDARD 四零）
+var mode_modules: ModeModuleBundle = null
 
 # seat -> seat state dict
 var _seats: Dictionary = {}
 var _started: bool = false
 var _seed_override: int = -1  # 测试注入；生产用 Crypto
+## #376：bootstrap 单调时钟（ms）；READY 超时起点
+var _bootstrap_at_ms: int = -1
+## #376 R5：Worker 单调 ms → RewardWindow 权威时钟映射起点（bootstrap 冻结）
+var _auth_clock_worker_origin_ms: int = -1
+var _auth_clock_reward_origin_ms: int = -1
+var _room_failed: bool = false
+var _fail_code: String = ""
+var _fail_message: String = ""
 
 
 func _init() -> void:
@@ -35,7 +54,8 @@ func _init() -> void:
 
 
 ## 首个合法 JOIN 时调用。claims 来自已验签 room_token。
-func bootstrap_from_claims(claims: Dictionary) -> bool:
+## now_ms：Worker 单调时钟；<0 时用 Time.get_ticks_msec（仅非 Worker 路径）。
+func bootstrap_from_claims(claims: Dictionary, now_ms: int = -1) -> bool:
 	if server != null:
 		return false
 	if claims.is_empty():
@@ -82,14 +102,65 @@ func bootstrap_from_claims(claims: Dictionary) -> bool:
 	)
 	if config == null:
 		return false
-	server = LocalLoopbackServer.new(config, 0)
+	var total_hands: int = EAST_TOTAL_HANDS
+	if config.round_kind == GameSessionConfig.ROUND_HANCHAN:
+		total_hands = HANCHAN_TOTAL_HANDS
+	elif config.round_kind != GameSessionConfig.ROUND_EAST:
+		return false
+	mode_modules = ModeModuleBundle.from_config(config)
+	if mode_modules == null:
+		return false
+	if mode_modules.is_trash_talk() and mode_modules.item_inventory != null:
+		mode_modules.item_inventory.set_match_namespace(str(config.session_id))
+	match_driver = GameDriver.new(authority_seed, total_hands, HANDS_PER_ROUND)
+	match_driver.mode_modules = mode_modules
+	var mods_ref: ModeModuleBundle = mode_modules
+	match_driver.bc_factory = func(
+		hand_seed: int,
+		dealer: int,
+		use_heuristic: bool,
+		round_wind: int,
+		hand_seq: int
+	) -> BattleController:
+		var bc := BattleController.new(
+			hand_seed, dealer, use_heuristic, round_wind, hand_seq
+		)
+		if bc != null:
+			bc.bind_mode_modules(mods_ref)
+		return bc
+	var first_bc: BattleController = match_driver.start_hand() as BattleController
+	if first_bc == null or first_bc.state == null:
+		match_driver = null
+		mode_modules = null
+		return false
+	server = LocalLoopbackServer.new(
+		config, match_driver.dealer_seat, first_bc, mode_modules
+	)
 	if server == null or server._bc == null:
 		server = null
+		match_driver = null
+		mode_modules = null
 		return false
+	server.match_owner = self
+	server.match_end_after_hand = Callable(self, "will_match_end_after_hand")
+	server.on_hand_settled_committed = Callable(self, "on_hand_settled_committed")
+	# GameDriver.battle 与 server BC 对齐（首局）
+	match_driver.battle = first_bc
 	_seats.clear()
 	for i in range(4):
 		_seats[i] = _empty_seat_state(String(participants[i]))
 	_started = false
+	_room_failed = false
+	_fail_code = ""
+	_fail_message = ""
+	_auth_clock_worker_origin_ms = -1
+	_auth_clock_reward_origin_ms = -1
+	if now_ms >= 0:
+		_bootstrap_at_ms = int(now_ms)
+	else:
+		_bootstrap_at_ms = Time.get_ticks_msec()
+	# #376 R5：冻结 Worker 单调时钟 → Reward 权威时钟映射（非墙钟、非 ticks 直灌）
+	_bind_authority_clock_origin(_bootstrap_at_ms)
 	return true
 
 
@@ -97,12 +168,148 @@ func set_seed_override_for_test(p_seed: int) -> void:
 	_seed_override = p_seed
 
 
+## #376：测试可覆盖 bootstrap 时钟起点。
+func set_bootstrap_at_ms_for_test(ms: int) -> void:
+	_bootstrap_at_ms = ms
+
+
+## #376 R5：bootstrap 冻结 Worker ms ↔ Reward authority ms 映射。
+func _bind_authority_clock_origin(worker_ms: int) -> void:
+	if _auth_clock_worker_origin_ms >= 0:
+		return
+	_auth_clock_worker_origin_ms = maxi(0, int(worker_ms))
+	_auth_clock_reward_origin_ms = LocalLoopbackServer.REWARD_CLOCK_BASE_MS
+
+
+## #376 R5：Worker 单调 ms → RewardWindow 权威时钟（仅非负 delta）。
+func map_worker_ms_to_reward_authority(worker_ms: int) -> int:
+	if _auth_clock_worker_origin_ms < 0:
+		_bind_authority_clock_origin(worker_ms)
+	var delta: int = int(worker_ms) - _auth_clock_worker_origin_ms
+	if delta < 0:
+		delta = 0
+	return _auth_clock_reward_origin_ms + delta
+
+
+## #376 R5：Worker poll 推进本房间 Reward 权威时钟。
+## 倒退/相同 → 零副作用 true；advance 失败 → false（调用方 ROOM_FAILED）。
+func tick_reward_authority(worker_ms: int) -> bool:
+	if server == null or _room_failed:
+		return true
+	if not _started or is_match_completed():
+		return true
+	var target: int = map_worker_ms_to_reward_authority(worker_ms)
+	var cur: int = server.reward_authority_now_ms()
+	if target <= cur:
+		return true
+	return server.advance_reward_time(target)
+
+
+## #376 R5：权威 tick/其它失败 → 稳定 ROOM_FAILED（幂等）。
+func mark_room_failed(code: String = ERR_ROOM_FAILED, message: String = "authority failed") -> void:
+	if _room_failed:
+		return
+	_room_failed = true
+	_fail_code = code if not str(code).is_empty() else ERR_ROOM_FAILED
+	_fail_message = message if not str(message).is_empty() else "authority failed"
+
+
 func is_bootstrapped() -> bool:
-	return server != null
+	return server != null and match_driver != null
 
 
 func is_started() -> bool:
 	return _started
+
+
+func is_room_failed() -> bool:
+	return _room_failed
+
+
+func fail_code() -> String:
+	return _fail_code
+
+
+func fail_message() -> String:
+	return _fail_message
+
+
+## #376：只读 match 权威状态（客户端不可覆盖）。
+func export_match_state() -> Dictionary:
+	if match_driver == null:
+		return {}
+	return match_driver.export_match_state()
+
+
+## #376 P1-1/P1-3：事务 capture（含 GameDriver battle 引用）。
+func capture_match_authority_state() -> Dictionary:
+	if match_driver == null:
+		return {}
+	return match_driver.capture_authority_state()
+
+
+## #376：事务 restore；失败 false。
+func restore_match_authority_state(snap: Dictionary) -> bool:
+	if match_driver == null:
+		return snap.is_empty()
+	return match_driver.restore_authority_state(snap)
+
+
+## #376：HAND_SETTLED payload → 是否整场终场（生产 RewardWindow / MATCH 判定）。
+func will_match_end_after_hand(settlement: Dictionary) -> bool:
+	if match_driver == null:
+		return false
+	return match_driver.will_finish_after_settlement(settlement)
+
+
+## #376：HAND_SETTLED 已原子发布并 commit 后调用；推进账本并返回下一局 BC 或 finished。
+## #376 R4：任何非空 error 必须 finished=false，禁止伪装终场。
+func on_hand_settled_committed(settlement: Dictionary) -> Dictionary:
+	if match_driver == null:
+		return {"finished": false, "bc": null, "error": "NO_DRIVER"}
+	var adv: Dictionary = match_driver.advance_from_committed_settlement(settlement)
+	if not str(adv.get("error", "")).is_empty():
+		return {"finished": false, "bc": null, "error": str(adv.get("error", ""))}
+	if bool(adv.get("finished", false)) or match_driver.finished:
+		return {"finished": true, "bc": null, "renchan": bool(adv.get("renchan", false))}
+	var next_bc: BattleController = match_driver.start_hand() as BattleController
+	if next_bc == null:
+		return {"finished": false, "bc": null, "error": "START_HAND_FAILED"}
+	# 跨局保留 AI 接管：由 LocalLoopback.start_next_hand 重绑 _ai_control_seats
+	return {
+		"finished": false,
+		"bc": next_bc,
+		"renchan": bool(adv.get("renchan", false)),
+		"dealer": match_driver.dealer_seat,
+	}
+
+
+## #376：poll/tick 路径：未开局且真人未在时限内全部 JOIN+READY → 权威失败。
+## 返回 true 表示本 tick 新失败。
+func tick_ready_timeout(now_ms: int) -> bool:
+	if _room_failed or _started or server == null:
+		return false
+	if _bootstrap_at_ms < 0:
+		return false
+	if int(now_ms) - _bootstrap_at_ms < HUMAN_READY_TIMEOUT_MS:
+		return false
+	# 仍有 HUMAN 未 JOIN+READY
+	if all_humans_ready() and _all_humans_joined():
+		return false
+	_room_failed = true
+	_fail_code = ERR_ROOM_FAILED
+	_fail_message = "humans not ready within timeout"
+	return true
+
+
+func _all_humans_joined() -> bool:
+	for i in range(4):
+		if not is_human_seat(i):
+			continue
+		var st: Dictionary = _seats[i]
+		if not bool(st.get("joined", false)):
+			return false
+	return true
 
 
 func participant_kind(seat: int) -> String:
@@ -119,6 +326,8 @@ func is_human_seat(seat: int) -> bool:
 func can_join(seat: int, session_id: String) -> Dictionary:
 	if server == null:
 		return _fail(ERR_COMMAND_REJECTED, "room not bootstrapped")
+	if _room_failed:
+		return _fail(ERR_ROOM_FAILED, _fail_message if not _fail_message.is_empty() else "room failed")
 	if seat < 0 or seat > 3:
 		return _fail(ERR_UNAUTHORIZED, "invalid seat")
 	if not is_human_seat(seat):
@@ -140,6 +349,8 @@ func can_join(seat: int, session_id: String) -> Dictionary:
 ## replaced_conn_id >=0 表示需 Worker 原子作废旧连接（不启动 lease）。
 ## 注意：重连交付失败路径不得先调用本方法（见 Worker prepare→commit 顺序）。
 func join(seat: int, session_id: String, conn_id: int = -1, generation: int = 0) -> Dictionary:
+	if _room_failed:
+		return _fail(ERR_ROOM_FAILED, _fail_message if not _fail_message.is_empty() else "room failed")
 	var pre: Dictionary = can_join(seat, session_id)
 	if not bool(pre.get("ok", false)):
 		return pre
@@ -329,6 +540,8 @@ func lease_deadline_ms(seat: int) -> int:
 func ready(seat: int, session_id: String) -> Dictionary:
 	if server == null:
 		return _fail(ERR_COMMAND_REJECTED, "room not bootstrapped")
+	if _room_failed:
+		return _fail(ERR_ROOM_FAILED, _fail_message if not _fail_message.is_empty() else "room failed")
 	if seat < 0 or seat > 3 or not is_human_seat(seat):
 		return _fail(ERR_UNAUTHORIZED, "invalid seat")
 	var st: Dictionary = _seats[seat]
@@ -348,6 +561,8 @@ func ready(seat: int, session_id: String) -> Dictionary:
 func try_start_if_ready() -> String:
 	if _started:
 		return ""
+	if _room_failed:
+		return "room failed"
 	if server == null:
 		return "no server"
 	for i in range(4):
@@ -407,11 +622,16 @@ func submit_action_for_seat(bound_seat: int, action: Action) -> CommandResult:
 	return server.submit_action(action, bound_session)
 
 
-## #256：权威整场结束（MATCH_SETTLED）。O(1) 读 LocalLoopbackServer 完成标志，不调用 event_journal。
+## #256/#376：权威整场结束（MATCH_SETTLED）。O(1) 读 LocalLoopbackServer 完成标志，不调用 event_journal。
 func is_match_completed() -> bool:
 	if server == null:
 		return false
 	return server.has_match_settled()
+
+
+## #376：失败终态（READY 超时等）；与 match completed 互斥，均不算活跃房间。
+func is_terminal() -> bool:
+	return is_match_completed() or _room_failed
 
 
 func events_since(seat: int, after_seq: int) -> Array:

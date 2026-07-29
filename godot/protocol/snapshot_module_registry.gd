@@ -25,6 +25,10 @@ static func make_standard() -> SnapshotModuleRegistry:
 	var r_meta: Dictionary = reg.register(MatchingMetaSnapshotProvider.new())
 	if not bool(r_meta.get("ok", false)):
 		push_error("SnapshotModuleRegistry.make_standard matching_meta failed: %s" % str(r_meta))
+	# #376：整场 match 权威（optional；有 match owner 时 serialize 注入）
+	var r_match: Dictionary = reg.register(MatchAuthoritySnapshotProvider.new())
+	if not bool(r_match.get("ok", false)):
+		push_error("SnapshotModuleRegistry.make_standard match_authority failed: %s" % str(r_match))
 	return reg
 
 
@@ -88,26 +92,28 @@ func registered_keys() -> Array:
 	return keys
 
 
-## STANDARD 生产默认：core_table + matching_meta（#374）。
+## STANDARD 生产默认：core_table + match_authority + matching_meta（#374+#376）。
 func is_standard_only() -> bool:
 	var keys: Array = registered_keys()
-	return keys.size() == 2 \
+	return keys.size() == 3 \
 			and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY \
-			and str(keys[1]) == MatchingMetaSnapshotProvider.MODULE_KEY
+			and str(keys[1]) == MatchAuthoritySnapshotProvider.MODULE_KEY \
+			and str(keys[2]) == MatchingMetaSnapshotProvider.MODULE_KEY
 
 
-## TRASH_TALK：core_table + item/reward + matching_meta + 四个 optional viewer（升序）。
+## TRASH_TALK：core_table + item/match/reward + matching_meta + 四个 optional viewer（升序）。
 func is_trash_talk_registry() -> bool:
 	var keys: Array = registered_keys()
-	return keys.size() == 8 \
+	return keys.size() == 9 \
 			and str(keys[0]) == CoreTableSnapshotProvider.MODULE_KEY \
 			and str(keys[1]) == ItemInventorySnapshotProvider.MODULE_KEY \
-			and str(keys[2]) == MatchingMetaSnapshotProvider.MODULE_KEY \
-			and str(keys[3]) == RewardWindowSnapshotProvider.MODULE_KEY \
-			and str(keys[4]) == ViewerNextDrawSnapshotProvider.MODULE_KEY \
-			and str(keys[5]) == ViewerSeatDrawForecastSnapshotProvider.MODULE_KEY \
-			and str(keys[6]) == ViewerTenpaiWaitsSnapshotProvider.MODULE_KEY \
-			and str(keys[7]) == ViewerWallTopSnapshotProvider.MODULE_KEY
+			and str(keys[2]) == MatchAuthoritySnapshotProvider.MODULE_KEY \
+			and str(keys[3]) == MatchingMetaSnapshotProvider.MODULE_KEY \
+			and str(keys[4]) == RewardWindowSnapshotProvider.MODULE_KEY \
+			and str(keys[5]) == ViewerNextDrawSnapshotProvider.MODULE_KEY \
+			and str(keys[6]) == ViewerSeatDrawForecastSnapshotProvider.MODULE_KEY \
+			and str(keys[7]) == ViewerTenpaiWaitsSnapshotProvider.MODULE_KEY \
+			and str(keys[8]) == ViewerWallTopSnapshotProvider.MODULE_KEY
 
 
 ## 权威侧：按 module_key 升序组合 modules 数组。失败返回 {ok:false,...}。

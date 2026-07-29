@@ -36,8 +36,12 @@ var register_attempt_count: int = 0
 var complete_success_count: int = 0
 var complete_attempt_count: int = 0
 var _complete_queue: Array = []
+## #376：READY 超时等房间失败上报队列（与 complete 分离，幂等）
+var _fail_queue: Array = []
 var _pending_kind: String = ""
 var _pending_room_id: String = ""
+var fail_success_count: int = 0
+var fail_attempt_count: int = 0
 
 
 func configure(
@@ -87,6 +91,7 @@ func stop() -> void:
 	_started = false
 	_in_flight = false
 	_complete_queue.clear()
+	_fail_queue.clear()
 	_pending_kind = ""
 	_pending_room_id = ""
 	if _http != null:
@@ -116,6 +121,10 @@ func complete_queue_size_for_test() -> int:
 	return _complete_queue.size()
 
 
+func fail_queue_size_for_test() -> int:
+	return _fail_queue.size()
+
+
 func build_register_body(active_rooms: int) -> String:
 	var rooms: int = maxi(0, active_rooms)
 	return (
@@ -138,11 +147,27 @@ func build_complete_body(room_id: String) -> String:
 	)
 
 
+func build_fail_body(room_id: String, fail_code: String = "ROOM_FAILED") -> String:
+	var code := fail_code.strip_edges()
+	if code.is_empty():
+		code = "ROOM_FAILED"
+	return (
+		"{"
+		+ "\"worker_id\":%s," % JSON.stringify(worker_id)
+		+ "\"room_id\":%s," % JSON.stringify(room_id)
+		+ "\"fail_code\":%s" % JSON.stringify(code)
+		+ "}"
+	)
+
+
 func enqueue_room_complete(room_id: String) -> void:
 	var rid := room_id.strip_edges()
 	if rid.is_empty():
 		return
 	if _complete_queue.has(rid) or _pending_room_id == rid:
+		return
+	# 已排队 fail 的房间不再 complete
+	if _fail_queue.has(rid):
 		return
 	_complete_queue.append(rid)
 	# 若未在退避中，允许立即尝试 complete（仍次于到期的 renew）
@@ -150,10 +175,25 @@ func enqueue_room_complete(room_id: String) -> void:
 		_next_complete_ms = 0
 
 
+## #376：房间权威失败（READY 超时等）→ CP FailRoom，释放 reservation。
+func enqueue_room_fail(room_id: String) -> void:
+	var rid := room_id.strip_edges()
+	if rid.is_empty():
+		return
+	if _fail_queue.has(rid) or (_pending_kind == "fail" and _pending_room_id == rid):
+		return
+	# 从 complete 队列移除，避免冲突
+	while _complete_queue.has(rid):
+		_complete_queue.erase(rid)
+	_fail_queue.append(rid)
+	if _next_complete_ms < 0:
+		_next_complete_ms = 0
+
+
 ## 调度：单 HTTPRequest 串行。
-## 1) renew 到期 → 优先 register（即使 complete 队列非空）
-## 2) 否则 complete 队列非空且已过 complete retry deadline → 发 complete
-## complete 失败只推进 _next_complete_ms，不得阻塞 _next_renew_ms。
+## 1) renew 到期 → 优先 register（即使 complete/fail 队列非空）
+## 2) 否则 fail 优先于 complete（释放容量），再 complete
+## complete/fail 失败只推进 _next_complete_ms，不得阻塞 _next_renew_ms。
 func poll(active_rooms: int = 0) -> void:
 	if not _started:
 		return
@@ -164,7 +204,13 @@ func poll(active_rooms: int = 0) -> void:
 	if now >= _next_renew_ms:
 		_fire_register()
 		return
-	if not _complete_queue.is_empty() and now >= _next_complete_ms:
+	if now < _next_complete_ms:
+		return
+	if not _fail_queue.is_empty():
+		var rid_f: String = str(_fail_queue.pop_front())
+		_fire_fail(rid_f)
+		return
+	if not _complete_queue.is_empty():
 		var rid: String = str(_complete_queue.pop_front())
 		_fire_complete(rid)
 
@@ -219,6 +265,27 @@ func _fire_complete(room_id: String) -> void:
 		_fail_complete_retry("complete_init_%d" % err)
 
 
+func _fire_fail(room_id: String) -> void:
+	_ensure_http()
+	var url := "%s/v1/internal/workers/rooms/fail" % control_plane_base
+	var body := build_fail_body(room_id, "ROOM_FAILED")
+	var headers := PackedStringArray([
+		"Content-Type: application/json",
+		"Authorization: Bearer %s" % registration_token,
+	])
+	fail_attempt_count += 1
+	_in_flight = true
+	_pending_kind = "fail"
+	_pending_room_id = room_id
+	var err: Error = _http.request(url, headers, HTTPClient.METHOD_POST, body)
+	if err != OK:
+		_in_flight = false
+		_pending_kind = ""
+		_pending_room_id = ""
+		_fail_queue.push_front(room_id)
+		_fail_complete_retry("fail_init_%d" % err)
+
+
 func _on_request_completed(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if not _started:
 		_in_flight = false
@@ -233,6 +300,9 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 	if result != HTTPRequest.RESULT_SUCCESS:
 		if kind == "complete" and not room_id.is_empty():
 			_complete_queue.push_front(room_id)
+			_fail_complete_retry("http_result_%d" % result)
+		elif kind == "fail" and not room_id.is_empty():
+			_fail_queue.push_front(room_id)
 			_fail_complete_retry("http_result_%d" % result)
 		else:
 			_fail_renew_retry("http_result_%d" % result)
@@ -251,6 +321,20 @@ func _on_request_completed(result: int, response_code: int, _headers: PackedStri
 			return
 		_complete_queue.push_front(room_id)
 		_fail_complete_retry("complete_http_%d" % response_code)
+		return
+	if kind == "fail":
+		if response_code >= 200 and response_code < 300:
+			fail_success_count += 1
+			_last_error = ""
+			_next_complete_ms = _now_ms()
+			return
+		if response_code == 409 or response_code == 404 or response_code == 403:
+			# 已 failed / 不存在 / 非本 worker：幂等丢弃
+			_last_error = "fail_http_%d" % response_code
+			_next_complete_ms = _now_ms()
+			return
+		_fail_queue.push_front(room_id)
+		_fail_complete_retry("fail_http_%d" % response_code)
 		return
 	# register
 	if response_code >= 200 and response_code < 300:

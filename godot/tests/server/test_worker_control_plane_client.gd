@@ -87,6 +87,8 @@ class _MiniCP:
 		var resp_body := "{\"worker_id\":\"w1\",\"lease_ttl_ms\":15000}"
 		if path.contains("/rooms/complete"):
 			resp_body = "{\"worker_id\":\"w1\",\"room_id\":\"r1\",\"status\":\"completed\"}"
+		elif path.contains("/rooms/fail"):
+			resp_body = "{\"worker_id\":\"w1\",\"room_id\":\"r1\",\"status\":\"failed\",\"fail_code\":\"ROOM_FAILED\"}"
 		if force_500:
 			status = "500 Internal Server Error"
 			resp_body = "{\"code\":\"INTERNAL\"}"
@@ -278,6 +280,85 @@ func test_renew_clamped_to_lease_safe_window() -> void:
 	var delay: int = client._safe_renew_delay_ms()
 	assert_lte(delay, 5000)
 	assert_gte(delay, 500)
+	mini.stop()
+
+
+func test_ready_timeout_enqueues_fail_and_excludes_from_room_count() -> void:
+	var mini := _MiniCP.new()
+	add_child_autofree(mini)
+	assert_eq(mini.start(), OK)
+	await get_tree().process_frame
+	var base := "http://127.0.0.1:%d" % mini.port
+
+	var w := HeadlessWorker.new()
+	add_child_autofree(w)
+	assert_true(w.configure(SECRET, "127.0.0.1", 0, -1, ""))
+	assert_true(w.configure_control_plane_registration(
+		base, REG_TOKEN, "hw-fail", "ws://127.0.0.1:9000", "ws://127.0.0.1:9001", 2, 500
+	))
+	assert_eq(w.start_listen(), OK)
+	w.set_clock_ms_for_test(1000)
+	var claims := {
+		"room_id": "room-ready-to",
+		"session_id": "sess-0",
+		"seat": 0,
+		"round_kind": "EAST",
+		"game_mode": "STANDARD",
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+	}
+	var session := HeadlessRoomSession.new()
+	session.set_seed_override_for_test(3)
+	assert_true(session.bootstrap_from_claims(claims, 1000))
+	w.inject_bound_session_for_test(1, session, 0, "sess-0")
+	assert_eq(w.room_count(), 1)
+	# 未满 30s
+	w.set_clock_ms_for_test(1000 + 29999)
+	w._tick_ready_timeouts()
+	assert_false(session.is_room_failed())
+	assert_eq(w.room_count(), 1)
+	# 满 30s
+	w.set_clock_ms_for_test(1000 + 30000)
+	w._tick_ready_timeouts()
+	assert_true(session.is_room_failed())
+	assert_eq(w.room_count(), 0, "失败房间不计活跃容量")
+	var client := w.get_control_plane_client()
+	assert_not_null(client)
+	assert_eq(client.fail_queue_size_for_test(), 1)
+	client.clock_now_ms = 40000
+	client._next_renew_ms = 999999
+	client._next_complete_ms = 0
+	var ok := false
+	for i in range(80):
+		client.clock_now_ms = 40000 + i * 25
+		client.poll(w.room_count())
+		await get_tree().process_frame
+		if client.fail_success_count >= 1:
+			ok = true
+			break
+	assert_true(ok, "READY 超时须上报 rooms/fail err=%s" % client.get_last_error())
+	var saw_fail := false
+	for req in mini.requests:
+		if str(req.get("path", "")).contains("/rooms/fail"):
+			saw_fail = true
+			assert_true(str(req.get("body", "")).contains("room-ready-to"))
+			assert_false(str(req.get("body", "")).contains(REG_TOKEN))
+	assert_true(saw_fail)
+	# #376：tombstone — 清理后仍稳定 terminal，不得 bootstrap 复活
+	w._cleanup_completed_rooms()
+	assert_true(w.is_room_failed_terminal("room-ready-to"))
+	var ens: Dictionary = w.ensure_room_from_claims({
+		"room_id": "room-ready-to",
+		"session_id": "sess-0",
+		"seat": 0,
+		"round_kind": "EAST",
+		"game_mode": "STANDARD",
+		"participants": ["HUMAN", "AI", "AI", "AI"],
+		"character_ids": ["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+	})
+	assert_false(bool(ens.get("ok", true)))
+	assert_eq(str(ens.get("code", "")), "ROOM_FAILED")
+	assert_eq(w.room_count(), 0)
 	mini.stop()
 
 

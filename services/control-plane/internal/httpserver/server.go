@@ -70,6 +70,8 @@ func New(cfg Config) *Server {
 	mux.HandleFunc("/v1/internal/workers/register", s.handleWorkersFallback)
 	mux.HandleFunc("POST /v1/internal/workers/rooms/complete", s.handleCompleteWorkerRoom)
 	mux.HandleFunc("/v1/internal/workers/rooms/complete", s.handleCompleteRoomFallback)
+	mux.HandleFunc("POST /v1/internal/workers/rooms/fail", s.handleFailWorkerRoom)
+	mux.HandleFunc("/v1/internal/workers/rooms/fail", s.handleFailRoomFallback)
 	s.httpServer = &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           mux,
