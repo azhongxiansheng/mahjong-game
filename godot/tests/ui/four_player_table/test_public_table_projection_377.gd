@@ -696,19 +696,19 @@ func test_turn_prompt_decision_view_without_network_command() -> void:
 	var allowed: Array = decision.get("allowed_actions", [])
 	assert_gte(allowed.size(), 1)
 	assert_eq(str(allowed[0].get("kind", "")), "DISCARD")
-	# 生产连接：公共 session 无命令发送 API；UI 操作不得走 _bc 提交
+	# #378：公共 session 暴露 submit_action；无 OPEN peer 时 UI 不得计成功发送
 	assert_true(table.get("_bc") == null, "公共不得挂 _bc 命令路径")
-	assert_false(sess.has_method("submit_action"), "session 无 submit_action")
-	assert_false(sess.has_method("send_command"), "session 无 send_command")
-	assert_false(sess.has_method("submit_item_use"), "session 无 submit_item_use")
-	# 真实 UI：库存 use + 动作按钮 不得形成网络命令
+	assert_true(sess.has_method("submit_action"), "session 须有 submit_action")
+	assert_false(sess.has_method("send_command"), "session 无第二套 send_command")
+	assert_false(sess.has_method("submit_item_use"), "ITEM_USE 复用 submit_action，无专用 API")
+	# 真实 UI：无 peer 时库存 use + 动作按钮不得形成成功网络发送
 	table._on_inventory_use_requested("item-x")
 	if table._action_panel != null:
 		table._action_panel.player_action_chosen.emit({"action": "skip"})
 		if table.has_method("_on_player_tile_clicked"):
 			table._on_player_tile_clicked(int(hand_tile["instance_id"]))
 	assert_eq(int(table.public_network_command_attempts()), 0)
-	# 公共未 start：无 JOIN/READY/业务包发送；命令出口仅靠 has_method 与 _bc=null 契约
+	# 公共未 start：无 JOIN/READY
 	assert_false(sess.is_game_ready_sent())
 	_release(sess, table)
 
@@ -777,9 +777,10 @@ func test_turn_prompt_maps_real_kan_riichi_kyuusyu_and_dim_discards() -> void:
 	assert_true(saw_blocked_dim, "须 dim 非法 DISCARD 实体")
 
 	assert_true(table.get("_bc") == null)
-	assert_false(sess.has_method("submit_action"))
+	assert_true(sess.has_method("submit_action"))
 	table._on_inventory_use_requested("x")
 	panel.player_action_chosen.emit({"action": "tsumo"})
+	# 无 OPEN peer：不得计成功发送
 	assert_eq(int(table.public_network_command_attempts()), 0)
 	_release(sess, table)
 
@@ -826,6 +827,7 @@ func test_claim_window_maps_minkan_and_discarded_by_seat() -> void:
 
 	assert_true(table.get("_bc") == null)
 	panel.player_action_chosen.emit({"action": "ron", "discarder_seat": discarded_by})
+	# 无 OPEN peer：不得计成功发送
 	assert_eq(int(table.public_network_command_attempts()), 0)
 	assert_false(sess.has_method("send_command"))
 	_release(sess, table)

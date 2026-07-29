@@ -560,6 +560,10 @@ func _on_btn_riichi() -> void:
 	if _state == State.WAITING_RIICHI_CONFIRM:
 		_click_sfx()
 		_emit_choice({"action": "riichi_yes"})
+	elif _state == State.WAITING_DISCARD:
+		# #378 公共路径：先选 RIICHI 动作，再选 exact 权威切牌实体
+		_click_sfx()
+		_emit_choice({"action": "riichi"})
 
 func _on_btn_tsumo() -> void:
 	if _state == State.WAITING_DISCARD:
@@ -612,5 +616,9 @@ func _on_btn_consumable() -> void:
 
 func _on_btn_kyuusyu() -> void:
 	if _state == State.WAITING_KYUUSYU:
+		_click_sfx()
+		_emit_choice({"action": "kyuusyu_yes"})
+	elif _state == State.WAITING_DISCARD:
+		# #378 公共 TURN_PROMPT 可在出牌态展示九种按钮
 		_click_sfx()
 		_emit_choice({"action": "kyuusyu_yes"})

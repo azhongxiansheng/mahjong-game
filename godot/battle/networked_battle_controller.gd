@@ -279,6 +279,13 @@ func last_snapshot_error() -> String:
 
 
 func expected_next_server_seq() -> int:
+	# #378：异 hash 多事件 pending 批（如 ITEM_APPLIED+ITEM_CONSUMED+SNAP）时，
+	# expected 须为 pending 队尾 +1，否则 bridge 把第 2 条当 future hold，
+	# 随后 matching SNAP 因 pending_seq+1 不连续触发 SNAPSHOT_PENDING_MISMATCH。
+	if not _pending_events.is_empty():
+		var last_p: NetworkedEvent = _pending_events[_pending_events.size() - 1] as NetworkedEvent
+		if last_p != null:
+			return int(last_p.server_seq) + 1
 	# 应用快照后：已应用上限 = snapshot_server_seq；下一条 = next_server_seq
 	if _public_view.has("next_server_seq"):
 		var n: int = int(_public_view["next_server_seq"])

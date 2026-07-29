@@ -11,6 +11,8 @@ const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
 const TABLE_ACTION_BUTTON_STYLE := preload(
 	"res://ui/four_player_table/table_action_button.gd")
+const ItemInventoryDrawerScr := preload(
+	"res://ui/four_player_table/item_inventory_drawer.gd")
 const FirstUseNotices := preload("res://platform/platform_first_use_notices.gd")
 const CharacterPresentationCatalogScript := preload(
 	"res://presentation/characters/character_presentation_catalog.gd")
@@ -1985,6 +1987,7 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 func _exit_tree() -> void:
 	_polling_active = false
 	_reward_sync_active = false
+	_disconnect_public_command_signals()
 	_disconnect_public_transcript()
 	_public_reward_session = null
 	release_voice_runtime()
@@ -2006,10 +2009,15 @@ var _last_reward_view_sig: String = ""
 var _reward_source_gen: int = 0
 var _reward_apply_count: int = 0  # 可观察：视图 apply 次数（pending 不得空转加）
 # #377：公共牌桌只读投影（仅 committed core_table；pending/resync 冻结）
+# #378：公共 UI → PublicCasualNetworkSession.submit_action 命令闭环
 var _public_table_committed_seq: int = -1
 var _public_table_frozen: bool = false
 var _public_decision_view: Dictionary = {}
 var _public_network_command_attempts: int = 0
+## #378：多 option「先选动作，再选 exact 权威候选」
+var _public_pick_kind: String = ""
+var _public_pick_selected: Array = []
+var _public_input_locked: bool = false
 const PublicTableAdapter := preload(
 	"res://ui/four_player_table/public_table_projection_adapter.gd")
 
@@ -2039,16 +2047,21 @@ func _bind_reward_feedback_from_battle(bc: PlayableBattleController) -> void:
 	_ensure_reward_sync_loop()
 
 
-## 公共场只读展示 seam：可在 session.start()/nbc 创建之前调用。
-## 生命周期内自动跟进 committed journal；pending 不投影。公共 ITEM_USE fail-closed。
-## #377：同步 core_table 只读投影；不启动 _bc / 本地权威 / 命令发送。
+## 公共场 seam：可在 session.start()/nbc 创建之前调用。
+## 生命周期内自动跟进 committed journal；pending 不投影。
+## #377：同步 core_table 只读投影；不启动 _bc / 本地权威。
+## #378：接线 UI Action → session.submit_action；ACCEPTED 等 committed。
 func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
+	_disconnect_public_command_signals()
 	_disconnect_public_transcript()
 	_public_reward_session = session
 	_public_table_committed_seq = -1
 	_public_table_frozen = false
 	_public_decision_view = {}
 	_public_network_command_attempts = 0
+	_public_pick_kind = ""
+	_public_pick_selected.clear()
+	_public_input_locked = false
 	# 公共路径禁止练习场 _bc
 	_bc = null
 	if _table != null and _table.has_signal("inventory_use_requested"):
@@ -2061,10 +2074,12 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 		room = str(session.room_id) if not str(session.room_id).is_empty() else "public"
 		if not session.transcript_caption.is_connected(_on_public_transcript_caption):
 			session.transcript_caption.connect(_on_public_transcript_caption)
+		_connect_public_command_signals(session)
 	_reward_local_seat = seat
 	if _table != null and _table.has_method("set_local_seat"):
 		_table.set_local_seat(seat)
 	_ensure_public_decision_adapter()
+	_wire_public_action_panel_choices()
 	_sync_viewer_reveal_label()
 	_begin_reward_source("public|%s|seat%d" % [room, seat], seat, true)
 	_ensure_reward_sync_loop()
@@ -2126,7 +2141,14 @@ func _ensure_reward_sync_loop() -> void:
 
 func _reward_sync_loop() -> void:
 	while _reward_sync_active:
-		await get_tree().process_frame
+		var tree := get_tree()
+		if tree == null:
+			_reward_sync_active = false
+			return
+		await tree.process_frame
+		# #378：实例销毁后不得 resume 报错
+		if not is_instance_valid(self) or not _reward_sync_active:
+			return
 		# 练习场主循环已调 _sync；公共-only 或 bind 早于 start 时由此兜底
 		if _public_reward_session != null:
 			_sync_reward_feedback_if_advanced()
@@ -2202,6 +2224,508 @@ func public_network_command_attempts() -> int:
 	return _public_network_command_attempts
 
 
+## #378：由 UI choice 或测试构建权威 exact Action（不提交）。
+func build_public_action_from_choice(choice: Dictionary) -> Action:
+	return _build_public_action_from_choice(choice)
+
+
+func _on_public_player_action_chosen(choice: Dictionary) -> void:
+	# #378：公共入口仅以 session 绑定门控；bind_public 时 _bc=null，练习时 session=null
+	if _public_reward_session == null:
+		return
+	if _public_command_ui_busy():
+		return
+	var action_name := String(choice.get("action", ""))
+	# multi-option 实体点选
+	if action_name == "claim_tile_pick" or action_name == "discard":
+		if not _public_pick_kind.is_empty() and action_name == "claim_tile_pick":
+			_on_public_pick_tile(int(choice.get("tile_instance_id", -1)))
+			return
+		if action_name == "discard":
+			# 若处于 RIICHI 选牌，优先 RIICHI option
+			if _public_pick_kind == "RIICHI":
+				_on_public_pick_tile(int(choice.get("tile_instance_id", -1)))
+				return
+			var disc_act := _build_public_action_from_choice(choice)
+			if disc_act != null:
+				_dispatch_public_action(disc_act)
+			return
+	# 取消多选
+	if action_name in ["skip", "pass", "riichi_no", "kyuusyu_no"] and not _public_pick_kind.is_empty():
+		if action_name in ["skip", "pass"] and _public_decision_view.get("allowed_actions", []) is Array:
+			# CLAIM 的 skip 是 PASS，不是取消选牌
+			if _public_has_kind("PASS"):
+				_public_pick_kind = ""
+				_public_pick_selected.clear()
+				var pass_act := _build_public_action_for_kind("PASS", {})
+				if pass_act != null:
+					_dispatch_public_action(pass_act)
+				return
+		_cancel_public_pick()
+		return
+	# 先选动作
+	match action_name:
+		"chi":
+			_begin_or_submit_multi("CHI", 2)
+		"pon":
+			_begin_or_submit_multi("PON", 2)
+		"minkan":
+			_begin_or_submit_kan("MINKAN")
+		"ankan":
+			_begin_or_submit_kan("ANKAN")
+		"added_kan":
+			_begin_or_submit_kan("ADDED_KAN")
+		"riichi", "riichi_yes":
+			_begin_or_submit_riichi()
+		"tsumo":
+			var t := _build_public_action_for_kind("TSUMO", {})
+			if t != null:
+				_dispatch_public_action(t)
+		"ron":
+			var r := _build_public_action_for_kind("RON", {})
+			if r != null:
+				_dispatch_public_action(r)
+		"skip", "pass":
+			var p := _build_public_action_for_kind("PASS", {})
+			if p != null:
+				_dispatch_public_action(p)
+		"kyuusyu_yes", "kyuusyu":
+			var k := _build_public_action_for_kind(
+				"DECLARE_ABORTIVE_DRAW", {"reason": "KYUUSYU_KYUUHAI"})
+			if k != null:
+				_dispatch_public_action(k)
+		_:
+			pass
+
+
+func _begin_or_submit_multi(kind: String, companion_count: int) -> void:
+	var opts := _public_options_of(kind)
+	if opts.is_empty():
+		return
+	if opts.size() == 1:
+		var act := _build_public_action_for_kind(kind, opts[0] as Dictionary)
+		if act != null:
+			_dispatch_public_action(act)
+		return
+	# 多 option：进入实体选择
+	_public_pick_kind = kind
+	_public_pick_selected.clear()
+	var union_ids: Array = []
+	for op in opts:
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		for cid in (op as Dictionary).get("companion_tile_instance_ids", []):
+			var i := int(cid)
+			if not union_ids.has(i):
+				union_ids.append(i)
+	if _action_panel != null:
+		_action_panel.enter_waiting_claim_pick()
+		_action_panel.set_status_text("%s — 点选权威候选实体（%d 张）" % [kind, companion_count])
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.set_hand_clickable(true)
+		if _seat_panel_player.has_method("dim_hand_except"):
+			_seat_panel_player.dim_hand_except(union_ids)
+
+
+func _begin_or_submit_kan(kan_kind: String) -> void:
+	var opts := _public_options_of("KAN")
+	var matched: Array = []
+	for op in opts:
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		if str((op as Dictionary).get("kan_kind", "")) == kan_kind:
+			matched.append(op)
+	if matched.is_empty():
+		return
+	if matched.size() == 1:
+		var act := _build_public_action_for_kind("KAN", matched[0] as Dictionary)
+		if act != null:
+			_dispatch_public_action(act)
+		return
+	# 多 KAN 子型候选：先用第一套可点实体并集（MINKAN companions / ANKAN tiles）
+	_public_pick_kind = "KAN:" + kan_kind
+	_public_pick_selected.clear()
+	var union_ids: Array = []
+	for op2 in matched:
+		var d: Dictionary = op2 as Dictionary
+		var key := "companion_tile_instance_ids"
+		if kan_kind == "ANKAN":
+			key = "tile_instance_ids"
+		elif kan_kind == "ADDED_KAN":
+			if d.has("added_tile_instance_id"):
+				var aid := int(d["added_tile_instance_id"])
+				if not union_ids.has(aid):
+					union_ids.append(aid)
+			continue
+		for cid2 in d.get(key, []):
+			var ii := int(cid2)
+			if not union_ids.has(ii):
+				union_ids.append(ii)
+	if _action_panel != null:
+		_action_panel.enter_waiting_claim_pick()
+		_action_panel.set_status_text("KAN/%s — 点选权威候选" % kan_kind)
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.set_hand_clickable(true)
+		if _seat_panel_player.has_method("dim_hand_except") and not union_ids.is_empty():
+			_seat_panel_player.dim_hand_except(union_ids)
+
+
+func _begin_or_submit_riichi() -> void:
+	var opts := _public_options_of("RIICHI")
+	if opts.is_empty():
+		return
+	if opts.size() == 1:
+		var act := _build_public_action_for_kind("RIICHI", opts[0] as Dictionary)
+		if act != null:
+			_dispatch_public_action(act)
+		return
+	_public_pick_kind = "RIICHI"
+	_public_pick_selected.clear()
+	var ids: Array = []
+	for op in opts:
+		if typeof(op) == TYPE_DICTIONARY and (op as Dictionary).has("tile_instance_id"):
+			ids.append(int((op as Dictionary)["tile_instance_id"]))
+	if _action_panel != null:
+		_action_panel.set_status_text("立直 — 点选权威切牌实体")
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.set_hand_clickable(true)
+		if _seat_panel_player.has_method("dim_hand_except"):
+			_seat_panel_player.dim_hand_except(ids)
+
+
+func _on_public_pick_tile(tile_instance_id: int) -> void:
+	if tile_instance_id < 0 or _public_pick_kind.is_empty():
+		return
+	if _public_pick_kind == "RIICHI":
+		var act_r := _build_public_action_for_kind(
+			"RIICHI", {"tile_instance_id": tile_instance_id})
+		if act_r != null:
+			_public_pick_kind = ""
+			_public_pick_selected.clear()
+			_dispatch_public_action(act_r)
+		return
+	if _public_pick_kind.begins_with("KAN:"):
+		var kk := _public_pick_kind.substr(4)
+		if kk == "ADDED_KAN":
+			var act_ak := _match_kan_option(kk, {"added_tile_instance_id": tile_instance_id})
+			if act_ak != null:
+				_public_pick_kind = ""
+				_public_pick_selected.clear()
+				_dispatch_public_action(act_ak)
+			return
+		if not _public_pick_selected.has(tile_instance_id):
+			_public_pick_selected.append(tile_instance_id)
+		var need := 3 if kk == "MINKAN" else 4
+		if _public_pick_selected.size() >= need:
+			var payload_k := {
+				"kan_kind": kk,
+			}
+			if kk == "MINKAN":
+				payload_k["companion_tile_instance_ids"] = _public_pick_selected.duplicate()
+			else:
+				payload_k["tile_instance_ids"] = _public_pick_selected.duplicate()
+			var act_k := _build_public_action_for_kind("KAN", payload_k)
+			if act_k != null:
+				_public_pick_kind = ""
+				_public_pick_selected.clear()
+				_dispatch_public_action(act_k)
+			else:
+				_public_pick_selected.clear()
+				if _action_panel != null:
+					_action_panel.set_status_text("KAN 候选不匹配，请重选")
+		return
+	# CHI / PON
+	if not _public_pick_selected.has(tile_instance_id):
+		_public_pick_selected.append(tile_instance_id)
+	if _public_pick_selected.size() >= 2:
+		var payload := {"companion_tile_instance_ids": _public_pick_selected.duplicate()}
+		var act := _build_public_action_for_kind(_public_pick_kind, payload)
+		if act != null:
+			_public_pick_kind = ""
+			_public_pick_selected.clear()
+			_dispatch_public_action(act)
+		else:
+			_public_pick_selected.clear()
+			if _action_panel != null:
+				_action_panel.set_status_text("%s 候选不匹配，请重选" % _public_pick_kind)
+
+
+func _match_kan_option(kan_kind: String, partial: Dictionary) -> Action:
+	for op in _public_options_of("KAN"):
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		var d: Dictionary = op as Dictionary
+		if str(d.get("kan_kind", "")) != kan_kind:
+			continue
+		if kan_kind == "ADDED_KAN":
+			if int(d.get("added_tile_instance_id", -2)) == int(partial.get("added_tile_instance_id", -1)):
+				return _build_public_action_for_kind("KAN", d)
+	return null
+
+
+func _cancel_public_pick() -> void:
+	_public_pick_kind = ""
+	_public_pick_selected.clear()
+	if _public_reward_session != null and _public_reward_session.nbc != null:
+		_apply_public_decision_from_journal(_public_reward_session.nbc)
+
+
+func _submit_public_item_use(item_instance_id: String) -> void:
+	var decision := _public_current_decision_meta()
+	if decision.is_empty():
+		return
+	var sess := _public_reward_session
+	if sess == null or sess.nbc == null:
+		return
+	# #378 P1：必须精确匹配本席权威库存 instance，不得按 item_id 合并
+	if not _public_inventory_has_usable_instance(item_instance_id):
+		return
+	var cmd := sess.allocate_command_id()
+	var cseq := sess.allocate_client_seq()
+	if cseq < 0:
+		return
+	var act := Action.item_use(
+		sess.seat, item_instance_id, sess.room_id, cmd,
+		str(decision.get("decision_id", "")), int(decision.get("hand_seq", 0)), cseq
+	)
+	if act != null:
+		_dispatch_public_action(act)
+
+
+func _public_inventory_has_usable_instance(item_instance_id: String) -> bool:
+	var iid := String(item_instance_id).strip_edges()
+	if iid.is_empty() or _public_reward_session == null or _public_reward_session.nbc == null:
+		return false
+	var view: Dictionary = _public_reward_session.nbc.get_item_inventory_view()
+	var items: Array = view.get("items", []) as Array
+	for raw in items:
+		if typeof(raw) != TYPE_DICTIONARY:
+			continue
+		var row: Dictionary = raw
+		if String(row.get("item_instance_id", "")).strip_edges() != iid:
+			continue
+		# 仅本席可见 held 可 USE 实例；不按 item_id 合并其它 instance
+		return bool(ItemInventoryDrawerScr.can_request_use(row))
+	return false
+
+
+func _dispatch_public_action(action: Action) -> void:
+	if action == null or _public_reward_session == null:
+		return
+	if _public_command_ui_busy():
+		return
+	var err: Error = _public_reward_session.submit_action(action)
+	if err != OK:
+		return
+	_public_network_command_attempts += 1
+	_lock_public_inputs("命令已发送，等待权威…")
+
+
+## #378：session 权威命令状态（pending CR / retry / awaiting committed），不含本地 UI 锁。
+## 与 `_public_input_locked` 分离，避免 clear decision 时因本地锁自指永久 busy。
+func _public_session_command_busy() -> bool:
+	if _public_reward_session == null:
+		return false
+	if _public_reward_session.is_command_pending():
+		return true
+	if _public_reward_session.is_awaiting_pending_retry():
+		return true
+	if _public_reward_session.has_method("is_awaiting_authority_commit") \
+			and _public_reward_session.is_awaiting_authority_commit():
+		return true
+	return false
+
+
+## #378 R4/R5：本地锁或 session 权威忙则拒绝 UI 提交。
+func _public_command_ui_busy() -> bool:
+	if _public_input_locked:
+		return true
+	return _public_session_command_busy()
+
+
+func _lock_public_inputs(status: String) -> void:
+	_public_input_locked = true
+	if _action_panel != null:
+		_action_panel.enter_idle(status if not status.is_empty() else "命令处理中…")
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.set_hand_clickable(false)
+		if _seat_panel_player.has_method("clear_hand_dim"):
+			_seat_panel_player.clear_hand_dim()
+	if _table != null and _table.has_method("set_inventory_use_locked"):
+		_table.set_inventory_use_locked(true)
+
+
+func _unlock_public_inputs_restore_decision() -> void:
+	_public_input_locked = false
+	_public_pick_kind = ""
+	_public_pick_selected.clear()
+	if _table != null and _table.has_method("set_inventory_use_locked"):
+		_table.set_inventory_use_locked(false)
+	if _public_reward_session != null and _public_reward_session.nbc != null:
+		_apply_public_decision_from_journal(_public_reward_session.nbc)
+
+
+func _on_public_command_accepted(_result: CommandResult) -> void:
+	# ACCEPTED 不乐观改牌；保持锁定直至 committed 推进带来新 decision/快照
+	_lock_public_inputs("已受理，等待权威事件…")
+
+
+func _on_public_command_rejected(_code: String, _command_id: String, _message: String) -> void:
+	# ERROR 恢复当前权威 decision 与库存可用
+	_unlock_public_inputs_restore_decision()
+
+
+func _on_public_command_pending_dropped(_reason: String) -> void:
+	_unlock_public_inputs_restore_decision()
+
+
+func _public_has_kind(kind: String) -> bool:
+	return not _public_options_of(kind).is_empty() or _public_kind_present(kind)
+
+
+func _public_kind_present(kind: String) -> bool:
+	for a in _public_decision_view.get("allowed_actions", []):
+		if typeof(a) == TYPE_DICTIONARY and str(a.get("kind", "")) == kind:
+			return true
+	return false
+
+
+func _public_options_of(kind: String) -> Array:
+	var out: Array = []
+	for a in _public_decision_view.get("allowed_actions", []):
+		if typeof(a) != TYPE_DICTIONARY:
+			continue
+		if str(a.get("kind", "")) != kind:
+			continue
+		for op in a.get("payload_options", []):
+			if typeof(op) == TYPE_DICTIONARY:
+				out.append((op as Dictionary).duplicate(true))
+	return out
+
+
+func _public_current_decision_meta() -> Dictionary:
+	if _public_decision_view.is_empty():
+		return {}
+	var decision_id := str(_public_decision_view.get("decision_id", ""))
+	if decision_id.is_empty() or not ProtocolUuid.is_canonical_v4(decision_id):
+		return {}
+	return {
+		"decision_id": decision_id,
+		"hand_seq": int(_public_decision_view.get("hand_seq", 0)),
+	}
+
+
+func _build_public_action_from_choice(choice: Dictionary) -> Action:
+	var action_name := String(choice.get("action", ""))
+	match action_name:
+		"discard":
+			var iid := int(choice.get("tile_instance_id", -1))
+			if iid < 0:
+				return null
+			return _build_public_action_for_kind("DISCARD", {"tile_instance_id": iid})
+		"tsumo":
+			return _build_public_action_for_kind("TSUMO", {})
+		"ron":
+			return _build_public_action_for_kind("RON", {})
+		"skip", "pass":
+			return _build_public_action_for_kind("PASS", {})
+		"riichi", "riichi_yes":
+			if choice.has("tile_instance_id"):
+				return _build_public_action_for_kind(
+					"RIICHI", {"tile_instance_id": int(choice["tile_instance_id"])})
+			var ropts := _public_options_of("RIICHI")
+			if ropts.size() == 1:
+				return _build_public_action_for_kind("RIICHI", ropts[0] as Dictionary)
+			return null
+		"chi":
+			var copts := _public_options_of("CHI")
+			if copts.size() == 1:
+				return _build_public_action_for_kind("CHI", copts[0] as Dictionary)
+			return null
+		"pon":
+			var popts := _public_options_of("PON")
+			if popts.size() == 1:
+				return _build_public_action_for_kind("PON", popts[0] as Dictionary)
+			return null
+		"kyuusyu_yes", "kyuusyu":
+			return _build_public_action_for_kind(
+				"DECLARE_ABORTIVE_DRAW", {"reason": "KYUUSYU_KYUUHAI"})
+		_:
+			return null
+
+
+func _build_public_action_for_kind(kind: String, payload: Dictionary) -> Action:
+	var sess := _public_reward_session
+	if sess == null:
+		return null
+	var meta := _public_current_decision_meta()
+	if meta.is_empty():
+		return null
+	# 必须命中权威 option 的完整 payload（两侧均 normalize 后 deep equal）
+	var normalized: Variant = Action.normalize_payload(kind, payload)
+	if normalized == null:
+		return null
+	var matched := false
+	for op in _public_options_of(kind):
+		if typeof(op) != TYPE_DICTIONARY:
+			continue
+		var op_norm: Variant = Action.normalize_payload(kind, op as Dictionary)
+		if op_norm == null:
+			continue
+		if _public_payload_equal(normalized, op_norm):
+			matched = true
+			# 使用规范化权威 option，避免客户端重算 / 顺序差异
+			normalized = (op_norm as Dictionary).duplicate(true)
+			break
+	if not matched:
+		return null
+	var cmd := sess.allocate_command_id()
+	var cseq := sess.allocate_client_seq()
+	if cseq < 0 or not ProtocolUuid.is_canonical_v4(cmd):
+		return null
+	return Action.from_dict({
+		"protocol_version": ProtocolConstants.PROTOCOL_VERSION,
+		"command_id": cmd,
+		"room_id": sess.room_id,
+		"seat": sess.seat,
+		"hand_seq": int(meta["hand_seq"]),
+		"decision_id": str(meta["decision_id"]),
+		"kind": kind,
+		"payload": normalized,
+		"client_seq": cseq,
+	})
+
+
+func _public_payload_equal(a: Variant, b: Variant) -> bool:
+	if typeof(a) != typeof(b):
+		return false
+	if typeof(a) == TYPE_DICTIONARY:
+		var da: Dictionary = a
+		var db: Dictionary = b
+		if da.size() != db.size():
+			return false
+		for k in da.keys():
+			if not db.has(k):
+				return false
+			if not _public_payload_equal(da[k], db[k]):
+				return false
+		return true
+	if typeof(a) == TYPE_ARRAY:
+		var aa: Array = a
+		var ab: Array = b
+		if aa.size() != ab.size():
+			return false
+		for i in range(aa.size()):
+			if not _public_payload_equal(aa[i], ab[i]):
+				return false
+		return true
+	return a == b
+
+
 func _ensure_public_decision_adapter() -> void:
 	if _action_panel == null:
 		return
@@ -2210,6 +2734,7 @@ func _ensure_public_decision_adapter() -> void:
 		_seat_panel_player = (_table as FourPlayerTable).seat_panels[0]
 	if _decision_adapter == null and _seat_panel_player != null:
 		_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
+	_wire_public_action_panel_choices()
 
 
 func _wire_public_bottom_hand_clicks() -> void:
@@ -2225,9 +2750,88 @@ func _wire_public_bottom_hand_clicks() -> void:
 		bottom.player_card_clicked.connect(_on_player_tile_clicked)
 
 
+func _wire_public_action_panel_choices() -> void:
+	if _action_panel == null:
+		return
+	if not _action_panel.player_action_chosen.is_connected(_on_public_player_action_chosen):
+		_action_panel.player_action_chosen.connect(_on_public_player_action_chosen)
+
+
+func _connect_public_command_signals(session: PublicCasualNetworkSession) -> void:
+	if session == null:
+		return
+	if session.has_signal("command_accepted") \
+			and not session.command_accepted.is_connected(_on_public_command_accepted):
+		session.command_accepted.connect(_on_public_command_accepted)
+	if session.has_signal("command_rejected") \
+			and not session.command_rejected.is_connected(_on_public_command_rejected):
+		session.command_rejected.connect(_on_public_command_rejected)
+	if session.has_signal("command_pending_dropped") \
+			and not session.command_pending_dropped.is_connected(_on_public_command_pending_dropped):
+		session.command_pending_dropped.connect(_on_public_command_pending_dropped)
+	if session.has_signal("reconnecting") \
+			and not session.reconnecting.is_connected(_on_public_session_reconnecting):
+		session.reconnecting.connect(_on_public_session_reconnecting)
+	if session.has_signal("recovered") \
+			and not session.recovered.is_connected(_on_public_session_recovered):
+		session.recovered.connect(_on_public_session_recovered)
+
+
+func _disconnect_public_command_signals() -> void:
+	if _public_reward_session == null:
+		return
+	var session := _public_reward_session
+	if session.has_signal("command_accepted") \
+			and session.command_accepted.is_connected(_on_public_command_accepted):
+		session.command_accepted.disconnect(_on_public_command_accepted)
+	if session.has_signal("command_rejected") \
+			and session.command_rejected.is_connected(_on_public_command_rejected):
+		session.command_rejected.disconnect(_on_public_command_rejected)
+	if session.has_signal("command_pending_dropped") \
+			and session.command_pending_dropped.is_connected(_on_public_command_pending_dropped):
+		session.command_pending_dropped.disconnect(_on_public_command_pending_dropped)
+	if session.has_signal("reconnecting") \
+			and session.reconnecting.is_connected(_on_public_session_reconnecting):
+		session.reconnecting.disconnect(_on_public_session_reconnecting)
+	if session.has_signal("recovered") \
+			and session.recovered.is_connected(_on_public_session_recovered):
+		session.recovered.disconnect(_on_public_session_recovered)
+	if _action_panel != null \
+			and _action_panel.player_action_chosen.is_connected(_on_public_player_action_chosen):
+		_action_panel.player_action_chosen.disconnect(_on_public_player_action_chosen)
+
+
+func _on_public_session_reconnecting(_code: String, _message: String) -> void:
+	# 重连窗口：清除旧 UI decision，禁止新连接提交前的操作
+	_public_decision_view = {}
+	_public_pick_kind = ""
+	_public_pick_selected.clear()
+	_lock_public_inputs("重连中…")
+
+
+func _on_public_session_recovered() -> void:
+	# 恢复 snapshot 后若仍有 pending 等待 prompt 匹配，保持锁定
+	if _public_reward_session != null and (
+		_public_reward_session.is_command_pending() \
+		or _public_reward_session.is_awaiting_pending_retry() \
+		or (
+			_public_reward_session.has_method("is_awaiting_authority_commit")
+			and _public_reward_session.is_awaiting_authority_commit()
+		)
+	):
+		_lock_public_inputs("重连恢复中，等待权威决策…")
+		return
+	_unlock_public_inputs_restore_decision()
+
+
 func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void:
+	# 保留 multi-pick：每帧 reward sync 会重入本函数，不得清空同 decision 的选牌。
+	var prev_decision_id := str(_public_decision_view.get("decision_id", ""))
+	var was_picking := not _public_pick_kind.is_empty()
 	_public_decision_view = {}
 	if nbc == null:
+		_public_pick_kind = ""
+		_public_pick_selected.clear()
 		return
 	var recip: int = int(nbc.recipient_seat)
 	# #377 P1-2：从 journal 顺序折叠；较新 ROOM_SNAPSHOT 关闭先前 TURN/CLAIM 窗口
@@ -2248,15 +2852,35 @@ func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void
 			# CLAIM 按 recipient journal 私有下发，无 seat 字段
 			last = ne
 	if last == null:
+		_public_pick_kind = ""
+		_public_pick_selected.clear()
 		_clear_public_decision_ui(core_phase)
 		return
+	var new_decision_id := str(last.payload.get("decision_id", ""))
 	_public_decision_view = last.payload.duplicate(true)
+	# 同 decision 且正在 multi-pick：只刷新权威数据，不打断候选点选
+	if was_picking and not prev_decision_id.is_empty() and new_decision_id == prev_decision_id:
+		return
+	if new_decision_id != prev_decision_id:
+		_public_pick_kind = ""
+		_public_pick_selected.clear()
 	_present_public_allowed_actions(last)
 
 
 func _clear_public_decision_ui(phase: String = "") -> void:
 	_ensure_public_decision_adapter()
+	_public_pick_kind = ""
+	_public_pick_selected.clear()
+	# #378 R5：仅以 session 权威状态判断是否仍忙；本地锁不得参与自指。
+	# session 已结束（无 pending/retry/awaiting）时清本地锁与库存 Use，即使无新 prompt。
+	# ACCEPTED→committed 窗口内 session 仍 busy，保持锁定不可点。
+	if not _public_session_command_busy():
+		_public_input_locked = false
+		if _table != null and _table.has_method("set_inventory_use_locked"):
+			_table.set_inventory_use_locked(false)
 	var idle_text := "阶段 %s" % phase if not phase.is_empty() else "等待权威…"
+	if _public_input_locked:
+		idle_text = "命令处理中…"
 	if _decision_adapter != null:
 		_decision_adapter.present(&"idle", {"text": idle_text})
 	elif _action_panel != null:
@@ -2269,11 +2893,19 @@ func _clear_public_decision_ui(phase: String = "") -> void:
 
 
 func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
-	# #377：按协议 TURN_OFFER_KINDS / CLAIM_OFFER_KINDS 只读展示；
-	# KAN 子型在 payload_options[].kan_kind；CLAIM 来源席为 discarded_by_seat。
+	# #377：按协议 TURN_OFFER_KINDS / CLAIM_OFFER_KINDS 展示；
+	# #378：可提交 exact Action。KAN 子型在 payload_options[].kan_kind。
 	_ensure_public_decision_adapter()
 	if _action_panel == null or ne == null:
 		return
+	# 命令仍 pending / ACCEPTED 等待 committed 时不重开输入（仅看 session，不含本地锁）
+	if _public_session_command_busy():
+		_lock_public_inputs("命令处理中…")
+		return
+	_public_input_locked = false
+	if _table != null and _table.has_method("set_inventory_use_locked"):
+		_table.set_inventory_use_locked(false)
+	# multi-pick 清理由 _apply_public_decision_from_journal（decision 变化时）负责
 	var payload: Dictionary = ne.payload
 	var allowed: Array = payload.get("allowed_actions", []) as Array
 	if ne.kind == "TURN_PROMPT":
@@ -2359,7 +2991,10 @@ func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
 				_seat_panel_player.set_hand_clickable(false)
 			if _seat_panel_player.has_method("clear_hand_dim"):
 				_seat_panel_player.clear_hand_dim()
-	_action_panel.set_status_text("本席决策（只读展示，#377 不发送命令）")
+	if _public_command_ui_busy():
+		_lock_public_inputs("命令处理中…")
+	else:
+		_action_panel.set_status_text("本席决策 — 选择动作提交权威命令")
 
 
 func _peek_reward_journal_head_seq() -> int:
@@ -2506,11 +3141,13 @@ func _on_inventory_use_requested(item_instance_id: String) -> void:
 	var iid := String(item_instance_id).strip_edges()
 	if iid.is_empty():
 		return
-	# 公共场无真实命令发送 API → fail-closed
+	# #378：公共场 ITEM_USE 走 session.submit_action（精确 instance；offer 可无 ITEM_USE）
 	if _public_reward_session != null and (
 		_bc == null or not _bc.has_meta("local_authority")
 	):
-		# fail-closed：计数不增加发送成功；仅用于观测未外发
+		if _public_command_ui_busy():
+			return
+		_submit_public_item_use(iid)
 		return
 	if _bc == null:
 		return
@@ -2856,6 +3493,17 @@ func _on_microphone_unavailable() -> void:
 		)
 
 func _on_player_tile_clicked(tile_instance_id: int) -> void:
+	# #378 公共路径：仅 session 绑定即走公共命令；练习绑定 session=null 不进入
+	if _public_reward_session != null:
+		if _public_command_ui_busy():
+			return
+		if not _public_pick_kind.is_empty():
+			_on_public_pick_tile(tile_instance_id)
+			return
+		# DISCARD / RIICHI 实体点选 → 走公共 choice 构建
+		if _action_panel != null:
+			_action_panel.on_hand_tile_clicked(tile_instance_id)
+		return
 	# 记录起点：按 instance 查 slot；飞牌渲染仍用 slot 上的 tile_id/red
 	if _seat_panel_player:
 		var from: Vector2 = _seat_panel_player.get_hand_slot_global_center(tile_instance_id)

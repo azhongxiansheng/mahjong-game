@@ -504,6 +504,22 @@ func is_inventory_drawer_open() -> bool:
 	return item_inventory_drawer.visible
 
 
+## #378：命令 pending 时仅禁用库存 Use；查看/关闭仍可用。重建 rows 后锁仍生效。
+func set_inventory_use_locked(locked: bool) -> void:
+	if item_inventory_drawer == null:
+		return
+	if item_inventory_drawer.has_method("set_use_locked"):
+		item_inventory_drawer.set_use_locked(locked)
+
+
+func is_inventory_use_locked() -> bool:
+	if item_inventory_drawer == null:
+		return false
+	if item_inventory_drawer.has_method("is_use_locked"):
+		return bool(item_inventory_drawer.is_use_locked())
+	return false
+
+
 func has_assignment_display() -> bool:
 	if _reward_feedback_projector == null:
 		return false
