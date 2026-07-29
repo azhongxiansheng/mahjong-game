@@ -4,7 +4,7 @@ extends GutTest
 
 const FIXTURE_ROOT := "res://tests/health/fixtures/architecture_boundaries"
 const MODULES := ["core", "battle", "protocol", "session", "server", "ui"]
-const OWNER_ISSUES := ["#391", "#392", "#393", "#394", "#395", "#396", "#397"]
+const OWNER_ISSUES := ["#391", "#392", "#393", "#394", "#395", "#396", "#399"]
 
 const RULES := {
 	"core": [
@@ -64,21 +64,21 @@ const CURRENT_DEBT_ALLOWLIST := [
 		"file": "res://core/rules_japanese/nagashi_mangan.gd",
 		"rule": "core_forbidden_concrete_type",
 		"match": "BattleState",
-		"issue": "#397",
+		"issue": "#399",
 		"count": 1,
 	},
 	{
 		"file": "res://core/turn_engine/draw_detector.gd",
 		"rule": "core_forbidden_concrete_type",
 		"match": "BattleState",
-		"issue": "#397",
+		"issue": "#399",
 		"count": 4,
 	},
 	{
 		"file": "res://core/turn_engine/turn_engine.gd",
 		"rule": "core_forbidden_concrete_type",
 		"match": "BattleState",
-		"issue": "#397",
+		"issue": "#399",
 		"count": 2,
 	},
 	{
@@ -163,6 +163,20 @@ func test_each_dependency_rule_reports_concrete_violation() -> void:
 		assert_true(found_rules.has(expected_rule), "fixture 应命中规则：%s" % expected_rule)
 
 
+func test_concrete_type_words_ignore_string_copy_but_keep_real_dependencies() -> void:
+	var violations := _scan_roots([FIXTURE_ROOT.path_join("string_literals")], [])
+	var rule_counts := {}
+	for violation in violations:
+		var rule := String(violation["rule"])
+		rule_counts[rule] = int(rule_counts.get(rule, 0)) + 1
+	assert_eq(violations.size(), 4, "只应命中真实类型、资源路径、metadata 与 auth 私有读取")
+	assert_eq(rule_counts.get("core_forbidden_concrete_type", 0), 1)
+	assert_eq(rule_counts.get("core_forbidden_resource_path", 0), 1)
+	assert_eq(rule_counts.get("ui_forbidden_authority_type", 0), 0)
+	assert_eq(rule_counts.get("ui_forbidden_authority_internal", 0), 1)
+	assert_eq(rule_counts.get("local_authority_metadata_seam", 0), 1)
+
+
 func test_allowlist_requires_exact_file_rule_and_match() -> void:
 	var exact_allowlist := [{
 		"file": FIXTURE_ROOT.path_join("core/new_violation.gd"),
@@ -179,6 +193,13 @@ func test_allowlist_requires_exact_file_rule_and_match() -> void:
 	var exact_count_allowlist: Array = exact_allowlist.duplicate(true)
 	exact_count_allowlist[0]["count"] = 2
 	assert_eq(_scan_roots([FIXTURE_ROOT.path_join("core")], exact_count_allowlist), [])
+	var final_acceptance_owner: Array = exact_count_allowlist.duplicate(true)
+	final_acceptance_owner[0]["issue"] = "#397"
+	assert_gt(
+		_scan_roots([FIXTURE_ROOT.path_join("core")], final_acceptance_owner).size(),
+		0,
+		"最终验收 #397 不能作为待实现债务 owner",
+	)
 
 	var wrong_match: Array = exact_allowlist.duplicate(true)
 	wrong_match[0]["match"] = "res://server/"
@@ -271,13 +292,14 @@ func _scan_file(root: String, file_path: String, out: Array[Dictionary]) -> void
 		var source_line := _strip_comment(file.get_line())
 		if source_line.strip_edges().is_empty():
 			continue
+		var word_source_line := _mask_strings(source_line)
 		for rule in RULES.get(module, []):
 			for match_value in rule["matches"]:
 				var match_text := String(match_value)
 				var matched := (
 					source_line.contains(match_text)
 					if rule["kind"] == "text"
-					else _contains_word(source_line, match_text)
+					else _contains_word(word_source_line, match_text)
 				)
 				if matched:
 					out.append(_violation(file_path, line_number, rule["id"], match_text))
@@ -300,22 +322,45 @@ func _module_for_file(root: String, file_path: String) -> String:
 
 
 func _strip_comment(line: String) -> String:
-	var in_string := false
+	var quote := ""
 	var escaped := false
 	for index in range(line.length()):
 		var character := line.substr(index, 1)
-		if in_string:
+		if not quote.is_empty():
 			if escaped:
 				escaped = false
 			elif character == "\\":
 				escaped = true
-			elif character == "\"":
-				in_string = false
-		elif character == "\"":
-			in_string = true
+			elif character == quote:
+				quote = ""
+		elif character == "\"" or character == "'":
+			quote = character
 		elif character == "#":
 			return line.substr(0, index)
 	return line
+
+
+func _mask_strings(line: String) -> String:
+	var masked := ""
+	var quote := ""
+	var escaped := false
+	for index in range(line.length()):
+		var character := line.substr(index, 1)
+		if quote.is_empty():
+			if character == "\"" or character == "'":
+				quote = character
+				masked += " "
+			else:
+				masked += character
+		else:
+			masked += " "
+			if escaped:
+				escaped = false
+			elif character == "\\":
+				escaped = true
+			elif character == quote:
+				quote = ""
+	return masked
 
 
 func _contains_word(line: String, word: String) -> bool:

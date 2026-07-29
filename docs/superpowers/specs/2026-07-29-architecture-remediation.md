@@ -234,17 +234,19 @@ Godot 没有等价的程序集边界，因此本项目使用架构适应度测�
 | Issue | 目标 | 主要范围 | 依赖 |
 |---|---|---|---|
 | #390 ARCH-00 | 冻结 Spec、依赖矩阵和验收基线 | docs + health tests | 无 |
+| #399 ARCH-CORE | 消除 `core/` 对 `BattleState` 的跨层依赖 | core/battle state boundary | #381、#390 |
 | #391 ARCH-01 | 建立统一 `TableGameplayPort` 与本地/远端适配器 | battle/session/ui seam | #378、#380、#381、#390 |
 | #392 ARCH-02 | 拆分权威命令、事务、发布和推进组件 | server authority | #379–#381、#390 |
 | #393 ARCH-03 | 拆分 `NetworkedEvent` payload codec | protocol | #379–#381、#390 |
 | #394 ARCH-04 | 拆分 `PlayableTable` 子控制器 | ui/four_player_table | #386 执行 Issue、#391 |
 | #395 ARCH-05 | 收口道具/遗物/角色能力的效果执行边界 | items/skills/session | #379、#392 |
 | #396 ARCH-06 | 模块化内部权威 snapshot/replay 状态 | battle/server | #392、#393 |
-| #397 ARCH-07 | 整体迁移验收、文档收口与债务清单 | cross-module tests/docs | #391–#396 |
+| #397 ARCH-07 | 整体迁移验收、文档收口与债务清单 | cross-module tests/docs | #391–#396、#399 |
 
 ```mermaid
 flowchart LR
     A0["ARCH-00 Spec + fitness"]
+    AC["ARCH-CORE Core State Boundary"]
     E8["Epic #373 complete"]
     UIE["Epic #386 complete"]
     A1["ARCH-01 Gameplay Port"]
@@ -255,6 +257,8 @@ flowchart LR
     A6["ARCH-06 Internal Snapshot"]
     A7["ARCH-07 Acceptance"]
 
+    A0 --> AC
+    E8 --> AC
     A0 --> A1
     A0 --> A2
     A0 --> A3
@@ -272,6 +276,7 @@ flowchart LR
     A4 --> A7
     A5 --> A7
     A6 --> A7
+    AC --> A7
 ```
 
 ## 8. 各 Issue 统一交付合同
@@ -302,7 +307,7 @@ Accepted 基线（`origin/main` 5090ac2，生产 GDScript 210 个）：
 
 | 扫描边界 | 零豁免命中 | 精确历史例外 | 归属 Issue |
 |---|---:|---|---|
-| `core/` → `battle/session/protocol/server/ui` 路径或具体类型 | 7 | `nagashi_mangan.gd` 的 `BattleState` 1；`draw_detector.gd` 4；`turn_engine.gd` 2 | #397 |
+| `core/` → `battle/session/protocol/server/ui` 路径或具体类型 | 7 | `nagashi_mangan.gd` 的 `BattleState` 1；`draw_detector.gd` 4；`turn_engine.gd` 2 | #399 |
 | `battle/` → `ui/server`、WebSocket/Control Plane 适配器 | 0 | 无 | — |
 | `protocol/` → `ui/server`、场景节点或服务生命周期类型 | 0 | 无 | — |
 | `session/` 新建 `TurnEngine`、`ScoreCalc`、`SkillScheduler` 权威入口 | 0 | 无 | — |
@@ -322,7 +327,7 @@ allowlist 以“文件 + 规则 + 精确匹配文本 + 次数 + 归属 Issue”�
 
 ### 9.3 Epic 完成判据
 
-- ARCH-00–ARCH-07 全部关闭，P0–P2 清零；
+- ARCH-00–ARCH-07 与 ARCH-CORE 全部关闭，P0–P2 清零；
 - `local_authority` metadata 生产后门清零；
 - UI 生产代码不引用 `LocalLoopbackServer` 或权威内部字段；
 - `LocalLoopbackServer` façade 的命令/事务/事件/奖励/快照职责已委托独立组件；
