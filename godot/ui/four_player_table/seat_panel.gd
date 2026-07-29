@@ -79,6 +79,10 @@ var _score: int = 25000
 # seat_info 行做后缀(如 "名·东·激进")。
 var _persona_name: String = ""
 var _persona_style: String = ""
+## #377：公共投影四席显示 HUMAN/AI；练习场默认 false 保持旧标签
+var _public_participant_visible: bool = false
+## #377：权威 dealer_seat 覆盖；-1=回退 seat_wind==东
+var _dealer_override: int = -1
 # AI 立绘:set_ai_persona 时设;_emote_state 控制 modulate 调色情绪。
 # 1 张立绘 + 色调表达 4 种情绪,比录制台词便宜,比静态肖像有感染力。
 const EMOTE_NORMAL: Color = Color(1, 1, 1, 1)            # 默认白
@@ -403,6 +407,18 @@ func set_ai_persona(name_: String, style: String, portrait_path: String = "") ->
 	if is_inside_tree():
 		_refresh_labels()
 		_ensure_portrait()
+
+
+func set_public_participant_visible(enabled: bool) -> void:
+	_public_participant_visible = enabled
+	if is_inside_tree():
+		_refresh_labels()
+
+
+func set_is_dealer(is_dealer: bool) -> void:
+	_dealer_override = 1 if is_dealer else 0
+	if is_inside_tree():
+		_refresh_labels()
 
 
 # AI 气泡台词:event_kind ∈ riichi/winning/upset,从 persona 池随机选一句
@@ -822,6 +838,43 @@ var _force_reveal_hand: bool = false
 var _revealed_hand: Hand = null
 
 
+## #377：只读 seat DTO（core_table@1 seats[]）。show_faces=true 时用 concealed_tiles；
+## 否则仅 concealed_count 暗牌背。不依赖领域 Seat / BattleState。
+func bind_seat_view(seat_view: Dictionary, show_faces: bool) -> void:
+	_seat_wind = int(seat_view.get("seat_wind", -1))
+	_score = int(seat_view.get("score", 0))
+	var count: int = int(seat_view.get("concealed_count", 0))
+	_hand_size = count
+	var last_drawn: int = int(seat_view.get("last_drawn_tile_instance_id", Tile.INVALID_INSTANCE_ID))
+	_hand_has_drawn = Tile.is_valid_instance_id(last_drawn) and count > 0
+	_hand_base_count = count - 1 if _hand_has_drawn else count
+	_meld_count = (seat_view.get("melds", []) as Array).size()
+	_riichi = bool(seat_view.get("riichi_declared", false))
+	_furiten = false
+	if not is_inside_tree():
+		return
+	if show_faces:
+		var hand := Hand.new()
+		for tv in seat_view.get("concealed_tiles", []):
+			if typeof(tv) != TYPE_DICTIONARY:
+				continue
+			var t := Tile.new(
+				int(tv.get("tile_id", -1)),
+				bool(tv.get("is_red_dora", false)),
+				int(tv.get("owner_seat", Tile.NO_OWNER)),
+				int(tv.get("instance_id", Tile.INVALID_INSTANCE_ID))
+			)
+			if t.is_valid():
+				hand.add(t)
+		_rebuild_player_hand_row_with_drawn(hand, last_drawn)
+	else:
+		var owners: Array = []
+		for _i in range(count):
+			owners.append(_seat_id)
+		_rebuild_hand_tile_row(owners, _hand_has_drawn)
+	_refresh_labels()
+
+
 # 一次注入 Seat 全部状态（含手牌色块归属）
 # seat 0 时若传入 hand 则同时渲染真实 atlas 牌面（玩家自家可见），
 # 其它 seat 仍用 owner 着色色块（对手牌不可见，符合规则）。
@@ -946,15 +999,23 @@ func _refresh_labels() -> void:
 	# 简洁信息层：名字·风(·庄 if dealer)·立直状态。
 	# 振听 / 听牌 走单独彩色徽章(_apply_status_badges),不挤进 seat_info 文本。
 	var status: String = ""
-	if _seat_wind == TileId.E:
+	var is_dealer: bool = (
+		(_dealer_override == 1) if _dealer_override >= 0 else (_seat_wind == TileId.E)
+	)
+	if is_dealer:
 		status += " · 庄"
 	if _riichi:
 		status += " · 立直"
 	# 优先用 persona_name (set_ai_persona 注入),fallback 到 "你"/"AI N"
 	var who: String = _persona_name if _persona_name != "" else seat_display_name(_seat_id)
 	var style_tag: String = " · %s" % _persona_style if _persona_style != "" else ""
-	_label_seat_info.text = who if _seat_id != 0 \
-		else "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
+	if _public_participant_visible:
+		# 公共投影：四席均显示公开名 + HUMAN/AI + 庄/立直
+		_label_seat_info.text = "%s%s%s" % [who, style_tag, status]
+	elif _seat_id != 0:
+		_label_seat_info.text = who
+	else:
+		_label_seat_info.text = "%s · %s%s%s" % [who, wind_name(_seat_wind), status, style_tag]
 	# 布局对齐：分数回到头像卡下，金色。
 	_label_score.text = "%d 分" % _score
 	_label_score.visible = true

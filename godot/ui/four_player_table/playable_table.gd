@@ -1997,6 +1997,13 @@ var _last_reward_head_seq: int = -1
 var _last_reward_view_sig: String = ""
 var _reward_source_gen: int = 0
 var _reward_apply_count: int = 0  # 可观察：视图 apply 次数（pending 不得空转加）
+# #377：公共牌桌只读投影（仅 committed core_table；pending/resync 冻结）
+var _public_table_committed_seq: int = -1
+var _public_table_frozen: bool = false
+var _public_decision_view: Dictionary = {}
+var _public_network_command_attempts: int = 0
+const PublicTableAdapter := preload(
+	"res://ui/four_player_table/public_table_projection_adapter.gd")
 
 
 ## E5-06：练习 TT 只读奖励绑定。ITEM_USE 走 PBC.submit_item_use → apply_action。
@@ -2026,9 +2033,16 @@ func _bind_reward_feedback_from_battle(bc: PlayableBattleController) -> void:
 
 ## 公共场只读展示 seam：可在 session.start()/nbc 创建之前调用。
 ## 生命周期内自动跟进 committed journal；pending 不投影。公共 ITEM_USE fail-closed。
+## #377：同步 core_table 只读投影；不启动 _bc / 本地权威 / 命令发送。
 func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_disconnect_public_transcript()
 	_public_reward_session = session
+	_public_table_committed_seq = -1
+	_public_table_frozen = false
+	_public_decision_view = {}
+	_public_network_command_attempts = 0
+	# 公共路径禁止练习场 _bc
+	_bc = null
 	if _table != null and _table.has_signal("inventory_use_requested"):
 		if not _table.inventory_use_requested.is_connected(_on_inventory_use_requested):
 			_table.inventory_use_requested.connect(_on_inventory_use_requested)
@@ -2042,9 +2056,12 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_reward_local_seat = seat
 	if _table != null and _table.has_method("set_local_seat"):
 		_table.set_local_seat(seat)
+	_ensure_public_decision_adapter()
 	_sync_viewer_reveal_label()
 	_begin_reward_source("public|%s|seat%d" % [room, seat], seat, true)
 	_ensure_reward_sync_loop()
+	# 若 nbc 已有 committed，立即投影
+	sync_public_table_projection()
 
 
 func _disconnect_public_transcript() -> void:
@@ -2115,9 +2132,12 @@ func _sync_reward_feedback_if_advanced() -> void:
 		return
 	if not _reward_bootstrapped:
 		_bootstrap_reward_display()
+		sync_public_table_projection()
 		return
 	var head: int = _peek_reward_journal_head_seq()
 	var sig: String = _reward_view_signature()
+	# #377：公共牌桌投影独立于奖励签名，按 committed seq / resync 冻结
+	sync_public_table_projection()
 	if head <= _reward_journal_cursor and sig == _last_reward_view_sig:
 		return
 	# 视图有变或 journal 前进：快照恢复 + 仅新 seq 反馈
@@ -2126,6 +2146,212 @@ func _sync_reward_feedback_if_advanced() -> void:
 		_consume_reward_journal_events()
 	_last_reward_head_seq = head
 	_last_reward_view_sig = sig
+
+
+## #377：仅消费 NBC committed core_table / journal decision；pending 与 resync 冻结画面。
+func sync_public_table_projection() -> void:
+	if _public_reward_session == null or _public_reward_session.nbc == null:
+		return
+	if _table == null or not (_table is FourPlayerTable):
+		return
+	var nbc: NetworkedBattleController = _public_reward_session.nbc
+	if nbc.resync_required():
+		_public_table_frozen = true
+		return
+	var core: Dictionary = nbc.get_core_table_view()
+	if core.is_empty():
+		return
+	var committed_seq: int = int(nbc.current_seq())
+	# pending 不推进 current_seq（异 hash 队列时 seq 仍停在 last commit）
+	if _public_table_frozen and committed_seq <= _public_table_committed_seq:
+		return
+	if committed_seq == _public_table_committed_seq and not _public_table_frozen:
+		_apply_public_decision_from_journal(nbc)
+		return
+	if committed_seq < _public_table_committed_seq:
+		return
+	_public_table_frozen = false
+	_public_table_committed_seq = committed_seq
+	if _table.has_method("bind_core_table_view"):
+		_table.bind_core_table_view(core)
+	else:
+		PublicTableAdapter.apply_core_table(_table as FourPlayerTable, core)
+	var meta: Dictionary = nbc.get_matching_meta_view()
+	if not meta.is_empty():
+		var recip: int = int(core.get("recipient_seat", _reward_local_seat))
+		PublicTableAdapter.apply_matching_meta(_table as FourPlayerTable, meta, recip)
+		_bind_public_matching_meta_characters()
+	_apply_public_decision_from_journal(nbc)
+	# 本席手牌点击走 entity id；公共不发网络命令
+	_wire_public_bottom_hand_clicks()
+
+
+func get_public_decision_view() -> Dictionary:
+	return _public_decision_view.duplicate(true)
+
+
+func public_network_command_attempts() -> int:
+	return _public_network_command_attempts
+
+
+func _ensure_public_decision_adapter() -> void:
+	if _action_panel == null:
+		return
+	if _seat_panel_player == null and _table is FourPlayerTable \
+			and (_table as FourPlayerTable).seat_panels.size() > 0:
+		_seat_panel_player = (_table as FourPlayerTable).seat_panels[0]
+	if _decision_adapter == null and _seat_panel_player != null:
+		_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
+
+
+func _wire_public_bottom_hand_clicks() -> void:
+	if not (_table is FourPlayerTable):
+		return
+	var bottom = (_table as FourPlayerTable).seat_panels[0] if \
+		(_table as FourPlayerTable).seat_panels.size() > 0 else null
+	if bottom == null:
+		return
+	_seat_panel_player = bottom
+	if bottom.has_signal("player_card_clicked") \
+			and not bottom.player_card_clicked.is_connected(_on_player_tile_clicked):
+		bottom.player_card_clicked.connect(_on_player_tile_clicked)
+
+
+func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void:
+	_public_decision_view = {}
+	if nbc == null:
+		return
+	var recip: int = int(nbc.recipient_seat)
+	# #377 P1-2：从 journal 顺序折叠；较新 ROOM_SNAPSHOT 关闭先前 TURN/CLAIM 窗口
+	var last: NetworkedEvent = null
+	var core_phase := str(nbc.get_core_table_view().get("phase", ""))
+	for item in nbc.get_event_journal():
+		if not (item is NetworkedEvent):
+			continue
+		var ne: NetworkedEvent = item as NetworkedEvent
+		if ne.kind == "ROOM_SNAPSHOT":
+			last = null
+			continue
+		if ne.kind == "TURN_PROMPT":
+			if int(ne.payload.get("seat", -1)) == recip:
+				last = ne
+			continue
+		if ne.kind == "CLAIM_WINDOW":
+			# CLAIM 按 recipient journal 私有下发，无 seat 字段
+			last = ne
+	if last == null:
+		_clear_public_decision_ui(core_phase)
+		return
+	_public_decision_view = last.payload.duplicate(true)
+	_present_public_allowed_actions(last)
+
+
+func _clear_public_decision_ui(phase: String = "") -> void:
+	_ensure_public_decision_adapter()
+	var idle_text := "阶段 %s" % phase if not phase.is_empty() else "等待权威…"
+	if _decision_adapter != null:
+		_decision_adapter.present(&"idle", {"text": idle_text})
+	elif _action_panel != null:
+		_action_panel.enter_idle(idle_text)
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.set_hand_clickable(false)
+		if _seat_panel_player.has_method("clear_hand_dim"):
+			_seat_panel_player.clear_hand_dim()
+
+
+func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
+	# #377：按协议 TURN_OFFER_KINDS / CLAIM_OFFER_KINDS 只读展示；
+	# KAN 子型在 payload_options[].kan_kind；CLAIM 来源席为 discarded_by_seat。
+	_ensure_public_decision_adapter()
+	if _action_panel == null or ne == null:
+		return
+	var payload: Dictionary = ne.payload
+	var allowed: Array = payload.get("allowed_actions", []) as Array
+	if ne.kind == "TURN_PROMPT":
+		var can_tsumo := false
+		var can_ankan := false
+		var can_added := false
+		var can_riichi := false
+		var can_kyuusyu := false
+		var discard_iids: Array = []
+		for a in allowed:
+			if typeof(a) != TYPE_DICTIONARY:
+				continue
+			var kind := str(a.get("kind", ""))
+			var opts: Array = a.get("payload_options", []) as Array
+			match kind:
+				"TSUMO":
+					can_tsumo = true
+				"RIICHI":
+					can_riichi = true
+				"DECLARE_ABORTIVE_DRAW":
+					for op_ab in opts:
+						if typeof(op_ab) == TYPE_DICTIONARY \
+								and str(op_ab.get("reason", "")) == "KYUUSYU_KYUUHAI":
+							can_kyuusyu = true
+				"DISCARD":
+					for op_d in opts:
+						if typeof(op_d) != TYPE_DICTIONARY:
+							continue
+						if op_d.has("tile_instance_id"):
+							var diid: int = int(op_d["tile_instance_id"])
+							if not discard_iids.has(diid):
+								discard_iids.append(diid)
+				"KAN":
+					for op_k in opts:
+						if typeof(op_k) != TYPE_DICTIONARY:
+							continue
+						var kk := str(op_k.get("kan_kind", ""))
+						if kk == "ANKAN":
+							can_ankan = true
+						elif kk == "ADDED_KAN":
+							can_added = true
+		_action_panel.enter_waiting_discard(
+			can_tsumo, can_ankan, can_added, false, can_riichi, can_kyuusyu)
+		if _seat_panel_player != null:
+			var clickable := discard_iids.size() > 0 or can_riichi or can_tsumo \
+				or can_ankan or can_added or can_kyuusyu
+			if _seat_panel_player.has_method("set_hand_clickable"):
+				_seat_panel_player.set_hand_clickable(clickable and discard_iids.size() > 0)
+			if discard_iids.size() > 0 and _seat_panel_player.has_method("dim_hand_except"):
+				_seat_panel_player.dim_hand_except(discard_iids)
+			elif _seat_panel_player.has_method("clear_hand_dim"):
+				_seat_panel_player.clear_hand_dim()
+	elif ne.kind == "CLAIM_WINDOW":
+		var can_ron := false
+		var can_chi := false
+		var can_pon := false
+		var can_minkan := false
+		# 权威绝对来源席；禁止读 discarder_seat 错字段
+		var discarder: int = int(payload.get("discarded_by_seat", -1))
+		for a2 in allowed:
+			if typeof(a2) != TYPE_DICTIONARY:
+				continue
+			var kind2 := str(a2.get("kind", ""))
+			var opts2: Array = a2.get("payload_options", []) as Array
+			match kind2:
+				"RON":
+					can_ron = true
+				"CHI":
+					can_chi = true
+				"PON":
+					can_pon = true
+				"PASS":
+					pass  # skip 按钮
+				"KAN":
+					for op_mk in opts2:
+						if typeof(op_mk) != TYPE_DICTIONARY:
+							continue
+						if str(op_mk.get("kan_kind", "")) == "MINKAN":
+							can_minkan = true
+		_action_panel.enter_waiting_claim(can_ron, can_chi, can_pon, can_minkan, discarder)
+		if _seat_panel_player != null:
+			if _seat_panel_player.has_method("set_hand_clickable"):
+				_seat_panel_player.set_hand_clickable(false)
+			if _seat_panel_player.has_method("clear_hand_dim"):
+				_seat_panel_player.clear_hand_dim()
+	_action_panel.set_status_text("本席决策（只读展示，#377 不发送命令）")
 
 
 func _peek_reward_journal_head_seq() -> int:
@@ -2276,6 +2502,7 @@ func _on_inventory_use_requested(item_instance_id: String) -> void:
 	if _public_reward_session != null and (
 		_bc == null or not _bc.has_meta("local_authority")
 	):
+		# fail-closed：计数不增加发送成功；仅用于观测未外发
 		return
 	if _bc == null:
 		return

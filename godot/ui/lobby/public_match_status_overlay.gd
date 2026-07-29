@@ -50,9 +50,16 @@ func is_blocking() -> bool:
 
 func present(view: Dictionary) -> void:
 	_state = str(view.get("state", "idle"))
-	if _state in ["idle", "cancelled"]:
+	# #377：playing/entered 隐藏遮罩，牌桌接管焦点
+	if _state in ["idle", "cancelled", "playing", "entered"]:
 		visible = false
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if _dim != null:
+			_dim.visible = false
+		if _modal != null:
+			_modal.visible = false
+		if _recovered_notice != null:
+			_recovered_notice.visible = false
 		return
 	visible = true
 	if _state == "recovered":

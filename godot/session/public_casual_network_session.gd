@@ -47,6 +47,8 @@ var _recovering: bool = false
 var _closed_notified: bool = false
 var _has_committed_snapshot: bool = false
 var _terminal_notified: bool = false
+## #377：权威 resync 只发一次 reconnecting，直到合法 ROOM_SNAPSHOT 恢复。
+var _resync_reconnect_notified: bool = false
 
 
 ## E5-06：可选只读 UI 绑定。不改 schema/权威；展示侧消费 nbc committed journal。
@@ -136,6 +138,7 @@ func start() -> Error:
 	_closed_notified = false
 	_has_committed_snapshot = false
 	_terminal_notified = false
+	_resync_reconnect_notified = false
 	nbc = NetworkedBattleController.new(room_id, seat)
 	if game_mode == "TRASH_TALK":
 		nbc.configure_snapshot_registry_for_mode("TRASH_TALK")
@@ -181,11 +184,47 @@ func poll() -> void:
 	_poll_game()
 	if _voice_client != null:
 		_voice_client.poll()
-	seq_bridge.tick()
+	# #377：gap timeout/overflow 强制 resync 时通知 UI，不得忽略 tick 返回
+	var tick_result: Dictionary = seq_bridge.tick()
+	_observe_bridge_result(tick_result)
 
 
 func _process(_delta: float) -> void:
 	poll()
+
+
+## 测试：注入权威 wire JSON（真实 _on_game_text 入口，不直连 NBC）。
+func ingest_authority_wire_for_test(text: String) -> void:
+	_on_game_text(text)
+
+
+func _observe_bridge_result(result: Dictionary) -> void:
+	if result.is_empty():
+		return
+	if bool(result.get("resync", false)):
+		_emit_authority_resync(str(result.get("reason", "RESYNC_REQUIRED")))
+		return
+	if nbc != null and nbc.resync_required() and not bool(result.get("ok", true)):
+		_emit_authority_resync(str(result.get("reason", "RESYNC_REQUIRED")))
+
+
+func _emit_authority_resync(code: String) -> void:
+	if _released or _terminal_notified:
+		return
+	if _resync_reconnect_notified:
+		return
+	_resync_reconnect_notified = true
+	_recovering = true
+	# #377 P1：权威 resync 时关闭旧 game peer，使「重新连接」可发起新连接；
+	# 并抑制 poll 在 CLOSED 时二次 emit WS_CLOSED reconnecting。
+	if _game_peer != null:
+		var st: int = _game_peer.get_ready_state()
+		if st != WebSocketPeer.STATE_CLOSED:
+			_game_peer.close()
+		_closed_notified = true
+	var msg := "authority resync required"
+	var c := code if not code.is_empty() else "RESYNC_REQUIRED"
+	reconnecting.emit(c, msg)
 
 
 func _poll_game() -> void:
@@ -244,17 +283,25 @@ func _on_game_text(text: String) -> void:
 			_game_joined = true
 			game_joined.emit()
 		var ingested: Dictionary = seq_bridge.on_game_networked_event(event)
+		_observe_bridge_result(ingested)
 		if not bool(ingested.get("ok", false)):
+			# #377：resync / RESYNC_REQUIRED 冻结桌面并进入可恢复重连，不得 terminal
+			if bool(ingested.get("resync", false)) \
+					or str(ingested.get("reason", "")) == "RESYNC_REQUIRED" \
+					or (nbc != null and nbc.resync_required()):
+				_emit_authority_resync(str(ingested.get("reason", "RESYNC_REQUIRED")))
+				return
 			var ingest_code := str(ingested.get("error", ""))
 			if ingest_code.is_empty():
 				ingest_code = str(ingested.get("reason", "EVENT_REJECTED"))
 			_emit_terminal(ingest_code, "authority event rejected")
 			return
-		if str(d.get("kind", "")) == "ROOM_SNAPSHOT":
+		if str(d.get("kind", "")) == "ROOM_SNAPSHOT" and bool(ingested.get("applied", true)):
 			_has_committed_snapshot = true
 			room_started_hint.emit()
 			if _recovering:
 				_recovering = false
+				_resync_reconnect_notified = false
 				recovered.emit()
 		return
 
@@ -262,8 +309,13 @@ func _on_game_text(text: String) -> void:
 func retry_reconnect() -> Error:
 	if _released or not _recovering or worker_url.is_empty():
 		return ERR_INVALID_PARAMETER
-	if _game_peer != null and _game_peer.get_ready_state() != WebSocketPeer.STATE_CLOSED:
-		return ERR_BUSY
+	# #377 P1：authority resync 可能留下 OPEN/CONNECTING/CLOSING peer；
+	# 关闭并替换，不得 ERR_BUSY 阻断「重新连接」。
+	if _game_peer != null:
+		var st: int = _game_peer.get_ready_state()
+		if st != WebSocketPeer.STATE_CLOSED:
+			_game_peer.close()
+		_game_peer = null
 	_game_peer = WebSocketPeer.new()
 	_game_joined = false
 	_game_join_sent = false
@@ -388,6 +440,7 @@ func release() -> void:
 	_closed_notified = false
 	_has_committed_snapshot = false
 	_terminal_notified = false
+	_resync_reconnect_notified = false
 
 
 func _exit_tree() -> void:

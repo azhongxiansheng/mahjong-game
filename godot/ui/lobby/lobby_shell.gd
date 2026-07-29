@@ -373,7 +373,7 @@ func _on_public_match_view_changed(view: Dictionary) -> void:
 	if _public_status_overlay == null:
 		return
 	var state := str(view.get("state", "idle"))
-	if state not in ["idle", "cancelled", "recovered"]:
+	if state not in ["idle", "cancelled", "recovered", "playing", "entered"]:
 		_close_rule_drawer(false)
 		_close_codex(false)
 		_close_audio_popup(false)
@@ -382,6 +382,17 @@ func _on_public_match_view_changed(view: Dictionary) -> void:
 	move_child(_public_status_overlay, get_child_count() - 1)
 	if state == "cancelled":
 		_restore_public_status_focus()
+	elif state == "playing" or state == "entered":
+		# #377：遮罩解除后焦点交给公共牌桌
+		var coordinator := get_node_or_null("PublicMatchCoordinator") as PublicMatchCoordinator
+		var table: Control = null
+		if coordinator != null:
+			table = coordinator.get_active_table() as Control
+		if table != null and is_instance_valid(table):
+			table.focus_mode = Control.FOCUS_ALL
+			table.grab_focus()
+		else:
+			_restore_public_status_focus()
 
 
 func _on_public_cancel_requested() -> void:

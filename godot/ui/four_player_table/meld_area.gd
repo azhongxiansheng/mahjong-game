@@ -9,6 +9,7 @@ const TILE_W: int = 34
 const TILE_H: int = 45
 
 var _seat_id: int = -1
+var _layout_claimant: int = -1
 var _melds: Array = []        # Array[Meld]
 var _tile_nodes: Array = []   # [{id, node}] 同名高亮
 var _hover_match_id: int = -1
@@ -20,9 +21,11 @@ func set_seat_id(seat_id: int) -> void:
 	assert(seat_id >= 0 and seat_id <= 3)
 	_seat_id = seat_id
 
-# claimant_seat = self._seat_id；分开存便于后续 polling 模式
-func set_melds(melds: Array, claimant_seat: int) -> void:
-	_seat_id = claimant_seat
+# screen_seat：桌面视觉方位；layout_claimant_absolute：MeldLayout 用的权威绝对席
+# （与 meld.from_seat 同坐标系）。省略第三参时两者同为 screen_seat（练习场 seat0）。
+func set_melds(melds: Array, screen_seat: int, layout_claimant_absolute: int = -1) -> void:
+	_seat_id = screen_seat
+	_layout_claimant = layout_claimant_absolute if layout_claimant_absolute >= 0 else screen_seat
 	_melds = melds
 	_rebuild()
 
@@ -75,8 +78,9 @@ func _rebuild() -> void:
 		return
 	var slot_groups: Array = []
 	var widths: Array = []
+	var layout_seat: int = _layout_claimant if _layout_claimant >= 0 else _seat_id
 	for meld in _melds:
-		var slots: Array = MeldLayout.compute(meld as Meld, _seat_id)
+		var slots: Array = MeldLayout.compute(meld as Meld, layout_seat)
 		slot_groups.append(slots)
 		widths.append(float(_slot_layout(slots, _seat_id)["width"]))
 	var origins: Array = _meld_origins(widths, _seat_id)
@@ -92,8 +96,9 @@ func get_layout_bounds() -> Rect2:
 		return Rect2()
 	var groups: Array = []
 	var widths: Array = []
+	var layout_seat2: int = _layout_claimant if _layout_claimant >= 0 else _seat_id
 	for meld in _melds:
-		var slots: Array = MeldLayout.compute(meld as Meld, _seat_id)
+		var slots: Array = MeldLayout.compute(meld as Meld, layout_seat2)
 		groups.append(slots)
 		widths.append(float(_slot_layout(slots, _seat_id)["width"]))
 	var origins := _meld_origins(widths, _seat_id)
