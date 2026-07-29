@@ -516,6 +516,18 @@ func set_local_seat(seat: int) -> void:
 		_reward_feedback_projector.set_local_seat(seat)
 
 
+## #377：屏幕槽 → 绝对 seat（公共投影旋转后）。
+func screen_seat_absolute(relative_slot: int) -> int:
+	var recip: int = int(get_meta("public_recipient_seat", _local_seat))
+	return (relative_slot + recip) % 4
+
+
+## #377：直接消费 committed core_table@1，不重建 BattleState。
+func bind_core_table_view(core: Dictionary) -> void:
+	const AdapterScr := preload("res://ui/four_player_table/public_table_projection_adapter.gd")
+	AdapterScr.apply_core_table(self, core)
+
+
 func set_viewer_reveal_label(value: String) -> void:
 	for panel in seat_panels:
 		if panel is SeatPanel:

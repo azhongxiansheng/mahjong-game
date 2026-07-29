@@ -105,13 +105,12 @@ func on_game_networked_event(ev: Variant) -> Dictionary:
 		ne = NetworkedEvent.from_dict(ev)
 	if ne == null:
 		return {"ok": false, "reason": "BAD_EVENT", "applied": false}
-	if _nbc.resync_required():
-		return {"ok": false, "reason": "RESYNC_REQUIRED", "applied": false}
 
 	var seq: int = int(ne.server_seq)
 	var expected: int = _nbc.expected_next_server_seq()
 
-	# ROOM_SNAPSHOT：先尝试提交；失败不得先破坏 pending。
+	# ROOM_SNAPSHOT：即使 resync_required 也必须可恢复（#377 P1-1）。
+	# 先尝试提交；失败不得先破坏 pending。
 	# 成功后仅清理 seq <= committed 的 hold，保留更高序号 future side/game 再 drain。
 	if ne.kind == "ROOM_SNAPSHOT":
 		if ne.room_id != _nbc.room_id:
@@ -123,11 +122,21 @@ func on_game_networked_event(ev: Variant) -> Dictionary:
 				"ok": false,
 				"reason": "SNAPSHOT_REJECTED",
 				"applied": false,
+				"resync": _nbc.resync_required(),
 				"error": _nbc.last_snapshot_error() if _nbc.has_method("last_snapshot_error") else "",
 			}
 		_prune_held_upto(_nbc.current_seq())
 		_drain()
-		return {"ok": true, "reason": "SNAPSHOT", "applied": true}
+		return {
+			"ok": true,
+			"reason": "SNAPSHOT",
+			"applied": true,
+			"resync": _nbc.resync_required(),
+		}
+
+	# 非 snapshot：resync 期间 fail-closed（不放宽普通事件）
+	if _nbc.resync_required():
+		return {"ok": false, "reason": "RESYNC_REQUIRED", "applied": false, "resync": true}
 
 	if seq < expected:
 		var ig: bool = _nbc.ingest_networked_event(ne)

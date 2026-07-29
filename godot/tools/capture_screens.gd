@@ -55,6 +55,8 @@ func _run() -> void:
 	await _capture_battle_captions()
 	# E5-06 / #254：奖池 HUD + 反馈条 + 库存抽屉 1600×900。
 	await _capture_reward_feedback_254()
+	# E8-04 / #377：公共 committed 投影 playing / recipient≠0 / reconnecting 冻结。
+	await _capture_public_table_projection_377()
 	print("[capture] done")
 	quit()
 
@@ -431,6 +433,277 @@ func _capture_battle_captions() -> void:
 	img.save_png(out)
 	print("[capture] saved ", out)
 	table.queue_free()
+	await process_frame
+
+
+func _capture_public_table_projection_377() -> void:
+	# #377：1600×900 公共只读投影 — playing 本席下方 / recipient≠0 / reconnecting 冻结。
+	# 路径：NBC committed core_table → PublicCasualNetworkSession.bind → PlayableTable。
+	var Adapter = load("res://ui/four_player_table/public_table_projection_adapter.gd")
+	var PlayableScr = load("res://ui/four_player_table/playable_table.gd")
+
+	# --- fixture helpers（与 GUT #377 对齐的最小合法 core）---
+	var make_tile := func(tile_id: int, copy_index: int, red: bool = false) -> Dictionary:
+		return {
+			"instance_id": TileId.ALL.find(tile_id) * 4 + copy_index,
+			"tile_id": tile_id,
+			"is_red_dora": red,
+			"owner_seat": copy_index,
+		}
+	var make_core := func(recip: int) -> Dictionary:
+		var own_a: Dictionary = make_tile.call(TileId.W5, 0, true)
+		var own_b: Dictionary = make_tile.call(TileId.W5, 1, false)
+		var seats: Array = []
+		for s in range(4):
+			var river: Array = [make_tile.call(TileId.W4, s)]
+			var melds: Array = []
+			if s == 1:
+				var w1: Dictionary = make_tile.call(TileId.W1, 1)
+				var w2: Dictionary = make_tile.call(TileId.W2, 1)
+				var w3: Dictionary = make_tile.call(TileId.W3, 0)
+				melds = [{
+					"meld_id": 1, "kind": "CHI", "from_seat": 0,
+					"called_tile_instance_id": int(w3["instance_id"]),
+					"added_tile_instance_id": -1,
+					"tiles": [w1, w2, w3],
+				}]
+			var concealed: Array = [own_a, own_b] if s == recip else []
+			var count: int = 2 if s == recip else 13
+			seats.append({
+				"seat": s,
+				"seat_wind": [TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N][s],
+				"score": 25000 + s * 100,
+				"concealed_tiles": concealed,
+				"concealed_count": count,
+				"last_drawn_tile_instance_id": -1,
+				"river": river,
+				"melds": melds,
+				"riichi_declared": s == 2,
+				"riichi_double": false,
+				"riichi_discard_index": 0 if s == 2 else -1,
+			})
+		return {
+			"recipient_seat": recip, "hand_seq": 0, "dealer_seat": 0,
+			"current_seat": recip, "phase": "DISCARD", "round_wind": TileId.E,
+			"hand_number": 1, "honba": 2, "riichi_sticks": 1, "live_wall_count": 66,
+			"dora_indicators": [make_tile.call(TileId.S1, 0)], "seats": seats,
+		}
+	var make_snap := func(seq: int, recip: int, core: Dictionary) -> Dictionary:
+		return {
+			"snapshot_server_seq": seq, "next_server_seq": seq + 1,
+			"seat_view": recip,
+			"modules": [
+				{"module_key": "core_table", "schema_version": 1, "payload": core},
+				MatchingMetaSnapshotProvider.fixture_module(
+					["lin_yeche", "an_cheng", "bai_touli", "hua_ling"],
+					["HUMAN", "AI", "AI", "AI"]
+				),
+			],
+		}
+
+	# 1) playing 正常（recipient=0）
+	var table0 = PlayableScr.new()
+	root.add_child(table0)
+	var room0 := "capture-377-r0"
+	var nbc0 := NetworkedBattleController.new(room0, 0)
+	var core0: Dictionary = make_core.call(0)
+	var payload0: Dictionary = make_snap.call(1, 0, core0)
+	var ne0 := NetworkedEvent.make(
+		"ROOM_SNAPSHOT", 1, room0, payload0, ProtocolViewCodec.compute_view_hash(payload0))
+	if ne0 != null:
+		nbc0.ingest_networked_event(ne0)
+	var sess0 := PublicCasualNetworkSession.new()
+	root.add_child(sess0)
+	sess0.room_id = room0
+	sess0.seat = 0
+	sess0.nbc = nbc0
+	sess0.bind_playable_table(table0)
+	if table0.has_method("sync_public_table_projection"):
+		table0.sync_public_table_projection()
+	for _i in range(20):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img0 := root.get_texture().get_image()
+	var out0 := "/tmp/shot_public_table_377_playing.png"
+	img0.save_png(out0)
+	print("[capture] saved ", out0, " size=", img0.get_width(), "x", img0.get_height(),
+		" recip=0 wall=", core0.get("live_wall_count"))
+	sess0.release()
+	sess0.queue_free()
+	table0.queue_free()
+	await process_frame
+
+	# 2) recipient=2 本席在下方
+	var table2 = PlayableScr.new()
+	root.add_child(table2)
+	var room2 := "capture-377-r2"
+	var nbc2 := NetworkedBattleController.new(room2, 2)
+	var core2: Dictionary = make_core.call(2)
+	var payload2: Dictionary = make_snap.call(1, 2, core2)
+	var ne2 := NetworkedEvent.make(
+		"ROOM_SNAPSHOT", 1, room2, payload2, ProtocolViewCodec.compute_view_hash(payload2))
+	if ne2 != null:
+		nbc2.ingest_networked_event(ne2)
+	var sess2 := PublicCasualNetworkSession.new()
+	root.add_child(sess2)
+	sess2.room_id = room2
+	sess2.seat = 2
+	sess2.nbc = nbc2
+	sess2.bind_playable_table(table2)
+	if table2.has_method("sync_public_table_projection"):
+		table2.sync_public_table_projection()
+	for _i in range(20):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img2 := root.get_texture().get_image()
+	var out2 := "/tmp/shot_public_table_377_recipient2.png"
+	img2.save_png(out2)
+	print("[capture] saved ", out2, " size=", img2.get_width(), "x", img2.get_height(),
+		" recip=2 bottom_abs=", Adapter.absolute_seat(0, 2) if Adapter else 2)
+	# 3) reconnecting：冻结 committed + 真实 PublicMatchStatusOverlay（preload 脚本）
+	nbc2.force_resync_for_authority_gap()
+	if table2.has_method("sync_public_table_projection"):
+		table2.sync_public_table_projection()
+	var OverlayScr: GDScript = load("res://ui/lobby/public_match_status_overlay.gd") as GDScript
+	var overlay: Control = OverlayScr.new() as Control
+	table2.add_child(overlay)
+	if overlay.has_method("present"):
+		overlay.call("present", {
+			"state": "reconnecting",
+			"round_kind": "EAST",
+			"game_mode": "STANDARD",
+			"error_code": "RESYNC_REQUIRED",
+			"message": "authority resync required",
+			"can_retry": true,
+		})
+	for _j in range(12):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img3 := root.get_texture().get_image()
+	var out3 := "/tmp/shot_public_table_377_reconnecting.png"
+	img3.save_png(out3)
+	var retry_btn: Button = overlay.find_child("PublicMatchRetryButton", true, false) as Button
+	var blocking := false
+	if overlay.has_method("is_blocking"):
+		blocking = bool(overlay.call("is_blocking"))
+	print("[capture] saved ", out3, " size=", img3.get_width(), "x", img3.get_height(),
+		" blocking=", blocking,
+		" retry_visible=", retry_btn != null and retry_btn.visible,
+		" retry_focus=", retry_btn != null and retry_btn.has_focus())
+	sess2.release()
+	sess2.queue_free()
+	table2.queue_free()
+	await process_frame
+
+	# 4) TURN_PROMPT 全动作只读栏：真实 SNAP → TURN 经 session/bridge/NBC
+	# 与 GUT test_turn_prompt_maps_real_kan_riichi_kyuusyu_and_dim_discards 同形
+	var table_t = PlayableScr.new()
+	root.add_child(table_t)
+	var room_t := "capture-377-turn"
+	var nbc_t := NetworkedBattleController.new(room_t, 0)
+	# 本席 7 张手牌（含 ANKAN 四张赤/五 + DISCARD 实体）
+	var t0: Dictionary = make_tile.call(TileId.W1, 0)
+	var t1: Dictionary = make_tile.call(TileId.S2, 0)
+	var a0: Dictionary = make_tile.call(TileId.W5, 0, true)
+	var a1: Dictionary = make_tile.call(TileId.W5, 1)
+	var a2: Dictionary = make_tile.call(TileId.W5, 2)
+	var a3: Dictionary = make_tile.call(TileId.W5, 3)
+	var added: Dictionary = make_tile.call(TileId.HAKU, 0)
+	var core_t: Dictionary = make_core.call(0)
+	var seats_t: Array = core_t["seats"]
+	var own_t: Dictionary = seats_t[0]
+	own_t["concealed_tiles"] = [t0, t1, a0, a1, a2, a3, added]
+	own_t["concealed_count"] = 7
+	own_t["last_drawn_tile_instance_id"] = int(t1["instance_id"])
+	seats_t[0] = own_t
+	core_t["seats"] = seats_t
+	core_t["phase"] = "DISCARD"
+	var snap_t: Dictionary = make_snap.call(1, 0, core_t)
+	var vh_t := ProtocolViewCodec.compute_view_hash(snap_t)
+	var ne_snap := NetworkedEvent.make("ROOM_SNAPSHOT", 1, room_t, snap_t, vh_t)
+	var turn_payload := {
+		"hand_seq": 0,
+		"decision_id": "550e8400-e29b-41d4-a716-4466554400aa",
+		"seat": 0,
+		"hand": [t0, t1, a0, a1, a2, a3, added],
+		"last_drawn_tile_instance_id": int(t1["instance_id"]),
+		"allowed_actions": [
+			{
+				"kind": "DISCARD",
+				"payload_options": [
+					{"tile_instance_id": int(t0["instance_id"])},
+					{"tile_instance_id": int(t1["instance_id"])},
+				],
+			},
+			{"kind": "RIICHI", "payload_options": [{"tile_instance_id": int(t1["instance_id"])}]},
+			{
+				"kind": "KAN",
+				"payload_options": [
+					{
+						"kan_kind": "ANKAN",
+						"tile_instance_ids": [
+							int(a0["instance_id"]), int(a1["instance_id"]),
+							int(a2["instance_id"]), int(a3["instance_id"]),
+						],
+					},
+					{
+						"kan_kind": "ADDED_KAN",
+						"meld_id": 1,
+						"added_tile_instance_id": int(added["instance_id"]),
+					},
+				],
+			},
+			{"kind": "TSUMO", "payload_options": [{}]},
+			{
+				"kind": "DECLARE_ABORTIVE_DRAW",
+				"payload_options": [{"reason": "KYUUSYU_KYUUHAI"}],
+			},
+		],
+	}
+	var ne_turn := NetworkedEvent.make("TURN_PROMPT", 2, room_t, turn_payload, vh_t)
+	var sess_t := PublicCasualNetworkSession.new()
+	root.add_child(sess_t)
+	sess_t.room_id = room_t
+	sess_t.seat = 0
+	sess_t.nbc = nbc_t
+	sess_t.seq_bridge.bind_networked_controller(nbc_t)
+	sess_t.bind_playable_table(table_t)
+	# 生产 wire 入口（禁止直接 _present_public_allowed_actions）
+	if ne_snap != null and sess_t.has_method("ingest_authority_wire_for_test"):
+		sess_t.ingest_authority_wire_for_test(JSON.stringify(ne_snap.to_dict()))
+	elif ne_snap != null:
+		nbc_t.ingest_networked_event(ne_snap)
+	if ne_turn != null and sess_t.has_method("ingest_authority_wire_for_test"):
+		sess_t.ingest_authority_wire_for_test(JSON.stringify(ne_turn.to_dict()))
+	elif ne_turn != null:
+		nbc_t.ingest_networked_event(ne_turn)
+	if table_t.has_method("sync_public_table_projection"):
+		table_t.sync_public_table_projection()
+	for _k in range(24):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img_t := root.get_texture().get_image()
+	var out_t := "/tmp/shot_public_table_377_turn_actions.png"
+	img_t.save_png(out_t)
+	var ap = table_t.get("_action_panel")
+	var vis := {
+		"tsumo": false, "riichi": false, "ankan": false,
+		"added": false, "kyuusyu": false,
+	}
+	if ap != null:
+		for pair in [
+			["tsumo", "_btn_tsumo"], ["riichi", "_btn_riichi"],
+			["ankan", "_btn_ankan"], ["added", "_btn_added_kan"],
+			["kyuusyu", "_btn_kyuusyu"],
+		]:
+			var b = ap.get(pair[1])
+			if b != null:
+				vis[pair[0]] = b.visible
+	print("[capture] saved ", out_t, " size=", img_t.get_width(), "x", img_t.get_height(),
+		" buttons=", vis, " snap_ok=", ne_snap != null, " turn_ok=", ne_turn != null)
+	sess_t.release()
+	sess_t.queue_free()
+	table_t.queue_free()
 	await process_frame
 
 
