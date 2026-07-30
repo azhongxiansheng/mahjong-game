@@ -1,0 +1,51 @@
+[gd_resource type="Resource" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://ui/four_player_table/table3d/tile_3d_skin.gd" id="1_skin"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_face"]
+albedo_color = Color(1, 1, 1, 1)
+metallic = 0.015
+roughness = 0.38
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_back"]
+albedo_color = Color(0.07, 0.32, 0.285, 1)
+metallic = 0.025
+roughness = 0.58
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_edge"]
+albedo_color = Color(0.99, 0.985, 0.975, 1)
+metallic = 0.015
+roughness = 0.38
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_bevel"]
+albedo_color = Color(0.594, 0.591, 0.585, 1)
+metallic = 0.015
+roughness = 0.38
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_side"]
+albedo_color = Color(0.693, 0.6895, 0.6825, 1)
+metallic = 0.015
+roughness = 0.38
+cull_mode = 2
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_back_shell"]
+albedo_color = Color(0.07, 0.32, 0.285, 1)
+metallic = 0.025
+roughness = 0.58
+cull_mode = 2
+
+[resource]
+script = ExtResource("1_skin")
+skin_id = &"qinglan_weave"
+face_background_color = Color(0.99, 0.985, 0.975, 1)
+face_material_template = SubResource("StandardMaterial3D_face")
+back_material_template = SubResource("StandardMaterial3D_back")
+edge_material = SubResource("StandardMaterial3D_edge")
+bevel_material = SubResource("StandardMaterial3D_bevel")
+side_material = SubResource("StandardMaterial3D_side")
+back_shell_material = SubResource("StandardMaterial3D_back_shell")
+face_textures = {}

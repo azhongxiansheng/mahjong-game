@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://examples/table_2_5d_reference/table_3d_prototype_369.gd" id="1_table"]
+
+[node name="Table3DPrototype369" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1600.0
+offset_bottom = 900.0
+script = ExtResource("1_table")
