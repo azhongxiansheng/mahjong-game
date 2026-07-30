@@ -368,7 +368,7 @@ func test_all_color_families_survive_the_real_face_texture_chain() -> void:
 	_assert_real_source_color_is_preserved(red_texture, "0m", &"red")
 
 
-func test_real_mahjong_table_3d_creation_chain_keeps_legacy_geometry_and_skin() -> void:
+func test_real_mahjong_table_3d_creation_chain_uses_approved_production_geometry_and_skin() -> void:
 	var table := MahjongTable3D.new()
 	add_child_autofree(table)
 	await get_tree().process_frame
@@ -379,18 +379,20 @@ func test_real_mahjong_table_3d_creation_chain_keeps_legacy_geometry_and_skin() 
 		return
 	var hand_tile := table._hand_tiles[0] as Tile3D
 	assert_not_null(hand_tile)
-	assert_almost_eq(hand_tile.get_geometry_depth(), Tile3D.TILE_D, 0.000001,
-		"真实 MahjongTable3D 调用方必须继续默认使用 34mm")
+	assert_almost_eq(hand_tile.get_geometry_depth(),
+		Tile3D.APPROVED_TILE_D, 0.000001,
+		"#405 production MahjongTable3D 必须显式使用用户确认的 56mm 牌体")
 	assert_eq(hand_tile.get_tile_skin().resource_path, DEFAULT_SKIN_PATH)
 	assert_not_null(_surface_material(hand_tile, 0).albedo_texture,
 		"真实手牌创建链必须消费 tile_id 对应牌面")
 	table._rebuild_opponent_backs(1, 1)
 	assert_eq(table._opp_tiles[1].size(), 1)
 	var back_tile := table._opp_tiles[1][0] as Tile3D
-	assert_false(back_tile.face_up)
-	assert_eq(_surface_material(back_tile, 2).albedo_color,
-		_surface_material(back_tile, 4).albedo_color,
-		"真实对手暗手的可见顶边与上半侧壁必须同属牌背色系")
+	assert_true(back_tile.face_up,
+		"对手立牌靠统一物理朝向展示背面，不得为主镜头替换假牌")
+	assert_true(back_tile.tile_id < 0, "对手暗手不得泄露 tile_id")
+	assert_not_null(_surface_material(back_tile, 1).albedo_texture,
+		"统一物理朝向的背面仍必须消费真实青岚牌背纹理")
 
 
 func test_null_skin_and_missing_face_keep_existing_visual_fallback() -> void:

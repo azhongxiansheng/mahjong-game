@@ -189,6 +189,31 @@ func clear_tile_highlight() -> void:
 	if seat_panels.size() > 0 and seat_panels[0]:
 		seat_panels[0].highlight_hand_tile_id(-1)
 
+
+## #405 hybrid：保留本节点作为唯一状态/HUD owner，只切换桌面牌实体。
+func set_table_entities_visible(entities_visible: bool) -> void:
+	var stage := get_node_or_null("TableStage") as CanvasItem
+	if stage != null:
+		stage.visible = entities_visible
+	var board_frame := get_node_or_null("Table/BoardFrame") as CanvasItem
+	if board_frame != null:
+		board_frame.visible = entities_visible
+	if center_info != null:
+		center_info.visible = entities_visible
+	for panel in seat_panels:
+		if panel != null and panel.has_method("set_hand_row_visible"):
+			panel.set_hand_row_visible(entities_visible)
+	for river in discard_rivers:
+		if river is CanvasItem:
+			(river as CanvasItem).visible = entities_visible
+	for area in meld_areas:
+		if area is CanvasItem:
+			(area as CanvasItem).visible = entities_visible
+	# 根节点只让桌面空白区域继续下传；Button 等保留 HUD 子控件仍按自身
+	# MOUSE_FILTER_STOP 接收输入。
+	mouse_filter = Control.MOUSE_FILTER_PASS if not entities_visible \
+		else Control.MOUSE_FILTER_STOP
+
 # ---- helpers ----
 
 # AI 性格化映射:seat_id → (角色名, 打法风格, 立绘路径)。

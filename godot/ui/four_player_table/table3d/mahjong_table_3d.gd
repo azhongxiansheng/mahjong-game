@@ -1,5 +1,8 @@
 class_name MahjongTable3D extends Control
 
+const Table3DStage := preload(
+	"res://ui/four_player_table/table3d/table_3d_stage.gd")
+
 # 雀魂式真 3D 牌桌（非假透视 2.5D）：
 # - 桌/牌/河/副露：3D mesh + 透视相机（对齐雀魂 Unity 桌）
 # - HUD 操作条仍在 2D Control 层（PlayableTable）
@@ -11,14 +14,16 @@ signal hand_tile_hover(tile_id: int, entered: bool)
 
 const TABLE_W: float = 2.4
 const TABLE_D: float = 2.4
+const TABLE_TOP_Y: float = Table3DStage.TABLE_TOP_Y
 # 布局半径（由内到外）：中心盘 → 河 → 牌山示意 → 手牌
 const PLATE_HALF: float = 0.16
 const RIVER_INNER: float = 0.44
 const WALL_RADIUS: float = 0.82
 const WALL_GAP: float = 0.080
-const WALL_STACKS_PER_SIDE_MAX: int = 5
+const WALL_STACKS_PER_SIDE_MAX: int = 17
+const WALL_STACK_COUNT: int = WALL_STACKS_PER_SIDE_MAX * 4
 const SHOW_LIVE_WALL: bool = true
-const SCORE_LABEL_R: float = 0.58
+const SCORE_LABEL_R: float = 0.35
 # 自家手牌相对桌面的放大（雀魂：手牌占屏底大特写）
 const HAND_SCALE: float = 1.65
 const HAND_Z: float = 1.10
@@ -58,6 +63,9 @@ var _stick_glow_mat: StandardMaterial3D = null
 var _prev_hand_count: int = -1
 var _prev_river_count: Array = [0, 0, 0, 0]
 var _prev_wall_count: int = -1
+var _prev_wall_draw_index: int = -1
+var _prev_rinshan_taken: int = -1
+var _prev_wall: Wall = null
 var _scores_override: Array = []
 
 
@@ -91,57 +99,13 @@ func _build_3d() -> void:
 	_world_root.name = "World"
 	_vp.add_child(_world_root)
 
-	var env_node := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color(0.035, 0.04, 0.055)
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color(0.6, 0.62, 0.68)
-	e.ambient_light_energy = 0.72
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	# SSAO 在小牌上易糊成色块，可读性优先关掉
-	e.ssao_enabled = false
-	env_node.environment = e
-	_world_root.add_child(env_node)
-
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-55, 20, 0)
-	sun.light_energy = 1.55
-	sun.shadow_enabled = true
-	sun.light_color = Color(1.0, 0.99, 0.96)
-	_world_root.add_child(sun)
-
-	var fill := OmniLight3D.new()
-	fill.position = Vector3(0, 1.4, 0.55)
-	fill.light_energy = 0.7
-	fill.omni_range = 5.5
-	fill.light_color = Color(0.9, 0.92, 1.0)
-	_world_root.add_child(fill)
-
-	# 桌面
-	var table := MeshInstance3D.new()
-	var plane := BoxMesh.new()
-	plane.size = Vector3(TABLE_W, 0.06, TABLE_D)
-	table.mesh = plane
-	table.position = Vector3(0, -0.03, 0)
-	var tmat := StandardMaterial3D.new()
-	tmat.roughness = 0.9
-	if ResourceLoader.exists("res://assets/table_felt.png"):
-		tmat.albedo_texture = load("res://assets/table_felt.png")
-		tmat.albedo_color = Color(0.88, 0.98, 0.9)
-	else:
-		tmat.albedo_color = Color(0.08, 0.34, 0.22)
-	table.material_override = tmat
-	_world_root.add_child(table)
-
-	_add_rail(Vector3(0, 0.025, -TABLE_D * 0.5 - 0.055), Vector3(TABLE_W + 0.18, 0.10, 0.11))
-	_add_rail(Vector3(0, 0.025, TABLE_D * 0.5 + 0.055), Vector3(TABLE_W + 0.18, 0.10, 0.11))
-	_add_rail(Vector3(-TABLE_W * 0.5 - 0.055, 0.025, 0), Vector3(0.11, 0.10, TABLE_D))
-	_add_rail(Vector3(TABLE_W * 0.5 + 0.055, 0.025, 0), Vector3(0.11, 0.10, TABLE_D))
+	var stage := Table3DStage.build(_world_root)
+	_camera = stage["camera"] as Camera3D
+	set_camera_view(&"main")
 
 	# 共享牌山 / 立直棒 mesh
 	_wall_mesh = BoxMesh.new()
-	_wall_mesh.size = Vector3(Tile3D.TILE_W * 0.92, Tile3D.TILE_D, Tile3D.TILE_H * 0.92)
+	_wall_mesh.size = Vector3(Tile3D.TILE_W, Tile3D.APPROVED_TILE_D, Tile3D.TILE_H)
 	# 牌山用牙白+暗红顶，避免整墙贴 back.png 远看一片血红
 	_wall_mat = StandardMaterial3D.new()
 	_wall_mat.albedo_color = Color(0.94, 0.92, 0.88)
@@ -159,18 +123,7 @@ func _build_3d() -> void:
 	_stick_glow_mat.emission_energy_multiplier = 0.55
 	_stick_glow_mat.roughness = 0.35
 
-	# 中心盘
-	_center_plate = MeshInstance3D.new()
-	var plate_mesh := BoxMesh.new()
-	plate_mesh.size = Vector3(PLATE_HALF * 2.0, 0.02, PLATE_HALF * 2.0)
-	_center_plate.mesh = plate_mesh
-	_center_plate.position = Vector3(0, 0.012, 0)
-	var pmat := StandardMaterial3D.new()
-	pmat.albedo_color = Color(0.07, 0.09, 0.16)
-	pmat.metallic = 0.4
-	pmat.roughness = 0.32
-	_center_plate.material_override = pmat
-	_world_root.add_child(_center_plate)
+	_center_plate = _world_root.get_node("CenterPlate") as MeshInstance3D
 
 	_center_label = Label3D.new()
 	_center_label.text = "东1"
@@ -185,7 +138,7 @@ func _build_3d() -> void:
 	_center_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_world_root.add_child(_center_label)
 
-	# 四方分：在河外侧，远离盘心
+	# 四方分紧贴物理中央盘，形成局风/庄家/点数的单一空间锚点。
 	_center_side_labels.clear()
 	for s in range(4):
 		var lab := Label3D.new()
@@ -221,13 +174,10 @@ func _build_3d() -> void:
 	_active_light.position = Vector3(0, 0.45, 0.55)
 	_world_root.add_child(_active_light)
 
-	# 雀魂式固定俯斜：略低、略近，手牌面朝相机
-	_camera = Camera3D.new()
-	_camera.fov = 46.0
-	_camera.position = Vector3(0, 1.15, 1.88)
-	_camera.current = true
-	_world_root.add_child(_camera)
-	_camera.look_at(Vector3(0, 0.08, 0.38), Vector3.UP)
+
+
+func set_camera_view(view_name: StringName) -> bool:
+	return Table3DStage.set_camera_view(_camera, view_name)
 
 
 func _try_back_tex() -> Texture2D:
@@ -283,14 +233,21 @@ func bind_battle_state(state: BattleState, hand_index: int = 0, _hpr: int = 4) -
 		_prev_river_count[s] = river.size()
 		_rebuild_melds(s, state.seats[s].melds.all())
 	for s in range(1, 4):
-		_rebuild_opponent_backs(s, state.seats[s].hand.size())
+		_rebuild_opponent_backs(s, state.seats[s])
 	_rebuild_dora(state)
 	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
-	# 张数变化才重建牌山，避免每帧 70 mesh 重建
-	if wall_n != _prev_wall_count:
-		_rebuild_live_wall(wall_n)
+	var wall_draw_index: int = state.wall.draw_index() if state.wall else -1
+	var rinshan_taken: int = state.wall.rinshan_taken() if state.wall else -1
+	# 只在权威牌墙游标变化时重建；固定槽位不会随剩余张数重新居中。
+	if state.wall != _prev_wall or wall_n != _prev_wall_count \
+			or wall_draw_index != _prev_wall_draw_index \
+			or rinshan_taken != _prev_rinshan_taken:
+		_rebuild_live_wall(state)
 		_rebuild_dead_wall(state)
 		_prev_wall_count = wall_n
+		_prev_wall_draw_index = wall_draw_index
+		_prev_rinshan_taken = rinshan_taken
+		_prev_wall = state.wall
 	_rebuild_riichi_sticks(state)
 
 
@@ -510,82 +467,57 @@ func _update_active_seat(seat_id: int) -> void:
 		_active_light.position = dir * 0.55 + Vector3(0, 0.5, 0)
 
 
-func _make_wall_piece() -> MeshInstance3D:
-	var mi := MeshInstance3D.new()
-	mi.mesh = _wall_mesh
-	mi.material_override = _wall_mat
-	_world_root.add_child(mi)
-	return mi
+func _make_wall_piece(source: Tile) -> Tile3D:
+	var tile := Tile3D.new()
+	tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+	tile.setup_entity(source.id, false, source.is_red_dora, source.instance_id)
+	_world_root.add_child(tile)
+	return tile
 
 
-func _rebuild_live_wall(live: int) -> void:
+func _rebuild_live_wall(state: BattleState) -> void:
 	_free_arr(_wall_tiles)
-	if not SHOW_LIVE_WALL or live <= 0 or _wall_mesh == null:
+	if not SHOW_LIVE_WALL or state == null or state.wall == null or _wall_mesh == null:
 		return
-	# 示意堆：每侧最多 WALL_STACKS_PER_SIDE_MAX 双层，gap ≥ 牌宽，避免红墙糊屏
-	var stacks_total: int = mini(int(ceili(float(live) / 2.0)), WALL_STACKS_PER_SIDE_MAX * 4)
-	var per: Array = [0, 0, 0, 0]
-	var base_n: int = stacks_total / 4
-	var rem: int = stacks_total % 4
-	for s in range(4):
-		per[s] = base_n + (1 if s < rem else 0)
-	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
-	var top_mat := StandardMaterial3D.new()
-	top_mat.albedo_color = Color(0.78, 0.18, 0.16)
-	top_mat.roughness = 0.55
-	for seat_id in range(4):
-		var n: int = int(per[seat_id])
-		if n <= 0:
-			continue
-		for i in range(n):
-			var t_along: float = (i - (n - 1) * 0.5) * WALL_GAP
-			for layer in range(2):
-				var mi := _make_wall_piece()
-				if layer == 1:
-					mi.material_override = top_mat
-				var pos: Vector3
-				var yaw: float = 0.0
-				match seat_id:
-					0:
-						pos = Vector3(t_along, y0 + layer * Tile3D.TILE_D, WALL_RADIUS)
-						yaw = 0.0
-					1:
-						pos = Vector3(WALL_RADIUS, y0 + layer * Tile3D.TILE_D, -t_along)
-						yaw = -90.0
-					2:
-						pos = Vector3(-t_along, y0 + layer * Tile3D.TILE_D, -WALL_RADIUS)
-						yaw = 180.0
-					3:
-						pos = Vector3(-WALL_RADIUS, y0 + layer * Tile3D.TILE_D, t_along)
-						yaw = 90.0
-					_:
-						pos = Vector3(t_along, y0, WALL_RADIUS)
-				mi.position = pos
-				mi.rotation_degrees = Vector3(0, yaw, 0)
-				_wall_tiles.append(mi)
+	# 68 墩只是固定物理容量。每张权威牌的绝对 Wall index 唯一映射到
+	# slot/layer；发牌、摸牌与岭上只留下 draw order 缺口，绝不重排剩余牌。
+	var authority_tiles: Array[Tile] = state.wall.authority_tiles()
+	var visible_end: int = authority_tiles.size() - state.wall.rinshan_taken()
+	var live_end: int = state.wall.live_end_index()
+	var y0: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
+	for physical_index in range(state.wall.draw_index(), visible_end):
+		var slot: int = physical_index / 2
+		var layer: int = physical_index % 2
+		var seat_id: int = slot / WALL_STACKS_PER_SIDE_MAX
+		var local_index: int = slot % WALL_STACKS_PER_SIDE_MAX
+		var t_along: float = (local_index - 8) * WALL_GAP
+		var mi := _make_wall_piece(authority_tiles[physical_index])
+		var pos: Vector3
+		var yaw: float = 0.0
+		match seat_id:
+			0:
+				pos = Vector3(t_along, y0 + layer * Tile3D.APPROVED_TILE_D, WALL_RADIUS)
+				yaw = 0.0
+			1:
+				pos = Vector3(WALL_RADIUS, y0 + layer * Tile3D.APPROVED_TILE_D, -t_along)
+				yaw = -90.0
+			2:
+				pos = Vector3(-t_along, y0 + layer * Tile3D.APPROVED_TILE_D, -WALL_RADIUS)
+				yaw = 180.0
+			3:
+				pos = Vector3(-WALL_RADIUS, y0 + layer * Tile3D.APPROVED_TILE_D, t_along)
+				yaw = 90.0
+		mi.position = pos
+		mi.rotation_degrees = Vector3(0, yaw, 0)
+		mi.set_meta("wall_slot", slot)
+		mi.set_meta("wall_layer", layer)
+		mi.set_meta("wall_dead", physical_index >= live_end)
+		_wall_tiles.append(mi)
 
 
-func _rebuild_dead_wall(state: BattleState) -> void:
+func _rebuild_dead_wall(_state: BattleState) -> void:
 	_free_arr(_dead_wall_tiles)
-	if state == null or state.wall == null or _wall_mesh == null:
-		return
-	# 王牌区：靠对家右侧，离开中心盘
-	var y0: float = Tile3D.TILE_D * 0.5 + 0.002
-	var stacks: int = 5
-	var gap: float = WALL_GAP
-	var base_x: float = 0.28
-	var base_z: float = -0.28
-	var top_mat := StandardMaterial3D.new()
-	top_mat.albedo_color = Color(0.72, 0.16, 0.14)
-	top_mat.roughness = 0.55
-	for i in range(stacks):
-		for layer in range(2):
-			var mi := _make_wall_piece()
-			if layer == 1:
-				mi.material_override = top_mat
-			mi.position = Vector3(base_x + i * gap, y0 + layer * Tile3D.TILE_D, base_z)
-			mi.rotation_degrees = Vector3(0, 0, 0)
-			_dead_wall_tiles.append(mi)
+	# 王牌保留在外围固定牌山最后七墩，不再建立中央浮动短墙。
 
 
 func _make_stick(glow: bool) -> MeshInstance3D:
@@ -679,14 +611,12 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var n: int = show_tiles.size()
 	if n == 0:
 		return
-	var sc: float = HAND_SCALE
-	var gap: float = (Tile3D.TILE_W + 0.006) * sc
-	var drawn_gap: float = 0.04 * sc
+	var gap: float = Tile3D.TILE_W + 0.004
+	var drawn_gap: float = 0.028
 	var total: float = n * gap + (drawn_gap if drawn_tiles.size() > 0 and sorted_tiles.size() > 0 else 0.0)
 	var x0: float = -total * 0.5 + gap * 0.5
-	# 近景倾牌：+Y 面朝向相机（HAND_TILT 为正）
-	var y: float = Tile3D.TILE_D * 0.5 * sc + 0.01
-	var z: float = HAND_Z
+	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
+	var z: float = 1.04
 	var x_cursor: float = x0
 	for i in range(n):
 		var src: Tile = show_tiles[i]
@@ -695,15 +625,15 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 			x_cursor += drawn_gap
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
+		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
 		tile.setup_entity(src.id, true, src.is_red_dora, src.instance_id)
-		tile.scale = Vector3(sc, sc, sc)
-		tile.set_base_position(Vector3(x_cursor, y, z))
-		tile.rotation_degrees = Vector3(HAND_TILT_DEG, 0, 0)
+		tile.transform = Transform3D(_hand_basis(0), Vector3(x_cursor, y, z))
+		tile._base_y = y
 		tile.set_clickable(_hand_clickable)
 		tile.tile_clicked.connect(_on_tile_clicked)
 		tile.tile_hover.connect(_on_tile_hover)
 		if animate_draw and is_drawn_slot:
-			tile.animate_draw_drop(0.18 * sc, 0.22)
+			tile.animate_draw_drop(0.12, 0.22)
 		_hand_tiles.append(tile)
 		x_cursor += gap
 
@@ -721,7 +651,11 @@ func _rebuild_river(seat_id: int, tiles: Array, riichi_idx: int, animate_last: b
 		var is_red: bool = (t is Tile and t.is_red_dora)
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
-		tile.setup(tid, true, is_red)
+		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+		if t is Tile:
+			tile.setup_entity(tid, true, is_red, (t as Tile).instance_id)
+		else:
+			tile.setup(tid, true, is_red)
 		var col: int = i % 6
 		var row: int = int(i / 6.0)
 		var lr: Dictionary = _river_pose(seat_id, col, row, i == riichi_idx and riichi_idx >= 0)
@@ -751,7 +685,7 @@ func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
 	# 6 列；row 0 靠中心，向外涨，不压中心盘
 	var gx: float = Tile3D.TILE_W + 0.004
 	var gz: float = Tile3D.TILE_H + 0.004
-	var y: float = Tile3D.TILE_D * 0.5 + 0.002
+	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
 	var dx: float = (col - 2.5) * gx
 	var outward: float = RIVER_INNER + row * gz
 	var pos: Vector3
@@ -775,28 +709,38 @@ func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
 	return {"pos": pos, "rot": rot}
 
 
-func _rebuild_opponent_backs(seat_id: int, count: int) -> void:
+func _hand_basis(seat_id: int) -> Basis:
+	match seat_id:
+		0: return Basis(Vector3.RIGHT, Vector3.BACK, Vector3.DOWN)
+		1: return Basis(Vector3.FORWARD, Vector3.RIGHT, Vector3.DOWN)
+		2: return Basis(Vector3.LEFT, Vector3.FORWARD, Vector3.DOWN)
+		3: return Basis(Vector3.BACK, Vector3.LEFT, Vector3.DOWN)
+	return Basis.IDENTITY
+
+
+func _rebuild_opponent_backs(seat_id: int, source: Variant) -> void:
 	_free_arr(_opp_tiles[seat_id])
+	var source_tiles: Array = source.hand.tiles() if source is Seat else []
+	var count := source_tiles.size() if source is Seat else int(source)
 	var n: int = clampi(count, 0, 14)
 	if n == 0:
 		return
-	var gap: float = Tile3D.TILE_W * 0.50
-	var y: float = Tile3D.TILE_D * 0.5 + 0.002
+	var gap: float = Tile3D.TILE_W + 0.004
+	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
 	for i in range(n):
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
-		tile.setup(-1, false, false)
+		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+		if source is Seat:
+			tile.setup_entity(-1, true, false,
+				(source_tiles[i] as Tile).instance_id)
+		else:
+			tile.setup(-1, true, false)
 		var t: float = (i - (n - 1) * 0.5) * gap
-		match seat_id:
-			1:
-				tile.set_base_position(Vector3(1.12, y + 0.015, t * 0.62))
-				tile.rotation_degrees = Vector3(0, -90, 58)
-			2:
-				tile.set_base_position(Vector3(t, y, -1.08))
-				tile.rotation_degrees = Vector3(0, 180, 0)
-			3:
-				tile.set_base_position(Vector3(-1.12, y + 0.015, -t * 0.62))
-				tile.rotation_degrees = Vector3(0, 90, -58)
+		var center := Table3DStage.rotate_from_south(Vector3(0, y, 1.04), seat_id)
+		var basis := _hand_basis(seat_id)
+		tile.transform = Transform3D(basis, center + basis.x * t)
+		tile._base_y = y
 		_opp_tiles[seat_id].append(tile)
 
 
@@ -804,8 +748,7 @@ func _rebuild_melds(seat_id: int, melds: Array) -> void:
 	_free_arr(_meld_tiles[seat_id])
 	if melds == null or melds.is_empty():
 		return
-	var y: float = Tile3D.TILE_D * 0.5 + 0.002
-	var gap: float = Tile3D.TILE_W + 0.004
+	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
 	var group_gap: float = 0.028
 	var cursor: Vector3
 	var yaw: float = 0.0
@@ -833,40 +776,46 @@ func _rebuild_melds(seat_id: int, melds: Array) -> void:
 		if meld == null or not (meld is Meld):
 			continue
 		var m: Meld = meld
-		var tiles: Array = m.tiles
-		var n: int = tiles.size()
-		for j in range(n):
-			var tt: Tile = tiles[j]
+		var slots := MeldLayout.compute(m, seat_id)
+		var local_cursor := 0.0
+		var stacked_anchor: Tile3D = null
+		for slot in slots:
 			var tile := Tile3D.new()
 			_world_root.add_child(tile)
-			var face: bool = true
-			if m.kind == Meld.Kind.ANKAN and (j == 0 or j == 3):
-				face = false
-			tile.setup(tt.id, face, tt.is_red_dora)
-			var pos: Vector3 = cursor + along * (j * gap)
-			if m.kind == Meld.Kind.ADDED_KAN and j == 3:
-				pos = cursor + along * (1.0 * gap) + Vector3(0, Tile3D.TILE_D + 0.002, 0)
-			var rot := Vector3(0, yaw, 0)
-			if m.from_seat != Meld.NO_SOURCE_SEAT and j == 0 and m.kind != Meld.Kind.ANKAN:
-				rot.y += 90.0
-			tile.set_base_position(pos)
-			tile.rotation_degrees = rot
+			tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+			tile.setup_entity(int(slot["tile_id"]),
+				not bool(slot["face_down"]), bool(slot["is_red_dora"]),
+				int(slot["tile_instance_id"]))
+			var rotated := bool(slot["rotated"])
+			if bool(slot["stacked_above"]) and stacked_anchor != null:
+				tile.set_base_position(stacked_anchor.position
+					+ Vector3(0, Tile3D.APPROVED_TILE_D, 0))
+				tile.rotation_degrees = stacked_anchor.rotation_degrees
+			else:
+				var footprint := Tile3D.TILE_H if rotated else Tile3D.TILE_W
+				tile.set_base_position(cursor + along * (local_cursor + footprint * 0.5))
+				tile.rotation_degrees = Vector3(0,
+					yaw + (90.0 if rotated else 0.0), 0)
+				local_cursor += footprint + 0.004
+				if rotated:
+					stacked_anchor = tile
 			_meld_tiles[seat_id].append(tile)
-		cursor += along * (n * gap + group_gap)
+		cursor += along * (local_cursor + group_gap)
 
 
 func _rebuild_dora(state: BattleState) -> void:
 	_free_arr(_dora_tiles)
 	if state == null or state.dora_indicators == null:
 		return
-	var y: float = Tile3D.TILE_D * 0.5 + 0.004
+	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
 	var i := 0
 	for ti in state.dora_indicators.visible_tiles():
 		if ti == null:
 			continue
 		var tile := Tile3D.new()
 		_world_root.add_child(tile)
-		tile.setup(ti.id, true, false)
+		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+		tile.setup_entity(ti.id, true, ti.is_red_dora, ti.instance_id)
 		# 略偏王牌区左侧，避免与 dead wall 重叠
 		# 中心盘左侧，不与王牌/河重叠
 		tile.set_base_position(Vector3(-0.10 + i * (Tile3D.TILE_W + 0.008), y, -0.02))
@@ -876,7 +825,7 @@ func _rebuild_dora(state: BattleState) -> void:
 
 
 func _on_tile_clicked(tile_instance_id: int) -> void:
-	if _hand_clickable:
+	if _hand_clickable and Tile.is_valid_instance_id(tile_instance_id):
 		player_card_clicked.emit(tile_instance_id)
 
 
