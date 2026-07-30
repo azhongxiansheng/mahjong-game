@@ -113,10 +113,19 @@ func test_live_wall_and_dead_wall() -> void:
 	var live: int = state.wall.live_wall_size()
 	assert_gt(live, 0, "开局应有 live wall")
 	table.bind_battle_state(state, 0, 4)
-	# 稀疏示意堆：最多 4 侧 × 8 叠 × 2 层
-	assert_gt(table._wall_tiles.size(), 0, "应有牌山示意")
-	assert_lte(table._wall_tiles.size(), MahjongTable3D.WALL_STACKS_PER_SIDE_MAX * 4 * 2)
-	assert_eq(table._dead_wall_tiles.size(), 10, "王牌区示意 5 叠×2")
+	var expected_visible := live + state.wall.dead_wall_size() \
+		- state.wall.rinshan_taken()
+	assert_eq(table._wall_tiles.size(), expected_visible,
+		"外围固定槽位只显示权威 Wall 尚未消费的真实牌")
+	var dead_count := 0
+	for tile in table._wall_tiles:
+		if bool((tile as Tile3D).get_meta("wall_dead", false)):
+			dead_count += 1
+			assert_between(int((tile as Tile3D).get_meta("wall_slot", -1)), 61, 67)
+	assert_eq(dead_count, state.wall.dead_wall_size(),
+		"王牌必须占外围最后七墩的固定槽位")
+	assert_eq(table._dead_wall_tiles.size(), 0,
+		"不得在中央另建漂浮王牌墙")
 
 
 func test_center_sides_and_riichi_sticks() -> void:

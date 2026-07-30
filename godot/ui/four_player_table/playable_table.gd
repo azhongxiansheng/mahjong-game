@@ -46,6 +46,12 @@ var _decision_adapter: TableDecisionAdapter = null
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
 # 真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
 var _use_3d: bool = false
+# #405：保留 FourPlayerTable 为唯一状态/HUD owner，仅替换桌与牌的视觉层。
+var _hybrid_table_3d: MahjongTable3D = null
+var _last_bound_state: BattleState = null
+var _last_bound_hand_index: int = 0
+var _last_bound_hands_per_round: int = 4
+const HYBRID_ACTION_BAR_Y: float = 610.0
 
 # E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
 # E4-03（#245）：挂接 WhisperModelManager 按需 ensure；失败不阻断牌局。
@@ -175,25 +181,86 @@ func _build_flat_table() -> void:
 	_table.scale = Vector2.ONE
 	add_child(_table)
 
+
+func set_hybrid_enabled(enabled: bool) -> void:
+	if _use_3d or not (_table is FourPlayerTable):
+		return
+	if enabled and _hybrid_table_3d == null:
+		_hybrid_table_3d = MahjongTable3D.new()
+		_hybrid_table_3d.name = "HybridTable3D"
+		_hybrid_table_3d.position = Vector2.ZERO
+		add_child(_hybrid_table_3d)
+		move_child(_hybrid_table_3d, _table.get_index())
+	if _hybrid_table_3d != null:
+		_hybrid_table_3d.visible = enabled
+	_table.set_table_entities_visible(not enabled)
+	_set_seat_input_owner(_preferred_seat_input_owner())
+	if enabled and _last_bound_state != null:
+		_hybrid_table_3d.bind_battle_state(_last_bound_state,
+			_last_bound_hand_index, _last_bound_hands_per_round)
+	if _action_panel != null:
+		_action_panel.position.y = HYBRID_ACTION_BAR_Y if enabled \
+			else TableLayout.ACTION_BAR_RECT.position.y
+		move_child(_action_panel, get_child_count() - 1)
+
+
+func bind_table_state(state: BattleState, hand_index: int,
+		hands_per_round: int = 4) -> void:
+	_last_bound_state = state
+	_last_bound_hand_index = hand_index
+	_last_bound_hands_per_round = hands_per_round
+	_table.bind_battle_state(state, hand_index, hands_per_round)
+	if _hybrid_table_3d != null and _hybrid_table_3d.visible:
+		_hybrid_table_3d.bind_battle_state(state, hand_index, hands_per_round)
+
+
+func _connect_seat_input_owner(owner: Node) -> void:
+	if owner == null:
+		return
+	if owner.has_signal("player_card_clicked") \
+			and not owner.player_card_clicked.is_connected(_on_player_tile_clicked):
+		owner.player_card_clicked.connect(_on_player_tile_clicked)
+	if owner.has_signal("hand_tile_hover") \
+			and not owner.hand_tile_hover.is_connected(_on_hand_tile_hover):
+		owner.hand_tile_hover.connect(_on_hand_tile_hover)
+
+
+func _disconnect_seat_input_owner(owner: Node) -> void:
+	if owner == null:
+		return
+	if owner.has_signal("player_card_clicked") \
+			and owner.player_card_clicked.is_connected(_on_player_tile_clicked):
+		owner.player_card_clicked.disconnect(_on_player_tile_clicked)
+	if owner.has_signal("hand_tile_hover") \
+			and owner.hand_tile_hover.is_connected(_on_hand_tile_hover):
+		owner.hand_tile_hover.disconnect(_on_hand_tile_hover)
+
+
+func _set_seat_input_owner(owner: Node) -> void:
+	if _seat_panel_player != owner:
+		_disconnect_seat_input_owner(_seat_panel_player)
+		_seat_panel_player = owner
+	_connect_seat_input_owner(_seat_panel_player)
+	if _decision_adapter != null:
+		_decision_adapter._seat_panel = _seat_panel_player
+
+
+func _preferred_seat_input_owner() -> Node:
+	if _hybrid_table_3d != null and _hybrid_table_3d.visible:
+		return _hybrid_table_3d
+	if _use_3d:
+		return _table
+	if _table is FourPlayerTable and not _table.seat_panels.is_empty():
+		return _table.seat_panels[0]
+	return null
+
 var _pending_discard_fly: Dictionary = {}  # {from: Vector2, tile_id: int, is_red: bool}
 
 
 func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	_bc = bc
 	_sync_character_status()
-	if _use_3d:
-		_seat_panel_player = _table
-	elif _table.seat_panels.size() >= 1:
-		_seat_panel_player = _table.seat_panels[0]
-	if _seat_panel_player != null:
-		if _seat_panel_player.has_signal("player_card_clicked") \
-				and not _seat_panel_player.player_card_clicked.is_connected(_on_player_tile_clicked):
-			_seat_panel_player.player_card_clicked.connect(_on_player_tile_clicked)
-		if _seat_panel_player.has_signal("hand_tile_hover") \
-				and not _seat_panel_player.hand_tile_hover.is_connected(_on_hand_tile_hover):
-			_seat_panel_player.hand_tile_hover.connect(_on_hand_tile_hover)
-	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
-	_bc.bind_decision_port(_decision_adapter, get_tree())
+	_bind_hand_decision_port(bc)
 	# E4-01：从真实 mode_modules.voice_port 绑定（STANDARD 为 null → 零语音节点）
 	bind_voice_from_battle(bc)
 	# E5-06：TRASH_TALK 奖励 HUD/抽屉只读接线（不改权威）
@@ -226,13 +293,19 @@ func play_hand_async(bc: PlayableBattleController) -> Dictionary:
 	if log_node:
 		log_node.info("battle", "hand end last_event=%s" % str(result.get("last_event", "")))
 	_decision_adapter.present(&"idle", {"text": "本局结束"})
-	_table.bind_battle_state(bc.state, 0, 4)
+	bind_table_state(bc.state, 0, 4)
 	_sync_dora_widget(bc.state)
 	# 记终身统计 + 检测成就解锁(发 achievement_unlocked signal,toast 在 _on_achievement_unlocked)
 	_record_hand_stats(bc)
 	# 胡牌或流局后弹结算 overlay：玩家点继续才推进下一局
 	await _show_hand_result_overlay(result)
 	return result
+
+
+func _bind_hand_decision_port(bc: PlayableBattleController) -> void:
+	_set_seat_input_owner(_preferred_seat_input_owner())
+	_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
+	bc.bind_decision_port(_decision_adapter, get_tree())
 
 
 func bind_character_ids(character_ids: Array) -> void:
@@ -286,7 +359,7 @@ func _bind_state_for_deal(state: BattleState, hand_index: int,
 		for panel in _table.seat_panels:
 			if panel != null:
 				panel.clear_hand_reveal()
-	_table.bind_battle_state(state, hand_index, hands_per_round)
+	bind_table_state(state, hand_index, hands_per_round)
 	_sync_dora_widget(state)
 
 
@@ -1589,7 +1662,7 @@ func _polling_loop() -> void:
 			_last_event_count = n
 			_sync_character_status()
 			if is_instance_valid(_table) and _bc.state != null:
-				_table.bind_battle_state(_bc.state, 0, 4)
+				bind_table_state(_bc.state, 0, 4)
 				# 玩家切牌后飞入河（rebind 后河末位已落地）。
 				if player_discarded and not _pending_discard_fly.is_empty():
 					_play_discard_fly_to_river()
@@ -2936,25 +3009,18 @@ func _public_payload_equal(a: Variant, b: Variant) -> bool:
 func _ensure_public_decision_adapter() -> void:
 	if _action_panel == null:
 		return
-	if _seat_panel_player == null and _table is FourPlayerTable \
-			and (_table as FourPlayerTable).seat_panels.size() > 0:
-		_seat_panel_player = (_table as FourPlayerTable).seat_panels[0]
+	if _seat_panel_player == null:
+		_set_seat_input_owner(_preferred_seat_input_owner())
 	if _decision_adapter == null and _seat_panel_player != null:
 		_decision_adapter = TableDecisionAdapter.new(_action_panel, _seat_panel_player)
 	_wire_public_action_panel_choices()
 
 
 func _wire_public_bottom_hand_clicks() -> void:
-	if not (_table is FourPlayerTable):
+	var input_owner := _preferred_seat_input_owner()
+	if input_owner == null:
 		return
-	var bottom = (_table as FourPlayerTable).seat_panels[0] if \
-		(_table as FourPlayerTable).seat_panels.size() > 0 else null
-	if bottom == null:
-		return
-	_seat_panel_player = bottom
-	if bottom.has_signal("player_card_clicked") \
-			and not bottom.player_card_clicked.is_connected(_on_player_tile_clicked):
-		bottom.player_card_clicked.connect(_on_player_tile_clicked)
+	_set_seat_input_owner(input_owner)
 
 
 func _wire_public_action_panel_choices() -> void:

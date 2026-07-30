@@ -30,6 +30,7 @@ static func compute(meld: Meld, claimant_seat: int) -> Array:
 static func _slot(tile: Tile, rotated: bool, stacked_above: bool = false) -> Dictionary:
 	return {
 		"tile_id": tile.id,
+		"tile_instance_id": tile.instance_id,
 		"rotated": rotated,
 		"face_down": false,
 		"stacked_above": stacked_above,
@@ -78,6 +79,7 @@ static func _compute_ankan(meld: Meld) -> Array:
 	for i in range(4):
 		slots.append({
 			"tile_id": meld.tiles[i].id,
+			"tile_instance_id": meld.tiles[i].instance_id,
 			"rotated": false,
 			"face_down": (i == 0 or i == 3),
 			"stacked_above": false,
