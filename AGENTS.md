@@ -297,7 +297,7 @@ grok --cwd "$TASK_WORKTREE" \
 - 需要选稿时，Grok 将候选绝对路径、实际尺寸/时长、最终 prompt、设计取舍、推荐项与已知缺陷写入仓库外决策文件，状态切换为 `GROK_BLOCKED_USER_DECISION` 并停在同一 TUI。主 Agent 独立查看原图；视频至少核对元数据、代表性帧和可播放成片，再向用户展示并把选择送回同一 Grok 会话。
 - 最终交付须记录采用/淘汰产物、实际内置工具或模型、生成次数、QA、选稿结果、是否进入仓库和 Git 状态。Grok 自述或网页预览不等于视觉验收；必须有可读取的本地原文件证据。
 
-### 3. 启动后立即轮询状态与最终交付
+### 3. 单向下发后启动 30 分钟监控
 
 启动前为本轮指定两个唯一仓库外路径：
 
@@ -306,16 +306,16 @@ grok --cwd "$TASK_WORKTREE" \
 /tmp/<project>-issue-<number>-grok-delivery-round-<n>.md
 ```
 
-- 状态文件只允许为单行稳定值：`GROK_PLANNING`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION`、`GROK_DELIVERY_COMPLETE`。Grok 在开始计划、进入实现、发现新用户决策阻塞和完成交付时原子覆盖该文件；不得写思考过程、token 或长日志。
+- 状态文件只允许为单行稳定值：`GROK_PLANNING`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION`、`GROK_SCOPE_DRIFT`、`GROK_ERROR`、`GROK_ABORTED`、`GROK_DELIVERY_COMPLETE`。Grok 在开始计划、进入实现、发现新用户决策阻塞、偏航、错误、取消和完成交付时原子覆盖该文件；不得写思考过程、token 或长日志。
 - 交付文件格式见下一节，只有全部实现和自测结束后才写，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`。
 - Grok 开发阶段不得由 Codex 在后台 PTY 中启动；必须使用可见 Terminal + tmux inline TUI。用户可在弹窗直接观察和交互，Codex 不以内部 PTY 冒充可见终端。
 - Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
-- Grok 启动成功后，Codex **立即**进入 `WAITING_GROK_STATUS` 并持续轮询上述状态文件与交付文件完成标记；不得先结束当前执行回合等待用户另行提醒。
-- 轮询期间只读取这两个仓库外文件；不得检查中间 Git 状态、文件列表、tmux pane、pane 命令、进程或测试进度，不发送 `Ctrl-C` 或任意补充 prompt，也不因已批准范围内的新文件而打断 Grok。唯一例外是下述 `GROK_PLANNING` / `GROK_BLOCKED_USER_DECISION` 5 分钟看门狗。
-- 第一次连续观察到 `GROK_PLANNING` 时以主 Agent 的单调时钟记下起点；若状态连续 300 秒未离开 `GROK_PLANNING`，且没有 `GROK_BLOCKED_USER_DECISION` 或完成标记，则只向记录的精确 tmux session/pane 投递一次单行 `按推荐执行` 并按一次 Enter。不得读取/capture pane，不得附加解释，不得重复发送；状态离开 `GROK_PLANNING` 后清除此轮计时。用户明确正在 TUI 输入时暂缓，待其完成后再判断。
-- 第一次连续观察到 `GROK_BLOCKED_USER_DECISION` 时，读取交付/状态中明确的问题和推荐项，立即向用户请求决策并以单调时钟计时。若连续 300 秒没有用户答复、状态仍未变化、Grok 有明确推荐，且该选择可逆、未扩大范围、不涉及凭证/安全边界/不可逆操作，则只投递一次单行 `按推荐执行`；否则继续保持阻塞，不得自动决定。用户答复优先并立即取消自动推荐计时。
-- `按推荐执行` 必须先写入本轮唯一的仓库外单行文件，再用 `tmux load-buffer` + `tmux paste-buffer` 投递，最后仅用一次 `tmux send-keys ... Enter`；为每次连续 planning/blocking episode 分别记录一次性 sent 标志。投递后恢复只读状态/交付轮询，不检查 Grok 是否“收到”。
-- 状态缺失或 `GROK_IMPLEMENTING` 时继续等待且不重复汇报；`GROK_PLANNING` 与 `GROK_BLOCKED_USER_DECISION` 按上述看门狗处理；只有交付文件末行为 `GROK_DELIVERY_COMPLETE` 且状态为同名值时才停止轮询，保留当前 tmux session 与 TUI，进入完整 diff Review。
+- 会话输入严格单向：Codex 只在初始合同、用户决策、继续和返工时向 Grok TUI 下发；Grok 不向 Codex 会话发送消息，只原子更新上述状态文件并在终态写交付文件。
+- Grok 启动或任一输入成功投递后，Codex **立即**启动 `grok-cli-development/scripts/wait-for-delivery.zsh`：单轮最长 1800 秒，脚本进程内每 20 秒读取状态与交付末行；不得先结束当前执行回合等待用户另行提醒。
+- 同一 Grok session 同时只允许一个 monitor。循环中零输出，不检查中间 Git 状态、文件列表、tmux pane、pane 命令、进程或测试进度，不发送 `Ctrl-C` 或补充 prompt，也不因已批准范围内的新文件而打断 Grok。
+- 状态与交付末行同时为 `GROK_DELIVERY_COMPLETE` 时 monitor 退出 0 并进入完整 diff Review；`GROK_BLOCKED_USER_DECISION`、错误或取消状态立即退出 3 并只处理该动作；30 分钟内无可动作终态则退出 124。
+- 退出 124 且状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时，不发送 `按推荐执行`，不把安静运行误判为阻塞；确认仍稳定后可再启动一轮 30 分钟 monitor。宿主先返回运行 session 时，只用支持的最长等待续接同一进程，不由 Codex 每 20 秒查询文件。
+- 用户决策由当前 Issue task 直接向用户请求；拿到答案后只投递一次，再启动新的 30 分钟 monitor。短时间内状态未变化不代表投递失败，不得重复输入。
 - 只有用户明确报告 Grok 已退出但没有完整交付时，Codex 才可一次性检查 tmux 会话和 Git 现场。
 - Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
 
