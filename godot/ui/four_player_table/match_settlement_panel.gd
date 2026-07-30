@@ -34,6 +34,10 @@ func present(view: Dictionary) -> void:
 	_consumed = false
 	if _rematch_btn != null:
 		_rematch_btn.disabled = false
+		# #380：公共场可覆盖为「再次匹配」；练习场默认「再来一局」
+		if view.has("rematch_label"):
+			_rematch_btn.text = str(view.get("rematch_label", _rematch_btn.text))
+			_rematch_btn.tooltip_text = _rematch_btn.text
 	if _return_btn != null:
 		_return_btn.disabled = false
 	if _title_label != null:
@@ -48,16 +52,32 @@ func present(view: Dictionary) -> void:
 			continue
 		var d: Dictionary = row
 		var label := Label.new()
-		label.text = "第 %d 名  %s    %d" % [
-			int(d.get("rank", 0)),
-			str(d.get("name", "")),
-			int(d.get("score", 0)),
-		]
+		var seat_name := str(d.get("name", ""))
+		var char_label := _character_display_label(d)
+		# #380：真人名 + 角色身份 + 分数；练习场无 character 时仅显示 name
+		if char_label.is_empty():
+			label.text = "第 %d 名  %s    %d" % [
+				int(d.get("rank", 0)),
+				seat_name,
+				int(d.get("score", 0)),
+			]
+		else:
+			label.text = "第 %d 名  %s  ·  %s    %d" % [
+				int(d.get("rank", 0)),
+				seat_name,
+				char_label,
+				int(d.get("score", 0)),
+			]
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", 20)
+		label.add_theme_font_size_override("font_size", 18)
 		var seat_id: int = int(d.get("seat_id", -1))
-		var color := Color(1, 0.85, 0.4) if seat_id == 0 else Color(0.92, 0.92, 0.9)
+		# #380：优先 is_local（任意本席）；练习场无 is_local 时仍高亮 seat0
+		var is_local: bool = bool(d.get("is_local", false)) if d.has("is_local") else seat_id == 0
+		var color := Color(1, 0.85, 0.4) if is_local else Color(0.92, 0.92, 0.9)
 		label.add_theme_color_override("font_color", color)
+		label.set_meta("seat_id", seat_id)
+		label.set_meta("is_local", is_local)
+		label.set_meta("character_id", str(d.get("character_id", "")))
 		_rows_host.add_child(label)
 	if _rematch_btn != null:
 		_rematch_btn.grab_focus()
@@ -133,6 +153,19 @@ func _ensure_built() -> void:
 	_rematch_btn.focus_previous = _rematch_btn.get_path_to(_return_btn)
 	_return_btn.focus_next = _return_btn.get_path_to(_rematch_btn)
 	_return_btn.focus_previous = _return_btn.get_path_to(_rematch_btn)
+
+
+## #380：character_id → CharacterPool.display_name；未知保留原始 ID
+func _character_display_label(row: Dictionary) -> String:
+	var cid := str(row.get("character_id", "")).strip_edges()
+	if cid.is_empty():
+		# 兼容旧 view 字段
+		var alt := str(row.get("character_name", "")).strip_edges()
+		return alt
+	var ch: Character = CharacterPool.find(StringName(cid))
+	if ch != null and not str(ch.display_name).strip_edges().is_empty():
+		return str(ch.display_name)
+	return cid
 
 
 func _on_rematch_pressed() -> void:

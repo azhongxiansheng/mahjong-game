@@ -373,17 +373,19 @@ func _on_public_match_view_changed(view: Dictionary) -> void:
 	if _public_status_overlay == null:
 		return
 	var state := str(view.get("state", "idle"))
-	if state not in ["idle", "cancelled", "recovered", "playing", "entered"]:
+	if state not in ["idle", "cancelled", "recovered", "playing", "entered", "match_settled"]:
 		_close_rule_drawer(false)
 		_close_codex(false)
 		_close_audio_popup(false)
 		_close_settings_overlay(false)
 	_public_status_overlay.present(view)
-	move_child(_public_status_overlay, get_child_count() - 1)
+	# #380：终场时不得把状态遮罩抬到最上层盖住结算按钮
+	if state != "match_settled":
+		move_child(_public_status_overlay, get_child_count() - 1)
 	if state == "cancelled":
 		_restore_public_status_focus()
-	elif state == "playing" or state == "entered":
-		# #377：遮罩解除后焦点交给公共牌桌
+	elif state == "playing" or state == "entered" or state == "match_settled":
+		# #377/#380：遮罩解除后焦点交给公共牌桌（终场可点 Rematch/Return）
 		var coordinator := get_node_or_null("PublicMatchCoordinator") as PublicMatchCoordinator
 		var table: Control = null
 		if coordinator != null:
