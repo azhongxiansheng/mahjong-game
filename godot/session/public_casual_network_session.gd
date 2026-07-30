@@ -7,6 +7,7 @@ extends Node
 # 协议：JOIN → READY → 消费业务事件；语音独立 WS + AuthoritySeqBridge。
 # #323：由 PublicMatchCoordinator 在 CP assigned 后接入生产大厅与牌桌。
 # #378：submit_action(Action) 为公共客户端唯一命令出口；ACCEPTED/ERROR 结果信号。
+# #380：只读消费 committed HAND_SETTLED / MATCH_SETTLED → get_settlement_view。
 # 网络端到端未验证。
 
 const JsonTransportDecoder := preload("res://protocol/json_transport_decoder.gd")
@@ -30,6 +31,8 @@ signal command_rejected(code: String, command_id: String, message: String)
 signal command_result_received(status: String, code: String, command_id: String)
 ## #378：pending 因 decision 不匹配 / 代际失效被丢弃。
 signal command_pending_dropped(reason: String)
+## #380：committed 结算投影变更（只读；无 READY / 本地计分副作用）。
+signal settlement_view_changed(view: Dictionary)
 
 var game_mode: String = ""
 var room_id: String = ""
@@ -70,6 +73,21 @@ var _pending_retry_on_recover: bool = false
 ## #378 R4：ACCEPTED 后至 matching committed 事件/seq 到达前，禁止第二条命令。
 var _awaiting_committed: bool = false
 var _accepted_commit_seq: int = 0
+## #380：只读结算投影（仅 NBC committed journal；pending 不入）。
+var _settlement_phase: String = "idle"
+var _settlement_hand: Dictionary = {}
+var _settlement_match: Dictionary = {}
+var _roster_names: Dictionary = {}  # seat(int) -> display_name
+var _character_ids: Array = []
+var _settlement_journal_cursor: int = 0
+var _match_latched: bool = false
+var _last_settlement_sig: String = ""
+## #380：当前 committed 局手序号（来自 SNAP core_table.hand_seq）
+var _ledger_hand_seq: int = -1
+## #380：最近一次已投影 HAND 的 hand_seq（防旧局以更高 server_seq 覆盖）
+var _last_settled_hand_seq: int = -1
+## #380：结算连续性 resync 中，禁止同帧 recovered
+var _settlement_resync_active: bool = false
 
 
 ## E5-06：可选只读 UI 绑定。不改 schema/权威；展示侧消费 nbc committed journal。
@@ -162,6 +180,7 @@ func start() -> Error:
 	_resync_reconnect_notified = false
 	_connection_generation = 1
 	_clear_pending("start")
+	_reset_settlement_projection()
 	nbc = NetworkedBattleController.new(room_id, seat)
 	if game_mode == "TRASH_TALK":
 		nbc.configure_snapshot_registry_for_mode("TRASH_TALK")
@@ -432,6 +451,16 @@ func _on_game_text(text: String) -> void:
 		if not _game_joined:
 			_game_joined = true
 			game_joined.emit()
+		# #380：HAND→下一局 SNAP 连续性 preflight —— 错误起分不得进入 NBC committed
+		if str(event.kind) == "ROOM_SNAPSHOT":
+			var pre: Dictionary = _settlement_preflight_room_snapshot(event)
+			if not bool(pre.get("ok", true)):
+				var pre_reason := str(pre.get("reason", "SETTLEMENT_SCORE_MISMATCH"))
+				# 终场锁存后任意迟到 SNAP：静默丢弃，不入 seq_bridge/NBC、不 resync
+				if pre_reason == "MATCH_LATCHED_SNAPSHOT" or bool(pre.get("discard_only", false)):
+					return
+				_reject_settlement_snapshot(pre_reason)
+				return
 		var ingested: Dictionary = seq_bridge.on_game_networked_event(event)
 		_observe_bridge_result(ingested)
 		if not bool(ingested.get("ok", false)):
@@ -446,7 +475,12 @@ func _on_game_text(text: String) -> void:
 				ingest_code = str(ingested.get("reason", "EVENT_REJECTED"))
 			_emit_terminal(ingest_code, "authority event rejected")
 			return
+		# #380：仅在成功入 bridge 后投影 committed journal（pending 不在 journal）
+		_drain_settlement_from_journal()
 		if str(d.get("kind", "")) == "ROOM_SNAPSHOT" and bool(ingested.get("applied", true)):
+			# 结算 resync 中不得同帧 room_started / recovered
+			if _settlement_resync_active or _settlement_phase == "resync":
+				return
 			_has_committed_snapshot = true
 			room_started_hint.emit()
 			if _recovering:
@@ -703,8 +737,307 @@ func _cleanup_partial() -> void:
 	_want_open = false
 
 
+## #380：只读结算投影（phase / hand / match / local_seat / roster）。
+func get_settlement_view() -> Dictionary:
+	var hand_v: Variant = null
+	if not _settlement_hand.is_empty():
+		hand_v = _settlement_hand.duplicate(true)
+	var match_v: Variant = null
+	if not _settlement_match.is_empty():
+		match_v = _settlement_match.duplicate(true)
+	return {
+		"phase": _settlement_phase,
+		"hand": hand_v,
+		"match": match_v,
+		"local_seat": seat,
+		"roster": _roster_list(),
+	}
+
+
+func _roster_list() -> Array:
+	var out: Array = []
+	for s in range(4):
+		out.append({
+			"seat": s,
+			"display_name": str(_roster_names.get(s, "")),
+			"character_id": str(_character_ids[s]) if s < _character_ids.size() else "",
+		})
+	return out
+
+
+func _reset_settlement_projection() -> void:
+	_settlement_phase = "idle"
+	_settlement_hand = {}
+	_settlement_match = {}
+	_roster_names.clear()
+	_character_ids = []
+	_settlement_journal_cursor = 0
+	_match_latched = false
+	_last_settlement_sig = ""
+	_ledger_hand_seq = -1
+	_last_settled_hand_seq = -1
+	_settlement_resync_active = false
+
+
+func _emit_settlement_if_changed() -> void:
+	var view: Dictionary = get_settlement_view()
+	var sig := JSON.stringify(view)
+	if sig == _last_settlement_sig:
+		return
+	_last_settlement_sig = sig
+	settlement_view_changed.emit(view)
+
+
+## #380：SNAP 入 NBC 前连续性检查（拒绝错误账本提交）。
+func _settlement_preflight_room_snapshot(ne: NetworkedEvent) -> Dictionary:
+	if ne == null:
+		return {"ok": false, "reason": "BAD_EVENT"}
+	# 终场锁存后：任意迟到 ROOM_SNAPSHOT 静默丢弃（不入 NBC、不 resync、不改 match_result）
+	if _match_latched:
+		return {"ok": false, "reason": "MATCH_LATCHED_SNAPSHOT", "discard_only": true}
+	if _settlement_phase != "hand_result" or _settlement_hand.is_empty():
+		return {"ok": true}
+	var snap_scores: Array = _settlement_scores_from_snapshot(ne)
+	if snap_scores.is_empty():
+		return {"ok": true}
+	var hand_scores: Array = _settlement_hand.get("scores", []) as Array
+	# 相同/旧 hand_seq 的 filler SNAP：允许提交桌面但不作为「合法新局」关弹层（apply 侧门控）
+	# 起分不一致且为更高 hand_seq 的新局：拒绝
+	if not _settlement_scores_equal(snap_scores, hand_scores):
+		# 仅当看起来像「新局」或无法判定 hand_seq 时 resync；旧局同分错误也 resync
+		return {"ok": false, "reason": "SETTLEMENT_SCORE_MISMATCH"}
+	return {"ok": true}
+
+
+func _reject_settlement_snapshot(reason: String) -> void:
+	# 不提交 SNAP；NBC 进入 resync；HAND scores 保留；只发 reconnecting
+	if nbc != null:
+		nbc.force_resync_for_authority_gap()
+	_settlement_phase = "resync"
+	_settlement_resync_active = true
+	_emit_settlement_if_changed()
+	_emit_authority_resync(reason if not reason.is_empty() else "SETTLEMENT_SCORE_MISMATCH")
+
+
+## 仅消费 NBC committed journal；pending 事件不在 journal 中。
+func _drain_settlement_from_journal() -> void:
+	if nbc == null:
+		return
+	var journal: Array = nbc.get_event_journal()
+	for item in journal:
+		var ne: NetworkedEvent = null
+		if item is NetworkedEvent:
+			ne = item as NetworkedEvent
+		elif typeof(item) == TYPE_DICTIONARY:
+			ne = NetworkedEvent.from_dict(item)
+		if ne == null:
+			continue
+		var seq: int = int(ne.server_seq)
+		if seq <= _settlement_journal_cursor:
+			continue
+		match String(ne.kind):
+			"PLAYER_JOINED":
+				_settlement_apply_player_joined(ne)
+			"HAND_SETTLED":
+				_settlement_apply_hand(ne)
+			"MATCH_SETTLED":
+				_settlement_apply_match(ne)
+			"ROOM_SNAPSHOT":
+				_settlement_apply_snapshot(ne)
+		_settlement_journal_cursor = maxi(_settlement_journal_cursor, seq)
+	_emit_settlement_if_changed()
+
+
+func _settlement_apply_player_joined(ne: NetworkedEvent) -> void:
+	var p: Dictionary = ne.payload
+	var s: int = int(p.get("seat", -1))
+	if s < 0 or s > 3:
+		return
+	_roster_names[s] = str(p.get("display_name", ""))
+
+
+func _settlement_apply_hand(ne: NetworkedEvent) -> void:
+	if _match_latched:
+		return
+	if _settlement_resync_active or _settlement_phase == "resync":
+		return
+	var seq: int = int(ne.server_seq)
+	var p: Dictionary = ne.payload
+	var hs: int = int(p.get("hand_seq", -1))
+	# 必须对应当前 committed 局（ledger）；旧 hand_seq 即使更高 server_seq 也拒绝
+	if _ledger_hand_seq >= 0 and hs != _ledger_hand_seq:
+		return
+	# 已结算过的 hand_seq 不得以新 server_seq 重新打开 UI
+	if hs >= 0 and hs <= _last_settled_hand_seq and _settlement_phase != "hand_result":
+		return
+	if not _settlement_hand.is_empty():
+		var prev_seq: int = int(_settlement_hand.get("server_seq", -1))
+		var prev_hs: int = int(_settlement_hand.get("hand_seq", -1))
+		if seq <= prev_seq:
+			return
+		if hs == prev_hs and seq > prev_seq:
+			# 同局重复 HAND：不覆盖已展示权威
+			return
+	_settlement_hand = {
+		"hand_seq": hs,
+		"outcome": str(p.get("outcome", "")),
+		"winner_seats": (p.get("winner_seats", []) as Array).duplicate(),
+		"loser_seat": int(p.get("loser_seat", -1)),
+		"score_deltas": (p.get("score_deltas", []) as Array).duplicate(),
+		"scores": (p.get("scores", []) as Array).duplicate(),
+		"dealer_seat": int(p.get("dealer_seat", 0)),
+		"renchan": bool(p.get("renchan", false)),
+		"honba": int(p.get("honba", 0)),
+		"riichi_sticks": int(p.get("riichi_sticks", 0)),
+		"server_seq": seq,
+	}
+	_settlement_phase = "hand_result"
+	if hs >= 0:
+		_last_settled_hand_seq = hs
+
+
+func _settlement_apply_match(ne: NetworkedEvent) -> void:
+	# 终态锁存：重复 MATCH 不得覆盖
+	if _match_latched:
+		return
+	var p: Dictionary = ne.payload
+	var finals: Array = (p.get("final_scores", []) as Array).duplicate()
+	var order: Array = (p.get("seat_order", []) as Array).duplicate()
+	var rows: Array = []
+	for i in range(order.size()):
+		var sid: int = int(order[i])
+		var score := 0
+		if sid >= 0 and sid < finals.size():
+			score = int(finals[sid])
+		var cname := ""
+		if sid >= 0 and sid < _character_ids.size():
+			cname = str(_character_ids[sid])
+		var dname := str(_roster_names.get(sid, ""))
+		if dname.is_empty():
+			dname = "席位%d" % sid
+		rows.append({
+			"rank": i + 1,
+			"seat_id": sid,
+			"name": dname,
+			"character_id": cname,
+			"score": score,
+			"is_local": sid == seat,
+		})
+	_settlement_match = {
+		"round_kind": str(p.get("round_kind", "")),
+		"final_scores": finals,
+		"seat_order": order,
+		"rows": rows,
+		"server_seq": int(ne.server_seq),
+		"rematch_label": "再次匹配",
+	}
+	_settlement_hand = {}
+	_settlement_phase = "match_result"
+	_match_latched = true
+	_settlement_resync_active = false
+	# 库存权威投影仅由 ROOM_SNAPSHOT registry restore；不在此伪造 apply_restored_module/clear。
+	# 终场可见清场由 PlayableTable match_result 展示边界完成；迟到 SNAP 由 preflight 整包丢弃。
+
+
+func _settlement_apply_snapshot(ne: NetworkedEvent) -> void:
+	_settlement_refresh_meta_from_snapshot(ne)
+	var snap_hs := _settlement_hand_seq_from_snapshot(ne)
+	# 终场锁存：迟到 SNAP 不得覆盖 match_result
+	if _match_latched:
+		_settlement_phase = "match_result"
+		return
+	if _settlement_phase == "hand_result" and not _settlement_hand.is_empty():
+		var snap_scores: Array = _settlement_scores_from_snapshot(ne)
+		var hand_scores: Array = _settlement_hand.get("scores", []) as Array
+		# 合法新局：snap_hand_seq > settled_hand_seq 且起分一致 → 关单局弹层
+		var is_next_hand := snap_hs > _last_settled_hand_seq
+		if (
+			not snap_scores.is_empty()
+			and _settlement_scores_equal(snap_scores, hand_scores)
+			and is_next_hand
+		):
+			_settlement_hand = {}
+			_settlement_phase = "idle"
+			_settlement_resync_active = false
+			_ledger_hand_seq = snap_hs
+		# 同/旧 hand_seq filler：保持 hand_result；不一致已在 preflight 拒绝
+		return
+	# 非 hand_result：推进 ledger 到当前 SNAP 局
+	if snap_hs >= 0:
+		_ledger_hand_seq = snap_hs
+	_settlement_resync_active = false
+
+
+func _settlement_hand_seq_from_snapshot(ne: NetworkedEvent) -> int:
+	var modules: Array = ne.payload.get("modules", []) as Array
+	for m in modules:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		if str(m.get("module_key", "")) != "core_table":
+			continue
+		var payload: Variant = m.get("payload", {})
+		if typeof(payload) != TYPE_DICTIONARY:
+			return -1
+		return int((payload as Dictionary).get("hand_seq", -1))
+	return -1
+
+
+func _settlement_refresh_meta_from_snapshot(ne: NetworkedEvent) -> void:
+	var modules: Array = ne.payload.get("modules", []) as Array
+	for m in modules:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		if str(m.get("module_key", "")) != "matching_meta":
+			continue
+		var payload: Variant = m.get("payload", {})
+		if typeof(payload) != TYPE_DICTIONARY:
+			continue
+		var chars: Variant = (payload as Dictionary).get("character_ids", null)
+		if typeof(chars) == TYPE_ARRAY:
+			_character_ids = (chars as Array).duplicate()
+		break
+
+
+func _settlement_scores_from_snapshot(ne: NetworkedEvent) -> Array:
+	var modules: Array = ne.payload.get("modules", []) as Array
+	for m in modules:
+		if typeof(m) != TYPE_DICTIONARY:
+			continue
+		if str(m.get("module_key", "")) != "core_table":
+			continue
+		var payload: Variant = m.get("payload", {})
+		if typeof(payload) != TYPE_DICTIONARY:
+			return []
+		var seats: Array = (payload as Dictionary).get("seats", []) as Array
+		var out: Array = [0, 0, 0, 0]
+		var filled := 0
+		for s in seats:
+			if typeof(s) != TYPE_DICTIONARY:
+				continue
+			var sid: int = int((s as Dictionary).get("seat", -1))
+			if sid < 0 or sid > 3:
+				continue
+			out[sid] = int((s as Dictionary).get("score", 0))
+			filled += 1
+		if filled >= 4:
+			return out
+		return out
+	return []
+
+
+func _settlement_scores_equal(a: Array, b: Array) -> bool:
+	if a.size() != 4 or b.size() != 4:
+		return false
+	for i in range(4):
+		if int(a[i]) != int(b[i]):
+			return false
+	return true
+
+
 func release() -> void:
 	if _released:
+		# 幂等：二次 release 仍保证敏感字段为空
+		_clear_runtime_identity()
 		return
 	_released = true
 	_want_open = false
@@ -736,6 +1069,19 @@ func release() -> void:
 	_resync_reconnect_notified = false
 	_connection_generation = 0
 	_client_seq = 0
+	_reset_settlement_projection()
+	_clear_runtime_identity()
+
+
+## #380：清除 token / session / worker 等敏感与运行身份引用。
+func _clear_runtime_identity() -> void:
+	room_token = ""
+	session_id = ""
+	worker_url = ""
+	voice_worker_url = ""
+	room_id = ""
+	game_mode = ""
+	seat = -1
 
 
 func _exit_tree() -> void:

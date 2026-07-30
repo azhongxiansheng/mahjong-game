@@ -51,7 +51,8 @@ func is_blocking() -> bool:
 func present(view: Dictionary) -> void:
 	_state = str(view.get("state", "idle"))
 	# #377：playing/entered 隐藏遮罩，牌桌接管焦点
-	if _state in ["idle", "cancelled", "playing", "entered"]:
+	# #380：match_settled 隐藏遮罩，终场面板按钮可交互（不得盖住 Rematch/Return）
+	if _state in ["idle", "cancelled", "playing", "entered", "match_settled"]:
 		visible = false
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if _dim != null:

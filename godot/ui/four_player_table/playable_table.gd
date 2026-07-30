@@ -1987,6 +1987,7 @@ static func _format_toast_text(ev: BattleEvent) -> String:
 func _exit_tree() -> void:
 	_polling_active = false
 	_reward_sync_active = false
+	set_process(false)
 	_disconnect_public_command_signals()
 	_disconnect_public_transcript()
 	_public_reward_session = null
@@ -2018,6 +2019,10 @@ var _public_network_command_attempts: int = 0
 var _public_pick_kind: String = ""
 var _public_pick_selected: Array = []
 var _public_input_locked: bool = false
+## #380：公共权威结算弹层（只读；无继续/READY）
+var _public_hand_settlement_overlay: Control = null
+var _public_match_settlement_panel: MatchSettlementPanel = null
+var _public_settlement_sig: String = ""
 const PublicTableAdapter := preload(
 	"res://ui/four_player_table/public_table_projection_adapter.gd")
 
@@ -2054,6 +2059,7 @@ func _bind_reward_feedback_from_battle(bc: PlayableBattleController) -> void:
 func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_disconnect_public_command_signals()
 	_disconnect_public_transcript()
+	_disconnect_public_settlement()
 	_public_reward_session = session
 	_public_table_committed_seq = -1
 	_public_table_frozen = false
@@ -2062,6 +2068,7 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_public_pick_kind = ""
 	_public_pick_selected.clear()
 	_public_input_locked = false
+	_public_settlement_sig = ""
 	# 公共路径禁止练习场 _bc
 	_bc = null
 	if _table != null and _table.has_signal("inventory_use_requested"):
@@ -2074,6 +2081,9 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 		room = str(session.room_id) if not str(session.room_id).is_empty() else "public"
 		if not session.transcript_caption.is_connected(_on_public_transcript_caption):
 			session.transcript_caption.connect(_on_public_transcript_caption)
+		if session.has_signal("settlement_view_changed") \
+				and not session.settlement_view_changed.is_connected(_on_public_settlement_view_changed):
+			session.settlement_view_changed.connect(_on_public_settlement_view_changed)
 		_connect_public_command_signals(session)
 	_reward_local_seat = seat
 	if _table != null and _table.has_method("set_local_seat"):
@@ -2085,6 +2095,7 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_ensure_reward_sync_loop()
 	# 若 nbc 已有 committed，立即投影
 	sync_public_table_projection()
+	_sync_public_settlement_ui()
 
 
 func _disconnect_public_transcript() -> void:
@@ -2133,28 +2144,23 @@ func _bootstrap_reward_display() -> void:
 
 
 func _ensure_reward_sync_loop() -> void:
+	# #380：用 Node._process 同步，避免 self-owned await 协程在销毁后 resume 报错
 	if _reward_sync_active:
 		return
 	_reward_sync_active = true
-	_reward_sync_loop()
+	set_process(true)
 
 
-func _reward_sync_loop() -> void:
-	while _reward_sync_active:
-		var tree := get_tree()
-		if tree == null:
-			_reward_sync_active = false
-			return
-		await tree.process_frame
-		# #378：实例销毁后不得 resume 报错
-		if not is_instance_valid(self) or not _reward_sync_active:
-			return
-		# 练习场主循环已调 _sync；公共-only 或 bind 早于 start 时由此兜底
-		if _public_reward_session != null:
-			_sync_reward_feedback_if_advanced()
-		elif _bc == null:
-			_reward_sync_active = false
-			return
+func _process(_delta: float) -> void:
+	if not _reward_sync_active:
+		set_process(false)
+		return
+	# 练习场主循环已调 _sync；公共-only 或 bind 早于 start 时由此兜底
+	if _public_reward_session != null:
+		_sync_reward_feedback_if_advanced()
+	elif _bc == null:
+		_reward_sync_active = false
+		set_process(false)
 
 
 func _sync_reward_feedback_if_advanced() -> void:
@@ -2214,6 +2220,8 @@ func sync_public_table_projection() -> void:
 	_apply_public_decision_from_journal(nbc)
 	# 本席手牌点击走 entity id；公共不发网络命令
 	_wire_public_bottom_hand_clicks()
+	# #380：同步权威结算中央弹层
+	_sync_public_settlement_ui()
 
 
 func get_public_decision_view() -> Dictionary:
@@ -2222,6 +2230,205 @@ func get_public_decision_view() -> Dictionary:
 
 func public_network_command_attempts() -> int:
 	return _public_network_command_attempts
+
+
+## #380：供测试定位公共单局弹层。
+func get_public_hand_settlement_overlay() -> Control:
+	return _public_hand_settlement_overlay
+
+
+func _disconnect_public_settlement() -> void:
+	if _public_reward_session != null \
+			and _public_reward_session.has_signal("settlement_view_changed") \
+			and _public_reward_session.settlement_view_changed.is_connected(
+				_on_public_settlement_view_changed
+			):
+		_public_reward_session.settlement_view_changed.disconnect(
+			_on_public_settlement_view_changed
+		)
+	_clear_public_hand_settlement_overlay()
+	_clear_public_match_settlement_panel()
+	_public_settlement_sig = ""
+
+
+func _on_public_settlement_view_changed(_view: Dictionary) -> void:
+	_sync_public_settlement_ui()
+
+
+func _sync_public_settlement_ui() -> void:
+	if _public_reward_session == null:
+		return
+	if not _public_reward_session.has_method("get_settlement_view"):
+		return
+	var view: Dictionary = _public_reward_session.get_settlement_view()
+	var sig := JSON.stringify(view)
+	if sig == _public_settlement_sig:
+		return
+	_public_settlement_sig = sig
+	var phase := str(view.get("phase", "idle"))
+	match phase:
+		"hand_result":
+			_clear_public_match_settlement_panel()
+			var hand_v: Variant = view.get("hand", null)
+			if typeof(hand_v) == TYPE_DICTIONARY:
+				_present_public_hand_settlement(hand_v as Dictionary)
+		"match_result":
+			_clear_public_hand_settlement_overlay()
+			_present_public_match_settlement(view)
+		_:
+			# idle / awaiting_next_hand / playing / resync：关单局；非终场则关终场
+			_clear_public_hand_settlement_overlay()
+			if phase in ["idle", "awaiting_next_hand", "playing"]:
+				_clear_public_match_settlement_panel()
+
+
+func _present_public_hand_settlement(hand: Dictionary) -> void:
+	if hand.is_empty():
+		return
+	if _public_hand_settlement_overlay == null \
+			or not is_instance_valid(_public_hand_settlement_overlay):
+		_public_hand_settlement_overlay = _build_public_hand_settlement_overlay()
+		add_child(_public_hand_settlement_overlay)
+	_public_hand_settlement_overlay.visible = true
+	var title := _public_hand_settlement_overlay.find_child("ResultTitle", true, false) as Label
+	var body := _public_hand_settlement_overlay.find_child("ResultBody", true, false) as Label
+	var outcome := str(hand.get("outcome", ""))
+	var outcome_zh := outcome
+	match outcome:
+		"RON":
+			outcome_zh = "荣和 / RON"
+		"TSUMO":
+			outcome_zh = "自摸 / TSUMO"
+		"EXHAUSTIVE_DRAW":
+			outcome_zh = "流局"
+		"ABORTIVE_DRAW":
+			outcome_zh = "途中流局"
+		"NAGASHI_MANGAN":
+			outcome_zh = "流し满贯"
+	if title != null:
+		title.text = outcome_zh
+	var winners: Array = hand.get("winner_seats", []) as Array
+	var loser: int = int(hand.get("loser_seat", -1))
+	var deltas: Array = hand.get("score_deltas", []) as Array
+	var scores: Array = hand.get("scores", []) as Array
+	var lines: PackedStringArray = []
+	if not winners.is_empty():
+		lines.append("赢家席：%s" % str(winners))
+	if loser >= 0:
+		lines.append("放铳席：%d" % loser)
+	for s in range(mini(4, scores.size())):
+		var dlt := int(deltas[s]) if s < deltas.size() else 0
+		var dlt_s := ("+%d" % dlt) if dlt > 0 else str(dlt)
+		lines.append("席%d  %s  →  %d" % [s, dlt_s, int(scores[s])])
+	if body != null:
+		body.text = "\n".join(lines)
+
+
+func _build_public_hand_settlement_overlay() -> Control:
+	# 方案 A：中央弹层；无继续按钮、不发送 READY
+	var root := Control.new()
+	root.name = "PublicHandSettlementOverlay"
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.z_index = 190
+	var bg := ColorRect.new()
+	bg.name = "Backdrop"
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.color = Color(0, 0, 0, 0.55)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	root.add_child(bg)
+	var panel := Panel.new()
+	panel.name = "HandSettlementModal"
+	const PW := 520
+	const PH := 320
+	panel.custom_minimum_size = Vector2(PW, PH)
+	panel.size = Vector2(PW, PH)
+	panel.position = Vector2((DT.VIEW_W - PW) / 2.0, (DT.VIEW_H - PH) / 2.0)
+	var style := DT.make_shared_panel_style("Modal")
+	panel.add_theme_stylebox_override("panel", style)
+	root.add_child(panel)
+	var title := Label.new()
+	title.name = "ResultTitle"
+	title.position = Vector2(24, 24)
+	title.size = Vector2(PW - 48, 40)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_color_override("font_color", Color(1, 0.9, 0.4))
+	panel.add_child(title)
+	var body := Label.new()
+	body.name = "ResultBody"
+	body.position = Vector2(36, 80)
+	body.size = Vector2(PW - 72, 200)
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	body.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.add_theme_font_size_override("font_size", 18)
+	body.add_theme_color_override("font_color", Color(0.95, 0.93, 0.88))
+	panel.add_child(body)
+	return root
+
+
+func _clear_public_hand_settlement_overlay() -> void:
+	if _public_hand_settlement_overlay != null and is_instance_valid(_public_hand_settlement_overlay):
+		_public_hand_settlement_overlay.queue_free()
+	_public_hand_settlement_overlay = null
+
+
+func _present_public_match_settlement(view: Dictionary) -> void:
+	var match_v: Variant = view.get("match", null)
+	if typeof(match_v) != TYPE_DICTIONARY or (match_v as Dictionary).is_empty():
+		return
+	var mv: Dictionary = match_v as Dictionary
+	if _public_match_settlement_panel == null \
+			or not is_instance_valid(_public_match_settlement_panel):
+		_public_match_settlement_panel = MatchSettlementPanel.new()
+		_public_match_settlement_panel.name = "PublicMatchSettlementPanel"
+		add_child(_public_match_settlement_panel)
+		if not _public_match_settlement_panel.rematch_requested.is_connected(
+			_on_public_rematch_requested
+		):
+			_public_match_settlement_panel.rematch_requested.connect(_on_public_rematch_requested)
+		if not _public_match_settlement_panel.return_lobby_requested.is_connected(
+			_on_public_return_lobby_requested
+		):
+			_public_match_settlement_panel.return_lobby_requested.connect(
+				_on_public_return_lobby_requested
+			)
+	var present_view := {
+		"title": "对局结束",
+		"rows": mv.get("rows", []),
+		"rematch_label": str(mv.get("rematch_label", "再次匹配")),
+	}
+	_public_match_settlement_panel.present(present_view)
+	_public_match_settlement_panel.visible = true
+
+
+func _clear_public_match_settlement_panel() -> void:
+	if _public_match_settlement_panel != null and is_instance_valid(_public_match_settlement_panel):
+		_public_match_settlement_panel.queue_free()
+	_public_match_settlement_panel = null
+
+
+func _on_public_rematch_requested() -> void:
+	var coord := _find_public_match_coordinator()
+	if coord != null and coord.has_method("request_rematch"):
+		coord.request_rematch()
+
+
+func _on_public_return_lobby_requested() -> void:
+	var coord := _find_public_match_coordinator()
+	if coord != null and coord.has_method("request_return_lobby"):
+		coord.request_return_lobby()
+
+
+func _find_public_match_coordinator() -> PublicMatchCoordinator:
+	var p := get_parent()
+	if p == null:
+		return null
+	var n := p.get_node_or_null("PublicMatchCoordinator")
+	if n is PublicMatchCoordinator:
+		return n as PublicMatchCoordinator
+	return null
 
 
 ## #378：由 UI choice 或测试构建权威 exact Action（不提交）。
@@ -3034,6 +3241,13 @@ func _fill_reward_views(reward_view: Dictionary, inv_view: Dictionary) -> void:
 	reward_view.clear()
 	inv_view.clear()
 	if _public_reward_session != null and _public_reward_session.nbc != null:
+		# #380：MATCH 终场锁存后不得复活库存/奖励展示（迟到 SNAP 亦然）
+		if _public_reward_session.has_method("get_settlement_view"):
+			var sv: Dictionary = _public_reward_session.get_settlement_view()
+			var phase := str(sv.get("phase", ""))
+			if phase == "match_result":
+				inv_view["items"] = []
+				return
 		var nbc: NetworkedBattleController = _public_reward_session.nbc
 		reward_view.merge(nbc.get_reward_window_view())
 		inv_view.merge(nbc.get_item_inventory_view())
@@ -3100,6 +3314,11 @@ func _refresh_reward_feedback_views() -> void:
 func _consume_reward_journal_events() -> void:
 	if _table == null:
 		return
+	# #380：终场锁存后不再消费会复活库存/奖励的 journal 事件
+	if _public_reward_session != null and _public_reward_session.has_method("get_settlement_view"):
+		var sv: Dictionary = _public_reward_session.get_settlement_view()
+		if str(sv.get("phase", "")) == "match_result":
+			return
 	var events: Array = _collect_committed_reward_events()
 	for item in events:
 		var ne: NetworkedEvent = null

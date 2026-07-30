@@ -1,6 +1,7 @@
 class_name PublicMatchCoordinator extends Node
 
 # #323：大厅公共匹配生产协调层。UI 仅消费 get_view/view_changed 与真实 actions。
+# #380：终场再次匹配 / 返回大厅 — 幂等导航与完整资源释放。
 
 signal view_changed(view: Dictionary)
 
@@ -18,6 +19,12 @@ var _view: Dictionary = {
 	"can_cancel": false, "can_retry": false,
 }
 var _next_poll_ms := 0
+## #380：最近一次公共 intent（再次匹配复用局制/玩法/角色）
+var _last_intent: SessionIntent = null
+## #380：终场导航锁 — 首次再次匹配/返回大厅后连点无效
+var _settlement_nav_lock: bool = false
+## #380：MATCH 终场锁存 — 直至再次匹配/返回大厅消费；SNAP/断线/terminal 不得覆盖
+var _match_settled_latched: bool = false
 
 
 func _ready() -> void:
@@ -50,6 +57,9 @@ func _on_session_intent(intent: SessionIntent) -> void:
 		return
 	if str(_view.get("state", "idle")) not in ["idle", "cancelled", "terminal_error"]:
 		return
+	_last_intent = intent
+	_settlement_nav_lock = false
+	_match_settled_latched = false
 	_clear_network_runtime()
 	if not _queue_configured:
 		_set_configuration_terminal(intent)
@@ -82,6 +92,103 @@ func get_active_session() -> PublicCasualNetworkSession:
 
 func get_active_table() -> PlayableTable:
 	return _table if _table != null and is_instance_valid(_table) else null
+
+
+## #380 测试：注入再次匹配用 intent。
+func set_last_public_intent_for_test(intent: SessionIntent) -> void:
+	_last_intent = intent
+
+
+## #380：终场「再次匹配」— 释放旧 runtime 后以相同局制/玩法/角色重新入队。
+## 连点幂等：首次后锁存，旧 token/session 不复用。
+## 缺 _last_intent 时明确 terminal，绝不默认角色。
+func request_rematch() -> bool:
+	if _settlement_nav_lock:
+		return false
+	# #380：仅 MATCH 终场锁存后可再次匹配；HAND/matched/playing 等无副作用
+	if not _match_settled_latched or str(_view.get("state", "")) != "match_settled":
+		return false
+	var intent: SessionIntent = _last_intent
+	if intent == null or String(intent.selected_character_id).is_empty():
+		_settlement_nav_lock = true
+		_match_settled_latched = false
+		_clear_network_runtime(true)
+		_set_terminal("NO_INTENT", "缺少对局 intent，无法再次匹配")
+		return false
+	_settlement_nav_lock = true
+	_match_settled_latched = false
+	# 完整释放：WS / voice / table / inventory 展示 / token 引用
+	_clear_network_runtime(true)
+	_set_view({
+		"state": "joining",
+		"round_kind": String(intent.round_kind),
+		"game_mode": String(intent.game_mode),
+		"can_cancel": false,
+		"can_retry": false,
+	})
+	if not _queue_configured or _queue == null:
+		_set_terminal("INVALID_CONTROL_PLANE_URL", "控制面地址无效")
+		return false
+	if not _queue.begin(intent):
+		# 队列忙仍保持已释放；允许后续 terminal 重试走 _on_session_intent
+		_settlement_nav_lock = false
+		_set_terminal("QUEUE_BUSY", "无法开始匹配")
+		return false
+	return true
+
+
+## #380：终场「返回大厅」— 完整释放运行态、恢复大厅 BGM、焦点 %MatchButton。
+func request_return_lobby() -> bool:
+	var st := str(_view.get("state", ""))
+	if st == "idle" and _session == null and _table == null:
+		return false
+	if _settlement_nav_lock and st == "idle":
+		return false
+	# #380：仅 MATCH 终场锁存后可返回大厅；未终场调用无副作用
+	if not _match_settled_latched or st != "match_settled":
+		return false
+	_settlement_nav_lock = true
+	_match_settled_latched = false
+	var rk := str(_view.get("round_kind", ""))
+	var gm := str(_view.get("game_mode", ""))
+	_clear_network_runtime(true)
+	_set_view({
+		"state": "idle",
+		"round_kind": rk,
+		"game_mode": gm,
+		"can_cancel": false,
+		"can_retry": false,
+	})
+	var lobby := get_parent()
+	if lobby != null and is_instance_valid(lobby):
+		if lobby.has_method("request_lobby_bgm"):
+			lobby.request_lobby_bgm()
+		var match_btn: Control = null
+		if lobby.has_method("get_node_or_null"):
+			match_btn = lobby.get_node_or_null("%MatchButton") as Control
+		if match_btn != null and is_instance_valid(match_btn):
+			match_btn.focus_mode = Control.FOCUS_ALL
+			match_btn.grab_focus()
+		elif lobby is Control:
+			(lobby as Control).focus_mode = Control.FOCUS_ALL
+			(lobby as Control).grab_focus()
+	return true
+
+
+## 兼容别名（测试 / 信号）
+func on_public_rematch_requested() -> bool:
+	return request_rematch()
+
+
+func on_public_return_lobby_requested() -> bool:
+	return request_return_lobby()
+
+
+## #380 测试 seam：从合法 assigned 启动真实 runtime（不写私有字段拼装）。
+func begin_network_from_assigned_for_test(assigned: Dictionary) -> void:
+	if assigned.is_empty():
+		return
+	_start_network(assigned)
 
 
 func _on_ticket_updated(ticket: Dictionary) -> void:
@@ -141,11 +248,16 @@ func _start_network(assigned: Dictionary) -> void:
 	_session.terminal_error.connect(_on_terminal_error)
 	if not _session.room_started_hint.is_connected(_on_room_started_hint):
 		_session.room_started_hint.connect(_on_room_started_hint)
+	if _session.has_signal("settlement_view_changed") \
+			and not _session.settlement_view_changed.is_connected(_on_settlement_view_changed):
+		_session.settlement_view_changed.connect(_on_settlement_view_changed)
+	_settlement_nav_lock = false
 	_mount_table()
 	if _table == null:
 		_fail_network_start("TABLE_MOUNT_FAILED", "牌桌挂载失败")
 		return
 	_session.bind_playable_table(_table)
+	_match_settled_latched = false
 	var err := _session.start()
 	if err != OK:
 		_fail_network_start("CONNECT_FAILED", error_string(err))
@@ -179,6 +291,17 @@ func _on_room_started_hint() -> void:
 	notify_public_snapshot_committed_for_test()
 
 
+func _on_settlement_view_changed(view: Dictionary) -> void:
+	# #380：终场投影 → view.state=match_settled 锁存，直至导航消费
+	if str(view.get("phase", "")) == "match_result":
+		_match_settled_latched = true
+		var next := _context_view("match_settled")
+		next.merge({"error_code": "", "message": "", "can_retry": false, "can_cancel": false}, true)
+		_set_view(next)
+		_settlement_nav_lock = false
+		_focus_public_table()
+
+
 func _on_terminal_error(code: String, message: String) -> void:
 	consume_connection_fact_for_test(&"terminal_error", code, message)
 
@@ -189,6 +312,11 @@ func notify_public_snapshot_committed_for_test() -> void:
 
 
 func consume_connection_fact_for_test(fact: StringName, code: String = "", message: String = "") -> void:
+	# #380：终场锁存期间忽略会覆盖 match_settled 的连接/局况 fact
+	if _match_settled_latched and fact in [
+		&"reconnecting", &"recovered", &"playing", &"entered", &"terminal_error"
+	]:
+		return
 	match fact:
 		&"reconnecting":
 			var next := _context_view("reconnecting")
