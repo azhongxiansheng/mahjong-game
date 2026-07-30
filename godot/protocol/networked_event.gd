@@ -24,9 +24,24 @@ const EVENT_KINDS := [
 	"ITEM_APPLIED",
 	"CHARACTER_ABILITY_ARMED",
 	"CHARACTER_ABILITY_DISARMED",
+	"SKILL_TRIGGERED",
 	"HAND_SETTLED",
 	"MATCH_SETTLED",
 ]
+
+## #379：SKILL_TRIGGERED 公开 payload 键（最小必填 + 可选 delta / 实例归因）
+const SKILL_TRIGGERED_REQUIRED_KEYS := [
+	"actor_seat", "beneficiary_seat", "skill_id", "skill_name",
+	"source_event", "source_kind", "hand_seq",
+]
+const SKILL_TRIGGERED_OPTIONAL_KEYS := [
+	"han_delta", "extra_dora_delta", "extra_red_dora_delta",
+	"item_instance_id", "causation_command_id",
+]
+const SKILL_TRIGGERED_FORBIDDEN_KEYS := [
+	"tiles", "wall_top", "private_hand", "waits", "hand", "wall",
+]
+const SKILL_TRIGGERED_SOURCE_KINDS := ["character", "relic", "item"]
 
 const ENVELOPE_KEYS := [
 	"protocol_version", "server_seq", "room_id", "kind", "payload", "view_hash",
@@ -269,6 +284,8 @@ static func _validate_payload(kind_str: String, p: Dictionary, envelope_server_s
 			return _validate_ability_armed(p)
 		"CHARACTER_ABILITY_DISARMED":
 			return _validate_ability_disarmed(p)
+		"SKILL_TRIGGERED":
+			return _validate_skill_triggered(p)
 		"ROOM_SNAPSHOT":
 			return _validate_room_snapshot(p)
 		"PLAYER_JOINED":
@@ -983,6 +1000,81 @@ static func _validate_ability_disarmed(p: Dictionary) -> Variant:
 		"ability_id": p["ability_id"],
 		"active_window_id": active,
 	}
+
+
+## #379：技能公开归因。仅允许最小公开字段 + 可选 delta；拒绝私有牌面/墙/听牌字段。
+static func _validate_skill_triggered(p: Dictionary) -> Variant:
+	for bad in SKILL_TRIGGERED_FORBIDDEN_KEYS:
+		if p.has(bad):
+			return null
+	for req in SKILL_TRIGGERED_REQUIRED_KEYS:
+		if not p.has(req):
+			return null
+	# 禁止未知键
+	for k in p.keys():
+		var ks := str(k)
+		if ks in SKILL_TRIGGERED_REQUIRED_KEYS:
+			continue
+		if ks in SKILL_TRIGGERED_OPTIONAL_KEYS:
+			continue
+		return null
+	if typeof(p["actor_seat"]) != TYPE_INT:
+		return null
+	var actor: int = p["actor_seat"]
+	if actor < 0 or actor > 3:
+		return null
+	if typeof(p["beneficiary_seat"]) != TYPE_INT:
+		return null
+	var ben: int = p["beneficiary_seat"]
+	if ben < 0 or ben > 3:
+		return null
+	if not _is_nonempty_string(p["skill_id"]):
+		return null
+	if typeof(p["skill_name"]) != TYPE_STRING:
+		return null
+	if not _is_nonempty_string(p["source_event"]):
+		return null
+	if typeof(p["source_kind"]) != TYPE_STRING:
+		return null
+	var skind: String = p["source_kind"]
+	if skind not in SKILL_TRIGGERED_SOURCE_KINDS:
+		return null
+	var hand_seq: Variant = _require_hand_seq(p["hand_seq"])
+	if hand_seq == null:
+		return null
+	var out := {
+		"actor_seat": actor,
+		"beneficiary_seat": ben,
+		"skill_id": str(p["skill_id"]),
+		"skill_name": str(p["skill_name"]),
+		"source_event": str(p["source_event"]),
+		"source_kind": skind,
+		"hand_seq": int(hand_seq),
+	}
+	if p.has("han_delta"):
+		if typeof(p["han_delta"]) != TYPE_INT:
+			return null
+		out["han_delta"] = int(p["han_delta"])
+	if p.has("extra_dora_delta"):
+		if typeof(p["extra_dora_delta"]) != TYPE_INT:
+			return null
+		out["extra_dora_delta"] = int(p["extra_dora_delta"])
+	if p.has("extra_red_dora_delta"):
+		if typeof(p["extra_red_dora_delta"]) != TYPE_INT:
+			return null
+		out["extra_red_dora_delta"] = int(p["extra_red_dora_delta"])
+	if p.has("item_instance_id"):
+		if not _is_nonempty_string(p["item_instance_id"]):
+			return null
+		out["item_instance_id"] = str(p["item_instance_id"])
+	if p.has("causation_command_id"):
+		if typeof(p["causation_command_id"]) != TYPE_STRING:
+			return null
+		var causation: String = p["causation_command_id"]
+		if not ProtocolUuid.is_canonical_v4(causation):
+			return null
+		out["causation_command_id"] = causation
+	return out
 
 
 static func _validate_prize_pool(raw: Variant) -> Variant:
