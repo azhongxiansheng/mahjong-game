@@ -347,11 +347,36 @@ func activate_single_skill_for_event(
 
 func _append_skill_triggered_events(ctx: SkillCtx, source_type: StringName) -> void:
 	for entry in ctx.triggered_skills:
+		var skill_id := String(entry.skill_id)
+		# #379 P2-2/P2-3：Scheduler 已写入精确 iid / source_kind / 源 actor，禁止回扫 registry 首实例
+		var source_kind := "character"
+		if entry.has("source_kind") and not str(entry.get("source_kind", "")).is_empty():
+			source_kind = str(entry.get("source_kind", "character"))
+		elif skill_id.begins_with("relic_"):
+			source_kind = "relic"
+		var item_iid := ""
+		if entry.has("item_instance_id"):
+			item_iid = str(entry.get("item_instance_id", "")).strip_edges()
+		var ben := int(entry.beneficiary_seat)
+		# 正常链：源 BattleEvent.actor；GAME_BEGIN 单技能等价事件 actor 已等于 beneficiary
+		var actor := ben
+		if entry.has("actor_seat"):
+			actor = int(entry.get("actor_seat", ben))
+		elif ctx != null and ctx.get_event() != null:
+			actor = int(ctx.get_event().actor_seat)
+		if actor < 0 or actor > 3:
+			actor = ben
 		var skill_extra := {
-			"skill_id": String(entry.skill_id),
-			"skill_name": entry.skill_name,
+			"skill_id": skill_id,
+			"skill_name": String(entry.skill_name),
 			"source_event": String(source_type),
+			"source_kind": source_kind,
+			"beneficiary_seat": ben,
+			"actor_seat": actor,
+			"hand_seq": int(state.hand_seq) if state != null else 0,
 		}
+		if not item_iid.is_empty():
+			skill_extra["item_instance_id"] = item_iid
 		if entry.has("extra_dora_delta"):
 			skill_extra["extra_dora_delta"] = int(entry.extra_dora_delta)
 		if entry.has("extra_red_dora_delta"):
@@ -359,7 +384,7 @@ func _append_skill_triggered_events(ctx: SkillCtx, source_type: StringName) -> v
 		if entry.has("han_delta"):
 			skill_extra["han_delta"] = int(entry.han_delta)
 		var skill_ev := BattleEvent.make(
-			&"SKILL_TRIGGERED", int(entry.beneficiary_seat), null, skill_extra)
+			&"SKILL_TRIGGERED", actor, null, skill_extra)
 		events.append(skill_ev)
 
 # 把 Tile 包成 TileSkillAnchor 以喂事件 payload。

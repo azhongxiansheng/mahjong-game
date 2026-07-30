@@ -127,12 +127,31 @@ func _dispatch(candidates: Array, event: BattleEvent, ctx: SkillCtx) -> void:
 		var snap := _snapshot_before(ctx)
 		c.hook.on_event(c.skill, event, ctx)
 		if _did_mutate(ctx, snap):
+			# #379：从当前实际触发的 c.skill 直接归因，禁止事后按 skill_id 回扫首实例
+			var sk: SkillResource = c.skill as SkillResource
+			var item_iid := ""
+			if sk != null and sk.params.has("item_instance_id"):
+				item_iid = str(sk.params.get("item_instance_id", "")).strip_edges()
+			var source_kind := "character"
+			if sk != null:
+				if sk.params.has("item_id") or not item_iid.is_empty() \
+						or String(sk.id).begins_with("relic_"):
+					var item_id_s := String(sk.params.get("item_id", ""))
+					if String(sk.id).begins_with("relic_") \
+							or item_id_s.begins_with("relic_"):
+						source_kind = "relic"
+					else:
+						source_kind = "item"
 			var triggered := {
-				"skill_id": c.skill.id,
-				"skill_name": c.skill.display_name,
+				"skill_id": sk.id if sk != null else c.skill.id,
+				"skill_name": sk.display_name if sk != null else c.skill.display_name,
 				"beneficiary_seat": c.beneficiary_seat,
-				"is_ability": c.skill.is_ability,
+				"actor_seat": int(event.actor_seat),
+				"is_ability": sk.is_ability if sk != null else c.skill.is_ability,
+				"source_kind": source_kind,
 			}
+			if not item_iid.is_empty():
+				triggered["item_instance_id"] = item_iid
 			var seat := int(c.beneficiary_seat)
 			var before_han: Dictionary = snap.han_deltas
 			var han_delta := int(ctx.han_deltas.get(seat, 0)) \

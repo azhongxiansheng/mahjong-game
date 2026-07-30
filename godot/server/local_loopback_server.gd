@@ -72,6 +72,8 @@ var _hand_settled_emitted: bool = false
 var _match_settled_emitted: bool = false
 ## 测试/诊断：event_journal 被调用次数（每次会 _clone_events 全量复制）
 var event_journal_call_count: int = 0
+## #379：BC.events 已投影到 journal 的下标（O(新增) 游标；禁止 action 热路径 event_journal）
+var _skill_bc_proj_upto: int = 0
 ## E5-04：权威奖励时钟（仅 advance_reward_time 单调推进；禁止墙钟/伪造跳跃）
 var _reward_authority_now_ms: int = REWARD_CLOCK_BASE_MS
 ## 整场是否结束：仅显式注入；默认 null=未知→流局按 match 继续(FULL_GRANT)
@@ -112,6 +114,8 @@ var _tx_rw_state: Dictionary = {}
 var _tx_rw_clock: int = -1
 var _tx_claim_seen: bool = false
 var _tx_hand_deferred: bool = false
+## #379：事务冻结时的技能投影游标
+var _tx_skill_bc_proj_upto: int = 0
 ## 嵌套/重复 begin 防护
 var _tx_active: bool = false
 
@@ -162,6 +166,7 @@ func _init(
 	_hand_settled_emitted = false
 	_match_settled_emitted = false
 	event_journal_call_count = 0
+	_skill_bc_proj_upto = 0
 	_reward_authority_now_ms = REWARD_CLOCK_BASE_MS
 	_reward_match_ended = null
 	_reward_claim_seen_open = false
@@ -251,12 +256,13 @@ func start() -> bool:
 	# DRAW → 摸牌；ROOM_SNAPSHOT(IDLE) → OPENED → ROOM_SNAPSHOT(OPEN) → TURN_PROMPT
 	# 开窗后补发新鲜 SNAP，供 prompt/重连持有 OPEN 投影（非仅 IDLE）
 	_ensure_drawn()
-	# #253：start 首摸可触发跨局 armed delayed；须在首 SNAP 前 finalize，避免库存仍显示 armed
+	# #253+#379：start 首摸可触发跨局 armed delayed；finalize 批内 SKILL 先于 ITEM_* 并配 SNAP
 	if not _finalize_item_triggers():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
-			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker,
+			0
 		)
 	if not publish_snapshot():
 		return _fail_start_rollback(
@@ -281,6 +287,13 @@ func start() -> bool:
 			)
 	# AI 庄：先推进到真人决策入口再发 TURN/CLAIM prompt（否则 AI TURN 会令 start 失败）
 	if not _auto_advance_ai():
+		return _fail_start_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
+			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled, frozen_started, frozen_hand_start, frozen_hand_start_honba, frozen_hand_start_riichi_sticks, frozen_settlement_tracker
+		)
+	# #379：AI 链技能在 settlement 前投影
+	if not _publish_pending_skill_triggered_from_bc():
 		return _fail_start_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_rw,
 			frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
@@ -342,6 +355,8 @@ func start_next_hand(new_bc: BattleController) -> bool:
 	var frozen_ai: Dictionary = _ai_control_seats.duplicate(true)
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
+	# #379：跨局失败必须恢复旧局投影游标（换 BC 前冻结）
+	var frozen_skill_proj: int = _skill_bc_proj_upto
 	var prev_bc: BattleController = _bc
 	var prev_owned: BattleController = _bc_owned
 	var prev_injected: WeakRef = _bc_injected
@@ -365,6 +380,8 @@ func start_next_hand(new_bc: BattleController) -> bool:
 	_reward_claim_seen_open = false
 	_reward_hand_settled_deferred = false
 	_reward_match_ended = null
+	# #379：新 BC.events 从 0 起投影
+	_skill_bc_proj_upto = 0
 	# 新局命令指纹与上一局隔离（hand_seq 已变；缓存仍清以免 stale）
 	_command_cache = {}
 
@@ -376,6 +393,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 		_command_cache = frozen_cache
 		_ai_control_seats = frozen_ai
 		_hand_settled_emitted = true
+		_skill_bc_proj_upto = frozen_skill_proj
 		_reward_restore_state(frozen_rw)
 		_reward_authority_now_ms = frozen_rw_clock
 		return false
@@ -388,6 +406,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 		_command_cache = frozen_cache
 		_ai_control_seats = frozen_ai
 		_hand_settled_emitted = true
+		_skill_bc_proj_upto = frozen_skill_proj
 		_reward_restore_state(frozen_rw)
 		_reward_authority_now_ms = frozen_rw_clock
 		return false
@@ -405,6 +424,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 			_command_cache = frozen_cache
 			_ai_control_seats = frozen_ai
 			_hand_settled_emitted = true
+			_skill_bc_proj_upto = frozen_skill_proj
 			_reward_restore_state(frozen_rw)
 			_reward_authority_now_ms = frozen_rw_clock
 			return false
@@ -416,10 +436,11 @@ func start_next_hand(new_bc: BattleController) -> bool:
 			rw_boot.hard_reset()
 
 	_ensure_drawn()
+	# #379：跨局首摸技能与 ITEM finalize 同批（SKILL 先于 APPLIED/CONSUMED）
 	if not _finalize_item_triggers():
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	# #376 R4 测试 seam：仅本处命中，证明失败边界在 start_next_hand 首 SNAP
 	if _fail_next_hand_start_snapshot:
@@ -427,28 +448,34 @@ func start_next_hand(new_bc: BattleController) -> bool:
 		fail_next_hand_start_snapshot_hit_count += 1
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	if not publish_snapshot():
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	if not _maybe_open_reward_window():
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	if _reward_module() != null:
 		if not publish_snapshot():
 			return _fail_next_hand_rollback(
 				snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-				frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+				frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 			)
 	if not _auto_advance_ai():
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
+		)
+	# AI 链可能再产生技能；settlement 前再冲一次
+	if not _publish_pending_skill_triggered_from_bc():
+		return _fail_next_hand_rollback(
+			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	if bool(_bc.get("_settled")):
 		_hand_start_scores = start_scores_candidate
@@ -459,13 +486,13 @@ func start_next_hand(new_bc: BattleController) -> bool:
 		if not _emit_settled_if_needed():
 			return _fail_next_hand_rollback(
 				snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-				frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+				frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 			)
 		return true
 	if not _emit_private_prompt():
 		return _fail_next_hand_rollback(
 			snap, frozen_seq, frozen_journals, frozen_cache, frozen_ai,
-			frozen_rw, frozen_rw_clock, prev_owned, prev_injected
+			frozen_rw, frozen_rw_clock, prev_owned, prev_injected, frozen_skill_proj
 		)
 	_hand_start_scores = start_scores_candidate
 	_hand_start_honba = start_honba_candidate
@@ -493,9 +520,10 @@ func _fail_next_hand_rollback(
 	frozen_rw: Dictionary,
 	frozen_rw_clock: int,
 	prev_owned: BattleController,
-	prev_injected: WeakRef
+	prev_injected: WeakRef,
+	frozen_skill_proj: int = 0
 ) -> bool:
-	# 尽量 ARS 回滚新 BC 副作用后换回旧 BC；journal/seq 必须回到调用前
+	# 尽量 ARS 回滚新 BC 副作用后换回旧 BC；journal/seq/cursor 必须回到调用前
 	if snap != null and _bc != null:
 		snap.restore_into(_bc)
 	_restore_bc_after_next_hand_fail(prev_owned, prev_injected, null)
@@ -510,14 +538,17 @@ func _fail_next_hand_rollback(
 	_ai_control_seats = frozen_ai
 	_hand_settled_emitted = true
 	_settlement_tracker = HandSettlement.empty_tracker()
+	_skill_bc_proj_upto = maxi(frozen_skill_proj, 0)
+	if _bc != null:
+		_skill_bc_proj_upto = mini(_skill_bc_proj_upto, _bc.events.size())
 	_reward_restore_state(frozen_rw)
 	_reward_authority_now_ms = frozen_rw_clock
 	_reward_claim_seen_open = false
 	_reward_hand_settled_deferred = false
 	return false
 
-
 ## start 任一后续步骤失败：ARS + 服务端字段 + inv/slot/registry index 精确回调用前。
+## #379：frozen_skill_proj 默认 0（start 入口 cursor）；须显式传入避免 cursor 悬空。
 func _fail_start_rollback(
 	snap: AuthorityReplaySnapshot,
 	frozen_seq: int,
@@ -532,13 +563,14 @@ func _fail_start_rollback(
 	frozen_hand_start: Array,
 	frozen_hand_start_honba: int = 0,
 	frozen_hand_start_riichi_sticks: int = 0,
-	frozen_settlement_tracker: Dictionary = {}
+	frozen_settlement_tracker: Dictionary = {},
+	frozen_skill_proj: int = 0
 ) -> bool:
 	if _rollback_transaction(
 		snap, frozen_seq, frozen_journals, frozen_cache,
 		frozen_rw, frozen_rw_clock, frozen_claim_seen,
 		frozen_hand_deferred, frozen_hand_settled,
-		frozen_settlement_tracker
+		frozen_settlement_tracker, frozen_skill_proj
 	):
 		_started = frozen_started
 		# #375：三项起分冻结须同事务恢复（scores + honba + riichi_sticks）
@@ -814,6 +846,7 @@ func _process_action_core(
 	var frozen_hand_deferred: bool = _reward_hand_settled_deferred
 	var frozen_hand_settled: bool = _hand_settled_emitted
 	var frozen_settlement_tracker: Dictionary = _settlement_tracker.duplicate(true)
+	var frozen_skill_proj: int = _skill_bc_proj_upto
 
 	# #253：ITEM_USE 仅命令——不发 ACTION_APPLIED / 无 ITEM_USE 回声
 	if action.kind == "ITEM_USE":
@@ -857,7 +890,7 @@ func _process_action_core(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 			frozen_hand_settled,
-			frozen_settlement_tracker
+			frozen_settlement_tracker, frozen_skill_proj
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -867,7 +900,18 @@ func _process_action_core(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 			frozen_hand_settled,
-			frozen_settlement_tracker
+			frozen_settlement_tracker, frozen_skill_proj
+		)
+		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
+
+	# #379：Action/AI 技能必须在 barrier OPEN/ARM 与 HAND/ITEM 之前投影，
+	# 否则 _item_after_opened 推进游标会吞掉 pending。
+	if not _publish_pending_skill_triggered_from_bc():
+		_rollback_transaction(
+			snap, frozen_seq, frozen_journals, frozen_cache,
+			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+			frozen_hand_settled,
+			frozen_settlement_tracker, frozen_skill_proj
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -879,7 +923,7 @@ func _process_action_core(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 				frozen_hand_settled,
-			frozen_settlement_tracker
+				frozen_settlement_tracker, frozen_skill_proj
 			)
 			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 	else:
@@ -889,17 +933,25 @@ func _process_action_core(
 				snap, frozen_seq, frozen_journals, frozen_cache,
 				frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 				frozen_hand_settled,
-			frozen_settlement_tracker
+				frozen_settlement_tracker, frozen_skill_proj
 			)
 			return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 		# 屏障释放后可能已 settle 窗口并 OPEN 下一窗；再处理摸打
 		if bool(_bc.get("_settled")):
+			if not _publish_pending_skill_triggered_from_bc():
+				_rollback_transaction(
+					snap, frozen_seq, frozen_journals, frozen_cache,
+					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+					frozen_hand_settled,
+					frozen_settlement_tracker, frozen_skill_proj
+				)
+				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 			if not _emit_settled_if_needed():
 				_rollback_transaction(
 					snap, frozen_seq, frozen_journals, frozen_cache,
 					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 					frozen_hand_settled,
-			frozen_settlement_tracker
+					frozen_settlement_tracker, frozen_skill_proj
 				)
 				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 		else:
@@ -909,13 +961,22 @@ func _process_action_core(
 				if _is_human(cur_seat) and _reward_allows_normal_progress():
 					human_draw_path = true
 					_ensure_drawn()
+			# 摸打/AI 后续技能再冲一次
+			if not _publish_pending_skill_triggered_from_bc():
+				_rollback_transaction(
+					snap, frozen_seq, frozen_journals, frozen_cache,
+					frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
+					frozen_hand_settled,
+					frozen_settlement_tracker, frozen_skill_proj
+				)
+				return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 			if bool(_bc.get("_settled")):
 				if not _emit_settled_if_needed():
 					_rollback_transaction(
 						snap, frozen_seq, frozen_journals, frozen_cache,
 						frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 						frozen_hand_settled,
-			frozen_settlement_tracker
+						frozen_settlement_tracker, frozen_skill_proj
 					)
 					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 			else:
@@ -925,7 +986,7 @@ func _process_action_core(
 							snap, frozen_seq, frozen_journals, frozen_cache,
 							frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 							frozen_hand_settled,
-			frozen_settlement_tracker
+							frozen_settlement_tracker, frozen_skill_proj
 						)
 						return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 				# CLAIM 在 CLOSING 屏障期间仍须对真人可见；普通 TURN 受屏障阻止
@@ -934,17 +995,17 @@ func _process_action_core(
 						snap, frozen_seq, frozen_journals, frozen_cache,
 						frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 						frozen_hand_settled,
-			frozen_settlement_tracker
+						frozen_settlement_tracker, frozen_skill_proj
 					)
 					return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
-	# #253：领域事件后结算延迟消耗品触发
+	# #253：领域事件后结算延迟消耗品触发（内部先冲技能）
 	if not _finalize_item_triggers():
 		_rollback_transaction(
 			snap, frozen_seq, frozen_journals, frozen_cache,
 			frozen_rw, frozen_rw_clock, frozen_claim_seen, frozen_hand_deferred,
 			frozen_hand_settled,
-			frozen_settlement_tracker
+			frozen_settlement_tracker, frozen_skill_proj
 		)
 		return _reject_result(cmd, ERROR_EVENT_PUBLISH_FAILED)
 
@@ -975,7 +1036,8 @@ func _rollback_transaction(
 	frozen_claim_seen: bool = false,
 	frozen_hand_deferred: Variant = null,
 	frozen_hand_settled: Variant = null,
-	frozen_settlement_tracker: Variant = null
+	frozen_settlement_tracker: Variant = null,
+	frozen_skill_proj: Variant = null
 ) -> bool:
 	# #376：先恢复 BC 所有权与 match owner，再 ARS 写入正确的旧 BC
 	if not _restore_match_and_bc_ownership():
@@ -1019,6 +1081,13 @@ func _rollback_transaction(
 	# #375：settlement tracker 与 ARS 同事务恢复，避免 commit 后回滚跳过重提
 	if typeof(frozen_settlement_tracker) == TYPE_DICTIONARY:
 		_settlement_tracker = (frozen_settlement_tracker as Dictionary).duplicate(true)
+	# #379：投影游标与 ARS/journal 同事务回滚
+	if typeof(frozen_skill_proj) == TYPE_INT:
+		_skill_bc_proj_upto = maxi(int(frozen_skill_proj), 0)
+	elif _tx_active:
+		_skill_bc_proj_upto = maxi(_tx_skill_bc_proj_upto, 0)
+	if _bc != null:
+		_skill_bc_proj_upto = mini(_skill_bc_proj_upto, _bc.events.size())
 	clear_match_transaction_freeze()
 	return true
 
@@ -1325,6 +1394,7 @@ func begin_match_transaction_freeze() -> bool:
 	_tx_rw_clock = _reward_authority_now_ms
 	_tx_claim_seen = _reward_claim_seen_open
 	_tx_hand_deferred = _reward_hand_settled_deferred
+	_tx_skill_bc_proj_upto = _skill_bc_proj_upto
 	_tx_active = true
 	return true
 
@@ -1347,6 +1417,7 @@ func clear_match_transaction_freeze() -> void:
 	_tx_match_settled_emitted = false
 	_tx_rw_state = {}
 	_tx_rw_clock = -1
+	_tx_skill_bc_proj_upto = 0
 	_tx_claim_seen = false
 	_tx_hand_deferred = false
 	_tx_active = false
@@ -2493,6 +2564,10 @@ func _rollback_hand_transition_local() -> void:
 	_reward_match_ended = _tx_reward_match_ended
 	_reward_claim_seen_open = _tx_claim_seen
 	_reward_hand_settled_deferred = _tx_hand_deferred
+	# #379：local hand transition 回滚须恢复技能投影游标
+	_skill_bc_proj_upto = maxi(_tx_skill_bc_proj_upto, 0)
+	if _bc != null:
+		_skill_bc_proj_upto = mini(_skill_bc_proj_upto, _bc.events.size())
 	if not _tx_rw_state.is_empty():
 		_reward_restore_state(_tx_rw_state)
 	if _tx_rw_clock >= 0:
@@ -2939,29 +3014,44 @@ func _emit_match_settled_and_clear_items() -> bool:
 
 
 ## 延迟消耗品触发后结算公开事件。
+## #379：pending SKILL_TRIGGERED 与 ITEM_APPLIED/CONSUMED 同一 domain 批发布，
+## 保证相对序 SKILL < APPLIED < CONSUMED 且共享匹配 ROOM_SNAPSHOT（start 路径 NBC 可 ingest）。
 func _finalize_item_triggers() -> bool:
-	var inv: ItemInventoryModule = _item_module()
-	if inv == null:
-		return true
-	var fin: Dictionary = ItemAuthority.finalize_triggered(_bc, inv)
-	if not bool(fin.get("ok", false)):
-		return false
 	var domain: Array = []
-	for ev in fin.get("events", []):
-		if typeof(ev) != TYPE_DICTIONARY:
+	# 先收集尚未投影的技能归因（不提前推进游标）
+	_collect_skill_triggered_domain_from_bc(domain, _skill_bc_proj_upto)
+	var inv: ItemInventoryModule = _item_module()
+	if inv != null:
+		var fin: Dictionary = ItemAuthority.finalize_triggered(_bc, inv)
+		if not bool(fin.get("ok", false)):
 			return false
-		domain.append(ev)
+		for ev in fin.get("events", []):
+			if typeof(ev) != TYPE_DICTIONARY:
+				return false
+			domain.append(ev)
 	if domain.is_empty():
 		return true
-	return _publish_domain_events_with_matching_snapshot(domain)
+	if not _publish_domain_events_with_matching_snapshot(domain):
+		return false
+	# 仅批成功后确认游标（覆盖本批涉及的 BC 技能事件）
+	if _bc != null:
+		_skill_bc_proj_upto = maxi(_skill_bc_proj_upto, _bc.events.size())
+	return true
 
 
 ## #253：OPEN 后、常规事件前 ARM。
+## #379：先冲 pending 技能；ARM/GAME_BEGIN 新技能并入 domain，仅批成功后确认游标。
 func _item_after_opened(opened_payload: Dictionary) -> bool:
 	var inv: ItemInventoryModule = _item_module()
 	if inv == null:
 		return true
+	# barrier 前 Action/AI 技能不得被后续游标推进吞掉
+	if not _publish_pending_skill_triggered_from_bc():
+		return false
 	var window_id := String(opened_payload.get("window_id", ""))
+	var bc_mark: int = 0
+	if _bc != null:
+		bc_mark = _bc.events.size()
 	var r: Dictionary = ItemAuthority.arm_seats_on_open(
 		_bc, inv, _ability_slots(), window_id
 	)
@@ -2971,9 +3061,118 @@ func _item_after_opened(opened_payload: Dictionary) -> bool:
 	for ev in r.get("events", []):
 		if typeof(ev) == TYPE_DICTIONARY:
 			domain.append(ev)
+	# GAME_BEGIN 等价激活写入 BC.events 的 SKILL_TRIGGERED → 公开 journal
+	# 仅收集，不提前推进游标（失败时仍可被外层回滚后从旧游标重投）
+	_collect_skill_triggered_domain_from_bc(domain, bc_mark)
 	if domain.is_empty():
+		if _bc != null:
+			_skill_bc_proj_upto = maxi(_skill_bc_proj_upto, _bc.events.size())
 		return true
-	return _publish_domain_events_with_matching_snapshot(domain)
+	if not _publish_domain_events_with_matching_snapshot(domain):
+		return false
+	if _bc != null:
+		_skill_bc_proj_upto = maxi(_skill_bc_proj_upto, _bc.events.size())
+	return true
+
+
+## #379：从 BC.events[since_index..] 提取 SKILL_TRIGGERED 并入 domain（不改游标）。
+func _collect_skill_triggered_domain_from_bc(domain: Array, since_index: int) -> void:
+	if _bc == null or domain == null:
+		return
+	if mode_modules == null or not mode_modules.is_trash_talk():
+		return
+	if not mode_modules.accepts_event_kind("SKILL_TRIGGERED"):
+		return
+	# 与未投影边界安全合并：不得从 since_index 起跳过更早 pending
+	var start: int = maxi(mini(since_index, _skill_bc_proj_upto), 0)
+	start = maxi(start, _skill_bc_proj_upto)
+	for i in range(start, _bc.events.size()):
+		var bev: BattleEvent = _bc.events[i] as BattleEvent
+		if bev == null or bev.type != &"SKILL_TRIGGERED":
+			continue
+		var pl: Dictionary = _public_skill_triggered_payload_from_bc(bev)
+		if pl.is_empty():
+			continue
+		domain.append({"kind": "SKILL_TRIGGERED", "payload": pl})
+
+
+## 兼容旧名：收集后仅在调用方确认成功时再推进游标（见 _item_after_opened）。
+func _append_skill_triggered_domain_from_bc(domain: Array, since_index: int) -> void:
+	_collect_skill_triggered_domain_from_bc(domain, since_index)
+
+## #379：BattleEvent.SKILL_TRIGGERED.extra → 公开 NetworkedEvent payload。
+func _public_skill_triggered_payload_from_bc(bev: BattleEvent) -> Dictionary:
+	if bev == null or bev.type != &"SKILL_TRIGGERED":
+		return {}
+	var ex: Dictionary = bev.extra if typeof(bev.extra) == TYPE_DICTIONARY else {}
+	var skill_id := str(ex.get("skill_id", ""))
+	if skill_id.is_empty():
+		return {}
+	var ben := int(ex.get("beneficiary_seat", bev.actor_seat))
+	if ben < 0 or ben > 3:
+		ben = int(bev.actor_seat)
+	var actor := int(ex.get("actor_seat", ben))
+	if actor < 0 or actor > 3:
+		actor = ben
+	var source_kind := str(ex.get("source_kind", ""))
+	if source_kind.is_empty():
+		if skill_id.begins_with("relic_"):
+			source_kind = "relic"
+		elif ex.has("item_instance_id") and not str(ex.get("item_instance_id", "")).is_empty():
+			source_kind = "item"
+		else:
+			source_kind = "character"
+	var hand_seq: int = int(ex.get("hand_seq", -1))
+	if hand_seq < 0 and _bc != null and _bc.state != null:
+		hand_seq = int(_bc.state.hand_seq)
+	if hand_seq < 0:
+		hand_seq = 0
+	var pl := {
+		"actor_seat": actor,
+		"beneficiary_seat": ben,
+		"skill_id": skill_id,
+		"skill_name": str(ex.get("skill_name", "")),
+		"source_event": str(ex.get("source_event", "")),
+		"source_kind": source_kind,
+		"hand_seq": hand_seq,
+	}
+	if pl["source_event"].is_empty():
+		return {}
+	if ex.has("han_delta"):
+		pl["han_delta"] = int(ex["han_delta"])
+	if ex.has("extra_dora_delta"):
+		pl["extra_dora_delta"] = int(ex["extra_dora_delta"])
+	if ex.has("extra_red_dora_delta"):
+		pl["extra_red_dora_delta"] = int(ex["extra_red_dora_delta"])
+	if ex.has("item_instance_id") and not str(ex.get("item_instance_id", "")).is_empty():
+		pl["item_instance_id"] = str(ex["item_instance_id"])
+	return pl
+
+
+## #379：将尚未投影的 BC.SKILL_TRIGGERED 发布为公开业务事件。
+## 仅扫描 _skill_bc_proj_upto.. 增量，禁止调用 event_journal() 全量克隆。
+## 使用 _publish_business_event_core：start/start_next_hand 在 _started=false 时也必须可投。
+func _publish_pending_skill_triggered_from_bc() -> bool:
+	if _bc == null:
+		return true
+	if mode_modules == null or not mode_modules.is_trash_talk():
+		return true
+	if not mode_modules.accepts_event_kind("SKILL_TRIGGERED"):
+		return true
+	var start: int = maxi(_skill_bc_proj_upto, 0)
+	if start > _bc.events.size():
+		start = _bc.events.size()
+	for i in range(start, _bc.events.size()):
+		var bev: BattleEvent = _bc.events[i] as BattleEvent
+		if bev == null or bev.type != &"SKILL_TRIGGERED":
+			continue
+		var pl: Dictionary = _public_skill_triggered_payload_from_bc(bev)
+		if pl.is_empty():
+			return false
+		if not _publish_business_event_core("SKILL_TRIGGERED", pl):
+			return false
+	_skill_bc_proj_upto = _bc.events.size()
+	return true
 
 
 func _reward_now_ms() -> int:

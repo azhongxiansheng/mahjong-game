@@ -16,6 +16,7 @@ const TRASH_TALK_EVENT_KINDS := [
 	"ITEM_APPLIED",
 	"CHARACTER_ABILITY_ARMED",
 	"CHARACTER_ABILITY_DISARMED",
+	"SKILL_TRIGGERED",
 ]
 
 ## 冻结于 from_config；外部直接赋值在 _frozen 后无效。

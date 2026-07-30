@@ -90,11 +90,12 @@ func ingest_networked_event(ev: Variant) -> bool:
 		"HAND_SETTLED", "MATCH_SETTLED", "REWARD_WINDOW_OPENED", \
 		"REWARD_WINDOW_CLOSING", "REWARD_WINDOW_SETTLED", "REWARD_WINDOW_CANCELLED", \
 		"ITEM_GRANTED", "ITEM_CONSUMED", "ITEM_APPLIED", \
-		"CHARACTER_ABILITY_ARMED", "CHARACTER_ABILITY_DISARMED":
+		"CHARACTER_ABILITY_ARMED", "CHARACTER_ABILITY_DISARMED", \
+		"SKILL_TRIGGERED":
+			# #379：权威技能归因事件，与 ITEM_* 同 pending/same-hash 语义
 			return _ingest_non_snapshot(ne)
 		_:
 			return false
-
 
 func ingest_event_stream(events: Variant) -> bool:
 	if typeof(events) != TYPE_ARRAY:
