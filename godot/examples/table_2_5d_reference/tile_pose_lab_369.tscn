@@ -1,0 +1,10 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource path="res://examples/table_2_5d_reference/tile_pose_lab_369.gd" type="Script" id="1"]
+
+[node name="TilePoseLab369" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 1600.0
+offset_bottom = 900.0
+script = ExtResource("1")
