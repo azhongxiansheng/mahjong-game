@@ -20,6 +20,15 @@ func _projected_edge_width(camera: Camera3D, z: float, half: float) -> float:
 	return absf(right.x - left.x)
 
 
+func _tile_array_screen_bounds(camera: Camera3D, tiles: Array) -> Rect2:
+	assert_false(tiles.is_empty())
+	var first := tiles[0] as Tile3D
+	var result := _mesh_screen_bounds(camera, first._mesh)
+	for tile in tiles.slice(1):
+		result = result.merge(_mesh_screen_bounds(camera, (tile as Tile3D)._mesh))
+	return result
+
+
 func _make_hybrid() -> PlayableTable:
 	var table := PLAYABLE_TABLE.instantiate() as PlayableTable
 	add_child_autofree(table)
@@ -372,3 +381,55 @@ func test_wall_identity_rebuilds_when_authoritative_wall_changes_at_same_cursor(
 			"权威 Wall 已替换时不得沿用上一局牌山 identity")
 		assert_gte(iid, Tile.TILES_PER_HAND,
 			"hand_seq=1 的牌山必须进入新的 instance_id 命名空间")
+
+
+func test_closeup_layout_keeps_hands_river_melds_and_hud_readable() -> void:
+	var table := await _make_hybrid()
+	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var state := BattleState.for_east_round(40510, 0, 1, 0, 0)
+	var next_iid := 500000
+	for seat_id in range(4):
+		for index in range(18):
+			state.seats[seat_id].river.append_discard(Tile.new(
+				TileId.ALL[(seat_id * 5 + index) % TileId.ALL.size()],
+				false, seat_id, next_iid))
+			next_iid += 1
+	var pon: Array[Tile] = []
+	for _index in range(3):
+		pon.append(Tile.new(TileId.HAKU, false, 0, next_iid))
+		next_iid += 1
+	state.seats[0].melds.add_pon(pon, 2, pon[1])
+	table.bind_table_state(state, 0, 4)
+	await get_tree().process_frame
+	var hand_bounds := _tile_array_screen_bounds(hybrid._camera, hybrid._hand_tiles)
+	assert_gte(hand_bounds.size.x, 820.0,
+		"自家牌须接近 2D 前景手牌宽度，当前=%s" % hand_bounds.size.x)
+	assert_between(hand_bounds.position.y, 750.0, 805.0)
+	assert_between(hand_bounds.end.y, 850.0, 880.0,
+		"自家牌须贴近底部形成清晰前景，同时完整保留木框")
+	var north_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[2])
+	assert_gte(north_hand.position.y, 12.0, "对家暗手不得贴顶或裁切")
+	var north_wall: Array = []
+	for wall in hybrid._wall_tiles:
+		if (wall as Tile3D).position.z < -0.6:
+			north_wall.append(wall)
+	var north_wall_bounds := _tile_array_screen_bounds(hybrid._camera, north_wall)
+	assert_lte(north_hand.end.y + 6.0, north_wall_bounds.position.y,
+		"对家手牌与内侧牌山须形成两条清晰空间带，不得视觉叠压")
+	var east_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[1])
+	var west_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[3])
+	assert_lte(east_hand.end.x, 1435.0, "右家暗手须从桌边向内收")
+	assert_gte(west_hand.position.x, 165.0, "左家暗手须从桌边向内收")
+	var south_river := _tile_array_screen_bounds(hybrid._camera, hybrid._river_tiles[0])
+	assert_lte(south_river.end.y, 625.0,
+		"三排牌河不得侵入操作栏/副露带")
+	var south_meld := _tile_array_screen_bounds(hybrid._camera, hybrid._meld_tiles[0])
+	assert_between(south_meld.position.y, 650.0, 700.0,
+		"南家副露须落在手牌上方的同席副露带")
+	assert_lte(south_meld.end.y, hand_bounds.position.y - 8.0,
+		"副露与自家手牌之间必须保留清晰间隔")
+	for seat_id in range(4):
+		var hand_rect := hand_bounds if seat_id == 0 else _tile_array_screen_bounds(
+			hybrid._camera, hybrid._opp_tiles[seat_id])
+		assert_false(hand_rect.intersects(TableLayout.SEAT_HUD_RECTS[seat_id]),
+			"玩家头像/分数 HUD 不得遮挡对应席手牌，seat=%d" % seat_id)

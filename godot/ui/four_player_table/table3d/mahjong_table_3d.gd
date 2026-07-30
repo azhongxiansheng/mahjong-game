@@ -17,16 +17,19 @@ const TABLE_D: float = 2.4
 const TABLE_TOP_Y: float = Table3DStage.TABLE_TOP_Y
 # 布局半径（由内到外）：中心盘 → 河 → 牌山示意 → 手牌
 const PLATE_HALF: float = 0.16
-const RIVER_INNER: float = 0.44
-const WALL_RADIUS: float = 0.82
+const RIVER_INNER: float = 0.32
+const WALL_RADIUS: float = 0.70
 const WALL_GAP: float = 0.080
 const WALL_STACKS_PER_SIDE_MAX: int = 17
 const WALL_STACK_COUNT: int = WALL_STACKS_PER_SIDE_MAX * 4
 const SHOW_LIVE_WALL: bool = true
 const SCORE_LABEL_R: float = 0.35
 # 自家手牌相对桌面的放大（雀魂：手牌占屏底大特写）
-const HAND_SCALE: float = 1.65
-const HAND_Z: float = 1.10
+const SELF_HAND_SCALE: float = 1.28
+const OPPONENT_HAND_RADIUS: float = 0.97
+const OPPONENT_HAND_SCALE: float = 0.88
+const MELD_RADIUS: float = 0.815
+const HAND_Z: float = 1.085
 # 绕 +X 正转：+Y 牌面倾向相机
 const HAND_TILT_DEG: float = 48.0
 
@@ -611,12 +614,12 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 	var n: int = show_tiles.size()
 	if n == 0:
 		return
-	var gap: float = Tile3D.TILE_W + 0.004
-	var drawn_gap: float = 0.028
+	var gap: float = (Tile3D.TILE_W + 0.004) * SELF_HAND_SCALE
+	var drawn_gap: float = 0.028 * SELF_HAND_SCALE
 	var total: float = n * gap + (drawn_gap if drawn_tiles.size() > 0 and sorted_tiles.size() > 0 else 0.0)
 	var x0: float = -total * 0.5 + gap * 0.5
 	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
-	var z: float = 1.04
+	var z: float = HAND_Z
 	var x_cursor: float = x0
 	for i in range(n):
 		var src: Tile = show_tiles[i]
@@ -627,7 +630,9 @@ func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
 		_world_root.add_child(tile)
 		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
 		tile.setup_entity(src.id, true, src.is_red_dora, src.instance_id)
-		tile.transform = Transform3D(_hand_basis(0), Vector3(x_cursor, y, z))
+		tile.transform = Transform3D(
+			_hand_basis(0).scaled(Vector3.ONE * SELF_HAND_SCALE),
+			Vector3(x_cursor, y, z))
 		tile._base_y = y
 		tile.set_clickable(_hand_clickable)
 		tile.tile_clicked.connect(_on_tile_clicked)
@@ -725,7 +730,7 @@ func _rebuild_opponent_backs(seat_id: int, source: Variant) -> void:
 	var n: int = clampi(count, 0, 14)
 	if n == 0:
 		return
-	var gap: float = Tile3D.TILE_W + 0.004
+	var gap: float = (Tile3D.TILE_W + 0.004) * OPPONENT_HAND_SCALE
 	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
 	for i in range(n):
 		var tile := Tile3D.new()
@@ -737,8 +742,9 @@ func _rebuild_opponent_backs(seat_id: int, source: Variant) -> void:
 		else:
 			tile.setup(-1, true, false)
 		var t: float = (i - (n - 1) * 0.5) * gap
-		var center := Table3DStage.rotate_from_south(Vector3(0, y, 1.04), seat_id)
-		var basis := _hand_basis(seat_id)
+		var center := Table3DStage.rotate_from_south(
+			Vector3(0, y, OPPONENT_HAND_RADIUS), seat_id)
+		var basis := _hand_basis(seat_id).scaled(Vector3.ONE * OPPONENT_HAND_SCALE)
 		tile.transform = Transform3D(basis, center + basis.x * t)
 		tile._base_y = y
 		_opp_tiles[seat_id].append(tile)
@@ -755,19 +761,19 @@ func _rebuild_melds(seat_id: int, melds: Array) -> void:
 	var along: Vector3
 	match seat_id:
 		0:
-			cursor = Vector3(0.55, y, 0.72)
+			cursor = Vector3(0.55, y, MELD_RADIUS)
 			along = Vector3(-1, 0, 0)
 			yaw = 0.0
 		1:
-			cursor = Vector3(0.72, y, -0.55)
+			cursor = Vector3(MELD_RADIUS, y, -0.55)
 			along = Vector3(0, 0, 1)
 			yaw = -90.0
 		2:
-			cursor = Vector3(-0.55, y, -0.72)
+			cursor = Vector3(-0.55, y, -MELD_RADIUS)
 			along = Vector3(1, 0, 0)
 			yaw = 180.0
 		3:
-			cursor = Vector3(-0.72, y, 0.55)
+			cursor = Vector3(-MELD_RADIUS, y, 0.55)
 			along = Vector3(0, 0, -1)
 			yaw = 90.0
 		_:
