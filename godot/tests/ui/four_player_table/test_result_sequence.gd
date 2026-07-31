@@ -212,7 +212,7 @@ func test_original_result_shell_keeps_final_hand_visible() -> void:
 	assert_eq(bg.color, Color("00000055"), "低透明背幕保留最终牌面可读性")
 	assert_eq(panel.position, TableLayout.RESULT_PANEL_RECT.position,
 		"结算层位于桌心偏上且避开手牌/操作带")
-	assert_eq(panel.size, Vector2(620, 560))
+	assert_eq(panel.size, Vector2(900, 650))
 	var style := panel.get_theme_stylebox("panel") as StyleBoxFlat
 	assert_eq(style.bg_color, Color("111217f5"))
 	assert_eq(style.border_color, Color("8f7047"))
@@ -256,6 +256,84 @@ func test_result_overlay_escape_does_not_open_settings_or_close_result() -> void
 	assert_true(is_instance_valid(overlay))
 	assert_null(get_tree().root.get_node_or_null("_settings_overlay_root"),
 		"局结算期间 Esc 不得在其上打开设置层")
+
+
+func test_result_detail_tabs_show_yaku_fu_formula_and_payment() -> void:
+	assert_true(_pt.has_method("_build_result_detail_tabs"))
+	if not _pt.has_method("_build_result_detail_tabs"):
+		return
+	var tabs: TabContainer = _pt.call("_build_result_detail_tabs", _panel, {
+		"han": 3,
+		"fu": 40,
+		"base_points": 1280,
+		"is_tsumo": false,
+		"winner_seat": 1,
+		"discarder_seat": 2,
+		"payout": {2: 5200},
+		"winner_total": 5200,
+		"yaku_names": [{"name": "立直", "han": 1}],
+		"fu_breakdown": {
+			"raw_fu": 38,
+			"rounded_fu": 40,
+			"items": [
+				{"key": "base", "label": "副底", "fu": 20},
+				{"key": "menzen_ron", "label": "门清荣和", "fu": 10},
+			],
+		},
+	})
+	assert_eq(tabs.name, "ResultDetailTabs")
+	assert_eq(tabs.get_tab_title(0), "役种")
+	assert_eq(tabs.get_tab_title(1), "番符明细")
+	var copy := ""
+	for label in tabs.find_children("*", "Label", true, false):
+		copy += " " + (label as Label).text
+	for required in ["立直", "40符 3番", "副底", "38符", "40 × 2^(3+2)", "5200点"]:
+		assert_true(copy.contains(required), "结算双页签缺少：%s" % required)
+
+
+func test_result_winner_portrait_uses_real_texture_and_named_placeholder() -> void:
+	assert_true(_pt.has_method("_build_result_winner_portrait"))
+	if not _pt.has_method("_build_result_winner_portrait"):
+		return
+	var image := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	image.fill(Color.WHITE)
+	var texture := ImageTexture.create_from_image(image)
+	var portrait: Control = _pt.call("_build_result_winner_portrait", _panel, texture, "林夜澈")
+	await get_tree().process_frame
+	assert_eq(portrait.name, "WinnerPortraitStage")
+	var art := portrait.get_node_or_null("WinnerPortrait") as TextureRect
+	assert_not_null(art)
+	assert_eq(art.texture, texture)
+	assert_eq(art.stretch_mode, TextureRect.STRETCH_KEEP_ASPECT_CENTERED)
+	assert_eq(art.size, Vector2(208, 330), "立绘必须缩放到舞台范围，不能按原图尺寸溢出或被裁成空白")
+	assert_eq((portrait.get_node("WinnerName") as Label).text, "林夜澈")
+
+
+func test_result_portrait_resolves_character_art_to_transparent_cutout() -> void:
+	var character: Character = CharacterPool.all()[0]
+	var source := load(character.portrait_path) as Texture2D
+	var resolved: Texture2D = _pt.call("_result_cutout_texture", source)
+	assert_not_null(resolved)
+	assert_eq(resolved.resource_path,
+		"res://assets/ui/lobby_stage/resident_lin_yeche_cutout.png")
+	var second: Character = CharacterPool.all()[1]
+	var second_resolved: Texture2D = _pt.call("_result_cutout_texture",
+		load(second.portrait_path) as Texture2D)
+	assert_eq(second_resolved.resource_path,
+		"res://assets/roguelike/characters/char_qiu_jue_cutout.png")
+
+
+func test_table_rules_entry_opens_yaku_codex_page() -> void:
+	assert_true(_pt.has_method("_open_yaku_codex"))
+	if not _pt.has_method("_open_yaku_codex"):
+		return
+	_pt.call("_open_yaku_codex")
+	await get_tree().process_frame
+	var overlay := get_tree().root.get_node_or_null("_yaku_codex_overlay_root")
+	assert_not_null(overlay)
+	if overlay != null:
+		assert_eq(overlay.call("get_current_page"), &"yaku")
+		overlay.queue_free()
 
 
 func test_result_hand_tiles_keep_readable_modal_size() -> void:
@@ -352,7 +430,7 @@ func test_win_result_waits_for_continue_before_score_roll() -> void:
 		"点击继续时才挂载四家 1500ms 滚分列表")
 	assert_eq(score_list.get_child_count(), 4)
 	assert_null(panel.get_node_or_null("RollingScore"))
-	assert_false((panel.get_node("YakuList") as Control).visible)
+	assert_false((panel.get_node("ResultDetailTabs") as Control).visible)
 	assert_eq(button.text, "确定")
 	var winner_row := score_list.get_node("ScoreDeltaSeat0") as Control
 	assert_eq((winner_row.get_node("Before") as Label).text, "25000")

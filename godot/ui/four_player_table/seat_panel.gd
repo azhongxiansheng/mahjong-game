@@ -494,17 +494,34 @@ func get_portrait_texture() -> Texture2D:
 	return null
 
 
+## 牌桌头像只使用角色的方形无背景头像；旧角色没有专用头像时回退原立绘。
+## 林夜彻的大厅资源遵循 resident_* 命名，因此在这里集中处理特殊路径。
+static func resolve_avatar_path(portrait_path: String) -> String:
+	if portrait_path.ends_with("/char_lin_yeche.png"):
+		var resident := "res://assets/ui/lobby_stage/resident_lin_yeche_avatar.png"
+		return resident if ResourceLoader.exists(resident) else portrait_path
+	if portrait_path.ends_with("_avatar.png"):
+		return portrait_path
+	if portrait_path.ends_with(".png"):
+		var candidate := portrait_path.trim_suffix(".png") + "_avatar.png"
+		if ResourceLoader.exists(candidate):
+			return candidate
+	return portrait_path
+
+
 # 立绘节点懒创建。seat-avatar 固定 56×56、cover 裁切、金软边。
 # seat 0 玩家自家也可有立绘(玩家自定义角色),传 portrait_path 触发。
 func _ensure_portrait() -> void:
 	if _portrait_path == "":
 		return
-	if _portrait_rect and is_instance_valid(_portrait_rect):
+	var avatar_path := resolve_avatar_path(_portrait_path)
+	if not ResourceLoader.exists(avatar_path):
 		return
-	if not ResourceLoader.exists(_portrait_path):
-		return
-	var tex: Texture2D = load(_portrait_path) as Texture2D
+	var tex: Texture2D = load(avatar_path) as Texture2D
 	if tex == null:
+		return
+	if _portrait_rect and is_instance_valid(_portrait_rect):
+		_portrait_rect.texture = tex
 		return
 	var anchor: Vector2 = cluster_anchor()
 	_portrait_rect = TextureRect.new()

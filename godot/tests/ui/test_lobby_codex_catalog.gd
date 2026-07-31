@@ -21,6 +21,10 @@ const ITEM_KEYS := [
 	"rarity_label",
 ]
 const RULE_KEYS := ["body", "id", "title"]
+const YAKU_KEYS := [
+	"category", "closed_han", "condition", "description", "display_name",
+	"example", "id", "is_yakuman", "open_han", "yakuman_multiplier",
+]
 const FORBIDDEN_COPY := [
 	"run", "章节", "boss", "hp", "金币", "gold", "商店", "抽卡", "营地", "战令",
 	"旅途", "保底", "gacha", "语音音量", "座位静音", "举报", "自动禁言", "e6",
@@ -245,3 +249,24 @@ func test_mode_rules_use_correct_round_terms_and_state_feature_boundaries() -> v
 		"取消", "不评分", "不发奖", "终场非和牌", "只展示", "重复持有", "下一窗口",
 	]:
 		assert_true(trash_talk.contains(required), "嘴强欢乐场必须明确%s边界" % required)
+
+
+func test_yaku_catalog_covers_engine_registry_with_teaching_metadata() -> void:
+	var catalog := _catalog()
+	assert_true(catalog.has_method("yakus"), "资料馆必须提供独立役种图鉴数据")
+	if not catalog.has_method("yakus"):
+		return
+	var rows: Array = catalog.call("yakus")
+	assert_eq(rows.size(), YakuId.ALL.size() + YakuId.ALL_VARIANTS.size(),
+		"役种图鉴必须从引擎注册表覆盖全部基础役与上位变体")
+	var ids := {}
+	for row in rows:
+		assert_eq(_sorted_keys(row), YAKU_KEYS)
+		ids[int(row.get("id", -1))] = true
+		assert_false(String(row.get("display_name", "")).is_empty())
+		assert_false(String(row.get("category", "")).is_empty())
+		assert_false(String(row.get("condition", "")).is_empty())
+		assert_false(String(row.get("description", "")).is_empty())
+		assert_false(String(row.get("example", "")).is_empty())
+	for yaku_id in YakuId.ALL + YakuId.ALL_VARIANTS:
+		assert_true(ids.has(yaku_id), "图鉴遗漏引擎役种 %s" % yaku_id)

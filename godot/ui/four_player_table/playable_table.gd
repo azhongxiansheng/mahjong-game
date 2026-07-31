@@ -164,7 +164,7 @@ func _build_top_bar() -> void:
 	rules_btn.name = "RulesButton"
 	TABLE_ACTION_BUTTON_STYLE.apply_table_utility_style(rules_btn)
 	rules_btn.position = Vector2(TableLayout.TABLE_W - 196, 7)
-	rules_btn.pressed.connect(_open_help_overlay)
+	rules_btn.pressed.connect(_open_yaku_codex)
 	add_child(rules_btn)
 	var settings_btn := DT.make_button("设置", DT.BtnRole.SECONDARY, Vector2(88, 34))
 	settings_btn.name = "SettingsButton"
@@ -180,6 +180,16 @@ func _open_help_overlay() -> void:
 	var overlay := HelpOverlay.new()
 	overlay.name = "_help_overlay_root"
 	get_tree().root.add_child(overlay)
+
+
+func _open_yaku_codex() -> void:
+	if get_tree().root.get_node_or_null("_yaku_codex_overlay_root") != null:
+		return
+	var overlay := LobbyCodexOverlay.new()
+	overlay.name = "_yaku_codex_overlay_root"
+	overlay.closed.connect(overlay.queue_free)
+	get_tree().root.add_child(overlay)
+	overlay.open_on_page(LobbyCodexOverlay.PAGE_YAKU)
 
 
 # 平面满桌：FourPlayerTable 直接挂树，seat0 手牌可点，无 SubViewport/倾桌。
@@ -383,6 +393,9 @@ func _bind_hand_decision_port(bc: PlayableBattleController) -> void:
 
 func bind_character_ids(character_ids: Array) -> void:
 	_character_presentation_router.bind_characters(character_ids, _reward_local_seat)
+	if _table is FourPlayerTable:
+		(_table as FourPlayerTable).bind_character_personas(
+			character_ids, _reward_local_seat)
 	_sync_viewer_reveal_label()
 	_sync_character_status()
 
@@ -515,7 +528,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	var tier := Label.new()
 	tier.name = "ResultTitle"
 	tier.position = Vector2(36, 24)
-	tier.size = Vector2(548, 38)
+	tier.size = Vector2(828, 38)
 	tier.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	tier.add_theme_font_size_override("font_size", 26)
 	tier.add_theme_color_override("font_color", Color("d9b65b"))
@@ -528,7 +541,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	var subtitle := Label.new()
 	subtitle.name = "ResultSubtitle"
 	subtitle.position = Vector2(36, 64)
-	subtitle.size = Vector2(548, 24)
+	subtitle.size = Vector2(828, 24)
 	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	subtitle.add_theme_font_size_override("font_size", 14)
 	subtitle.add_theme_color_override("font_color", Color("f4ead2d9"))
@@ -572,29 +585,20 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 
 	# Step 1：番种结算。使用单列役；滚分不得在本步骤提前启动。
 	_result_anim_tweens.clear()
-	var yaku_list: Control = null
-	var bonus_list: Control = null
-	var total_bar: Control = null
+	var detail_tabs: TabContainer = null
 	if win_event != null:
-		var result_yaku: Array = win_event.extra.get("yaku_names", [])
-		yaku_list = _build_yaku_rows(panel, result_yaku)
-		var bonus_rows := _result_bonus_rows(win_event.extra, result_yaku)
-		var shown_yaku_count := result_yaku.size()
-		if not bonus_rows.is_empty():
-			var bonus_delay := (shown_yaku_count + 1) * RESULT_PHASE_INTERVAL
-			bonus_list = _build_result_bonus_rows(panel, bonus_rows, bonus_delay)
-		if not result_yaku.is_empty():
-			var total_delay := _result_total_reveal_delay(
-				shown_yaku_count, not bonus_rows.is_empty())
-			total_bar = _build_result_total_bar(panel,
-				int(win_event.extra.get("han", 0)),
-				int(win_event.extra.get("winner_total", 0)), total_delay)
+		detail_tabs = _build_result_detail_tabs(panel, win_event.extra)
+		_build_result_winner_portrait(panel,
+			_winner_portrait_texture(win_event.actor_seat),
+			"你" if win_event.actor_seat == 0 else "AI %d" % win_event.actor_seat)
 
 	var hand_strip: Control = null
 	if win_event != null and win_event.tile_anchor != null and win_event.tile_anchor.tile != null:
 		var is_tsumo := bool(win_event.extra.get("is_tsumo", false))
 		hand_strip = _render_winning_hand_strip(panel, win_event.actor_seat,
-			win_event.tile_anchor.tile.id, is_tsumo, 96)
+			win_event.tile_anchor.tile.id, is_tsumo, 92)
+		if hand_strip != null:
+			hand_strip.position.x = 250
 	var draw_list: Control = null
 	if last_event == "EXHAUSTIVE_DRAW" and not draw_snapshots.is_empty():
 		draw_list = _build_draw_result_list(panel, draw_snapshots)
@@ -653,8 +657,8 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 			pending_payments, pending_dealer)
 
 	var step_hint := Label.new()
-	step_hint.position = Vector2(36, 458)
-	step_hint.size = Vector2(548, 20)
+	step_hint.position = Vector2(36, 548)
+	step_hint.size = Vector2(828, 20)
 	step_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	step_hint.text = "1 / 2 · 番种结算" if win_event != null else ""
 	step_hint.add_theme_font_size_override("font_size", 11)
@@ -664,7 +668,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 	var btn := Button.new()
 	btn.name = "ResultContinueButton"
 	btn.text = "继续 →" if win_event != null else "确定"
-	btn.position = Vector2(230, 490)
+	btn.position = Vector2(370, 580)
 	btn.custom_minimum_size = Vector2(160, 44)
 	btn.focus_mode = Control.FOCUS_ALL
 	DT.apply_button_role(btn, DT.BtnRole.PRIMARY)
@@ -673,20 +677,17 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 		if int(step_state["value"]) == 1:
 			_skip_result_animations()
 			step_state["value"] = 2
-			if is_instance_valid(yaku_list):
-				yaku_list.visible = false
-			if is_instance_valid(bonus_list):
-				bonus_list.visible = false
-			if is_instance_valid(total_bar):
-				total_bar.visible = false
+			if is_instance_valid(detail_tabs):
+				detail_tabs.visible = false
 			if is_instance_valid(hand_strip):
 				hand_strip.visible = false
 			tier.text = "分数变动"
 			detail.visible = false
 			step_hint.text = "2 / 2 · 分数变动"
 			btn.text = "确定"
-			_build_score_delta_list(panel, pending_final_scores,
+			var score_list := _build_score_delta_list(panel, pending_final_scores,
 				pending_payments, pending_dealer)
+			score_list.position = Vector2(292, 130)
 			return
 		_skip_result_animations()
 		overlay.queue_free())
@@ -702,7 +703,7 @@ func _show_hand_result_overlay(result: Dictionary) -> void:
 
 # 正在播放的结算动画 [{tween, finish: Callable}];点击跳过时统一收尾。
 var _result_anim_tweens: Array = []
-const RESULT_MODAL_SIZE := Vector2(620, 560)
+const RESULT_MODAL_SIZE := Vector2(900, 650)
 const RESULT_MODAL_PADDING := Vector4(36, 28, 36, 24)
 const RESULT_BACKDROP_COLOR := Color("00000055")
 const RESULT_PHASE_INTERVAL := 0.7
@@ -1115,6 +1116,179 @@ func _create_result_modal_shell() -> Dictionary:
 	felt.material = _make_result_felt_material(felt.size)
 	panel.add_child(felt)
 	return {"overlay": overlay, "backdrop": backdrop, "panel": panel}
+
+
+# 首屏双页签：役种保留逐项揭示，番符页直接消费 WIN_DECLARED 的权威明细。
+func _build_result_detail_tabs(panel: Control, result: Dictionary) -> TabContainer:
+	var tabs := TabContainer.new()
+	tabs.name = "ResultDetailTabs"
+	tabs.position = Vector2(260, 150)
+	tabs.size = Vector2(604, 388)
+	tabs.clip_contents = true
+	tabs.add_theme_font_size_override("font_size", 15)
+	panel.add_child(tabs)
+
+	var yaku_page := Control.new()
+	yaku_page.name = "YakuPage"
+	tabs.add_child(yaku_page)
+	tabs.set_tab_title(0, "役种")
+	var yaku_names: Array = result.get("yaku_names", [])
+	var yaku_rows := _build_yaku_rows(yaku_page, yaku_names)
+	yaku_rows.position = Vector2(16, 10)
+	yaku_rows.size = Vector2(556, 205)
+	var bonus_rows := _result_bonus_rows(result, yaku_names)
+	if not bonus_rows.is_empty():
+		var bonus := _build_result_bonus_rows(yaku_page, bonus_rows,
+			(yaku_names.size() + 1) * RESULT_PHASE_INTERVAL)
+		bonus.position = Vector2(16, 220)
+		bonus.size = Vector2(556, 56)
+	if not yaku_names.is_empty():
+		var total := _build_result_total_bar(yaku_page,
+			int(result.get("han", 0)), int(result.get("winner_total", 0)),
+			_result_total_reveal_delay(yaku_names.size(), not bonus_rows.is_empty()))
+		total.position = Vector2(16, 286)
+		total.size = Vector2(556, 58)
+
+	var fu_page := VBoxContainer.new()
+	fu_page.name = "FuPage"
+	fu_page.add_theme_constant_override("separation", 8)
+	tabs.add_child(fu_page)
+	tabs.set_tab_title(1, "番符明细")
+	var han := int(result.get("han", 0))
+	var fu := int(result.get("fu", 0))
+	var yakuman_multiplier := int(result.get("yakuman_multiplier", 0))
+	var headline := _score_tier_label(han, fu, yakuman_multiplier) \
+		if yakuman_multiplier > 0 or han >= 5 else "%d符 %d番" % [fu, han]
+	_add_result_copy(fu_page, "%s · %d点" % [
+		headline,
+		int(result.get("winner_total", 0)),
+	], 22, Color("d9b65b"))
+	var breakdown: Dictionary = result.get("fu_breakdown", {})
+	for item_value in breakdown.get("items", []):
+		if not item_value is Dictionary:
+			continue
+		var item := item_value as Dictionary
+		_add_result_copy(fu_page, "%s　+%d符" % [
+			String(item.get("label", "符项")), int(item.get("fu", 0)),
+		], 15, Color("f4ead2"))
+	var raw_fu := int(breakdown.get("raw_fu", fu))
+	if raw_fu != fu:
+		_add_result_copy(fu_page, "原始 %d符 → 十位进位 %d符" % [raw_fu, fu],
+			14, Color("f4ead2b8"))
+	elif fu > 0:
+		_add_result_copy(fu_page, "合计 %d符" % fu, 14, Color("f4ead2b8"))
+	var base_points := int(result.get("base_points", 0))
+	if yakuman_multiplier <= 0 and han <= 4 and base_points < 2000:
+		_add_result_copy(fu_page, "基本点 = %d × 2^(%d+2) = %d" % [
+			fu, han, base_points,
+		], 15, Color("d9b65b"))
+	else:
+		_add_result_copy(fu_page, "%s固定档 · 基本点 %d" % [
+			_score_tier_label(han, fu, yakuman_multiplier), base_points,
+		], 15, Color("d9b65b"))
+	var payout: Dictionary = result.get("payout", {})
+	for payer in payout.keys():
+		_add_result_copy(fu_page, "%s支付 %d点" % [
+			"你" if int(payer) == 0 else "AI %d" % int(payer),
+			int(payout[payer]),
+		], 15, Color("f4ead2"))
+	tabs.current_tab = 0
+	return tabs
+
+
+func _add_result_copy(parent: Control, copy: String, font_size: int,
+		color: Color) -> Label:
+	var label := Label.new()
+	label.text = copy
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	parent.add_child(label)
+	return label
+
+
+func _build_result_winner_portrait(panel: Control, texture: Texture2D,
+		winner_name: String) -> Control:
+	texture = _result_cutout_texture(texture)
+	var stage := Panel.new()
+	stage.name = "WinnerPortraitStage"
+	stage.position = Vector2(28, 150)
+	stage.size = Vector2(210, 388)
+	stage.clip_contents = true
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("07080acc")
+	style.border_color = Color("8f7047")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(10)
+	stage.add_theme_stylebox_override("panel", style)
+	panel.add_child(stage)
+	if texture != null:
+		var art := TextureRect.new()
+		art.name = "WinnerPortrait"
+		art.texture = texture
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		art.position = Vector2(1, 1)
+		art.custom_minimum_size = Vector2(208, 330)
+		art.size = Vector2(208, 330)
+		art.clip_contents = true
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		stage.add_child(art)
+	else:
+		var placeholder := Label.new()
+		placeholder.name = "WinnerPortraitPlaceholder"
+		placeholder.position = Vector2(1, 1)
+		placeholder.size = Vector2(208, 330)
+		placeholder.text = winner_name.left(1)
+		placeholder.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		placeholder.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		placeholder.add_theme_font_size_override("font_size", 64)
+		placeholder.add_theme_color_override("font_color", Color("d9b65b99"))
+		stage.add_child(placeholder)
+	var name_label := Label.new()
+	name_label.name = "WinnerName"
+	name_label.position = Vector2(10, 338)
+	name_label.size = Vector2(190, 40)
+	name_label.text = winner_name
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	name_label.add_theme_font_size_override("font_size", 18)
+	name_label.add_theme_color_override("font_color", Color("f4ead2"))
+	stage.add_child(name_label)
+	return stage
+
+
+func _result_cutout_texture(texture: Texture2D) -> Texture2D:
+	if texture == null:
+		return null
+	var source_path := texture.resource_path
+	if source_path.is_empty():
+		return texture
+	var candidate := ""
+	if source_path.ends_with("/char_lin_yeche.png") \
+			or source_path.ends_with("/resident_lin_yeche_avatar.png"):
+		candidate = "res://assets/ui/lobby_stage/resident_lin_yeche_cutout.png"
+	elif source_path.ends_with("_avatar.png"):
+		candidate = source_path.trim_suffix("_avatar.png") + "_cutout.png"
+	elif source_path.ends_with(".png"):
+		candidate = source_path.trim_suffix(".png") + "_cutout.png"
+	if candidate != "" and ResourceLoader.exists(candidate):
+		var cutout := load(candidate) as Texture2D
+		if cutout != null:
+			return cutout
+	return texture
+
+
+func _winner_portrait_texture(seat_id: int) -> Texture2D:
+	if _table is FourPlayerTable and seat_id >= 0 \
+			and seat_id < (_table as FourPlayerTable).seat_panels.size():
+		var seat_panel = _table.seat_panels[seat_id]
+		if seat_panel != null and seat_panel.has_method("get_portrait_texture"):
+			return seat_panel.get_portrait_texture()
+	if _table != null and _table.has_method("get_portrait_texture"):
+		return _table.get_portrait_texture()
+	return null
 
 
 static func _make_result_felt_material(rect_size: Vector2) -> ShaderMaterial:
@@ -3461,7 +3635,11 @@ func _bind_public_matching_meta_characters() -> void:
 	var chars: Variant = meta.get("character_ids", null)
 	if typeof(chars) != TYPE_ARRAY or (chars as Array).size() != 4:
 		return
-	bind_character_ids(chars as Array)
+	# 公共席位的姓名、头像及 HUMAN/AI 标签由 apply_matching_meta 权威投影；
+	# 此处只同步角色演出路由，避免通用练习场绑定覆盖 participants。
+	_character_presentation_router.bind_characters(chars as Array, _reward_local_seat)
+	_sync_viewer_reveal_label()
+	_sync_character_status()
 
 
 func _apply_reward_views_only() -> void:

@@ -174,6 +174,22 @@ func bind_cumulative_scores(scores: Array) -> void:
 		seat_panels[i].set_score(int(scores[i]))
 
 
+## 四席角色身份来自会话配置；牌桌只投影姓名与头像，不持有角色业务状态。
+## character_ids 使用绝对席顺序，recipient_seat 映射为当前客户端的相对席。
+func bind_character_personas(character_ids: Array, recipient_seat: int = 0) -> void:
+	if character_ids.size() != 4 or seat_panels.size() != 4:
+		return
+	for absolute_seat in range(4):
+		var relative_seat := (absolute_seat - recipient_seat + 4) % 4
+		var character := CharacterPool.find(
+			StringName(String(character_ids[absolute_seat])))
+		if character == null:
+			continue
+		var participant_style := "玩家" if relative_seat == 0 else "AI"
+		seat_panels[relative_seat].set_ai_persona(
+			character.display_name, participant_style, character.portrait_path)
+
+
 # 雀魂式全桌同名高亮：河 + 副露 + 自家手牌
 func highlight_tile_id(tile_id: int) -> void:
 	for dr in discard_rivers:

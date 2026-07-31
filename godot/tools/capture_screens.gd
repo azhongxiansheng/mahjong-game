@@ -23,6 +23,11 @@ func _run() -> void:
 	DisplayServer.window_set_size(CAPTURE_SIZE)
 	await process_frame
 	await process_frame
+	if OS.get_environment("MAHJONG_CAPTURE_TARGET") == "result":
+		await _capture_result_breakdown()
+		print("[capture] done")
+		quit()
+		return
 	for entry in SHOTS:
 		var scene_path: String = entry[0]
 		var tag: String = entry[1]
@@ -45,6 +50,7 @@ func _run() -> void:
 	await _capture_lobby_rule_drawer()
 	# E1-05：资料馆与音量弹层展开态。
 	await _capture_lobby_codex()
+	await _capture_result_breakdown()
 	await _capture_lobby_audio_popup()
 	# 额外:一张「带牌局的战斗桌」截图,真实绑定 BattleState 让 38 张麻将牌、
 	# dealer 标记、当前回合金边、座位分数都一起亮相,证明对战可玩。
@@ -97,6 +103,10 @@ func _capture_lobby_codex() -> void:
 	var btn := shell.get_node_or_null("%CharacterCodexButton") as Button
 	if btn:
 		btn.pressed.emit()
+	await process_frame
+	var yaku_tab := shell.get_node_or_null("%CodexYakuTab") as Button
+	if yaku_tab:
+		yaku_tab.pressed.emit()
 	for _i in range(40):
 		await process_frame
 	await RenderingServer.frame_post_draw
@@ -105,6 +115,77 @@ func _capture_lobby_codex() -> void:
 	img.save_png(out)
 	print("[capture] saved ", out)
 	shell.queue_free()
+	await process_frame
+
+
+func _capture_result_breakdown() -> void:
+	var table = load("res://ui/four_player_table/playable_table.gd").new()
+	root.add_child(table)
+	for _i in range(20):
+		await process_frame
+	var characters := CharacterPool.all()
+	if not characters.is_empty():
+		table.set_player_persona(characters[0].display_name, characters[0].portrait_path)
+	var shell: Dictionary = table._create_result_modal_shell()
+	var panel := shell["panel"] as Panel
+	var title := Label.new()
+	title.text = "林夜澈　和牌"
+	title.position = Vector2(36, 24)
+	title.size = Vector2(828, 38)
+	title.add_theme_font_size_override("font_size", 26)
+	title.add_theme_color_override("font_color", Color("d9b65b"))
+	panel.add_child(title)
+	var subtitle := Label.new()
+	subtitle.text = "荣和 · 40符 3番"
+	subtitle.position = Vector2(36, 64)
+	subtitle.size = Vector2(828, 24)
+	subtitle.add_theme_font_size_override("font_size", 14)
+	subtitle.add_theme_color_override("font_color", Color("f4ead2d9"))
+	panel.add_child(subtitle)
+	var portrait: Texture2D = null
+	if not characters.is_empty() and ResourceLoader.exists(characters[0].portrait_path):
+		portrait = load(characters[0].portrait_path) as Texture2D
+	table._build_result_winner_portrait(panel, portrait,
+		characters[0].display_name if not characters.is_empty() else "玩家")
+	var detail_tabs: TabContainer = table._build_result_detail_tabs(panel, {
+		"han": 3,
+		"fu": 40,
+		"base_points": 1280,
+		"winner_total": 5200,
+		"winner_seat": 0,
+		"discarder_seat": 2,
+		"payout": {2: 5200},
+		"yaku_names": [
+			{"name": "立直", "han": 1},
+			{"name": "平和", "han": 1},
+			{"name": "断幺九", "han": 1},
+		],
+		"fu_breakdown": {
+			"raw_fu": 38,
+			"rounded_fu": 40,
+			"items": [
+				{"key": "base", "label": "副底", "fu": 20},
+				{"key": "menzen_ron", "label": "门清荣和", "fu": 10},
+				{"key": "pair", "label": "役牌雀头", "fu": 2},
+				{"key": "wait", "label": "嵌张听牌", "fu": 2},
+				{"key": "meld", "label": "暗刻·中张牌", "fu": 4},
+			],
+		},
+	})
+	for _i in range(240):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var img := root.get_texture().get_image()
+	img.save_png("/tmp/shot_battle_result_breakdown.png")
+	print("[capture] saved /tmp/shot_battle_result_breakdown.png")
+	detail_tabs.current_tab = 1
+	for _i in range(8):
+		await process_frame
+	await RenderingServer.frame_post_draw
+	var fu_img := root.get_texture().get_image()
+	fu_img.save_png("/tmp/shot_battle_result_fu_breakdown.png")
+	print("[capture] saved /tmp/shot_battle_result_fu_breakdown.png")
+	table.queue_free()
 	await process_frame
 
 

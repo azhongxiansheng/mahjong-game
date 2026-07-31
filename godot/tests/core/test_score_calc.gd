@@ -185,3 +185,26 @@ func test_picks_highest_fu_decomposition():
 	var r := ScoreCalc.calculate(win_pattern, [], y, ctx)
 	# d_high: 20+2自摸+0雀头+0双面+4暗刻W5(中)+0顺*3 = 26 → 30
 	assert_eq(r.fu, 30, "应选 fu 最高的分解 (含 W5 暗刻)")
+
+
+func test_score_result_carries_fu_breakdown_from_selected_decomposition():
+	var d := {
+		"melds": [
+			[TileId.W2, TileId.W2, TileId.W2],
+			[TileId.T2, TileId.T3, TileId.T4],
+			[TileId.T5, TileId.T6, TileId.T7],
+			[TileId.S6, TileId.S7, TileId.S8],
+		],
+		"pair": TileId.E,
+	}
+	var win_pattern := {
+		"is_winning": true,
+		"is_chiitoi": false,
+		"is_kokushi": false,
+		"standard_decompositions": [d],
+	}
+	var ctx := ScoreContext.ron(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0, 2)
+	var result := ScoreCalc.calculate(win_pattern, [], _make_yaku([[&"riichi", 1]]), ctx)
+	assert_true(result.has("fu_breakdown"), "WIN_DECLARED 的权威计分结果必须携带符组成")
+	assert_eq(result.fu_breakdown.rounded_fu, result.fu)
+	assert_eq(result.fu_breakdown.raw_fu, 38)

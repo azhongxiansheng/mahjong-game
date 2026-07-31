@@ -110,6 +110,32 @@ func test_codex_tabs_switch_visible_content_without_creating_pages() -> void:
 		"切页应复用同一个内容宿主")
 
 
+func test_yaku_tab_supports_engine_catalog_detail_and_search() -> void:
+	var shell := _spawn_lobby()
+	await get_tree().process_frame
+	if not _require_hooks(shell, [
+		"LobbyCodexOverlay", "CodexYakuTab", "CodexSearchInput",
+		"CodexRoster", "CodexDetailTitle",
+	]):
+		return
+	_press(shell, "CharacterCodexButton")
+	_press(shell, "CodexYakuTab")
+	await get_tree().process_frame
+	var overlay := shell.get_node("%LobbyCodexOverlay")
+	assert_eq(overlay.call("get_current_page"), &"yaku")
+	assert_true(_visible_copy(overlay).contains("平和"))
+	assert_true(_visible_copy(overlay).contains("成立条件"))
+	var search := shell.get_node("%CodexSearchInput") as LineEdit
+	assert_true(search.visible)
+	search.text = "国士"
+	search.text_changed.emit(search.text)
+	await get_tree().process_frame
+	var entries := shell.get_node("%CodexRoster").find_children(
+		"CodexRosterEntry*", "Button", true, false)
+	assert_eq(entries.size(), 2, "搜索国士应保留普通与十三面两个引擎变体")
+	assert_true((shell.get_node("%CodexDetailTitle") as Label).text.contains("国士"))
+
+
 func test_close_button_and_escape_restore_focus_to_real_source() -> void:
 	var shell := _spawn_lobby()
 	await get_tree().process_frame

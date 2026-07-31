@@ -80,6 +80,28 @@ func rules() -> Array:
 	]
 
 
+func yakus() -> Array:
+	var rows: Array = []
+	var ids: Array[int] = []
+	ids.append_array(YakuId.ALL)
+	ids.append_array(YakuId.ALL_VARIANTS)
+	for yaku_id in ids:
+		var meta := YakuId.catalog_metadata(yaku_id)
+		rows.append({
+			"category": String(meta.get("category", "其他")),
+			"closed_han": int(meta.get("base_han_closed", 0)),
+			"condition": String(meta.get("condition", "")),
+			"description": String(meta.get("description", "")),
+			"display_name": String(meta.get("name_zh", "?")),
+			"example": String(meta.get("example", "")),
+			"id": yaku_id,
+			"is_yakuman": bool(meta.get("is_yakuman", false)),
+			"open_han": int(meta.get("base_han_open", 0)),
+			"yakuman_multiplier": int(meta.get("yakuman_multiplier", 0)),
+		})
+	return rows
+
+
 func _item_row(item: Variant, category: String) -> Dictionary:
 	return {
 		"category": category,
