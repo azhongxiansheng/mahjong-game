@@ -1,436 +1,127 @@
 # AGENTS.md
 
-> 本文件是 mahjong-game 的 **Agent 开发原则 / 工作流唯一权威源**。
-> `CLAUDE.md` 只描述项目技术事实，并链接本文件，不再复制工作流规则。
+> 本文件只记录 mahjong-game 相对通用 Agent 默认行为的项目级工作流与硬约束。
 >
-> **工作流规则只改本文件；技术事实才改 `CLAUDE.md`。**
+> - `AGENTS.md`：项目策略与验收门禁；
+> - `CLAUDE.md`：架构、路径、版本、资产契约等技术事实；
+> - 当前会话选中的 `SKILL.md`：领域流程与工具协议；
+> - 脚本和测试：确定性执行入口。
 >
-> 原则对齐 `~/project/lov-video/AGENTS.md` 的结构与纪律，并按本仓库现状适配
-> （Godot 4.5/4.6 客户端 + GUT 9.x + 日麻引擎 + 根目录 Go 健康检查桩）。
+> 不在多处复制完整规则；发生冲突时先按上述职责定位事实源。指令优先级由运行宿主决定，本文件不得覆盖更高层指令。
 
-## 优先级
+## 沟通与执行边界
 
-当本文件与 `CLAUDE.md`、用户即时指令、系统默认行为冲突时：
+- 默认使用中文与用户沟通；代码注释、日志、commit、PR / Issue 也优先中文，既有英文文件可保持原风格。
+- 采用能解决当前目标的最小、可追溯改动，不顺手重构、清理或扩展无关内容。
+- 只有当歧义会实质改变范围、结果、安全、成本或不可逆操作时才暂停确认；其余情况采用合理假设推进，并在交付时披露关键假设。
+- 非琐碎、多步骤或高风险任务在实现前给出简短计划，至少说明改动范围、验证方式、风险和成功标准；明确的微小任务可直接执行。
+- 发现非己方产生且影响运行、构建、测试的代码、脚本、配置、锁文件或业务资源时，暂停并询问如何处理；纯文档、Agent 说明和本地元数据可忽略，但不得擅自删除或纳入提交。
+- 使用子 Agent 或外部 worker 时，主 Agent 必须独立审查累计 diff 和真实生产调用链，并按风险复跑必要验证；不得以 worker 自述或其测试结果代替验收。
+- 全量 GUT、import、构建等高输出命令把 stdout/stderr 写入仓库外 `/tmp`；只提取 totals、错误、退出码和新增 warning。正式 Review 至少完整审查一次累计 diff。
 
-1. **用户即时指令** —— 最高
-2. **本文件** —— 高
-3. 默认系统行为 —— 最低
+## UI 与产品确认
 
-本文件内部条款冲突时，以**更具体、约束更强**者为准。
-发布、安全、版本兼容、资产文件名契约等硬约束不因本文件之外的便利说法而放松。
+- 用户描述已经明确、变化局部且不改变整体布局的 UI 调整可直接实现，并用相关 UI 测试和主路径目视验证。
+- 新面板、弹层、布局重构、多方案或产品取舍必须先给简短 ASCII / wireframe 与取舍说明，取得用户确认后再实现。
+- 跨三个以上步骤、涉及多模块状态或异常分支的复杂流程，仅在图示能明显提升理解时提供 Mermaid 流程或状态图。
+- 同时涉及横竖屏等多种屏幕形态时，分别说明布局和验证方式。
 
----
+## TDD 与验证
 
-## 沟通语言
+### TDD
 
-- 与用户沟通默认使用**中文**；用户明确指定其他语言时再切换。
-- 代码注释、日志、commit message 优先中文（既有英文文件可保持英文）。
-- **PR / Issue 的标题、正文、评论、检查说明默认中文**；除非用户明确要求其他语言。
+- 功能开发和缺陷修复默认严格执行 Red → Green → Refactor，除非用户明确允许跳过。
+- Red 阶段先写测试并运行到目标失败；不得先写生产实现再补测试。
+- 文档、纯发布、纯配置搬运或无法合理自动化的微小改动可使用轻量验证，但必须说明理由并执行最小可验证检查。
+- 核心行为必须走真实逻辑和真实资产加载路径。mock 只隔离第三方网络或当前任务无法启动的外部服务等不可控副作用，不得替代胡牌、符算、TurnEngine、鸣牌等核心规则。
 
----
-
-## 编码四条硬纪律
-
-### 1. 先思考，再编码
-
-- 实现前**显式写出关键假设**；不确定的事情不得假装确定。
-- 需求有多种合理解释时，**必须先列出分歧与取舍**，不能静默选择其一。
-- 若存在更简单、范围更小的实现路径，先说明并优先采用。
-- 关键信息不足或存在真实歧义时，**暂停并向用户确认**，不要硬猜。
-
-### 2. 简单优先
-
-- 只写解决当前问题所需的**最小代码或最小改动**。
-- 不做未被请求的功能、抽象、配置化、「顺便支持以后」。
-- 不为单次需求引入一次性之外的通用层；若 200 行能压到 50 行且不损失清晰度，优先简化。
-- **不为不可能发生的场景增加防御性错误处理**。
-
-### 3. 外科手术式修改
-
-- 只修改完成当前任务**所必需的**文件、代码、注释与格式。
-- 不顺手「优化」邻近代码；保持既有风格与结构。
-- 只清理**由本次改动直接造成的**废弃 import、变量、函数、注释；已有无关死代码只报告，不擅自删除。
-- 每一处修改都必须能直接追溯到当前需求；不能追溯的，默认不改。
-
-### 4. 目标驱动执行
-
-- 把任务改写为**可验证目标**再实施，避免「做到差不多」为止。
-- 多步骤任务先给出简短计划：步骤、验证方式、成功标准。
-- 能用测试验证的改动，优先先写失败用例或复现步骤，再实现通过。
-- 无法合理自动化测试的微小任务也必须给出最小可执行的验证方式，**不能跳过验证**。
-
-### 5. 上下文与输出纪律
-
-- 完整执行 Review 与验证，但不要把海量过程输出重复灌入对话上下文；保留需求、决策、真实调用链、关键 diff、失败证据、最终摘要和 Git/远端状态即可。
-- 监工其他 Codex App 任务或外部 Agent 时，默认只看紧凑状态、当前阶段、最近一条简短进展和是否需要关注；优先使用状态快照或长等待，不常规拉取完整会话历史、过程输出、日志、diff 或测试明细，也不以高频轮询干预已在正常推进的任务。
-- 只有出现真实阻塞、方向或范围偏离、交付/验收失败、证据矛盾、进入正式 Review，或发现 P0–P2 风险时，才按问题所需范围逐层下钻；问题定位或复核完成后立即恢复为状态级监工，不持续追踪无关细节。
-- 同一任务中已经完整读取且未发生变更的 `AGENTS.md`、Skill 或长篇规范，不得重复完整读取；后续只用 `rg -n` 定位并读取相关小范围。文件确有变更或上下文压缩后关键规则无法可靠恢复时，才重新读取必要内容。
-- 超过 500 行或 20 KB 的源码、fixture、JSON、Issue/PR 正文先用 `wc` 确认体积，再用 `rg -n` 定位符号或关键词并分段读取；禁止无目的整文件展开。正式 Review 仍须覆盖全部变更文件，但可按 diff hunk 和调用链分段完成，不能以节省上下文为由漏审。
-- 全量 GUT、import、构建等高输出命令必须将 stdout/stderr 重定向到仓库外 `/tmp` 日志；命令结束后只提取最终 totals、失败/错误、退出码与本次新增 warning。**禁止用 `cat`、无范围 `sed` 或工具调用一次性读取整份日志**；仓库既有 warning 不重复展开完整堆栈。
-- 完整累计 diff 必须在正式 Review 节点至少独立审查一次；同一轮不得为状态确认重复展开完整 diff。返工后先读变更清单、受影响文件和新增 hunk，再按风险复核累计关键路径，不重复输出未变化的大段 diff。
-- GitHub Issue、Epic、PR 和 CI 查询优先请求标题、状态、依赖、正文、关键评论、head/base SHA、mergeability 等必要字段；不得默认拉取全部 timeline、review、checks 或大段日志。只有当前结论需要时再增量查询对应字段。
-- 审计 `/tmp` 长日志时，先用 `wc -l/-c` 确认体积，再用 `rg` / 有界 `tail` 提取与当前结论直接相关的证据。仅在发现失败且摘要不足以定位时，才按命中行号读取小范围上下文；不得因此隐藏失败、跳过门禁或把“输出被截断”误报为通过。
-
----
-
-## 实现前强制闸门
-
-### 闸门 A：意外文件处理
-
-发现「我没有主动创建/修改」的异常文件或变更时：
-
-| 类型 | 处理 |
-|------|------|
-| **影响运行/构建/测试的代码、脚本、配置、锁文件、业务资源** | **立刻暂停** → 向用户报告发现了什么 → 询问（忽略 / 删除 / 纳入 / 其他）→ **获明确指令后再继续**。绝不擅自删除或纳入。 |
-| **纯文档、agent 说明、本地元数据**（如 `.DS_Store`、会话缓存、无关 `.uid` 孤儿若不确定则仍报告） | 可忽略并继续；**不擅自删除或纳入提交**。 |
-
-典型需报告的例子：未知临时文件、非预期 diff、Godot 孤儿 `.uid`、根目录又冒出来的状态报告 markdown。
-
-### 闸门 B：计划输出
-
-进入实现前，先给出**可执行计划**，至少包含：
-
-- 关键假设 / 歧义
-- 改动范围（哪些文件）
-- 验证方式（怎么证明改对了）
-- 风险点
-- 成功标准
-
-存在多种解释或更简单方案时必须在计划中先说明取舍，不能直接静默实现。
-
-### 闸门 C：UI / 交互确认（分档）
-
-涉及 Godot 场景布局、UI 控件、动画方向、操作栏、牌桌/Run 壳视觉时，实现前按复杂度取得用户确认：
-
-| 档位 | 判定 | 确认物 |
-|------|------|--------|
-| **简单** | 局部调整、不改整体布局、变化点 ≤5 | 当前真实截图 + 标注后的目标效果或可视 mock + 用户确认 |
-| **复杂 UI** | 新面板/弹层、布局重构、多方案 | 当前真实截图 + 候选效果图/高保真 mock 对比 + 方案取舍说明 + 用户确认；可运行场景优先用 `tools/capture_screens.gd` 或对应真实截图脚本取证 |
-| **复杂流程** | 跨步骤 ≥3、多模块联动、状态机/异常分支 | 计划中提供 **Mermaid** 流程或状态图 |
-
-ASCII 草图只能在暂时无法渲染时辅助解释结构，不能单独作为 UI 确认闸门。涉及多种屏幕形态（横竖屏等）时，分别提供对应截图或可视 mock。
-
-### 闸门 D：需求与实现一致性
-
-- 实现与既有约束/设计冲突时，优先暂停并请用户确认，不自行偏离。
-- 默认最小必要改动，不为单次需求引入抽象层、配置项或前瞻性扩展。
-
----
-
-## TDD 与验证规范（强制）
-
-### TDD 顺序
-
-默认对**功能开发 / 缺陷修复**采用 TDD（Red → Green → Refactor），除非用户明确允许跳过：
-
-1. **Red**：先写测试并运行到失败；
-2. **Green**：再写最小实现使测试通过；
-3. **Refactor**：最后重构并保持测试持续通过。
-
-**禁止先写业务实现再补测试**；发现偏离立即停止回到 Red。
-
-文档更新、纯发布执行、纯配置搬运、无法合理自动化的微小改动可采用更轻量验证，但**必须先说明理由**并执行最小可验证检查。
-
-### 真实测试约束
-
-- 测试核心行为基于**真实逻辑与真实资产加载路径**（GUT + 仓库内资源）。
-- mock 仅用于隔离不可控外部副作用（第三方网络、不存在的 WebSocket 服等），**不得用 mock 顶替被测对象的核心规则逻辑**（胡牌、符算、TurnEngine、鸣牌等）。
-- 任何「已完成 / 已修复 / 测试通过」的结论必须附**可执行验证方式与结果**。
-
-### 本仓库验证门禁
+### 仓库验证入口
 
 ```bash
-# 1) class_name / 纹理缓存（新 worktree 首测，以及改 class 或资产后必跑）
+# 新 worktree 首测，以及修改全局 class_name 或资产后
 scripts/godot_bootstrap.sh
 
-# 2) GUT 全量（应 0 fail / 0 parse error；仅风险触发/发布回归）
-godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
-    -gdir=res://tests -ginclude_subdirs -gexit
-
-# 3) 局部（开发中；先执行上面的 bootstrap）
+# 开发中的 focused / 模块测试（先 bootstrap）
 godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
     -gdir=res://tests/<module> -gselect=<test_name> -gexit
 
-# 4) UI 截图（非 headless；输出 /tmp/shot_*.png）
+# 风险触发、发布或里程碑回归才运行全量
+godot --headless --path godot -d -s addons/gut/gut_cmdln.gd \
+    -gdir=res://tests -ginclude_subdirs -gexit
+
+# 复杂 UI 截图，输出 /tmp/shot_*.png
 godot --path godot -s tools/capture_screens.gd
 ```
 
-| 改动类型 | 验证 |
-|----------|------|
-| `core/` / `battle/` / 规则 / AI | GUT 受影响目录 + 直接依赖契约测试；命中下述升级条件才跑全量 |
-| `ui/` 布局与交互 | GUT UI 测 + 手测主路径；复杂改动 `capture_screens` |
-| 资产 PNG / 新 `class_name` | `--import` + 相关 GUT + 启动主场景目视 |
-| 纯文档 / agent 说明 | `git diff --check` + 人工通读 |
-| 网络 / WebSocket 客户端 | **必须声明「未端到端验证」**（本仓无对战服） |
-| Go 桩 `main.go` | 如修改则先写 `_test.go`；**默认不扩张职责** |
-
-日常快速门禁使用 `scripts/test_run_core.sh`；协议、服务器、整局、UI、STT 等重型回归使用 `scripts/test_run_slow.sh`。两者不可互相冒充覆盖范围。
-Codex App 受管 worktree 通过根目录 `.worktreeinclude` 复制被忽略的必要 Godot 导入缓存；仍须由 `scripts/godot_bootstrap.sh` 做两轮 import 与第二轮错误审计。禁止提交 `.godot/`，也不得把首次 import 的退出码 0 当作缓存有效。
-
-### 分层验证与全量升级条件
-
-- **开发中**：Red 只跑新增/修改的失败用例；Green / Refactor 跑受影响测试文件或模块，禁止每次小改都跑全量。
-- **交付前默认门禁**：在最后一次代码修改后，跑完所有受影响模块及其直接依赖的契约测试；同时执行 `git diff --check`，并按改动类型补 import、UI、网络或 Go 验证。
-- “受影响范围”必须从真实生产调用链、共享数据结构和资源加载关系推导，不能只跑新测试自证，也不能因追求速度漏掉直接调用方/被调用方。
-- 只有满足以下任一条件才升级全量 GUT：
-  1. 修改跨模块共享协议/schema、事件序列化/恢复、权威基础状态机或通用规则基础设施；
-  2. 修改 Autoload、`project.godot`、插件/依赖、全局 `class_name` 解析链或大范围资源导入；
-  3. focused/模块测试出现跨目录 Parse Error、系统性失败，或无法可靠界定影响范围；
-  4. Issue/用户明确要求全量，或准备发布/里程碑回归。
-- 全量 GUT 改为风险触发、发布/里程碑或定期手动回归，不再作为每个 Issue、每轮返工的默认必跑项。未跑全量时，PR 必须列出实际受影响测试集合与未覆盖风险，不能写“全量通过”。
-
-生产代码新增测试一律放 `godot/tests/<module>/test_*.gd`（GUT）。
-`godot/scripts/test_*.gd` / 部分 `scenes/test_*.tscn` 是遗留 scene 手测，不新增生产逻辑到该路径。
-`godot/tests/scenes/**/*.tscn` 供编辑器 F6 手测。
-
-### 声称完成的最低标准
-
-- 提交/PR 必须包含：与本次改动相关的测试或验证步骤 + **命令与结果摘要**。
-- UI 改动尽量附截图路径或前后对比说明。
-
----
-
-## 第三方接口对接顺序（强制）
-
-对接 Godot 引擎 API、外部 HTTP/WS、资产生成 gateway、SDK、OS API 前：
-
-1. **先查阅并记录官方资料 / 仓库内已有正确用法**，不得凭印象开发。训练数据可能与 Godot 4.5/4.6 不一致，**怀疑印象，验证文档**。
-2. 写业务实现前用**最小请求/最小场景测通**，确认参数、返回、错误与限制。
-3. 测通后**先按真实行为写/更新测试**，再进入业务实现。
-4. 无法在本地实际调用时，先说明原因、记录替代验证方式，**经用户确认后再继续**。
-
----
-
-## 通用 Skill 路由
-
-- 多任务或外部 Agent 监工启用 `agent-task-supervisor`：默认只维护紧凑任务板与状态级等待，风险触发时才下钻，并由主 Agent 独立 Review 与复测；不得代替 worker 实现。
-- 通用 Skill 以 **Akasha Grimoire（阿卡夏秘典）** 合集为唯一事实源；本文件只保留麻将项目特有约束。实际执行前必须读取当前会话暴露的对应 `SKILL.md` 全文及其按任务要求的参考文件，优先复用 Skill 自带脚本、模板和验收清单，不凭记忆复制调用参数。
-- 用户明确点名 Skill、模型、供应商或 CLI 时优先服从；未点名时按任务语义选择覆盖范围最小的 Skill，并在执行前说明路由、生成是否计费和验证方法。多个 Skill 同时适用时，先用总控 Skill 建立合同，再用具体执行 Skill 生成，最后回到总控 Skill 做产品验收。
-- 用户明确选择 Grok、Gemini、Claude Code 或 Codex CLI 开发时，路由到对应 `*-cli-development` Skill。用户选择 Grok CLI 后，媒体生成也必须留在同一个可见 Grok TUI，遵守下述单 Issue 闭环；不得再并行调用独立媒体 Skill 或另开生成 worker。
-- 下述 Grok 单 Issue 闭环是本项目的强制细化规则；与通用 Skill 同时适用时取更具体、更严格者，不用通用说明覆盖或删减本节。
-
-### 阿卡夏生图 / 生视频路由
-
-| 任务 | 必用 Skill | 边界 |
-|------|------------|------|
-| 游戏角色、场景、牌面、UI、图标、透明资产、Sprite、动画帧、Tileset | `game-asset-forge` | 负责资产合同、候选与 staging、像素/alpha QA、Godot import 和运行验收；若需调用生成模型，再叠加下列具体生成 Skill |
-| GPT Image 文生图、单图编辑、多参考图合成、OpenAI-compatible 图像端点诊断 | `gpt-image-generation` | 使用 Skill 自带脚本；默认只把 `n=1` 当作跨 provider 安全能力，多图必须先 smoke 证明上游确实返回完整数量 |
-| 直接调用 Grok 图片/视频生成或编辑端点 | `grok-media-generation` | 仅适用于用户要直接调用 Grok 媒体端点而非选择 Grok CLI 开发闭环；视频任务必须轮询到终态并下载真实文件 |
-| Seedance / 豆包文生视频或带图片、视频、音频参考的视频生成 | `seedance-video-generation` | 先用 5 秒、720p 最小任务 smoke；参考素材须是上游可访问且不依赖客户端鉴权的公共 HTTPS URL |
-
-若会话未暴露所需 Skill、脚本不存在、provider 能力与 Skill 记载不一致或本地无法实际调用，必须说明阻塞与替代验证方式；涉及生产生成时等待用户确认，不得临时手写含凭证的 `curl` 绕过 Skill。
-
-### 媒体生成统一工作流（强制）
-
-1. **合同**：生成前明确用途、目标场景、画幅/像素或时长、格式、alpha、风格与世界观、参考图允许借鉴的维度、必须/禁止元素、精确文字、候选数量、文件名、生产目录和成功标准。项目既有牌面尺寸、命名、import 与 UI 确认规则优先。
-2. **授权与 smoke**：真实生成可能计费；未获用户授权时只做帮助、语法和本地无网络验证。获授权后先生成一个最小代表样本，验证当前模型、端点、参考输入、尺寸/时长、格式和输出限制，再决定是否批量生成。
-3. **仓库外 staging**：每轮使用唯一 `/tmp/<project>-<task>-<provider>-<round>/`；原图、候选、响应、中间件、contact sheet、代表帧和淘汰稿不得直接进入仓库。脚本默认不得覆盖已有文件，除非用户明确要求且目标精确。
-4. **选稿与单点返工**：需要产品选择时展示真实本地候选、推荐项、实际规格和已知缺陷；用户确认前不得复制到生产目录、修改 Godot 场景或按候选稿编码。返工只针对已确认缺陷，固定角色身份、构图和 freeze-list，避免无差别重抽。
-5. **本地文件验收**：HTTP 2xx、脚本 `OK`、网页预览、模型自述或异步任务 `completed` 只证明调用阶段，不等于资产合格。必须读取最终文件并核对签名、非空、规格和内容；失败响应、HTML、JSON、空文件、临时 URL 不得冒充媒体文件。
-6. **产品验收与入库**：图片检查像素、色彩、alpha/halo、小尺寸可读性、主体与编辑约束；视频用 `ffprobe` 核对时长、编码、分辨率，并抽取开头/中间/结尾等代表帧检查主体一致性、运动连续性、镜头、文字、水印和提示词约束。选定后才复制到生产路径，执行 Godot import、实际场景加载、截图/播放验收及受影响测试。
-7. **交付证据**：记录采用与淘汰文件、最终 prompt、实际 Skill/脚本/模型、生成次数、真实尺寸/时长、QA、用户选稿结果、入库路径、Git 状态和未验证项；不复制完整 provider 响应、base64、临时授权 URL 或冗长生成日志。
-
-凭证只从 Skill 规定的环境变量或受控凭证存储读取，不进入 prompt、命令参数、回显、日志、文件名、元数据、仓库或交付说明。外部参考图、视频、音频必须确认使用权；竞品只可参考构图、层级、节奏或交互，不得复刻角色、Logo、专有纹样、文案、具体控件造型或像素布局。
-
-## Codex App + Grok CLI 单 Issue 闭环（强制）
-
-> 适用于用户明确选择由 Grok CLI 开发的任务。每个 GitHub Issue 使用一个 Codex App 任务；
-> 同一个 Codex 任务负责需求对齐、驱动 Grok、独立 Review、验证、返工、Git 交付、合并，以及合并后直接启动已解锁的后续 Issue。
-> 不额外创建 Review 任务，不引入 `agentctl` 或调度器；Grok 统一通过可见 macOS Terminal + attached tmux inline TUI 运行，不使用 Codex 右侧终端或后台 PTY。同一 Issue 始终保留并复用一个 tmux session 和其中的 Grok TUI，最终验收通过后才关闭。
-
-### 适用边界与状态
-
-- 一个 Issue 对应一个 Codex App 任务、一个任务分支和一个 worktree；同一 worktree 同时只能有一个 Grok 写入。
-- **每个 Issue 内**默认只运行 1 个 Grok CLI 会话串行开发；不同 Issue 可在各自独立 Codex App 任务、分支、worktree 和 Grok TUI 中并行，禁止 Grok 再派生子任务修改同一需求。
-- 高歧义需求、需要产品取舍、不可逆生产操作、权限或凭证不明确时，不得先让 Grok 猜测实现。
-- 需要用户选择时进入 `BLOCKED_USER_DECISION`，明确列出选项、影响和推荐项并等待答复；不得跳过。若宿主提供 goal/status 工具，按该工具自身规则设置阻塞状态，不得伪造状态。
-- 推荐状态流：
-
-```text
-BLOCKED_USER_DECISION（前置闸门如需）
-  → GROK_PLAN_AND_IMPLEMENT
-  → WAITING_GROK_STATUS
-  → CODEX_REVIEW
-  → REWORK_REQUIRED（如有 P0/P1/P2）
-  → VALIDATING
-  → READY_FOR_PR
-  → MERGED
-  → NEXT_ISSUE_ANALYSIS
-```
-
-### 1. 当前 Codex 任务先完成前置闸门
-
-调用 Grok 前，当前 Codex 任务必须独立完成：
-
-1. 阅读用户原始需求、本文件、相关代码和 Git 现场；不能把需求理解本身交给 Grok。
-2. 确认任务 worktree、基线分支、允许修改的文件范围、禁止项、验收命令和成功标准。
-3. 写出关键假设与真实歧义；需要用户选择的内容先向用户确认。
-4. 将任务整理成可核对的 prompt contract：原需求、已确认决策、非目标、TDD 要求、验证门禁、Git 权限和交付格式。
-
-### 2. 在可见 Terminal + tmux 一次启动 Plan 与开发
-
-当前 Codex 任务完成前置闸门并处理完必须由用户决定的歧义后，使用可见 macOS Terminal + attached tmux 启动 Grok inline TUI。一次调用中要求 Grok 先给出可滚动中文计划、自检覆盖范围，再按该计划直接开发；不使用 Codex 右侧终端或单轮 `-p/--single`：
-
-```bash
-grok --cwd "$TASK_WORKTREE" \
-  --minimal \
-  --no-alt-screen \
-  --permission-mode bypassPermissions \
-  --no-subagents \
-  --always-approve \
-  --rules "全程使用简体中文与用户交互；命令、代码、标识符和原始错误可保留英文，但必须用中文解释。" \
-  "$PLAN_AND_IMPLEMENT_PROMPT"
-```
-
-- 当前 Issue 启动时记录唯一精确 tmux session 名；tmux 必须开启 `mouse`，`history-limit` 至少为 50000。用户可滚轮回看，或按 `Ctrl-b`、`[` 进入 copy-mode，按 `q` 返回。
-- 启动参数固定同时使用 `--permission-mode bypassPermissions --always-approve`，确保 TUI 显示并实际处于完全批准状态；Plan 是 prompt 强制的逻辑阶段，不再使用 CLI 的只读 Plan 权限模式。完全授权只免除逐条工具审批，不扩大 worktree、允许路径、Git 权限和需求范围。
-- `PLAN_AND_IMPLEMENT_PROMPT` 必须要求 Grok：先读取本文件；先输出中文计划并逐条自检原需求、Red → Green → Refactor、改动边界、真实验证和风险；确认无遗漏后在同一 TUI 直接开发，不退出、不调用 `--continue`、不启动第二个 Grok。
-- 必须由用户决定的产品取舍、权限、安全或不可逆事项应已在前置闸门解决；开发中才发现的新阻塞不得猜测，写入仓库外状态文件并停在 TUI 等待。
-- 当前 Codex 任务不得通过读取 pane 审查 Grok 的过程计划；最终仍以完整累计 diff、真实业务调用链和独立复测验收。计划自检不能替代最终 Review。
-
-### 2.1 Grok 图像 / UI 概念稿 / 视频生成
-
-- 用户选择 Grok CLI 后，任务所需的生图、UI mockup、游戏资产、动效概念和视频也交给**同一个可见 Grok TUI** 使用其当前内置生成能力完成；主 Agent 只负责合同、决策、监工和独立验收，不另开生图 worker、不代替 Grok 生成。
-- 视觉 prompt contract 必须写明用途、画幅/分辨率或视频时长、风格与世界观、参考图允许借鉴的维度、必须/禁止元素、精确文字、候选数量、仓库外 staging 路径和选稿门禁。竞品只可参考构图、层级、节奏或交互，不得复刻角色、Logo、专有纹样、文案、具体控件造型或像素布局。
-- 纯视觉任务使用 `smoke → 首稿 → 目视 QA → 单点修正 → 最终交付`，不强套代码 TDD；后续代码实现仍执行 Red → Green → Refactor。Grok 必须先用最小 smoke 验证真实能力与输出限制，不得凭印象写死模型参数或绕过内置能力直连供应商。
-- 所有预览、原始图和视频先放仓库外唯一 `/tmp/<project>-<issue>-grok-visual-<round>/`。用户或 Issue 未明确选定前，不得复制进生产资产、修改 Godot 场景或按未确认稿编码；选定后仍遵守资产文件名、尺寸、版权/IP、import 与 staging 契约。
-- 需要选稿时，Grok 将候选绝对路径、实际尺寸/时长、最终 prompt、设计取舍、推荐项与已知缺陷写入仓库外决策文件，状态切换为 `GROK_BLOCKED_USER_DECISION` 并停在同一 TUI。主 Agent 独立查看原图；视频至少核对元数据、代表性帧和可播放成片，再向用户展示并把选择送回同一 Grok 会话。
-- 最终交付须记录采用/淘汰产物、实际内置工具或模型、生成次数、QA、选稿结果、是否进入仓库和 Git 状态。Grok 自述或网页预览不等于视觉验收；必须有可读取的本地原文件证据。
-
-### 3. 单向下发后启动 30 分钟监控
-
-启动前为本轮指定两个唯一仓库外路径：
-
-```text
-/tmp/<project>-issue-<number>-grok-status-round-<n>.txt
-/tmp/<project>-issue-<number>-grok-delivery-round-<n>.md
-```
-
-- 状态文件只允许为单行稳定值：`GROK_PLANNING`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION`、`GROK_SCOPE_DRIFT`、`GROK_ERROR`、`GROK_ABORTED`、`GROK_DELIVERY_COMPLETE`。Grok 在开始计划、进入实现、发现新用户决策阻塞、偏航、错误、取消和完成交付时原子覆盖该文件；不得写思考过程、token 或长日志。
-- 交付文件格式见下一节，只有全部实现和自测结束后才写，末行必须为独占标记 `GROK_DELIVERY_COMPLETE`。
-- Grok 开发阶段不得由 Codex 在后台 PTY 中启动；必须使用可见 Terminal + tmux inline TUI。用户可在弹窗直接观察和交互，Codex 不以内部 PTY 冒充可见终端。
-- Codex 不采集 Grok 的思考过程、全屏刷新或持续过程输出；只接收最终交付摘要，并独立从完整累计 diff、真实调用链和必要复测开始验收。Grok 自述仍不能作为验收结论。
-- 会话输入严格单向：Codex 只在初始合同、用户决策、继续和返工时向 Grok TUI 下发；Grok 不向 Codex 会话发送消息，只原子更新上述状态文件并在终态写交付文件。
-- Grok 启动或任一输入成功投递后，Codex **立即**启动 `grok-cli-development/scripts/wait-for-delivery.zsh`：单轮最长 1800 秒，脚本进程内每 20 秒读取状态与交付末行；不得先结束当前执行回合等待用户另行提醒。
-- 同一 Grok session 同时只允许一个 monitor。循环中零输出，不检查中间 Git 状态、文件列表、tmux pane、pane 命令、进程或测试进度，不发送 `Ctrl-C` 或补充 prompt，也不因已批准范围内的新文件而打断 Grok。
-- 状态与交付末行同时为 `GROK_DELIVERY_COMPLETE` 时 monitor 退出 0 并进入完整 diff Review；`GROK_BLOCKED_USER_DECISION`、错误或取消状态立即退出 3 并只处理该动作；30 分钟内无可动作终态则退出 124。
-- 退出 124 且状态缺失、`GROK_PLANNING` 或 `GROK_IMPLEMENTING` 时，不发送 `按推荐执行`，不把安静运行误判为阻塞；确认仍稳定后可再启动一轮 30 分钟 monitor。宿主先返回运行 session 时，只用支持的最长等待续接同一进程，不由 Codex 每 20 秒查询文件。
-- 用户决策由当前 Issue task 直接向用户请求；拿到答案后只投递一次，再启动新的 30 分钟 monitor。短时间内状态未变化不代表投递失败，不得重复输入。
-- 只有用户明确报告 Grok 已退出但没有完整交付时，Codex 才可一次性检查 tmux 会话和 Git 现场。
-- Grok 遇到需求冲突、未知业务文件、测试基础设施故障或必须由用户决定的事项时，应停止并汇报，不得自行扩大范围。
-
-### 4. Grok 的固定交付格式
-
-Grok 完成一轮后必须汇报：
-
-1. 修改文件列表与每个文件的目的；
-2. 关键实现及其与原需求的对应关系；
-3. Red / Green / Refactor 各阶段执行的命令和结果摘要；
-4. 未验证项、已知风险、网络端到端缺口；
-5. 当前 `git status`、commit / push / PR 状态（若获授权执行）。
-
-上述内容写入指定的仓库外交付文件；最后一行写入 `GROK_DELIVERY_COMPLETE`。Codex 读取该文件仅用于确认完成并定位证据，不能用它替代完整 diff Review、业务实现 Review 或独立复测。
-
-功能/缺陷代码每轮最终交付前，Grok 必须在该轮**最后一次代码修改后**执行“受影响模块 + 直接依赖契约测试”的风险验证包，将完整输出重定向到仓库外日志，并在交付中记录影响范围推导、完整命令、退出码、tests/asserts/fail totals 与日志路径；交付文件不得复制整份测试输出。只有命中“分层验证与全量升级条件”时才改跑全量 GUT 并记录 scripts totals。返工使旧证据早于最后修改时，新一轮必须重跑受影响验证包；纯文档任务按文档门禁豁免。
-
-Grok 自述仅用于定位证据，**不能作为验收结论**。
-
-### 5. 当前 Codex 任务必须独立从 diff 开始 Review
-
-Grok 交付后，当前 Codex 任务必须亲自运行并阅读结果：
-
-```bash
-git status --short --branch
-git diff --stat
-git diff --check
-git diff
-# Grok 已提交时，改用实际基线：
-git diff "$BASE_REF"...HEAD
-```
-
-审查至少覆盖：
-
-- 对照用户原需求与批准计划逐条核对，不能只看“代码能跑”；
-- **必须 Review 业务实现本身**：从真实生产入口沿调用链核对状态构造、规则门控、命令消费、事件发布/回放和最终用户可见行为，确认每条验收标准在实际业务路径生效；只新增 helper、DTO、占位对象或只用测试直接调用 helper，均不能证明业务已经实现。
-- 核对业务边界与非目标：既不能遗漏关键副作用、异常分支和跨模块契约，也不能借机提前实现后续 Issue；测试全绿不能替代业务语义审查。
-- 逐个读取所有变更文件，确认没有隐藏的范围扩张、未确认决策、临时代码或意外文件；
-- 检查测试是否真正覆盖核心行为，mock 是否越过真实逻辑，Red 证据是否合理；
-- 按风险由当前 Codex 任务**独立复跑** focused/模块测试、import、UI 截图或其他必要门禁。先审计 Grok 在最后一次代码修改后生成的受影响验证日志，再用不同但相邻的 focused/契约测试交叉验证；不得机械重复同一测试包。若命中全量升级条件，则审计 Grok 的全量日志而不重复全量。任何必需证据缺失、过期或矛盾都必须打回 Grok 重跑，不能由 Codex 自己补跑后直接放行；
-- Grok 声称的测试、提交、推送、PR 与远端状态都要重新核实。
-
-问题严重度统一为：P0 阻断/数据安全，P1 主要功能或架构错误，P2 正确性、契约或关键覆盖缺口，P3 非阻断改进。**P0、P1、P2 必须全部关闭后才可进入提交/PR 交付；P3 可记录后续。**
-
-### 6. 返回同一 Grok 会话返工并复验
-
-- 打回 Grok 时给出具体证据：文件与行、违反的需求/规则、失败命令与期望结果；禁止只说“质量不好”。
-- 修复继续复用当前 Issue 唯一的可见 tmux session 与仍打开的 Grok TUI，只处理已确认范围和本轮问题；不退出/重启 Grok，不使用 `--continue`，不另开第二个 tmux session，不借机扩需求。
-- 标记出现前禁止补充 prompt 或干预。标记出现且 Review 确认需要返工后，先把完整中文返工合同写入唯一的仓库外 `/tmp/*.md` 文件；**禁止把长篇、多行合同本身直接粘贴进 TUI**，避免 bracketed paste / 多行解析造成卡顿或提交状态不清。
-- tmux 只投递一行短指令，例如：`请读取 /tmp/<project>-issue-<number>-grok-rework-round-<n>.md，并严格执行其中全部返工指令；读取后立即按文件要求更新状态文件。` 将这行短指令写入另一个唯一仓库外文本文件，再用 `tmux load-buffer` + `tmux paste-buffer` 送入记录的精确 session/pane，最后仅用一次 `tmux send-keys ... Enter` 提交；不得读取或捕获 pane 输出。
-- 提交短指令后只轮询该轮状态/交付文件；短时间内状态尚未出现属于正常接收延迟，不得因“看起来卡住”重复粘贴或重复发送 Enter。用户正在 TUI 内操作时先避免并发输入。
-- 每轮修复后，当前 Codex 任务重新审查**完整累计 diff**并复跑受影响验证；不能只看最后一个补丁或只相信 Grok 的复测结果。
-- 循环直到 P0–P2 清零且所有成功标准有独立证据；否则状态保持 `REWORK_REQUIRED` 或真实阻塞状态。
-
-### 7. Git、合并与下一批 Issue
-
-- 默认由当前 Codex 任务在验收通过后执行 commit、push、创建 PR 和合并；Grok 不负责最终 Git 交付。
-- 当前 Codex 任务必须核对本地 `HEAD`、远端分支 SHA、PR 完整 diff/状态、可合并状态和目标分支，不能把“命令成功”当作已交付。
-- 禁止把未审查改动先提交来规避 diff 审查。
-- 本仓库不把 GitHub CI 作为合并门禁；`.github/workflows/core-tests.yml` 仅允许手动触发。Grok 最后一轮受影响验证包证据有效、当前 Codex 独立完成风险相关测试与日志审计、Review PASS 且 P0–P2 清零后，方可认定验证通过；命中全量升级条件时才要求有效全量 GUT 证据，当前 Codex 不机械重复同一测试包。
-- 当前 Issue 只记录并复用一个精确 tmux session 名，覆盖 Plan、开发、Review、返工与复验，并始终保留同一个 Grok TUI；每轮完成标记出现后不得关闭。只有完整 diff Review 完成、P0–P2 清零且当前 Codex 任务独立验证全部通过后，才先用 `tmux list-sessions` 只读确认名称，再执行 `tmux kill-session -t "$EXACT_SESSION"` 手工关闭，并复查该精确 session 已不存在。启动器必须显式记录本轮新建 Terminal 窗口的唯一 window id；tmux 退出后仅当该窗口仍存在且仍为单标签页时自动关闭它，窗口已不存在或包含其他标签页时必须保留。禁止 `tmux kill-server`、`front window`、窗口标题、glob、前缀/模糊匹配或关闭未经记录的 tmux session/Terminal 窗口；全程不管理 Grok session ID。
-- PR 处于可合并状态且验证通过后，由当前 Codex 任务直接合并，无需再次等待用户授权。高歧义需求、不可逆生产操作、权限或凭证不明确等情形仍按前述阻塞规则请求用户决策。
-- 合并后，当前 Codex 任务必须重新 fetch 并确认最新 `origin/main`，再读取 Epic、Issue 依赖、优先级和代码现场；不得只给下一 Issue 建议，必须直接为所有已解锁且可安全并行的后续 Issue 创建并启动新的 Codex App 任务。
-- 只有依赖已满足且主要写文件不会冲突的 Issue 才能并行；每个后续 Issue 分别使用新的 Codex App 任务、分支、worktree 和 Grok TUI，并从交互 Grok Plan 重新开始。暂未解锁的 Issue 保留在 Epic 中，待前置合并后由完成该前置的任务继续自动启动。
-
----
-
-## Git 工作流
-
-### Worktree First
-
-- **业务代码**（功能 / 缺陷 / 影响运行的配置与资源）默认：`git worktree` + 任务分支，**不直接在主工作区改业务代码**。
-- 若当前已在非 `main` 的任务分支或本身就是该任务 worktree → **直接继续**，不重复新建。
-- 新任务默认基于最新 `main` / `origin/main`；合并目标默认是创建 worktree 时的基分支（通常 `main`），不擅自改目标。
-- 分支名可用 `feat/` `fix/` `docs/` `refactor/` `chore/`，也可用 `codex/` 前缀；Conventional Commits。
-- **纯文档 / 纯 agent 规范**微调：可在当前分支或 `docs/*` 小分支提交，可不强求 worktree。
-- **纯打包发布**（不改仓库跟踪内容）：可在主工作区执行。若发布任务要改版本/脚本/业务文件，仍先 worktree。
-- Issue 合并后必须先 fetch 并确认对应提交已进入最新 `origin/main`，再检查任务 worktree 干净、没有未推送提交、没有需保留的 stash 或异常文件；确认安全后立即用**精确路径**删除该 Issue 的本地 worktree，并清理已合并的本地任务分支。不得把“后续可能还会用”作为长期保留理由，也不得使用 glob、模糊匹配或批量命令误删其他任务 worktree；存在未提交/未推送内容时必须暂停并报告，禁止强制删除。
-
-```bash
-git worktree add .worktrees/<task-name> -b <branch-name> [<base-branch>]
-```
-
-### 提交、推送与 PR
-
-- 每个 commit 应独立可构建；避免把不相关的 Godot 与 Go 改动混在一起。
-- **本地一旦 `git commit`，默认尽快 `git push`**；暂不推送须用户明确说明。
-- 任务结束后：若有需纳入版本的改动 → commit + push 任务分支，并**按需创建 PR**；回报 PR 链接 + 一句中文摘要。纯探索/只读无改动则跳过并说明。
-- PR 描述（中文）须含：改动摘要、影响模块、验证方式与结果；涉及 UI 时附截图或手测说明。
-
----
-
-## 记忆与文档固化
-
-- 不依赖对话短期记忆；重要上下文与决策固化到 **`AGENTS.md` / `CLAUDE.md` / `docs/superpowers/`**，而非只留在对话里。
-- 关键行为变更同步更新对应文档。
-- 发现 `CLAUDE.md` 与代码事实不符时，**先更新文档，再继续工作**。
-- **禁止新增根目录状态/进度/完成总结类 markdown**（仓库已有 200+ 历史噪音）。总结写进 commit message 或 `docs/`。
-- **`docs/archive/` 是冻结历史，不是事实源**：默认搜索、需求分析、实现与 Review 均不得读取或引用；只有用户明确要求历史追溯、旧决策审计或迁移核对时，才可按指定范围查看。不得用归档内容覆盖代码、`CLAUDE.md` 或活跃 `docs/superpowers/` 的当前事实。
-
----
-
-## 本仓库红线（行为约束）
-
-> 详细技术事实见 `CLAUDE.md`。此处只列 agent 不得违反的约束。
-
-1. **不信根目录 200+ 历史 markdown** —— 先看代码与 `CLAUDE.md` / `docs/superpowers/`，最后才谨慎参考根目录陈旧笔记。
-2. **不扩张 `main.go`** —— 仅 Railway 健康检查桩；新后端须先与用户对齐。
-3. **不新增根目录进度报告 markdown**。
-4. **`class_name` 全局唯一** —— 新增前 `grep -rn 'class_name <Name>' godot/`；冲突优先改引用少的一侧。
-5. **改 PNG / 新 `class_name` 后必须** `godot --headless --path godot --import` —— 否则 ctex 全黑或 Parse Error 雪崩。
-6. **牌面契约**：`assets/mahjong_tiles_riichi/<key>.png` 文件名不变；**272×389**；face 用 **WHITE** modulate（dim 用遮罩）；赤宝走 **`0m/0p/0s`** 真图。
-7. **纹理滤波**：`default_texture_filter=3`（LINEAR_WITH_MIPMAPS）。旧「NEAREST 像素完美」叙述已废弃。
-8. **主路径**：`ui/lobby/lobby_shell.tscn` + `ui/four_player_table/`；肉鸽 `ui/run/` 与旧中式 `legacy/` 已删除。`scenes/wechat_login_*`、`game_ui`、中式 `scripts/` **勿接生产**。
-9. **网络改动**须显式声明未端到端验证。
-10. **资产生成**：`godot/tools/asset_gen/`；用户选择 Grok CLI 时，生图、UI mockup、游戏资产、动效概念和视频统一交给同一个可见 Grok TUI 的内置生成能力；先 smoke 锁能力与风格，仓库外 staging QA 和选稿后再 cp；凭证只读环境变量；`_raw_*` / `_staging*` 不入库。仍遵守文件名、尺寸、版权/IP 与 import 纪律。用户明确选择 Codex 内置生图且会话暴露 `image_gen` 时，可通过活动 OpenAI-compatible provider 指向 `https://llmapi.lovbrowser.com/v1` 使用 `gpt-image-2`；Key 只从 `OPENAI_API_KEY` 环境变量读取，禁止写入 prompt、仓库或日志。该 new-api 路径已实测 `/v1/images/generations` 在省略 `response_format` 时返回非空 `data[].b64_json`，可被 Codex 内置工具直接解析；`/v1/images/edits` 虽共享响应路径，但未经本任务生产端到端实测，使用前须单独 smoke。
-11. **插件**：已有 **GUT**、**Anima**。默认不堆社区插件；引入前对照 ROI（见 `docs/superpowers/specs/2026-05-24-godot-frameworks-evaluation.md`）。
-12. **Autoload / 纹理隐式契约** —— 改 `TextureExtractor`、牌尺寸、调制规则前先查最近相关 commit。
+| 改动类型 | 最低验证 |
+|---|---|
+| `core/`、`battle/`、规则、AI | 受影响 GUT 模块 + 直接依赖契约测试 |
+| `ui/` 布局与交互 | GUT UI 测试 + 主路径手测；复杂改动补截图 |
+| PNG、其他业务资产、新 `class_name` | bootstrap/import + 相关 GUT + 主场景目视 |
+| 纯文档、Agent 说明 | `git diff --check` + 人工通读 |
+| 网络、WebSocket 客户端 | 相关测试，并显式声明未完成公网四客户端端到端验证 |
+| 根目录 Go 桩 `main.go` | 如获确认修改，先写 `_test.go`；不得扩张其健康检查职责 |
+
+- 日常快速门禁使用 `scripts/test_run_core.sh`；协议、服务器、整局、UI、STT 等重型回归使用 `scripts/test_run_slow.sh`，两者不可互相冒充覆盖范围。
+- Codex App worktree 可通过 `.worktreeinclude` 获得必要 Godot 导入缓存，但仍必须由 `scripts/godot_bootstrap.sh` 执行两轮 import 和第二轮错误审计。禁止提交 `.godot/`，也不得把首次 import 的退出码 0 当成缓存有效。
+- 开发中只运行新增/修改用例和受影响模块；最后一次代码修改后，必须运行受影响模块及直接依赖契约测试，并执行 `git diff --check`。
+- 受影响范围从真实生产调用链、共享数据结构和资源加载关系推导，不能只跑新测试自证。
+
+满足任一条件时升级全量 GUT：
+
+1. 修改跨模块协议/schema、事件序列化/恢复、权威基础状态机或通用规则基础设施；
+2. 修改 Autoload、`project.godot`、插件/依赖、全局 `class_name` 解析链或大范围资源导入；
+3. focused/模块测试出现跨目录 Parse Error、系统性失败，或无法可靠界定影响范围；
+4. 用户明确要求，或准备发布/里程碑回归。
+
+未运行全量时，PR 只能列出实际受影响测试和未覆盖风险，不得写“全量通过”。
+
+生产测试放在 `godot/tests/<module>/test_*.gd`。不得把新生产逻辑放进遗留的 `godot/scripts/test_*.gd` 或 `scenes/test_*.tscn`；`godot/tests/scenes/**/*.tscn` 仅供编辑器 F6 手测。
+
+任何“完成、修复、测试通过”结论必须附可执行命令和结果摘要；UI 改动补截图路径或手测说明。
+
+## 外部接口与 Skill
+
+- 对接 Godot 4.5/4.6 API、外部 HTTP/WS、SDK、OS API 或生成服务前，先核对当前官方资料和仓库既有正确用法，再用最小真实 smoke 固化参数、返回、错误和限制，最后按真实行为写测试。不能实测时披露原因和替代验证，不得把猜测写成事实。
+- 用户点名 Skill、模型、供应商或 CLI 时优先服从；未点名时选择当前会话实际暴露、覆盖范围最小的 Skill。所需 Skill 缺失或同名副本冲突时，说明阻塞或回退方案，不凭记忆拼接流程。
+- 游戏角色、场景、牌面、UI、图标、透明资产、Sprite、动画帧、Tileset 使用 `game-asset-forge` 建立资产合同和产品验收；需要模型生成时再叠加当前会话暴露的 provider Skill。
+- 真实媒体生成可能计费，必须先获用户授权并做一个最小 smoke。候选、响应和中间产物放在唯一的仓库外 `/tmp/<project>-<task>-<provider>-<round>/`；用户选定前不得复制进生产目录或据此修改场景。
+- HTTP 2xx、脚本 `OK`、网页预览或异步 `completed` 不等于资产合格。入库前必须读取最终文件，检查签名、规格、内容、alpha/halo、小尺寸可读性；视频还要核对元数据、代表帧和可播放成片，再执行 Godot import、场景加载和受影响测试。
+- 凭证只从 Skill 规定的环境变量或受控存储读取，不进入 prompt、参数、回显、日志、文件名、元数据、仓库或交付说明。外部素材必须确认使用权，不复刻竞品角色、Logo、专有纹样、文案或像素布局。
+
+## Grok CLI 项目覆盖规则
+
+仅在用户明确选择 Grok CLI 开发时适用。Grok 的唯一流程事实源是 Akasha Grimoire 中的 `grok-cli-development` Skill 及其脚本；仓库内 `.agents/skills/grok-cli-development/` 的兼容副本不得作为回退。当前会话未暴露 Akasha 版本时暂停并报告，本节只规定 mahjong-game 的覆盖项。
+
+- 一个 Issue 对应一个 Codex App 任务、任务分支、worktree、可见 Terminal 窗口和 attached tmux TUI；同一 worktree 同时只有一个 Grok writer。不同 Issue 仅在写文件不冲突时各自并行。
+- 当前 Codex 任务先独立完成需求理解、Git 现场检查、允许范围、非目标、TDD 和验收合同；产品取舍、权限、凭证、安全或不可逆事项先向用户确认，不让 Grok 猜测。
+- Plan、Red、Green/Refactor、返工和交付复用同一个 Grok TUI；Grok 禁止派生子 Agent，不使用后台 PTY、单轮模式、`--continue` 或第二个 Grok 会话。媒体生成也留在同一可见 TUI。
+- 启动和每次输入后按 Skill 的状态/交付文件合同运行单一长 monitor；项目状态包括 `GROK_PLANNING`、`GROK_RED_READY`、`GROK_IMPLEMENTING`、`GROK_BLOCKED_USER_DECISION`、`GROK_SCOPE_DRIFT`、`GROK_ERROR`、`GROK_ABORTED`、`GROK_DELIVERY_COMPLETE`。项目把单轮等待覆盖为最长 1800 秒，由脚本每 20 秒检查；退出码 0/3/124 分别表示完成、需要动作和本轮超时。
+- 安静的 planning/implementing 是正常状态，不读取 pane、不检查中间 Git 现场、不高频轮询、不发送 `Ctrl-C`，也不自动发送“按推荐执行”。
+- 需要用户决策时只请求并投递一次答案；短时间状态未变化不重复输入。Grok 已退出但缺少完整交付时，只有用户明确报告后才检查 tmux 和 Git 现场。
+- Grok 交付必须列出修改文件、需求映射、Red/Green/Refactor 命令与结果、最后一次修改后的受影响验证日志、未验证项、风险和 Git 状态。
+- 当前 Codex 从累计 diff 和真实生产入口沿调用链独立 Review，核对状态构造、规则门控、命令消费、事件发布/回放和最终用户可见行为；测试直接调用 helper、DTO 或占位对象不能证明业务已经接线。随后审计 Grok 最后修改后的验证证据，并使用相邻 focused/契约测试交叉验证。证据缺失、过期或矛盾必须打回 Grok，P0–P2 清零前不得 Git 交付。
+- 返工继续使用同一 TUI；完整返工合同写到唯一的仓库外文件，tmux 只粘贴一行读取指令并只提交一次。返工后重新审累计关键路径和受影响验证。
+- 只有完整 Review 和独立验证通过后，才按精确 session 名关闭 tmux；禁止 `tmux kill-server`、glob、模糊匹配或关闭未记录的 Terminal 窗口。
+
+## Git 与 worktree
+
+- 业务代码、影响运行的配置和资源默认在任务 worktree 与任务分支中修改，不直接在主工作区开发；当前已经位于非 `main` 任务分支或对应 worktree 时直接继续。
+- 纯文档或 Agent 规范微调可在当前分支完成；纯打包且不改跟踪内容可在主工作区执行。
+- 新任务默认基于最新 `main` / `origin/main`，合并目标默认是建 worktree 时的基分支；分支默认使用 `codex/<task-name>`，已有明确命名约定时遵循项目约定。
+- commit、push、创建或合并 PR、启动后续 Codex App 任务都需要用户或当前 Issue 明确授权；不得从普通“修改/修复”请求自动扩张到远端发布或后续任务。
+- 每个 commit 应独立可构建，不混入无关 Godot、Go 或文档改动。PR 默认使用中文，包含摘要、影响模块、验证命令与结果；UI 改动附截图或手测说明。
+- Issue 合并后，先 fetch 并确认提交进入最新 `origin/main`，再确认任务 worktree 干净、无未推送提交、需保留 stash 或异常文件；仅用精确路径删除该 worktree 和已合并本地分支。存在未提交/未推送内容时暂停报告，禁止强制删除、glob、模糊或批量清理。
+
+## 文档与项目红线
+
+- 工作流只改本文件；技术事实改 `CLAUDE.md`；领域流程改对应 Skill。关键行为变化同步更新任务范围内的事实源；发现范围外文档失真时先报告，不顺手扩张修改。
+- 禁止新增根目录状态、进度或完成总结类 Markdown；总结写入 commit message 或活跃 `docs/`。
+- `docs/archive/` 是冻结历史，不是当前事实源。除非用户明确要求历史追溯、旧决策审计或迁移核对，否则不读取或引用，不用归档内容覆盖代码、`CLAUDE.md` 或活跃 `docs/superpowers/`。
+- 根目录 `main.go` 仅为 Railway 健康检查桩；新后端或职责扩张必须先与用户对齐。
+- 生产主路径、牌面文件名与尺寸、纹理滤波、Autoload、插件和资产生成事实以 `CLAUDE.md` 为准。修改这些契约前先查真实调用链、相关资源和最近相关 commit，并执行对应 import、测试和目视验证。
+- 新增全局 `class_name` 前用 `rg -n 'class_name <Name>' godot/` 检查唯一性。
+- 不把退役或遗留场景、脚本重新接入生产主路径；具体范围见 `CLAUDE.md`。
+- 本仓已有本地 control-plane、STT 和 Headless Worker 路径，但没有公网四客户端完整环境；任何网络改动都必须明确写“未完成公网四客户端端到端验证”。
+- 默认不增加社区插件；确有需要时先给出必要性、维护成本和替代方案。
+- 生成原稿和 staging 文件不入库；仍须遵守 `CLAUDE.md` 中牌面命名、尺寸、版权/IP、凭证和 import 契约。
