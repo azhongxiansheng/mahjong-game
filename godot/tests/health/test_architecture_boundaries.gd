@@ -4,7 +4,7 @@ extends GutTest
 
 const FIXTURE_ROOT := "res://tests/health/fixtures/architecture_boundaries"
 const MODULES := ["core", "battle", "protocol", "session", "server", "ui"]
-const OWNER_ISSUES := ["#391", "#392", "#393", "#394", "#395", "#396", "#399"]
+const OWNER_ISSUES := ["#391", "#392", "#393", "#394", "#395", "#396"]
 
 const RULES := {
 	"core": [
@@ -60,27 +60,6 @@ const METADATA_MATCHES := [
 ]
 
 const CURRENT_DEBT_ALLOWLIST := [
-	{
-		"file": "res://core/rules_japanese/nagashi_mangan.gd",
-		"rule": "core_forbidden_concrete_type",
-		"match": "BattleState",
-		"issue": "#399",
-		"count": 1,
-	},
-	{
-		"file": "res://core/turn_engine/draw_detector.gd",
-		"rule": "core_forbidden_concrete_type",
-		"match": "BattleState",
-		"issue": "#399",
-		"count": 4,
-	},
-	{
-		"file": "res://core/turn_engine/turn_engine.gd",
-		"rule": "core_forbidden_concrete_type",
-		"match": "BattleState",
-		"issue": "#399",
-		"count": 2,
-	},
 	{
 		"file": "res://battle/battle_controller.gd",
 		"rule": "local_authority_metadata_seam",

@@ -4,8 +4,8 @@ class_name NagashiMangan
 # 检测/支付都是纯函数,不修改 state。BC 与 GameDriver 共用。
 
 
-# 扫 BattleState 4 座位,首个满足条件的返回 seat_id;无则 -1。
-static func detect_winner_seat(state: BattleState) -> int:
+# 扫 TableState 4 座位,首个满足条件的返回 seat_id;无则 -1。
+static func detect_winner_seat(state: TableState) -> int:
 	for s in range(4):
 		var discards: Array = state.seats[s].river.tiles()
 		if discards.is_empty():

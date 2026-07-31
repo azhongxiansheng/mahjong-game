@@ -1,12 +1,13 @@
 class_name BattleState
+extends TableState
 
 # 一局对战快照（spec §5）。
 # 合并自 plan 0e（含 seats/wall/phase 等完整对战字段）与 main PR #8 里程碑 1（技能框架字段）。
 # 两条路线共存：
 #   - 0e 字段：seats / wall / dora_indicators / phase / current/dealer 等
-#     —— TurnEngine 与 ScoreCalc 用
+#     —— 已下沉到 core/turn_engine/table_state.gd（ARCH-CORE #399），TurnEngine 与 ScoreCalc 用
 #   - 里程碑 1 字段：scores / furiten_flags / ron_cancelled / revealed_tiles / haitei_forced_seat
-#     —— SkillScheduler 与 SkillCtx 用
+#     —— SkillScheduler 与 SkillCtx 用，仍由本类持有
 # 注：scores 与 seats[i].points 在概念上重复；当前两个分支独立维护各自的来源，后续 plan
 # 应将一者改为派生（避免漂移）。0e 已加 turn_count 维护巡数。
 
@@ -14,24 +15,6 @@ const MAX_EVENT_CHAIN_DEPTH := 16
 const STARTING_SCORE := 25000
 
 const _SEAT_WINDS: Array = [TileId.E, TileId.S_WIND, TileId.W_WIND, TileId.N]
-
-# 0e 完整对战字段
-var seats: Array = []                  # Array[Seat] 长度 4
-var wall: Wall                         # 含 dead_wall 切片
-var dora_indicators: DoraIndicators
-var dealer_seat: int = 0               # 庄家 seat_id（一局内不变）
-var current_seat: int = 0
-var phase: int = BattlePhase.Kind.DRAW
-var round_wind: int = TileId.E         # 东风战恒为东
-var hand_number: int = 1               # 1..4 (东 1..东 4)
-var honba: int = 0
-var riichi_sticks: int = 0
-# E2-02 / #232：局序号命名空间；Wall 用 hand_seq*136+serial 分配 instance_id
-var hand_seq: int = 0
-
-# 0e 巡数 / 第一巡
-var turn_count: int = 0
-var first_round_active: bool = true
 
 # 共享
 var event_chain_depth: int = 0

@@ -4,9 +4,9 @@ class_name TurnEngine
 # 公开动作一律走 instance_id；先完整预检，失败零修改；不接受客户端 Tile 对象。
 # 本引擎不发出任何事件 / 信号 — EventBus 接入留里程碑 1。
 
-var state: BattleState
+var state: TableState
 
-func _init(p_state: BattleState) -> void:
+func _init(p_state: TableState) -> void:
 	state = p_state
 
 # 当前 seat 摸 1 张 live wall；phase → DISCARD。返 null 表示牌墙耗尽。
