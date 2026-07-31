@@ -111,7 +111,7 @@ func test_wall_peek_reveals_on_game_begin():
 	ConsumableFactory.inject(reg, &"wall_peek_v1", 0)
 	assert_eq(st.revealed_tiles.size(), 0)
 	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
-	assert_eq(st.revealed_tiles.size(), 5, "千里眼应 reveal 5 张")
+	assert_eq(st.revealed_tiles.size(), 3, "千里眼应 reveal 3 张")
 
 func test_double_payout_multiplies_han():
 	var reg := SkillRegistry.new()
@@ -130,4 +130,64 @@ func test_dora_charm_adds_extra_dora():
 	var sched := SkillScheduler.new(reg, st)
 	ConsumableFactory.inject(reg, &"dora_charm_v1", 0)
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(st.extra_dora_count[0], 3, "宝牌护符应 +3 dora")
+	assert_eq(st.extra_dora_count[0], 2, "宝牌护符应 +2 dora")
+
+
+# ============================================================
+# 第 5 组：道具 L0/L1 规则对齐批（2026-07-28 玩法设计 spec §3.1）
+# ============================================================
+
+func test_wall_collapse_removes_six_and_consumes():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	st.wall = Wall.new_full_set()
+	st.wall.reserve_dead_wall(14)
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"wall_collapse_v1", 0)
+	var before := st.wall.live_wall_size()
+	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(st.wall.live_wall_size(), before - 6, "牌墙崩塌应移除 6 张")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_true(sk.consumed, "成功移除后应消耗")
+
+func test_wall_collapse_rejects_when_wall_would_drop_below_14():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	st.wall = Wall.new_full_set()
+	st.wall.reserve_dead_wall(14)
+	while st.wall.live_wall_size() > 19:
+		st.wall.draw()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"wall_collapse_v1", 0)
+	sched.emit_event(BattleEvent.make(&"GAME_BEGIN", 0))
+	assert_eq(st.wall.live_wall_size(), 19, "活牌墙将低于 14 张时应拒绝且不移除")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_false(sk.consumed, "拒绝时不消耗")
+
+func test_furiten_bomb_cancels_next_opponent_ron_then_consumes():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"furiten_bomb_v1", 0)
+	# 对手荣和不要求来自 owner 的舍牌
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 2}))
+	assert_true(st.ron_cancelled[1], "振听炸弹应取消下一名对手的荣和")
+	st.ron_cancelled[1] = false
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 2}))
+	assert_false(st.ron_cancelled[1], "consumed 后不再触发")
+
+func test_furiten_bomb_ignores_owner_ron_and_tsumo():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"furiten_bomb_v1", 0)
+	# owner 自己荣和不受影响
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 0, null, {"discarder_seat": 2}))
+	assert_false(st.ron_cancelled[0], "owner 自己的荣和不取消")
+	# 自摸（WIN_DECLARED_PRE）不触发、不消耗
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1, null, {"is_tsumo": true}))
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_false(sk.consumed, "对自摸无效且不消耗")
+	# 武装仍在：下一次对手荣和仍被取消
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0}))
+	assert_true(st.ron_cancelled[1], "武装保留到下一次对手荣和")

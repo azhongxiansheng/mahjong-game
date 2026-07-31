@@ -933,6 +933,11 @@ func _adapt_yaku_list(eval_list: YakuEntries, win_hand: Hand = null, win_melds: 
 static func _apply_skill_han_delta(yaku_list: YakuList, delta: int) -> void:
 	if delta == 0:
 		return
+	# spec 2026-07-28 §2.3：负番防御只减少计分番，最终计分番最低为 1。
+	if delta < 0:
+		delta = maxi(delta, 1 - yaku_list.total_han())
+		if delta >= 0:
+			return
 	yaku_list.add_yaku(&"skill_bonus", delta)
 
 # M7 B2：把 BattleState.extra_dora_count[winner] + extra_red_dora_count[winner]

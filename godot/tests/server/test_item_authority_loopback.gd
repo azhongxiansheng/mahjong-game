@@ -363,7 +363,7 @@ func test_item_use_immediate_emits_matching_snapshot_nbc_atomic() -> void:
 	assert_eq(int(consumed_ne.server_seq), int(applied_ne.server_seq) + 1)
 	assert_eq(int(snap_ne.server_seq), int(consumed_ne.server_seq) + 1)
 	if target_item == "wall_collapse_v1":
-		assert_eq(bc.state.wall.live_wall_size(), maxi(0, wall_before - 10))
+		assert_eq(bc.state.wall.live_wall_size(), maxi(0, wall_before - 6))
 	assert_eq(server.mode_modules.item_inventory.instance_count(), inv_before_view - 1)
 	# NBC 原子路径：committed 停在 APPLIED-1；异 hash 双事件 pending；终态 SNAP 一次提交
 	var nbc := NetworkedBattleController.new(str(server.get("_room_id")), seat_use)

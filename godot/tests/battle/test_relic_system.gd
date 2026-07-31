@@ -61,3 +61,66 @@ func test_relic_soul_mirror_steals_score():
 	var before_0: int = st.scores[0]
 	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
 	assert_gt(st.scores[0], before_0, "魂镜应偷取得分")
+
+
+# ============================================================
+# 道具 L0/L1 规则对齐批（2026-07-28 玩法设计 spec §4.1 / §2.3）
+# ============================================================
+
+func _tile(tid: int, serial: int) -> Tile:
+	return Tile.new(tid, false, Tile.NO_OWNER, serial)
+
+func test_relic_red_string_requires_concealed_hand():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	for i in range(4):
+		st.seats.append(Seat.new(i, TileId.E))
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_red_string_v1", 0)
+	# 门清（无副露）→ +1 赤 Dora
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(st.extra_red_dora_count[0], 1, "门清胡牌应 +1 赤 Dora")
+	# 副露（碰）→ 不触发；meld_id 编码为 local_index*4+seat_id（seat 0 → 0）
+	var pon_tiles: Array[Tile] = [
+		_tile(TileId.W5, 1), _tile(TileId.W5, 2), _tile(TileId.W5, 3),
+	]
+	var pon: Meld = Meld.make_pon(pon_tiles, 1, 0)
+	assert_true(st.seats[0].melds.restore([pon], 1), "测试副露必须成功装入")
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(st.extra_red_dora_count[0], 1, "副露手不触发红线")
+
+func test_relic_comeback_crown_strict_lowest_two_tied_one():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_comeback_crown_v1", 0)
+	# 严格最低 → +2
+	st.scores = [10000, 30000, 30000, 30000]
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 2, "严格最低分 +2 番")
+	# 并列最低 → +1
+	st.scores = [10000, 10000, 40000, 40000]
+	var ctx2 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(ctx2.han_deltas.get(0, 0)), 1, "并列最低分 +1 番")
+	# 不是最低 → 0
+	st.scores = [30000, 10000, 30000, 30000]
+	var ctx3 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(ctx3.han_deltas.get(0, 0)), 0, "非最低不加番")
+
+func test_negative_skill_han_delta_clamped_to_min_one_han():
+	# spec §2.3：负番防御只减少计分番，最终计分番最低为 1
+	var yl := YakuList.new()
+	yl.add_yaku(&"riichi", 1)
+	BattleController._apply_skill_han_delta(yl, -3)
+	assert_eq(yl.total_han(), 1, "最终计分番最低为 1")
+	var yl2 := YakuList.new()
+	yl2.add_yaku(&"riichi", 1)
+	yl2.add_yaku(&"tsumo", 1)
+	yl2.add_yaku(&"pinfu", 1)
+	BattleController._apply_skill_han_delta(yl2, -2)
+	assert_eq(yl2.total_han(), 1, "3 番 -2 应剩 1 番")
+	var yl3 := YakuList.new()
+	yl3.add_yaku(&"riichi", 1)
+	yl3.dora_count = 2
+	BattleController._apply_skill_han_delta(yl3, -2)
+	assert_eq(yl3.total_han(), 1, "含 Dora 也按总计分番钳制到 1")

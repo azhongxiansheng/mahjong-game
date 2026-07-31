@@ -22,4 +22,6 @@ static func apply_immediate(
 	ctx.beneficiary_seat = seat
 	ctx.current_skill = skill
 	hook.on_event(skill, event, ctx)
-	return true
+	# 即时 hook 以 consume_self 表示成功；未消耗（前置条件不满足）视为拒绝，
+	# 由调用方（ItemAuthority.use_item）保持实例 held、不发 APPLIED/CONSUMED。
+	return skill.consumed

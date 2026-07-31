@@ -84,13 +84,13 @@ func test_immediate_runner_executes_definition_hook_without_item_id_branch() -> 
 	var before := state.wall.live_wall_size()
 	assert_true(ItemEffectRunner.apply_immediate(
 		ItemCatalog.definition(&"wall_collapse_v1"), state, 0))
-	assert_eq(state.wall.live_wall_size(), before - 10)
+	assert_eq(state.wall.live_wall_size(), before - 6)
 
 	var reveal_state := BattleState.new()
 	reveal_state.wall = Wall.new_full_set()
 	reveal_state.wall.reserve_dead_wall(14)
 	assert_true(ItemEffectRunner.apply_immediate(
 		ItemCatalog.definition(&"wall_peek_v1"), reveal_state, 2))
-	assert_eq(reveal_state.revealed_tiles.size(), 5)
+	assert_eq(reveal_state.revealed_tiles.size(), 3)
 	for row in reveal_state.revealed_tiles:
 		assert_eq(row.get("visible_to", []), [2])

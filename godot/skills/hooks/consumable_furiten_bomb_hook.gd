@@ -1,5 +1,6 @@
 # 振听炸弹 — 战斗消耗品
-# WIN_DECLARED_PRE: 取消所有对手的荣胡（1 次性）
+# RON_DECLARED：取消下一名对手声明的荣和，然后消耗（spec 2026-07-28 §3.1）。
+# 不要求该荣和来自 owner 的舍牌；对自摸无效（自摸不发 RON_DECLARED）。
 extends SkillHook
 
 func on_event(_skill: SkillResource, event: BattleEvent, ctx: SkillCtx) -> void:
