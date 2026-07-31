@@ -48,6 +48,10 @@ var discard_rivers: Array = []
 # 4 个 MeldArea（索引 = seat_id），每家副露日麻风格视觉化
 # spec docs/superpowers/specs/2026-05-08-meld-area-japanese-style-design.md
 var meld_areas: Array = []
+# 可替换的真 3D 牌实体层；本节点继续是唯一状态与 HUD owner。
+var _tile_entity_renderer: Node = null
+var _revealed_hands_by_seat: Dictionary = {}
+var _win_tile_ids_by_seat: Dictionary = {}
 
 # E4-04 / #246：字幕覆盖层（自动创建；仅 UI 注入，不接语音/奖励权威）
 # E5-06 / #254：奖池 HUD + 库存抽屉 + 投影 store（display-only）
@@ -159,6 +163,10 @@ func bind_battle_state(state: BattleState, hand_index: int, hands_per_round_arg:
 			var hand_metrics: Dictionary = seat_panels[i].get_reference_hand_metrics()
 			ma.apply_reference_layout(float(hand_metrics["main_extent"]),
 				bool(hand_metrics["has_drawn"]))
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("bind_battle_state"):
+		renderer.call("bind_battle_state", state, hand_index, hands_per_round_arg)
+	reapply_renderer_neutral_hand_state()
 
 # 整场累计分（来自 GameDriver.cumulative_scores）
 func bind_cumulative_scores(scores: Array) -> void:
@@ -177,6 +185,9 @@ func highlight_tile_id(tile_id: int) -> void:
 	# 自家手牌槽
 	if seat_panels.size() > 0 and seat_panels[0]:
 		seat_panels[0].highlight_hand_tile_id(tile_id)
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("highlight_tile_id"):
+		renderer.call("highlight_tile_id", tile_id)
 
 
 func clear_tile_highlight() -> void:
@@ -188,18 +199,42 @@ func clear_tile_highlight() -> void:
 			ma.clear_hover_match()
 	if seat_panels.size() > 0 and seat_panels[0]:
 		seat_panels[0].highlight_hand_tile_id(-1)
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("clear_tile_highlight"):
+		renderer.call("clear_tile_highlight")
 
 
-## #405 hybrid：保留本节点作为唯一状态/HUD owner，只切换桌面牌实体。
-func set_table_entities_visible(entities_visible: bool) -> void:
-	var stage := get_node_or_null("TableStage") as CanvasItem
-	if stage != null:
-		stage.visible = entities_visible
-	var board_frame := get_node_or_null("Table/BoardFrame") as CanvasItem
-	if board_frame != null:
-		board_frame.visible = entities_visible
-	if center_info != null:
-		center_info.visible = entities_visible
+## 把透明牌层放在 BoardFrame 之后、SeatPanel/河/副露/CenterInfo 之前。
+func mount_tile_entity_renderer(renderer: Control) -> bool:
+	if renderer == null:
+		return false
+	var table_node := get_node_or_null("Table")
+	var board_frame := get_node_or_null("Table/BoardFrame")
+	if table_node == null or board_frame == null:
+		return false
+	if renderer.get_parent() != null:
+		renderer.get_parent().remove_child(renderer)
+	table_node.add_child(renderer)
+	table_node.move_child(renderer, board_frame.get_index() + 1)
+	_tile_entity_renderer = renderer
+	return true
+
+
+func get_tile_entity_renderer() -> Node:
+	return _active_tile_renderer()
+
+
+func _active_tile_renderer() -> Node:
+	if _tile_entity_renderer == null or not is_instance_valid(_tile_entity_renderer):
+		return null
+	if _tile_entity_renderer is CanvasItem \
+			and not (_tile_entity_renderer as CanvasItem).visible:
+		return null
+	return _tile_entity_renderer
+
+
+## hybrid 只切换牌实体；桌布、木框、中央盘、头像和 HUD 永远保留。
+func set_2d_tile_entities_visible(entities_visible: bool) -> void:
 	for panel in seat_panels:
 		if panel != null and panel.has_method("set_hand_row_visible"):
 			panel.set_hand_row_visible(entities_visible)
@@ -209,10 +244,119 @@ func set_table_entities_visible(entities_visible: bool) -> void:
 	for area in meld_areas:
 		if area is CanvasItem:
 			(area as CanvasItem).visible = entities_visible
-	# 根节点只让桌面空白区域继续下传；Button 等保留 HUD 子控件仍按自身
-	# MOUSE_FILTER_STOP 接收输入。
-	mouse_filter = Control.MOUSE_FILTER_PASS if not entities_visible \
-		else Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_STOP if entities_visible \
+		else Control.MOUSE_FILTER_PASS
+
+
+## #405 完整 3D 实验路径兼容入口；透明牌层不调用本函数。
+func set_table_entities_visible(entities_visible: bool) -> void:
+	var stage := get_node_or_null("TableStage") as CanvasItem
+	if stage != null:
+		stage.visible = entities_visible
+	var board_frame := get_node_or_null("Table/BoardFrame") as CanvasItem
+	if board_frame != null:
+		board_frame.visible = entities_visible
+	if center_info != null:
+		center_info.visible = entities_visible
+	set_2d_tile_entities_visible(entities_visible)
+
+
+func get_hand_tile_render_info(tile_instance_id: int) -> Dictionary:
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("get_hand_tile_render_info"):
+		return renderer.call("get_hand_tile_render_info", tile_instance_id)
+	if seat_panels.is_empty() or seat_panels[0] == null:
+		return {}
+	var panel := seat_panels[0] as SeatPanel
+	return panel.get_hand_tile_render_info(tile_instance_id)
+
+
+func set_hand_rows_visible(rows_visible: bool) -> void:
+	var renderer := _active_tile_renderer()
+	for panel in seat_panels:
+		if panel != null and panel.has_method("set_hand_row_visible"):
+			panel.set_hand_row_visible(rows_visible if renderer == null else false)
+	if renderer != null and renderer.has_method("set_hands_visible"):
+		renderer.call("set_hands_visible", rows_visible)
+
+
+func mark_win_tile(tile_id: int, seat_id: int = 0) -> void:
+	if seat_id < 0 or seat_id >= seat_panels.size() or tile_id < 0:
+		return
+	_win_tile_ids_by_seat[seat_id] = tile_id
+	var panel := seat_panels[seat_id] as SeatPanel
+	if panel != null:
+		panel.mark_win_tile(tile_id)
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("mark_seat_win_tile"):
+		renderer.call("mark_seat_win_tile", seat_id, tile_id)
+
+
+func clear_hand_reveals() -> void:
+	_revealed_hands_by_seat.clear()
+	_win_tile_ids_by_seat.clear()
+	for panel in seat_panels:
+		if panel != null and panel.has_method("clear_hand_reveal"):
+			panel.clear_hand_reveal()
+		if panel != null and panel.has_method("clear_win_tile"):
+			panel.clear_win_tile()
+	# 清理是 absence 状态，必须同步到隐藏但仍可复用的 renderer，避免切回后复活。
+	var renderer := _tile_entity_renderer \
+		if is_instance_valid(_tile_entity_renderer) else null
+	if renderer != null and renderer.has_method("clear_all_hand_reveals"):
+		renderer.call("clear_all_hand_reveals")
+
+
+func reveal_seat_hand_face_up(seat_id: int, hand: Hand,
+		animate: bool = true) -> void:
+	if seat_id < 0 or seat_id >= seat_panels.size() or hand == null:
+		return
+	_revealed_hands_by_seat[seat_id] = hand
+	var renderer := _active_tile_renderer()
+	var panel := seat_panels[seat_id] as SeatPanel
+	if panel != null:
+		panel.reveal_hand_face_up(hand, animate and renderer == null)
+		if _win_tile_ids_by_seat.has(seat_id):
+			panel.mark_win_tile(int(_win_tile_ids_by_seat[seat_id]))
+	if renderer != null and renderer.has_method("reveal_seat_hand_face_up"):
+		renderer.call("reveal_seat_hand_face_up", seat_id, hand, animate)
+
+
+func reapply_renderer_neutral_hand_state() -> void:
+	var renderer := _active_tile_renderer()
+	for seat_value in _revealed_hands_by_seat.keys():
+		var seat_id := int(seat_value)
+		if seat_id < 0 or seat_id >= seat_panels.size():
+			continue
+		var hand := _revealed_hands_by_seat[seat_value] as Hand
+		if hand == null:
+			continue
+		var panel := seat_panels[seat_id] as SeatPanel
+		if panel != null:
+			panel.reveal_hand_face_up(hand, false)
+		if renderer != null and renderer.has_method("reveal_seat_hand_face_up"):
+			renderer.call("reveal_seat_hand_face_up", seat_id, hand, false)
+	for seat_value in _win_tile_ids_by_seat.keys():
+		var seat_id := int(seat_value)
+		var tile_id := int(_win_tile_ids_by_seat[seat_value])
+		if seat_id >= 0 and seat_id < seat_panels.size():
+			var panel := seat_panels[seat_id] as SeatPanel
+			if panel != null:
+				panel.mark_win_tile(tile_id)
+		if renderer != null and renderer.has_method("mark_seat_win_tile"):
+			renderer.call("mark_seat_win_tile", seat_id, tile_id)
+
+
+func get_river_last_global_center(seat_id: int) -> Vector2:
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("get_river_last_global_center"):
+		return renderer.call("get_river_last_global_center", seat_id)
+	if seat_id < 0 or seat_id >= discard_rivers.size():
+		return Vector2.ZERO
+	var river = discard_rivers[seat_id]
+	if river == null or not river.has_method("get_last_tile_local_center"):
+		return Vector2.ZERO
+	return river.to_global(river.get_last_tile_local_center())
 
 # ---- helpers ----
 
@@ -567,6 +711,10 @@ func screen_seat_absolute(relative_slot: int) -> int:
 func bind_core_table_view(core: Dictionary) -> void:
 	const AdapterScr := preload("res://ui/four_player_table/public_table_projection_adapter.gd")
 	AdapterScr.apply_core_table(self, core)
+	var renderer := _active_tile_renderer()
+	if renderer != null and renderer.has_method("bind_core_table_view"):
+		renderer.call("bind_core_table_view", core)
+	reapply_renderer_neutral_hand_state()
 
 
 func set_viewer_reveal_label(value: String) -> void:

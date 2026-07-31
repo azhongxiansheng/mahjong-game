@@ -84,6 +84,123 @@ static func melds_from_views(views: Array) -> Array:
 	return out
 
 
+## 将 committed core_table@1 转为牌实体 renderer 可直接消费的只读视图。
+##
+## renderer 坐标固定为 screen_seat（0=本席下方）；副露的 from_seat 仍是权威绝对席，
+## 因此同时保留 absolute_seat/layout_claimant_absolute，禁止混用两个坐标系。
+## concealed_tiles 已由上游按 recipient 裁剪：保留授权子集，但绝不超过 concealed_count；
+## 无授权数据的他席仍只投影数量，不凭空创建 Tile/实例身份。
+static func renderer_view(core: Dictionary) -> Dictionary:
+	var recipient_value: Variant = core.get("recipient_seat", null)
+	if typeof(recipient_value) != TYPE_INT:
+		return {}
+	var recipient: int = int(recipient_value)
+	if not _is_valid_seat(recipient):
+		return {}
+
+	var current_absolute: int = _seat_field_or_invalid(core, "current_seat")
+	var dealer_absolute: int = _seat_field_or_invalid(core, "dealer_seat")
+	var current_screen: int = relative_seat(current_absolute, recipient) \
+		if _is_valid_seat(current_absolute) else -1
+	var dealer_screen: int = relative_seat(dealer_absolute, recipient) \
+		if _is_valid_seat(dealer_absolute) else -1
+
+	var indicator_views: Array = _array_field(core, "dora_indicators")
+	var indicators: Array = tiles_from_views(indicator_views)
+	var dora_ids: Array = []
+	for indicator in indicators:
+		if indicator is Tile:
+			dora_ids.append(DoraIndicator.dora_from_indicator((indicator as Tile).id))
+
+	var projected_seats: Array = []
+	for screen_seat in range(4):
+		var absolute: int = absolute_seat(screen_seat, recipient)
+		var source: Dictionary = _seat_view(core, absolute)
+		var concealed_count: int = clampi(
+			int(source.get("concealed_count", 0)), 0, 14)
+		var concealed: Array = tiles_from_views(
+			_array_field(source, "concealed_tiles"))
+		# 即使绕过 wire validator 调用，也不投影超过声明暗手数量的身份。
+		if concealed.size() > concealed_count:
+			concealed = concealed.slice(0, concealed_count)
+		var last_drawn: int = Tile.INVALID_INSTANCE_ID
+		var has_drawn: bool = concealed_count % 3 == 2
+		if screen_seat == 0:
+			var candidate: int = int(source.get(
+				"last_drawn_tile_instance_id", Tile.INVALID_INSTANCE_ID))
+			if _tiles_contain_instance_id(concealed, candidate):
+				last_drawn = candidate
+			has_drawn = Tile.is_valid_instance_id(last_drawn)
+
+		projected_seats.append({
+			# seat 保持 BattleState-like 的 renderer 屏幕槽语义；绝对席另列。
+			"seat": screen_seat,
+			"screen_seat": screen_seat,
+			"absolute_seat": absolute,
+			"layout_claimant_absolute": absolute,
+			"seat_wind": int(source.get("seat_wind", -1)),
+			"score": int(source.get("score", 0)),
+			"concealed_tiles": concealed,
+			"concealed_count": concealed_count,
+			"last_drawn_tile_instance_id": last_drawn,
+			"has_drawn": has_drawn,
+			"river": tiles_from_views(_array_field(source, "river")),
+			"melds": melds_from_views(_array_field(source, "melds")),
+			"riichi_declared": bool(source.get("riichi_declared", false)),
+			"riichi_double": bool(source.get("riichi_double", false)),
+			"riichi_discard_index": int(source.get("riichi_discard_index", -1)),
+			"is_current": absolute == current_absolute,
+			"is_dealer": absolute == dealer_absolute,
+		})
+
+	return {
+		"recipient_seat": recipient,
+		"hand_seq": int(core.get("hand_seq", 0)),
+		"phase": str(core.get("phase", "")),
+		"round_wind": int(core.get("round_wind", TileId.E)),
+		"hand_number": int(core.get("hand_number", 1)),
+		"honba": int(core.get("honba", 0)),
+		"riichi_sticks": int(core.get("riichi_sticks", 0)),
+		"live_wall_count": int(core.get("live_wall_count", 0)),
+		# current_seat/dealer_seat 是 renderer 屏幕槽；绝对席使用显式后缀。
+		"current_seat": current_screen,
+		"dealer_seat": dealer_screen,
+		"current_screen_seat": current_screen,
+		"dealer_screen_seat": dealer_screen,
+		"current_absolute_seat": current_absolute,
+		"dealer_absolute_seat": dealer_absolute,
+		"dora_indicators": indicators,
+		"dora_ids": dora_ids,
+		"seats": projected_seats,
+	}
+
+
+static func _is_valid_seat(seat: int) -> bool:
+	return seat >= 0 and seat < 4
+
+
+static func _seat_field_or_invalid(source: Dictionary, key: String) -> int:
+	var value: Variant = source.get(key, null)
+	if typeof(value) != TYPE_INT:
+		return -1
+	var seat: int = int(value)
+	return seat if _is_valid_seat(seat) else -1
+
+
+static func _array_field(source: Dictionary, key: String) -> Array:
+	var value: Variant = source.get(key, [])
+	return value as Array if typeof(value) == TYPE_ARRAY else []
+
+
+static func _tiles_contain_instance_id(tiles: Array, instance_id: int) -> bool:
+	if not Tile.is_valid_instance_id(instance_id):
+		return false
+	for tile in tiles:
+		if tile is Tile and (tile as Tile).instance_id == instance_id:
+			return true
+	return false
+
+
 ## 将 core_table@1 投影到 FourPlayerTable（屏幕槽 0=本席下方）。
 static func apply_core_table(table: FourPlayerTable, core: Dictionary) -> void:
 	if table == null or core.is_empty():

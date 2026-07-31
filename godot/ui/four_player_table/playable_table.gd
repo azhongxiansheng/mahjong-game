@@ -44,14 +44,21 @@ var _bc: PlayableBattleController = null
 var _decision_adapter: TableDecisionAdapter = null
 
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
-# 真 3D 桌（透视 mesh + 2D HUD）仅供显式实验；生产默认走 2D。
+# 完整真 3D 桌仍仅供显式实验；生产入口默认使用 2.5D 桌体+透明 3D 牌层。
 var _use_3d: bool = false
-# #405：保留 FourPlayerTable 为唯一状态/HUD owner，仅替换桌与牌的视觉层。
+# 保留 FourPlayerTable 为唯一状态/HUD owner，仅替换牌实体视觉层。
 var _hybrid_table_3d: MahjongTable3D = null
 var _last_bound_state: BattleState = null
+var _last_bound_core_table_view: Dictionary = {}
 var _last_bound_hand_index: int = 0
 var _last_bound_hands_per_round: int = 4
-const HYBRID_ACTION_BAR_Y: float = 610.0
+var _hand_rows_visible: bool = true
+var _hand_interaction_state: Dictionary = {
+	"clickable": false,
+	"dim_active": false,
+	"dim_allowed_instances": [],
+	"selected_instances": [],
+}
 
 # E4-01（#243）：仅 TRASH_TALK 绑定 voice_port → PTT / 采集 / 分座播放。
 # E4-03（#245）：挂接 WhisperModelManager 按需 ensure；失败不阻断牌局。
@@ -182,25 +189,68 @@ func _build_flat_table() -> void:
 	add_child(_table)
 
 
+func _hybrid_renderer_ready() -> bool:
+	if _hybrid_table_3d == null or not is_instance_valid(_hybrid_table_3d):
+		return false
+	if not (_table is FourPlayerTable) \
+			or not (_table as FourPlayerTable).is_ancestor_of(_hybrid_table_3d):
+		return false
+	if not _hybrid_table_3d.has_method("is_renderer_ready"):
+		return false
+	return bool(_hybrid_table_3d.call("is_renderer_ready"))
+
+
+func _clear_hybrid_interaction_state() -> void:
+	if _hybrid_table_3d == null or not is_instance_valid(_hybrid_table_3d):
+		return
+	_hybrid_table_3d.set_hand_clickable(false)
+	_hybrid_table_3d.clear_hand_dim()
+	_hybrid_table_3d.set_selected_instances([])
+	_hybrid_table_3d.clear_tile_highlight()
+
+
 func set_hybrid_enabled(enabled: bool) -> void:
 	if _use_3d or not (_table is FourPlayerTable):
 		return
+	if not is_instance_valid(_seat_panel_player):
+		_seat_panel_player = null
+	var interaction_state: Dictionary = _hand_interaction_state.duplicate(true)
+	if _seat_panel_player != null \
+			and _seat_panel_player.has_method("get_hand_interaction_state"):
+		interaction_state = _seat_panel_player.call(
+			"get_hand_interaction_state") as Dictionary
+		_hand_interaction_state = interaction_state.duplicate(true)
+	if _hybrid_table_3d != null and not is_instance_valid(_hybrid_table_3d):
+		_hybrid_table_3d = null
 	if enabled and _hybrid_table_3d == null:
 		_hybrid_table_3d = MahjongTable3D.new()
 		_hybrid_table_3d.name = "HybridTable3D"
 		_hybrid_table_3d.position = Vector2.ZERO
-		add_child(_hybrid_table_3d)
-		move_child(_hybrid_table_3d, _table.get_index())
+		_hybrid_table_3d.configure_tile_overlay()
+		if not _table.mount_tile_entity_renderer(_hybrid_table_3d):
+			_hybrid_table_3d.queue_free()
+			_hybrid_table_3d = null
+	var hybrid_active := enabled and _hybrid_renderer_ready()
+	if not hybrid_active:
+		_clear_hybrid_interaction_state()
 	if _hybrid_table_3d != null:
-		_hybrid_table_3d.visible = enabled
-	_table.set_table_entities_visible(not enabled)
+		_hybrid_table_3d.visible = hybrid_active
+	_table.set_2d_tile_entities_visible(not hybrid_active)
 	_set_seat_input_owner(_preferred_seat_input_owner())
-	if enabled and _last_bound_state != null:
-		_hybrid_table_3d.bind_battle_state(_last_bound_state,
+	if hybrid_active and _last_bound_state != null:
+		_table.bind_battle_state(_last_bound_state,
 			_last_bound_hand_index, _last_bound_hands_per_round)
+	elif hybrid_active and not _last_bound_core_table_view.is_empty():
+		_table.bind_core_table_view(_last_bound_core_table_view)
+	_table.set_hand_rows_visible(_hand_rows_visible)
+	if _seat_panel_player != null and not interaction_state.is_empty() \
+			and _seat_panel_player.has_method("apply_hand_interaction_state"):
+		_seat_panel_player.call("apply_hand_interaction_state", interaction_state)
+	_hand_interaction_state = interaction_state.duplicate(true)
+	if _public_reward_session != null or not _public_pick_kind.is_empty():
+		_sync_public_pick_selection()
 	if _action_panel != null:
-		_action_panel.position.y = HYBRID_ACTION_BAR_Y if enabled \
-			else TableLayout.ACTION_BAR_RECT.position.y
+		_action_panel.position.y = TableLayout.ACTION_BAR_RECT.position.y
 		move_child(_action_panel, get_child_count() - 1)
 
 
@@ -210,12 +260,10 @@ func bind_table_state(state: BattleState, hand_index: int,
 	_last_bound_hand_index = hand_index
 	_last_bound_hands_per_round = hands_per_round
 	_table.bind_battle_state(state, hand_index, hands_per_round)
-	if _hybrid_table_3d != null and _hybrid_table_3d.visible:
-		_hybrid_table_3d.bind_battle_state(state, hand_index, hands_per_round)
 
 
-func _connect_seat_input_owner(owner: Node) -> void:
-	if owner == null:
+func _connect_seat_input_owner(owner) -> void:
+	if not is_instance_valid(owner):
 		return
 	if owner.has_signal("player_card_clicked") \
 			and not owner.player_card_clicked.is_connected(_on_player_tile_clicked):
@@ -223,10 +271,15 @@ func _connect_seat_input_owner(owner: Node) -> void:
 	if owner.has_signal("hand_tile_hover") \
 			and not owner.hand_tile_hover.is_connected(_on_hand_tile_hover):
 		owner.hand_tile_hover.connect(_on_hand_tile_hover)
+	if owner.has_signal("hand_interaction_state_changed") \
+			and not owner.hand_interaction_state_changed.is_connected(
+				_on_hand_interaction_state_changed):
+		owner.hand_interaction_state_changed.connect(
+			_on_hand_interaction_state_changed)
 
 
-func _disconnect_seat_input_owner(owner: Node) -> void:
-	if owner == null:
+func _disconnect_seat_input_owner(owner) -> void:
+	if not is_instance_valid(owner):
 		return
 	if owner.has_signal("player_card_clicked") \
 			and owner.player_card_clicked.is_connected(_on_player_tile_clicked):
@@ -234,9 +287,22 @@ func _disconnect_seat_input_owner(owner: Node) -> void:
 	if owner.has_signal("hand_tile_hover") \
 			and owner.hand_tile_hover.is_connected(_on_hand_tile_hover):
 		owner.hand_tile_hover.disconnect(_on_hand_tile_hover)
+	if owner.has_signal("hand_interaction_state_changed") \
+			and owner.hand_interaction_state_changed.is_connected(
+				_on_hand_interaction_state_changed):
+		owner.hand_interaction_state_changed.disconnect(
+			_on_hand_interaction_state_changed)
 
 
-func _set_seat_input_owner(owner: Node) -> void:
+func _on_hand_interaction_state_changed(state: Dictionary) -> void:
+	_hand_interaction_state = state.duplicate(true)
+
+
+func _set_seat_input_owner(owner) -> void:
+	if not is_instance_valid(_seat_panel_player):
+		_seat_panel_player = null
+	if not is_instance_valid(owner):
+		owner = null
 	if _seat_panel_player != owner:
 		_disconnect_seat_input_owner(_seat_panel_player)
 		_seat_panel_player = owner
@@ -246,8 +312,10 @@ func _set_seat_input_owner(owner: Node) -> void:
 
 
 func _preferred_seat_input_owner() -> Node:
-	if _hybrid_table_3d != null and _hybrid_table_3d.visible:
-		return _hybrid_table_3d
+	if _table is FourPlayerTable:
+		var renderer := (_table as FourPlayerTable).get_tile_entity_renderer()
+		if renderer != null:
+			return renderer
 	if _use_3d:
 		return _table
 	if _table is FourPlayerTable and not _table.seat_panels.is_empty():
@@ -355,7 +423,9 @@ func _bind_state_for_deal(state: BattleState, hand_index: int,
 		hands_per_round: int) -> void:
 	if _table == null:
 		return
-	if _table is FourPlayerTable:
+	if _table.has_method("clear_hand_reveals"):
+		_table.clear_hand_reveals()
+	elif _table is FourPlayerTable:
 		for panel in _table.seat_panels:
 			if panel != null:
 				panel.clear_hand_reveal()
@@ -1667,8 +1737,8 @@ func _polling_loop() -> void:
 				if player_discarded and not _pending_discard_fly.is_empty():
 					_play_discard_fly_to_river()
 				# T2:rebind 重建完手牌行后应用和牌张脉冲标记
-				if _pending_win_tile_id >= 0 and _table.seat_panels.size() > 0:
-					_table.seat_panels[0].mark_win_tile(_pending_win_tile_id)
+				if _pending_win_tile_id >= 0 and _table.has_method("mark_win_tile"):
+					_table.mark_win_tile(_pending_win_tile_id)
 					_pending_win_tile_id = -1
 				# 宝牌/本场组合条同步（内部按 key 去重，无变化零开销）。
 				_sync_dora_widget(_bc.state)
@@ -1735,9 +1805,8 @@ func _handle_event_dramatic(ev: BattleEvent) -> void:
 			# 新局开始 → 4 家 emote 重置 normal；清掉上局结算翻牌
 			for s in [0, 1, 2, 3]:
 				_set_seat_emote(s, "normal")
-				if _table != null and s < _table.seat_panels.size() \
-						and _table.seat_panels[s] != null:
-					_table.seat_panels[s].clear_hand_reveal()
+			if _table != null and _table.has_method("clear_hand_reveals"):
+				_table.clear_hand_reveals()
 
 
 # 结算前把胜者手牌翻成正面（对手从牌背 → face-up 错峰入场）。
@@ -1750,16 +1819,26 @@ func _reveal_winner_hand(win_event: BattleEvent) -> void:
 	if seat_id >= _bc.state.seats.size():
 		return
 	var seat: Seat = _bc.state.seats[seat_id]
-	var sp = _table.seat_panels[seat_id]
-	if sp == null or seat == null or seat.hand == null:
+	if seat == null or seat.hand == null:
 		return
-	if sp.has_method("reveal_hand_face_up"):
-		sp.reveal_hand_face_up(seat.hand, true)
+	if _table.has_method("reveal_seat_hand_face_up"):
+		_table.reveal_seat_hand_face_up(seat_id, seat.hand, true)
+	else:
+		var sp = _table.seat_panels[seat_id]
+		if sp != null and sp.has_method("reveal_hand_face_up"):
+			sp.reveal_hand_face_up(seat.hand, true)
+	if win_event.tile_anchor != null and win_event.tile_anchor.tile != null \
+			and _table.has_method("mark_win_tile"):
+		_table.mark_win_tile(win_event.tile_anchor.tile.id, seat_id)
 
 
 # T5:发牌演出期间隐藏四家真手牌行(演出结束恢复)。
 func _set_hand_rows_visible(b: bool) -> void:
+	_hand_rows_visible = b
 	if _table == null:
+		return
+	if _table.has_method("set_hand_rows_visible"):
+		_table.set_hand_rows_visible(b)
 		return
 	for sp in _table.seat_panels:
 		if sp and sp.has_method("set_hand_row_visible"):
@@ -2139,7 +2218,7 @@ func bind_public_casual_session(session: PublicCasualNetworkSession) -> void:
 	_public_decision_view = {}
 	_public_network_command_attempts = 0
 	_public_pick_kind = ""
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	_public_input_locked = false
 	_public_settlement_sig = ""
 	# 公共路径禁止练习场 _bc
@@ -2281,6 +2360,7 @@ func sync_public_table_projection() -> void:
 		return
 	_public_table_frozen = false
 	_public_table_committed_seq = committed_seq
+	_last_bound_core_table_view = core.duplicate(true)
 	if _table.has_method("bind_core_table_view"):
 		_table.bind_core_table_view(core)
 	else:
@@ -2536,7 +2616,7 @@ func _on_public_player_action_chosen(choice: Dictionary) -> void:
 			# CLAIM 的 skip 是 PASS，不是取消选牌
 			if _public_has_kind("PASS"):
 				_public_pick_kind = ""
-				_public_pick_selected.clear()
+				_clear_public_pick_selection()
 				var pass_act := _build_public_action_for_kind("PASS", {})
 				if pass_act != null:
 					_dispatch_public_action(pass_act)
@@ -2589,7 +2669,7 @@ func _begin_or_submit_multi(kind: String, companion_count: int) -> void:
 		return
 	# 多 option：进入实体选择
 	_public_pick_kind = kind
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	var union_ids: Array = []
 	for op in opts:
 		if typeof(op) != TYPE_DICTIONARY:
@@ -2625,7 +2705,7 @@ func _begin_or_submit_kan(kan_kind: String) -> void:
 		return
 	# 多 KAN 子型候选：先用第一套可点实体并集（MINKAN companions / ANKAN tiles）
 	_public_pick_kind = "KAN:" + kan_kind
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	var union_ids: Array = []
 	for op2 in matched:
 		var d: Dictionary = op2 as Dictionary
@@ -2662,7 +2742,7 @@ func _begin_or_submit_riichi() -> void:
 			_dispatch_public_action(act)
 		return
 	_public_pick_kind = "RIICHI"
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	var ids: Array = []
 	for op in opts:
 		if typeof(op) == TYPE_DICTIONARY and (op as Dictionary).has("tile_instance_id"):
@@ -2676,6 +2756,18 @@ func _begin_or_submit_riichi() -> void:
 			_seat_panel_player.dim_hand_except(ids)
 
 
+func _sync_public_pick_selection() -> void:
+	if _seat_panel_player != null \
+			and _seat_panel_player.has_method("set_selected_instances"):
+		_seat_panel_player.call(
+			"set_selected_instances", _public_pick_selected)
+
+
+func _clear_public_pick_selection() -> void:
+	_public_pick_selected.clear()
+	_sync_public_pick_selection()
+
+
 func _on_public_pick_tile(tile_instance_id: int) -> void:
 	if tile_instance_id < 0 or _public_pick_kind.is_empty():
 		return
@@ -2684,7 +2776,7 @@ func _on_public_pick_tile(tile_instance_id: int) -> void:
 			"RIICHI", {"tile_instance_id": tile_instance_id})
 		if act_r != null:
 			_public_pick_kind = ""
-			_public_pick_selected.clear()
+			_clear_public_pick_selection()
 			_dispatch_public_action(act_r)
 		return
 	if _public_pick_kind.begins_with("KAN:"):
@@ -2693,11 +2785,12 @@ func _on_public_pick_tile(tile_instance_id: int) -> void:
 			var act_ak := _match_kan_option(kk, {"added_tile_instance_id": tile_instance_id})
 			if act_ak != null:
 				_public_pick_kind = ""
-				_public_pick_selected.clear()
+				_clear_public_pick_selection()
 				_dispatch_public_action(act_ak)
 			return
 		if not _public_pick_selected.has(tile_instance_id):
 			_public_pick_selected.append(tile_instance_id)
+			_sync_public_pick_selection()
 		var need := 3 if kk == "MINKAN" else 4
 		if _public_pick_selected.size() >= need:
 			var payload_k := {
@@ -2710,25 +2803,26 @@ func _on_public_pick_tile(tile_instance_id: int) -> void:
 			var act_k := _build_public_action_for_kind("KAN", payload_k)
 			if act_k != null:
 				_public_pick_kind = ""
-				_public_pick_selected.clear()
+				_clear_public_pick_selection()
 				_dispatch_public_action(act_k)
 			else:
-				_public_pick_selected.clear()
+				_clear_public_pick_selection()
 				if _action_panel != null:
 					_action_panel.set_status_text("KAN 候选不匹配，请重选")
 		return
 	# CHI / PON
 	if not _public_pick_selected.has(tile_instance_id):
 		_public_pick_selected.append(tile_instance_id)
+		_sync_public_pick_selection()
 	if _public_pick_selected.size() >= 2:
 		var payload := {"companion_tile_instance_ids": _public_pick_selected.duplicate()}
 		var act := _build_public_action_for_kind(_public_pick_kind, payload)
 		if act != null:
 			_public_pick_kind = ""
-			_public_pick_selected.clear()
+			_clear_public_pick_selection()
 			_dispatch_public_action(act)
 		else:
-			_public_pick_selected.clear()
+			_clear_public_pick_selection()
 			if _action_panel != null:
 				_action_panel.set_status_text("%s 候选不匹配，请重选" % _public_pick_kind)
 
@@ -2748,7 +2842,12 @@ func _match_kan_option(kan_kind: String, partial: Dictionary) -> Action:
 
 func _cancel_public_pick() -> void:
 	_public_pick_kind = ""
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
+	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_clickable"):
+			_seat_panel_player.call("set_hand_clickable", false)
+		if _seat_panel_player.has_method("clear_hand_dim"):
+			_seat_panel_player.call("clear_hand_dim")
 	if _public_reward_session != null and _public_reward_session.nbc != null:
 		_apply_public_decision_from_journal(_public_reward_session.nbc)
 
@@ -2842,7 +2941,7 @@ func _lock_public_inputs(status: String) -> void:
 func _unlock_public_inputs_restore_decision() -> void:
 	_public_input_locked = false
 	_public_pick_kind = ""
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	if _table != null and _table.has_method("set_inventory_use_locked"):
 		_table.set_inventory_use_locked(false)
 	if _public_reward_session != null and _public_reward_session.nbc != null:
@@ -3017,6 +3116,8 @@ func _ensure_public_decision_adapter() -> void:
 
 
 func _wire_public_bottom_hand_clicks() -> void:
+	if not _hybrid_renderer_ready():
+		set_hybrid_enabled(false)
 	var input_owner := _preferred_seat_input_owner()
 	if input_owner == null:
 		return
@@ -3078,7 +3179,7 @@ func _on_public_session_reconnecting(_code: String, _message: String) -> void:
 	# 重连窗口：清除旧 UI decision，禁止新连接提交前的操作
 	_public_decision_view = {}
 	_public_pick_kind = ""
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	_lock_public_inputs("重连中…")
 
 
@@ -3104,7 +3205,7 @@ func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void
 	_public_decision_view = {}
 	if nbc == null:
 		_public_pick_kind = ""
-		_public_pick_selected.clear()
+		_clear_public_pick_selection()
 		return
 	var recip: int = int(nbc.recipient_seat)
 	# #377 P1-2：从 journal 顺序折叠；较新 ROOM_SNAPSHOT 关闭先前 TURN/CLAIM 窗口
@@ -3126,7 +3227,7 @@ func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void
 			last = ne
 	if last == null:
 		_public_pick_kind = ""
-		_public_pick_selected.clear()
+		_clear_public_pick_selection()
 		_clear_public_decision_ui(core_phase)
 		return
 	var new_decision_id := str(last.payload.get("decision_id", ""))
@@ -3136,14 +3237,14 @@ func _apply_public_decision_from_journal(nbc: NetworkedBattleController) -> void
 		return
 	if new_decision_id != prev_decision_id:
 		_public_pick_kind = ""
-		_public_pick_selected.clear()
+		_clear_public_pick_selection()
 	_present_public_allowed_actions(last)
 
 
 func _clear_public_decision_ui(phase: String = "") -> void:
 	_ensure_public_decision_adapter()
 	_public_pick_kind = ""
-	_public_pick_selected.clear()
+	_clear_public_pick_selection()
 	# #378 R5：仅以 session 权威状态判断是否仍忙；本地锁不得参与自指。
 	# session 已结束（无 pending/retry/awaiting）时清本地锁与库存 Use，即使无新 prompt。
 	# ACCEPTED→committed 窗口内 session 仍 busy，保持锁定不可点。
@@ -3789,21 +3890,16 @@ func _on_player_tile_clicked(tile_instance_id: int) -> void:
 		if _action_panel != null:
 			_action_panel.on_hand_tile_clicked(tile_instance_id)
 		return
-	# 记录起点：按 instance 查 slot；飞牌渲染仍用 slot 上的 tile_id/red
-	if _seat_panel_player:
-		var from: Vector2 = _seat_panel_player.get_hand_slot_global_center(tile_instance_id)
-		var fly_tile_id: int = -1
-		var is_red := false
-		for s in _seat_panel_player._hand_slots:
-			if s != null and is_instance_valid(s) \
-					and int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID)) \
-					== tile_instance_id:
-				fly_tile_id = int(s.get_meta("hand_id", -1))
-				is_red = bool(s.get_meta("hand_red", false))
-				break
+	# renderer-neutral 查询：禁止再读取 SeatPanel/MahjongTable3D 私有槽数组。
+	if _table != null and _table.has_method("get_hand_tile_render_info"):
+		var info := _table.get_hand_tile_render_info(tile_instance_id) as Dictionary
+		var from: Vector2 = info.get("screen_center", Vector2.ZERO)
 		if from != Vector2.ZERO:
 			_pending_discard_fly = {
-				"from": from, "tile_id": fly_tile_id, "is_red": is_red}
+				"from": from,
+				"tile_id": int(info.get("tile_id", -1)),
+				"is_red": bool(info.get("is_red_dora", false)),
+			}
 	if _decision_adapter != null:
 		_decision_adapter.on_hand_tile_clicked(tile_instance_id)
 
@@ -3822,6 +3918,12 @@ func _play_discard_fly_to_river() -> void:
 	var info: Dictionary = _pending_discard_fly
 	_pending_discard_fly = {}
 	if info.is_empty() or _table == null:
+		return
+	# 真 3D renderer 会复用同一 tile_instance_id 并把实体直接 tween 入河；
+	# 此时再叠一张 2D TextureRect 会在动画期间出现双牌。
+	if _seat_panel_player != null \
+			and _seat_panel_player.has_method("uses_native_tile_animations") \
+			and bool(_seat_panel_player.call("uses_native_tile_animations")):
 		return
 	var from_g: Vector2 = info.get("from", Vector2.ZERO)
 	var tile_id: int = int(info.get("tile_id", -1))
@@ -3872,6 +3974,8 @@ func _estimate_river_end_global(seat_id: int) -> Vector2:
 		return Vector2.ZERO
 	if _use_3d:
 		return size * 0.5  # M1：飞牌落点近似桌心
+	if _table.has_method("get_river_last_global_center"):
+		return _table.get_river_last_global_center(seat_id)
 	if seat_id >= _table.discard_rivers.size():
 		return Vector2.ZERO
 	var dr = _table.discard_rivers[seat_id]

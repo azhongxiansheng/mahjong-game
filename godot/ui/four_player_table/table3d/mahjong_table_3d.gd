@@ -2,6 +2,8 @@ class_name MahjongTable3D extends Control
 
 const Table3DStage := preload(
 	"res://ui/four_player_table/table3d/table_3d_stage.gd")
+const PublicTableAdapter := preload(
+	"res://ui/four_player_table/public_table_projection_adapter.gd")
 
 # 雀魂式真 3D 牌桌（非假透视 2.5D）：
 # - 桌/牌/河/副露：3D mesh + 透视相机（对齐雀魂 Unity 桌）
@@ -11,6 +13,9 @@ const Table3DStage := preload(
 # E2-02 / #232：点击 = tile_instance_id；hover 仍 = tile_id
 signal player_card_clicked(tile_instance_id: int)
 signal hand_tile_hover(tile_id: int, entered: bool)
+signal hand_interaction_state_changed(state: Dictionary)
+
+enum RenderProfile { FULL_TABLE, TILE_OVERLAY }
 
 const TABLE_W: float = 2.4
 const TABLE_D: float = 2.4
@@ -18,6 +23,9 @@ const TABLE_TOP_Y: float = Table3DStage.TABLE_TOP_Y
 # 布局半径（由内到外）：中心盘 → 河 → 牌山示意 → 手牌
 const PLATE_HALF: float = 0.16
 const RIVER_INNER: float = 0.32
+# 自家 24 张牌河必须完整避开上层中央盘与操作栏：适度外移并压缩网格。
+const SELF_RIVER_INNER: float = 0.404
+const SELF_RIVER_SCALE: float = 0.82
 const WALL_RADIUS: float = 0.70
 const WALL_GAP: float = 0.080
 const WALL_STACKS_PER_SIDE_MAX: int = 17
@@ -30,8 +38,6 @@ const OPPONENT_HAND_RADIUS: float = 0.97
 const OPPONENT_HAND_SCALE: float = 0.88
 const MELD_RADIUS: float = 0.815
 const HAND_Z: float = 1.085
-# 绕 +X 正转：+Y 牌面倾向相机
-const HAND_TILT_DEG: float = 48.0
 
 var seat_panels: Array = []
 var discard_rivers: Array = []
@@ -70,13 +76,51 @@ var _prev_wall_draw_index: int = -1
 var _prev_rinshan_taken: int = -1
 var _prev_wall: Wall = null
 var _scores_override: Array = []
+var _render_profile: RenderProfile = RenderProfile.FULL_TABLE
+var _tile_registry: Dictionary = {}
+var _desired_tile_keys: Dictionary = {}
+var _reconcile_active: bool = false
+var _hands_visible: bool = true
+var _hand_dim_active: bool = false
+var _hand_dim_allowed_instances: Array = []
+var _selected_hand_instance_ids: Array = []
+var _revealed_seats: Dictionary = {}
+var _pending_reveal_animation_seats: Dictionary = {}
+var _win_tile_ids_by_seat: Dictionary = {}
+var _current_dora_ids: Array = []
+
+
+## 必须在 add_child 前调用；ready 后切 profile 会留下不一致的 3D world。
+func configure_tile_overlay() -> void:
+	if is_inside_tree() or _world_root != null:
+		return
+	_render_profile = RenderProfile.TILE_OVERLAY
+
+
+func is_tile_overlay() -> bool:
+	return _render_profile == RenderProfile.TILE_OVERLAY
+
+
+## 牌层只有在节点 ready 且 viewport/world/camera 全部建立后才可接管 2D 实体。
+## _ready 中途失败时这些引用不会同时成立，调用方据此保持 2D 回退。
+func is_renderer_ready() -> bool:
+	return is_inside_tree() and is_node_ready() \
+		and _vp_host != null and is_instance_valid(_vp_host) \
+		and _vp != null and is_instance_valid(_vp) \
+		and _world_root != null and is_instance_valid(_world_root) \
+		and _camera != null and is_instance_valid(_camera)
+
+
+func uses_native_tile_animations() -> bool:
+	return true
 
 
 func _ready() -> void:
 	custom_minimum_size = Vector2(TableLayout.TABLE_W, TableLayout.TABLE_H)
 	set_anchors_preset(Control.PRESET_TOP_LEFT)
 	size = custom_minimum_size
-	mouse_filter = Control.MOUSE_FILTER_STOP
+	mouse_filter = Control.MOUSE_FILTER_PASS if is_tile_overlay() \
+		else Control.MOUSE_FILTER_STOP
 	_build_3d()
 	# duck：adapter 把 self 当 seat0
 	seat_panels = [self, self, self, self]
@@ -95,16 +139,19 @@ func _build_3d() -> void:
 	_vp.own_world_3d = true
 	_vp.handle_input_locally = true
 	_vp.physics_object_picking = true
-	_vp.transparent_bg = false
+	_vp.transparent_bg = is_tile_overlay()
 	_vp_host.add_child(_vp)
 
 	_world_root = Node3D.new()
 	_world_root.name = "World"
 	_vp.add_child(_world_root)
 
-	var stage := Table3DStage.build(_world_root)
+	var stage: Dictionary = Table3DStage.build_tile_overlay(_world_root) \
+		if is_tile_overlay() else Table3DStage.build(_world_root)
 	_camera = stage["camera"] as Camera3D
 	set_camera_view(&"main")
+	if is_tile_overlay():
+		return
 
 	# 共享牌山 / 立直棒 mesh
 	_wall_mesh = BoxMesh.new()
@@ -223,35 +270,102 @@ func bind_battle_state(state: BattleState, hand_index: int = 0, _hpr: int = 4) -
 	_state = state
 	if state == null:
 		return
-	_update_center_info(state, hand_index)
-	_update_active_seat(state.current_seat)
+	if not is_tile_overlay():
+		_update_center_info(state, hand_index)
+		_update_active_seat(state.current_seat)
+	_begin_tile_reconcile()
 	var hand_n: int = state.seats[0].hand.size()
 	var animate_draw: bool = _prev_hand_count >= 0 and hand_n == _prev_hand_count + 1
-	_rebuild_player_hand(state.seats[0], animate_draw)
+	_rebuild_player_hand(state.seats[0], animate_draw, state.seats[0].melds.all())
 	_prev_hand_count = hand_n
 	for s in range(4):
 		var river: Array = state.seats[s].river.tiles()
 		var animate_disc: bool = _prev_river_count[s] >= 0 and river.size() == _prev_river_count[s] + 1
 		_rebuild_river(s, river, state.seats[s].river.riichi_discard_index(), animate_disc)
 		_prev_river_count[s] = river.size()
-		_rebuild_melds(s, state.seats[s].melds.all())
 	for s in range(1, 4):
-		_rebuild_opponent_backs(s, state.seats[s])
-	_rebuild_dora(state)
+		_rebuild_opponent_backs(s, state.seats[s], state.seats[s].melds.all(),
+			s, _revealed_seats.has(s), state.seats[s].last_drawn_instance_id,
+			-1, false, _pending_reveal_animation_seats.has(s), false,
+			_revealed_seats.has(s))
+		_pending_reveal_animation_seats.erase(s)
+	for s in range(4):
+		var concealed_count: int = state.seats[s].hand.size()
+		var has_drawn: bool = Tile.is_valid_instance_id(
+			state.seats[s].last_drawn_instance_id)
+		var hand_extent := _hand_world_extent(s, concealed_count, has_drawn)
+		_rebuild_melds(s, state.seats[s].melds.all(), s, hand_extent)
+	_finish_tile_reconcile()
+	_apply_win_tile_markers()
+	_current_dora_ids = _dora_ids_from_indicators(
+		state.dora_indicators.visible_tiles() if state.dora_indicators else [])
+	_apply_tile_dora_ids(_current_dora_ids)
+	if not is_tile_overlay():
+		_rebuild_dora(state)
 	var wall_n: int = state.wall.live_wall_size() if state.wall else 0
 	var wall_draw_index: int = state.wall.draw_index() if state.wall else -1
 	var rinshan_taken: int = state.wall.rinshan_taken() if state.wall else -1
 	# 只在权威牌墙游标变化时重建；固定槽位不会随剩余张数重新居中。
-	if state.wall != _prev_wall or wall_n != _prev_wall_count \
+	if not is_tile_overlay() and (state.wall != _prev_wall or wall_n != _prev_wall_count \
 			or wall_draw_index != _prev_wall_draw_index \
-			or rinshan_taken != _prev_rinshan_taken:
+			or rinshan_taken != _prev_rinshan_taken):
 		_rebuild_live_wall(state)
 		_rebuild_dead_wall(state)
 		_prev_wall_count = wall_n
 		_prev_wall_draw_index = wall_draw_index
 		_prev_rinshan_taken = rinshan_taken
 		_prev_wall = state.wall
-	_rebuild_riichi_sticks(state)
+	if not is_tile_overlay():
+		_rebuild_riichi_sticks(state)
+
+
+## 公共桌直接消费 renderer-neutral 视图；不构造 BattleState。
+func bind_core_table_view(core: Dictionary) -> void:
+	var view: Dictionary = PublicTableAdapter.renderer_view(core)
+	if view.is_empty():
+		return
+	_state = null
+	_begin_tile_reconcile()
+	var seats: Array = view.get("seats", [])
+	for seat_view_value in seats:
+		if typeof(seat_view_value) != TYPE_DICTIONARY:
+			continue
+		var seat_view := seat_view_value as Dictionary
+		var screen_seat: int = int(seat_view.get("screen_seat", -1))
+		if screen_seat < 0 or screen_seat > 3:
+			continue
+		var melds: Array = seat_view.get("melds", [])
+		var concealed_count: int = int(seat_view.get("concealed_count", 0))
+		var last_drawn: int = int(seat_view.get(
+			"last_drawn_tile_instance_id", Tile.INVALID_INSTANCE_ID))
+		var has_drawn: bool = bool(seat_view.get("has_drawn", false))
+		var concealed_tiles := seat_view.get("concealed_tiles", []) as Array
+		if screen_seat == 0:
+			var animate_draw := _prev_hand_count >= 0 \
+				and concealed_count == _prev_hand_count + 1
+			_rebuild_player_hand_tiles(
+				concealed_tiles, last_drawn, animate_draw, melds,
+				int(seat_view.get("absolute_seat", 0)))
+			_prev_hand_count = concealed_count
+		else:
+			_rebuild_opponent_backs(screen_seat, concealed_tiles, melds,
+				int(seat_view.get("absolute_seat", screen_seat)),
+				not concealed_tiles.is_empty(), Tile.INVALID_INSTANCE_ID,
+				concealed_count, has_drawn, not concealed_tiles.is_empty(), true)
+		var river := seat_view.get("river", []) as Array
+		var animate_discard: bool = int(_prev_river_count[screen_seat]) >= 0 \
+			and river.size() == int(_prev_river_count[screen_seat]) + 1
+		_rebuild_river(screen_seat, seat_view.get("river", []) as Array,
+			int(seat_view.get("riichi_discard_index", -1)), animate_discard)
+		_prev_river_count[screen_seat] = river.size()
+		var hand_extent := _hand_world_extent(screen_seat, concealed_count,
+			has_drawn)
+		_rebuild_melds(screen_seat, melds,
+			int(seat_view.get("layout_claimant_absolute", screen_seat)), hand_extent)
+	_finish_tile_reconcile()
+	_apply_win_tile_markers()
+	_current_dora_ids = (view.get("dora_ids", []) as Array).duplicate()
+	_apply_tile_dora_ids(_current_dora_ids)
 
 
 func bind_cumulative_scores(scores: Array) -> void:
@@ -260,25 +374,32 @@ func bind_cumulative_scores(scores: Array) -> void:
 		_update_center_info(_state, maxi(_state.hand_number - 1, 0))
 
 
-func highlight_tile_id(_tile_id: int) -> void:
-	pass
+func highlight_tile_id(tile_id: int) -> void:
+	for tile in _all_entity_tiles():
+		(tile as Tile3D).set_hover_match((tile as Tile3D).tile_id == tile_id)
 
 
 func clear_tile_highlight() -> void:
-	pass
+	for tile in _all_entity_tiles():
+		(tile as Tile3D).set_hover_match(false)
 
 
 func set_hand_clickable(b: bool) -> void:
 	_hand_clickable = b
+	if not b:
+		_selected_hand_instance_ids.clear()
 	for t in _hand_tiles:
 		if t is Tile3D:
 			(t as Tile3D).set_clickable(b)
 			if not b:
-				(t as Tile3D).set_lifted(false)
+				(t as Tile3D).set_selected(false)
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 
 func dim_hand_except(allowed: Array) -> void:
 	# allowed = tile_instance_id 列表
+	_hand_dim_active = true
+	_hand_dim_allowed_instances = allowed.duplicate()
 	for t in _hand_tiles:
 		if t is Tile3D:
 			var iid: int = (t as Tile3D).tile_instance_id
@@ -288,24 +409,112 @@ func dim_hand_except(allowed: Array) -> void:
 					ok = true
 					break
 			(t as Tile3D).set_dim(not ok)
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 
 func clear_hand_dim() -> void:
+	_hand_dim_active = false
+	_hand_dim_allowed_instances.clear()
 	for t in _hand_tiles:
 		if t is Tile3D:
 			(t as Tile3D).set_dim(false)
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 
-func mark_win_tile(_tid: int) -> void:
-	pass
+func set_selected_instances(instance_ids: Array) -> void:
+	_selected_hand_instance_ids = instance_ids.duplicate()
+	for tile in _hand_tiles:
+		if tile is Tile3D:
+			(tile as Tile3D).set_selected(instance_ids.has(
+				(tile as Tile3D).tile_instance_id))
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
+
+
+func get_hand_interaction_state() -> Dictionary:
+	return {
+		"clickable": _hand_clickable,
+		"dim_active": _hand_dim_active,
+		"dim_allowed_instances": _hand_dim_allowed_instances.duplicate(),
+		"selected_instances": _selected_hand_instance_ids.duplicate(),
+	}
+
+
+func apply_hand_interaction_state(state: Dictionary) -> void:
+	set_hand_clickable(bool(state.get("clickable", false)))
+	if bool(state.get("dim_active", false)):
+		dim_hand_except(state.get("dim_allowed_instances", []) as Array)
+	else:
+		clear_hand_dim()
+	set_selected_instances(state.get("selected_instances", []) as Array)
+
+
+func mark_win_tile(tile_id: int, seat_id: int = 0) -> void:
+	mark_seat_win_tile(seat_id, tile_id)
+
+
+func mark_seat_win_tile(seat_id: int, tile_id: int) -> void:
+	if seat_id < 0 or seat_id > 3 or tile_id < 0:
+		return
+	_win_tile_ids_by_seat[seat_id] = tile_id
+	_apply_win_tile_markers()
+
+
+func _tiles_for_hand_seat(seat_id: int) -> Array:
+	return _hand_tiles if seat_id == 0 else _opp_tiles[seat_id]
+
+
+func _apply_win_tile_markers() -> void:
+	for seat_id in range(4):
+		var marked := false
+		var target_id := int(_win_tile_ids_by_seat.get(seat_id, -1))
+		for tile in _tiles_for_hand_seat(seat_id):
+			if not (tile is Tile3D):
+				continue
+			var should_mark := not marked and target_id >= 0 \
+				and (tile as Tile3D).tile_id == target_id
+			(tile as Tile3D).set_win_tile(should_mark)
+			marked = marked or should_mark
 
 
 func clear_hand_reveal() -> void:
-	pass
+	clear_all_hand_reveals()
 
 
-func reveal_hand_face_up(_hand, _animate: bool = true) -> void:
-	pass
+func reveal_hand_face_up(hand, animate: bool = true) -> void:
+	reveal_seat_hand_face_up(0, hand, animate)
+
+
+func reveal_seat_hand_face_up(seat_id: int, hand: Hand,
+		animate: bool = true) -> void:
+	if seat_id < 0 or seat_id > 3 or hand == null:
+		return
+	_revealed_seats[seat_id] = hand
+	if animate:
+		_pending_reveal_animation_seats[seat_id] = true
+	if _state != null:
+		bind_battle_state(_state, maxi(_state.hand_number - 1, 0), 4)
+
+
+func clear_all_hand_reveals() -> void:
+	_revealed_seats.clear()
+	_pending_reveal_animation_seats.clear()
+	_win_tile_ids_by_seat.clear()
+	_apply_win_tile_markers()
+	if _state != null:
+		bind_battle_state(_state, maxi(_state.hand_number - 1, 0), 4)
+
+
+func set_hands_visible(hands_visible: bool) -> void:
+	_hands_visible = hands_visible
+	for tile in _hand_tiles:
+		if tile is CanvasItem:
+			(tile as CanvasItem).visible = hands_visible
+		elif tile is Node3D:
+			(tile as Node3D).visible = hands_visible
+	for seat_id in range(1, 4):
+		for tile in _opp_tiles[seat_id]:
+			if tile is Node3D:
+				(tile as Node3D).visible = hands_visible
 
 
 func set_emote(_s: String) -> void:
@@ -323,26 +532,44 @@ func get_portrait_texture() -> Texture2D:
 # 飞牌定位：参数语义 = tile_instance_id；找不到返回 ZERO（禁止 tile_id fallback）
 # 非法 instance（尤其 INVALID=-1）立即 ZERO，避免纯展示 Tile3D 被误定位。
 func get_hand_slot_global_center(tile_instance_id: int) -> Vector2:
+	return get_hand_tile_render_info(tile_instance_id).get(
+		"screen_center", Vector2.ZERO)
+
+
+func get_hand_tile_render_info(tile_instance_id: int) -> Dictionary:
 	if not Tile.is_valid_instance_id(tile_instance_id):
-		return Vector2.ZERO
+		return {}
 	for n in _hand_tiles:
 		if not (n is Tile3D):
 			continue
 		var t3d := n as Tile3D
 		if t3d.tile_instance_id != tile_instance_id:
 			continue
-		if _camera != null and _vp != null and _vp.size.x > 0 and _vp.size.y > 0:
-			var vp_pt: Vector2 = _camera.unproject_position(t3d.global_position)
-			var sx: float = size.x / float(_vp.size.x)
-			var sy: float = size.y / float(_vp.size.y)
-			var projected := global_position + Vector2(vp_pt.x * sx, vp_pt.y * sy)
-			if projected != Vector2.ZERO:
-				return projected
-		# 找到槽位但投影不可用：返回非零中心，与 miss=ZERO 区分
-		if size != Vector2.ZERO:
-			return global_position + size * 0.5
-		return global_position + Vector2(1, 1)
-	return Vector2.ZERO
+		return {
+			"tile_instance_id": tile_instance_id,
+			"tile_id": t3d.tile_id,
+			"is_red_dora": t3d.is_red_dora,
+			"screen_center": _tile_global_screen_center(t3d),
+		}
+	return {}
+
+
+func get_river_last_global_center(seat_id: int) -> Vector2:
+	if seat_id < 0 or seat_id >= _river_tiles.size() \
+			or _river_tiles[seat_id].is_empty():
+		return Vector2.ZERO
+	return _tile_global_screen_center(_river_tiles[seat_id][-1] as Tile3D)
+
+
+func _tile_global_screen_center(tile: Tile3D) -> Vector2:
+	if tile == null:
+		return Vector2.ZERO
+	if _camera != null and _vp != null and _vp.size.x > 0 and _vp.size.y > 0:
+		var vp_point: Vector2 = _camera.unproject_position(tile.global_position)
+		var scale_x: float = size.x / float(_vp.size.x)
+		var scale_y: float = size.y / float(_vp.size.y)
+		return global_position + Vector2(vp_point.x * scale_x, vp_point.y * scale_y)
+	return global_position + (size * 0.5 if size != Vector2.ZERO else Vector2.ONE)
 
 
 func set_active(_b: bool) -> void:
@@ -392,6 +619,79 @@ func _free_arr(arr: Array) -> void:
 		if n is Node and is_instance_valid(n):
 			(n as Node).queue_free()
 	arr.clear()
+
+
+func _begin_tile_reconcile() -> void:
+	_desired_tile_keys.clear()
+	_reconcile_active = true
+
+
+func _finish_tile_reconcile() -> void:
+	for key in _tile_registry.keys():
+		if _desired_tile_keys.has(key):
+			continue
+		var stale = _tile_registry[key]
+		if stale is Node and is_instance_valid(stale):
+			(stale as Node).queue_free()
+		_tile_registry.erase(key)
+	_reconcile_active = false
+
+
+func _obtain_tile(key: String) -> Tile3D:
+	_desired_tile_keys[key] = true
+	var tile := _tile_registry.get(key, null) as Tile3D
+	if tile == null or not is_instance_valid(tile):
+		tile = Tile3D.new()
+		_world_root.add_child(tile)
+		_tile_registry[key] = tile
+	tile.set_meta("renderer_key", key)
+	return tile
+
+
+func _entity_key(region: String, seat_id: int, instance_id: int,
+		slot_index: int, stable_owner: int = -1,
+		force_occurrence: bool = false) -> String:
+	if Tile.is_valid_instance_id(instance_id) and not force_occurrence:
+		return "entity:%d" % instance_id
+	var owner := stable_owner if stable_owner >= 0 else seat_id
+	return "%s:%d:slot:%d" % [region, owner, slot_index]
+
+
+func _prepare_tile(tile: Tile3D, tile_id: int, face_up: bool, red: bool,
+		instance_id: int) -> void:
+	tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+	# registry 会跨手牌、牌河与副露复用同一实体；区域布局应用目标 scale 前
+	# 先归一化，避免鸣牌继承 1.28 手牌或 0.82 自家牌河的旧尺寸。
+	tile.scale = Vector3.ONE
+	if Tile.is_valid_instance_id(instance_id):
+		tile.setup_entity(tile_id, face_up, red, instance_id)
+	else:
+		tile.setup(tile_id, face_up, red)
+	tile.set_latest_discard(false)
+	tile.set_win_tile(false)
+	tile.set_hover_match(false)
+	tile.set_dora(_current_dora_ids.has(tile_id))
+
+
+func _all_entity_tiles() -> Array:
+	var output: Array = []
+	for value in _tile_registry.values():
+		if value is Tile3D and is_instance_valid(value):
+			output.append(value)
+	return output
+
+
+func _dora_ids_from_indicators(indicators: Array) -> Array:
+	var result: Array = []
+	for indicator in indicators:
+		if indicator is Tile:
+			result.append(DoraIndicator.dora_from_indicator((indicator as Tile).id))
+	return result
+
+
+func _apply_tile_dora_ids(dora_ids: Array) -> void:
+	for tile in _all_entity_tiles():
+		(tile as Tile3D).set_dora(dora_ids.has((tile as Tile3D).tile_id))
 
 
 func _wind_char(wind: int) -> String:
@@ -573,108 +873,231 @@ func _rebuild_riichi_sticks(state: BattleState) -> void:
 		_riichi_stick_meshes.append(stick2)
 
 
-func _rebuild_player_hand(seat: Seat, animate_draw: bool = false) -> void:
-	_free_arr(_hand_tiles)
+func _hand_world_extent(seat_id: int, count: int,
+		has_drawn: bool = false) -> float:
+	if count <= 0:
+		return 0.0
+	var scale_ := SELF_HAND_SCALE if seat_id == 0 else OPPONENT_HAND_SCALE
+	var gap := (Tile3D.TILE_W + 0.004) * scale_
+	var drawn_gap := 0.028 * scale_ if has_drawn and count > 1 else 0.0
+	return Tile3D.TILE_W * scale_ + maxi(count - 1, 0) * gap + drawn_gap
+
+
+func _meld_slots_extent(slots: Array) -> float:
+	var extent := 0.0
+	var count_on_axis := 0
+	for slot_value in slots:
+		var slot := slot_value as Dictionary
+		if bool(slot.get("stacked_above", false)):
+			continue
+		extent += Tile3D.TILE_H if bool(slot.get("rotated", false)) \
+			else Tile3D.TILE_W
+		count_on_axis += 1
+	return extent + maxi(count_on_axis - 1, 0) * 0.004
+
+
+func _meld_world_extent(melds: Array, claimant: int) -> float:
+	var extents: Array[float] = []
+	for meld_value in melds:
+		if meld_value is Meld:
+			extents.append(_meld_slots_extent(
+				MeldLayout.compute(meld_value as Meld, claimant)))
+	var total := 0.0
+	for extent in extents:
+		total += extent
+	return total + maxi(extents.size() - 1, 0) * 0.028
+
+
+func _added_tile_for_meld(meld: Meld) -> Tile:
+	if meld == null or meld.kind != Meld.Kind.ADDED_KAN \
+			or not Tile.is_valid_instance_id(meld.added_tile_instance_id):
+		return null
+	for tile in meld.tiles:
+		if tile != null and tile.instance_id == meld.added_tile_instance_id:
+			return tile
+	return null
+
+
+func _hand_meld_center_offsets(seat_id: int, hand_extent: float,
+		meld_extent: float) -> Dictionary:
+	# TableLayout 使用 1600px raw stage 单位；3D 使用 2.4m 桌面单位。
+	# 双向换算可复用同一 flex 顺序/gap，而不把 12px 误当成 12m。
+	var units_per_world := TableLayout.TABLE_W / Table3DStage.TABLE_SIZE.x
+	var layout_hand_extent := hand_extent * units_per_world
+	var layout_meld_extent := meld_extent * units_per_world
+	# 侧家手牌直立、其副露平放；透视投影后的 AABB 会沿主轴额外伸出。
+	# 把一张牌高作为 flex 内的透明净空，并加在靠前盒子的尾端：既保留
+	# TableLayout 的自身右侧顺序，也让实际 hand/meld 外沿仍围绕同一中心。
+	if meld_extent > 0.0 and (seat_id == 1 or seat_id == 3):
+		var projection_clearance := (Tile3D.TILE_H
+			+ Tile3D.APPROVED_TILE_D * 0.5) * units_per_world
+		if seat_id == 1:
+			layout_meld_extent += projection_clearance
+		else:
+			layout_hand_extent += projection_clearance
+	var flex := TableLayout.hand_meld_flex_layout(
+		seat_id, layout_hand_extent, layout_meld_extent)
+	var center := float(flex["combined_center"])
+	return {
+		"hand_center": (float(flex["hand_start"])
+			+ hand_extent * units_per_world * 0.5 - center) / units_per_world,
+		"meld_center": (float(flex["meld_start"])
+			+ meld_extent * units_per_world * 0.5 - center) / units_per_world,
+	}
+
+
+## TableLayout 的 main axis：seat1/2 通过反序保证最终落在自身右侧。
+func _layout_axis(seat_id: int) -> Vector3:
+	match seat_id:
+		0, 2: return Vector3.RIGHT
+		1, 3: return Vector3.BACK
+	return Vector3.RIGHT
+
+
+func _rebuild_player_hand(seat: Seat, animate_draw: bool = false,
+		melds: Array = []) -> void:
 	if seat == null or seat.hand == null:
+		_hand_tiles.clear()
 		return
-	# E2-02：保留 Tile 实体 identity，按 last_drawn_instance_id 精确拆分
-	# 排序键 = (tile_id, original_index)：显式记录 Hand._tiles 原始下标，
-	# 确保同值普通牌/赤黑牌剩余相对顺序确定（禁止 instance_id tie-break）。
-	var sorted_entries: Array = []  # Array[{tile, original_index}]
+	_rebuild_player_hand_tiles(seat.hand.tiles(), seat.last_drawn_instance_id,
+		animate_draw, melds, seat.seat_id)
+
+
+func _rebuild_player_hand_tiles(source_tiles: Array, drawn_iid: int,
+		animate_draw: bool, melds: Array, stable_owner: int) -> void:
+	var own_reconcile := not _reconcile_active
+	if own_reconcile:
+		_begin_tile_reconcile()
+	_hand_tiles.clear()
+	# 排序键=(tile_id, original_index)，同值普通/赤牌禁止用 instance_id 改序。
+	var sorted_entries: Array = []
 	var drawn_tiles: Array = []
-	var drawn_iid: int = seat.last_drawn_instance_id
 	var found_drawn := false
-	if Tile.is_valid_instance_id(drawn_iid):
-		for i in range(seat.hand.tiles().size()):
-			var t: Tile = seat.hand.tiles()[i]
-			if t.instance_id == drawn_iid and not found_drawn:
-				drawn_tiles.append(t)
-				found_drawn = true
-			else:
-				sorted_entries.append({"tile": t, "original_index": i})
-		if not found_drawn:
-			# instance 不在 hand → 不拆
-			sorted_entries.clear()
-			drawn_tiles.clear()
-			for i in range(seat.hand.tiles().size()):
-				sorted_entries.append({"tile": seat.hand.tiles()[i], "original_index": i})
-	else:
-		for i in range(seat.hand.tiles().size()):
-			sorted_entries.append({"tile": seat.hand.tiles()[i], "original_index": i})
+	for index in range(source_tiles.size()):
+		var source := source_tiles[index] as Tile
+		if source == null:
+			continue
+		if Tile.is_valid_instance_id(drawn_iid) \
+				and source.instance_id == drawn_iid and not found_drawn:
+			drawn_tiles.append(source)
+			found_drawn = true
+		else:
+			sorted_entries.append({"tile": source, "original_index": index})
+	if Tile.is_valid_instance_id(drawn_iid) and not found_drawn:
+		sorted_entries.clear()
+		drawn_tiles.clear()
+		for index in range(source_tiles.size()):
+			if source_tiles[index] is Tile:
+				sorted_entries.append({
+					"tile": source_tiles[index], "original_index": index})
 	sorted_entries.sort_custom(func(a, b) -> bool:
-		var ta: Tile = a["tile"]
-		var tb: Tile = b["tile"]
-		if ta.id != tb.id:
-			return ta.id < tb.id
+		var first: Tile = a["tile"]
+		var second: Tile = b["tile"]
+		if first.id != second.id:
+			return first.id < second.id
 		return int(a["original_index"]) < int(b["original_index"]))
 	var sorted_tiles: Array = []
-	for e in sorted_entries:
-		sorted_tiles.append(e["tile"])
+	for entry in sorted_entries:
+		sorted_tiles.append(entry["tile"])
 	var show_tiles: Array = sorted_tiles + drawn_tiles
-	var n: int = show_tiles.size()
-	if n == 0:
+	if show_tiles.is_empty():
+		if own_reconcile:
+			_finish_tile_reconcile()
 		return
+	var has_drawn := not drawn_tiles.is_empty() and not sorted_tiles.is_empty()
+	var hand_extent := _hand_world_extent(0, show_tiles.size(), has_drawn)
+	var meld_extent := _meld_world_extent(melds, 0)
+	var centers := _hand_meld_center_offsets(0, hand_extent, meld_extent)
+	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
+	var base_center := Vector3(0, y, HAND_Z) \
+		+ _layout_axis(0) * float(centers["hand_center"])
+	var player_basis := _player_hand_basis(base_center)
 	var gap: float = (Tile3D.TILE_W + 0.004) * SELF_HAND_SCALE
 	var drawn_gap: float = 0.028 * SELF_HAND_SCALE
-	var total: float = n * gap + (drawn_gap if drawn_tiles.size() > 0 and sorted_tiles.size() > 0 else 0.0)
-	var x0: float = -total * 0.5 + gap * 0.5
-	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
-	var z: float = HAND_Z
-	var x_cursor: float = x0
-	for i in range(n):
-		var src: Tile = show_tiles[i]
-		var is_drawn_slot: bool = drawn_tiles.size() > 0 and i == sorted_tiles.size() and sorted_tiles.size() > 0
-		if is_drawn_slot:
-			x_cursor += drawn_gap
-		var tile := Tile3D.new()
-		_world_root.add_child(tile)
-		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
-		tile.setup_entity(src.id, true, src.is_red_dora, src.instance_id)
+	var offsets: Array[float] = []
+	var cursor := 0.0
+	for index in range(show_tiles.size()):
+		if has_drawn and index == sorted_tiles.size():
+			cursor += drawn_gap
+		offsets.append(cursor)
+		cursor += gap
+	var offsets_center := (offsets[0] + offsets[-1]) * 0.5
+	for index in range(show_tiles.size()):
+		var source := show_tiles[index] as Tile
+		var key := _entity_key("hand", 0, source.instance_id, index, stable_owner)
+		var existed := _tile_registry.has(key)
+		var tile := _obtain_tile(key)
+		_prepare_tile(tile, source.id, true, source.is_red_dora, source.instance_id)
+		tile.set_meta("render_region", "hand")
 		tile.transform = Transform3D(
-			_hand_basis(0).scaled(Vector3.ONE * SELF_HAND_SCALE),
-			Vector3(x_cursor, y, z))
-		tile._base_y = y
+			player_basis.scaled(Vector3.ONE * SELF_HAND_SCALE),
+			base_center + player_basis.x.normalized() \
+				* (offsets[index] - offsets_center))
+		# transform 重排会重置 position；用统一 base setter 恢复既有选中抬牌。
+		tile.set_base_position(tile.position)
+		tile.visible = _hands_visible
 		tile.set_clickable(_hand_clickable)
-		tile.tile_clicked.connect(_on_tile_clicked)
-		tile.tile_hover.connect(_on_tile_hover)
-		if animate_draw and is_drawn_slot:
+		tile.set_dim(_hand_dim_active and not _hand_dim_allowed_instances.has(
+			source.instance_id))
+		tile.set_selected(_selected_hand_instance_ids.has(source.instance_id))
+		if not tile.tile_clicked.is_connected(_on_tile_clicked):
+			tile.tile_clicked.connect(_on_tile_clicked)
+		if not tile.tile_hover.is_connected(_on_tile_hover):
+			tile.tile_hover.connect(_on_tile_hover)
+		if animate_draw and not existed and has_drawn \
+				and index == sorted_tiles.size():
 			tile.animate_draw_drop(0.12, 0.22)
 		_hand_tiles.append(tile)
-		x_cursor += gap
+	if own_reconcile:
+		_finish_tile_reconcile()
 
 
 func _rebuild_river(seat_id: int, tiles: Array, riichi_idx: int, animate_last: bool = false) -> void:
-	_free_arr(_river_tiles[seat_id])
-	if tiles == null:
-		return
-	var i := 0
-	var last_i: int = tiles.size() - 1
-	for t in tiles:
+	var own_reconcile := not _reconcile_active
+	if own_reconcile:
+		_begin_tile_reconcile()
+	_river_tiles[seat_id].clear()
+	var visible_count: int = mini(tiles.size(), 24) if tiles != null else 0
+	var last_i: int = visible_count - 1
+	for i in range(visible_count):
+		var t = tiles[i]
 		if t == null:
 			continue
 		var tid: int = t.id if t is Tile else int(t)
 		var is_red: bool = (t is Tile and t.is_red_dora)
-		var tile := Tile3D.new()
-		_world_root.add_child(tile)
-		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
+		var iid: int = (t as Tile).instance_id if t is Tile \
+			else Tile.INVALID_INSTANCE_ID
+		var key := _entity_key("river", seat_id, iid, i)
+		var existed := _tile_registry.has(key)
+		var tile := _obtain_tile(key)
 		if t is Tile:
-			tile.setup_entity(tid, true, is_red, (t as Tile).instance_id)
+			_prepare_tile(tile, tid, true, is_red, iid)
 		else:
-			tile.setup(tid, true, is_red)
+			_prepare_tile(tile, tid, true, is_red, Tile.INVALID_INSTANCE_ID)
+		tile.set_clickable(false)
+		tile.set_selected(false)
+		tile.set_dim(false)
 		var col: int = i % 6
 		var row: int = int(i / 6.0)
 		var lr: Dictionary = _river_pose(seat_id, col, row, i == riichi_idx and riichi_idx >= 0)
+		tile.scale = Vector3.ONE * float(lr.get("scale", 1.0))
 		if animate_last and i == last_i:
-			var from: Vector3 = lr.pos + _seat_in_dir(seat_id) * 0.35 + Vector3(0, 0.12, 0)
-			tile.position = from
-			tile.rotation_degrees = lr.rot + Vector3(-40, 0, 0)
+			if not existed:
+				var from: Vector3 = lr.pos + _seat_in_dir(seat_id) * 0.35 \
+					+ Vector3(0, 0.12, 0)
+				tile.position = from
+				tile.rotation_degrees = lr.rot + Vector3(-40, 0, 0)
 			tile.animate_to(lr.pos, lr.rot, 0.2)
 			tile._base_y = lr.pos.y
+			tile.set_meta("last_native_animation", "discard")
 		else:
 			tile.set_base_position(lr.pos)
 			tile.rotation_degrees = lr.rot
+		tile.set_latest_discard(i == last_i)
+		tile.set_meta("render_region", "river")
 		_river_tiles[seat_id].append(tile)
-		i += 1
+	if own_reconcile:
+		_finish_tile_reconcile()
 
 
 func _seat_in_dir(seat_id: int) -> Vector3:
@@ -688,11 +1111,14 @@ func _seat_in_dir(seat_id: int) -> Vector3:
 
 func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
 	# 6 列；row 0 靠中心，向外涨，不压中心盘
-	var gx: float = Tile3D.TILE_W + 0.004
-	var gz: float = Tile3D.TILE_H + 0.004
+	var use_player_overlay_safe_band := seat_id == 0 and is_tile_overlay()
+	var tile_scale := SELF_RIVER_SCALE if use_player_overlay_safe_band else 1.0
+	var gx: float = (Tile3D.TILE_W + 0.004) * tile_scale
+	var gz: float = (Tile3D.TILE_H + 0.004) * tile_scale
 	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
 	var dx: float = (col - 2.5) * gx
-	var outward: float = RIVER_INNER + row * gz
+	var inner := SELF_RIVER_INNER if use_player_overlay_safe_band else RIVER_INNER
+	var outward: float = inner + row * gz
 	var pos: Vector3
 	var rot: Vector3 = Vector3.ZERO
 	match seat_id:
@@ -711,7 +1137,7 @@ func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
 			pos = Vector3(dx, y, outward)
 	if riichi:
 		rot.y += 90.0
-	return {"pos": pos, "rot": rot}
+	return {"pos": pos, "rot": rot, "scale": tile_scale}
 
 
 func _hand_basis(seat_id: int) -> Basis:
@@ -723,90 +1149,207 @@ func _hand_basis(seat_id: int) -> Basis:
 	return Basis.IDENTITY
 
 
-func _rebuild_opponent_backs(seat_id: int, source: Variant) -> void:
-	_free_arr(_opp_tiles[seat_id])
-	var source_tiles: Array = source.hand.tiles() if source is Seat else []
-	var count := source_tiles.size() if source is Seat else int(source)
+## 混合桌的自家牌面正对主相机：保持牌宽水平，同时让牌面法线直接指向玩家。
+## 完整 3D 实验桌继续使用围桌立牌姿态。
+func _player_hand_basis(center: Vector3) -> Basis:
+	if not is_tile_overlay() or _camera == null:
+		return _hand_basis(0)
+	var width_axis := Vector3.RIGHT
+	var face_axis := _camera.global_position - center
+	face_axis.x = 0.0
+	if face_axis.length_squared() <= 0.000001:
+		return _hand_basis(0)
+	face_axis = face_axis.normalized()
+	var down_axis := width_axis.cross(face_axis).normalized()
+	return Basis(width_axis, face_axis, down_axis)
+
+
+func _flat_hand_basis(seat_id: int) -> Basis:
+	var x_axis := _hand_basis(seat_id).x.normalized()
+	return Basis(x_axis, Vector3.UP, x_axis.cross(Vector3.UP).normalized())
+
+
+func _rebuild_opponent_backs(seat_id: int, source: Variant,
+		melds: Array = [], stable_owner: int = -1,
+		reveal_face_up: bool = false,
+		drawn_instance_id: int = Tile.INVALID_INSTANCE_ID,
+		count_override: int = -1, has_drawn_override: bool = false,
+		animate_reveal: bool = false, stable_slots: bool = false,
+		lay_revealed_flat: bool = false) -> void:
+	var own_reconcile := not _reconcile_active
+	if own_reconcile:
+		_begin_tile_reconcile()
+	_opp_tiles[seat_id].clear()
+	var source_tiles: Array = source.hand.tiles() if source is Seat \
+		else (source as Array if typeof(source) == TYPE_ARRAY else [])
+	var count: int = count_override if count_override >= 0 else (
+		source.hand.size() if source is Seat else (
+		source_tiles.size() if not source_tiles.is_empty() else int(source)))
 	var n: int = clampi(count, 0, 14)
 	if n == 0:
+		if own_reconcile:
+			_finish_tile_reconcile()
 		return
 	var gap: float = (Tile3D.TILE_W + 0.004) * OPPONENT_HAND_SCALE
-	var y: float = TABLE_TOP_Y + Tile3D.TILE_H * 0.5
+	var use_flat_pose := reveal_face_up and lay_revealed_flat
+	var y: float = TABLE_TOP_Y + (Tile3D.APPROVED_TILE_D * 0.5 \
+		if use_flat_pose else Tile3D.TILE_H * 0.5)
+	var drawn_index := -1
+	if Tile.is_valid_instance_id(drawn_instance_id):
+		for index in range(source_tiles.size()):
+			if (source_tiles[index] as Tile).instance_id == drawn_instance_id:
+				drawn_index = index
+				break
+	if drawn_index < 0 and has_drawn_override and n > 1:
+		drawn_index = n - 1
+	var has_drawn := drawn_index >= 0 and n > 1
+	var hand_extent := _hand_world_extent(seat_id, n, has_drawn)
+	var meld_extent := _meld_world_extent(melds, seat_id)
+	var centers := _hand_meld_center_offsets(seat_id, hand_extent, meld_extent)
+	var center := Table3DStage.rotate_from_south(
+		Vector3(0, y, OPPONENT_HAND_RADIUS), seat_id) \
+		+ _layout_axis(seat_id) * float(centers["hand_center"])
+	var basis := (_flat_hand_basis(seat_id) if use_flat_pose \
+		else _hand_basis(seat_id)).scaled(Vector3.ONE * OPPONENT_HAND_SCALE)
+	var along := _hand_basis(seat_id).x.normalized()
+	var offsets: Array[float] = []
+	var offset_cursor := 0.0
+	for index in range(n):
+		if has_drawn and index == drawn_index:
+			offset_cursor += 0.028 * OPPONENT_HAND_SCALE
+		offsets.append(offset_cursor)
+		offset_cursor += gap
+	var offsets_center := (offsets[0] + offsets[-1]) * 0.5
 	for i in range(n):
-		var tile := Tile3D.new()
-		_world_root.add_child(tile)
-		tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
-		if source is Seat:
-			tile.setup_entity(-1, true, false,
-				(source_tiles[i] as Tile).instance_id)
+		var source_tile := source_tiles[i] as Tile if i < source_tiles.size() else null
+		var iid: int = source_tile.instance_id if source_tile != null \
+			else Tile.INVALID_INSTANCE_ID
+		var key := _entity_key("hidden", seat_id,
+			Tile.INVALID_INSTANCE_ID if stable_slots else iid, i, stable_owner)
+		var existing := _tile_registry.get(key, null) as Tile3D
+		var was_face_up := existing != null and existing.face_up \
+			and existing.tile_id >= 0
+		var tile := _obtain_tile(key)
+		if reveal_face_up and source_tile != null:
+			_prepare_tile(tile, source_tile.id, true,
+				source_tile.is_red_dora, source_tile.instance_id)
 		else:
-			tile.setup(-1, true, false)
-		var t: float = (i - (n - 1) * 0.5) * gap
-		var center := Table3DStage.rotate_from_south(
-			Vector3(0, y, OPPONENT_HAND_RADIUS), seat_id)
-		var basis := _hand_basis(seat_id).scaled(Vector3.ONE * OPPONENT_HAND_SCALE)
-		tile.transform = Transform3D(basis, center + basis.x * t)
+			_prepare_tile(tile, -1, true, false, iid)
+		var t: float = offsets[i] - offsets_center
+		# t 已按 OPPONENT_HAND_SCALE 换算；basis 只负责 mesh 尺寸，位移轴
+		# 必须归一化，避免暗手中心步距被重复缩放。
+		tile.transform = Transform3D(basis, center + along * t)
 		tile._base_y = y
+		tile.visible = _hands_visible
+		tile.set_clickable(false)
+		tile.set_selected(false)
+		tile.set_dim(false)
+		tile.set_meta("render_region", "hand")
+		if animate_reveal and reveal_face_up and source_tile != null \
+				and not was_face_up:
+			tile.animate_draw_drop(0.07 + minf(float(i), 6.0) * 0.004, 0.2)
 		_opp_tiles[seat_id].append(tile)
+	if own_reconcile:
+		_finish_tile_reconcile()
 
 
-func _rebuild_melds(seat_id: int, melds: Array) -> void:
-	_free_arr(_meld_tiles[seat_id])
+func _rebuild_melds(seat_id: int, melds: Array,
+		layout_claimant_absolute: int = -1,
+		hand_extent: float = 0.0) -> void:
+	var own_reconcile := not _reconcile_active
+	if own_reconcile:
+		_begin_tile_reconcile()
+	_meld_tiles[seat_id].clear()
 	if melds == null or melds.is_empty():
+		if own_reconcile:
+			_finish_tile_reconcile()
 		return
-	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
-	var group_gap: float = 0.028
-	var cursor: Vector3
-	var yaw: float = 0.0
-	var along: Vector3
-	match seat_id:
-		0:
-			cursor = Vector3(0.55, y, MELD_RADIUS)
-			along = Vector3(-1, 0, 0)
-			yaw = 0.0
-		1:
-			cursor = Vector3(MELD_RADIUS, y, -0.55)
-			along = Vector3(0, 0, 1)
-			yaw = -90.0
-		2:
-			cursor = Vector3(-0.55, y, -MELD_RADIUS)
-			along = Vector3(1, 0, 0)
-			yaw = 180.0
-		3:
-			cursor = Vector3(-MELD_RADIUS, y, 0.55)
-			along = Vector3(0, 0, -1)
-			yaw = 90.0
-		_:
-			return
-	for meld in melds:
-		if meld == null or not (meld is Meld):
+	var claimant := layout_claimant_absolute if layout_claimant_absolute >= 0 \
+		else seat_id
+	var meld_extent := _meld_world_extent(melds, claimant)
+	var centers := _hand_meld_center_offsets(seat_id, hand_extent, meld_extent)
+	var flat_y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
+	var radius := HAND_Z if seat_id == 0 else OPPONENT_HAND_RADIUS
+	var meld_center := Table3DStage.rotate_from_south(
+		Vector3(0, flat_y, radius), seat_id) \
+		+ _layout_axis(seat_id) * float(centers["meld_center"])
+	var along := _hand_basis(seat_id).x.normalized()
+	var yaw: float = float([0.0, -90.0, 180.0, 90.0][seat_id])
+	var overall_cursor := -meld_extent * 0.5
+	var flat_slot_index := 0
+	for meld_index in range(melds.size()):
+		var meld := melds[meld_index] as Meld
+		if meld == null:
 			continue
-		var m: Meld = meld
-		var slots := MeldLayout.compute(m, seat_id)
+		var slots := MeldLayout.compute(meld, claimant)
 		var local_cursor := 0.0
 		var stacked_anchor: Tile3D = null
-		for slot in slots:
-			var tile := Tile3D.new()
-			_world_root.add_child(tile)
-			tile.set_geometry_depth(Tile3D.APPROVED_TILE_D)
-			tile.setup_entity(int(slot["tile_id"]),
-				not bool(slot["face_down"]), bool(slot["is_red_dora"]),
-				int(slot["tile_instance_id"]))
+		for slot_index in range(slots.size()):
+			var slot := slots[slot_index] as Dictionary
+			var stacked := bool(slot["stacked_above"])
+			var added_tile: Tile = _added_tile_for_meld(meld) if stacked else null
+			var iid := added_tile.instance_id if added_tile != null \
+				else int(slot["tile_instance_id"])
+			var render_tile_id := added_tile.id if added_tile != null \
+				else int(slot["tile_id"])
+			var render_red := added_tile.is_red_dora if added_tile != null \
+				else bool(slot["is_red_dora"])
+			var entity_key := "entity:%d" % iid
+			# 规范 ADDED_KAN 的叠牌用真实 added identity，以便从手牌复用并飞入；
+			# 只有旧 fixture 缺 added identity 时才保留 called tile 的视觉 occurrence。
+			var force_occurrence := (stacked and added_tile == null) \
+				or (Tile.is_valid_instance_id(iid) \
+					and _desired_tile_keys.has(entity_key))
+			var key := "meld:%d:%d:slot:%d" % [
+				seat_id, meld.meld_id, slot_index] if force_occurrence \
+				else _entity_key("meld", seat_id, iid, flat_slot_index)
+			var existing := _tile_registry.get(key, null) as Tile3D
+			var previous_region := String(existing.get_meta("render_region", "")) \
+				if existing != null else ""
+			var tile := _obtain_tile(key)
+			_prepare_tile(tile, render_tile_id,
+				not bool(slot["face_down"]), render_red, iid)
+			tile.set_clickable(false)
+			tile.set_selected(false)
+			tile.set_dim(false)
 			var rotated := bool(slot["rotated"])
-			if bool(slot["stacked_above"]) and stacked_anchor != null:
-				tile.set_base_position(stacked_anchor.position
-					+ Vector3(0, Tile3D.APPROVED_TILE_D, 0))
-				tile.rotation_degrees = stacked_anchor.rotation_degrees
+			var target_position: Vector3
+			var target_rotation: Vector3
+			if stacked and stacked_anchor != null:
+				target_position = stacked_anchor.get_meta(
+					"layout_target_position", stacked_anchor.position) \
+					+ Vector3(0, Tile3D.APPROVED_TILE_D, 0)
+				target_rotation = stacked_anchor.get_meta(
+					"layout_target_rotation", stacked_anchor.rotation_degrees)
 			else:
 				var footprint := Tile3D.TILE_H if rotated else Tile3D.TILE_W
-				tile.set_base_position(cursor + along * (local_cursor + footprint * 0.5))
-				tile.rotation_degrees = Vector3(0,
-					yaw + (90.0 if rotated else 0.0), 0)
+				target_position = meld_center + along \
+					* (overall_cursor + local_cursor + footprint * 0.5)
+				target_rotation = Vector3(
+					0, yaw + (90.0 if rotated else 0.0), 0)
 				local_cursor += footprint + 0.004
 				if rotated:
 					stacked_anchor = tile
+			var animate_transition: bool = existing != null \
+				and not previous_region.is_empty() and previous_region != "meld"
+			if animate_transition:
+				tile.animate_to(target_position, target_rotation, 0.22)
+				tile.set_meta("last_native_animation", "meld")
+			else:
+				tile.set_base_position(target_position)
+				tile.rotation_degrees = target_rotation
+			tile.set_meta("layout_target_position", target_position)
+			tile.set_meta("layout_target_rotation", target_rotation)
+			tile.set_meta("render_region", "meld")
+			tile.set_meta("meld_id", meld.meld_id)
+			tile.set_meta("meld_slot", slot_index)
+			tile.set_meta("layout_slot_instance_id", int(slot["tile_instance_id"]))
+			tile.set_meta("layout_claimant_absolute", claimant)
 			_meld_tiles[seat_id].append(tile)
-		cursor += along * (local_cursor + group_gap)
+			flat_slot_index += 1
+		overall_cursor += _meld_slots_extent(slots) + 0.028
+	if own_reconcile:
+		_finish_tile_reconcile()
 
 
 func _rebuild_dora(state: BattleState) -> void:

@@ -171,8 +171,11 @@ scripts/e7_257_whisper_model_download_smoke.sh
 - 赤宝：`is_red_dora` → atlas key **`0m` / `0p` / `0s`**
 - 滤波：`rendering/textures/canvas_textures/default_texture_filter=3`（**LINEAR_WITH_MIPMAPS**）
 - 改 PNG 后必须 `--import`，否则 ctex 失效界面全黑
-- Viewport 设计基准 **1600×900**；`PlayableTable` 默认走 **2D 伪 3D**，
-  `MahjongTable3D` 仅保留为显式实验 opt-in
+- Viewport 设计基准 **1600×900**；练习场与公共桌的 `PlayableTable` 默认保留
+  **2.5D 桌体/HUD**，并挂载 `MahjongTable3D.TILE_OVERLAY` 透明真 3D 牌层；
+  自家手牌在该 profile 下以 camera-facing basis 正面对屏幕，自家 24 张牌河收在
+  中央盘与操作栏之间；旧 2D 牌实体仅作内部回退，`MahjongTable3D.FULL_TABLE`
+  仍为显式实验模式
 
 ### 日麻引擎与技能（active）
 见 `core/`、`battle/`、`skills/`。玩家输入：`PlayerDecisionPort` + `TableDecisionAdapter` + `PlayerActionPanel`。

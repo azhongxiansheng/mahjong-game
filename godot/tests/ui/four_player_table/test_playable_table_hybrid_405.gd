@@ -33,11 +33,45 @@ func _make_hybrid() -> PlayableTable:
 	var table := PLAYABLE_TABLE.instantiate() as PlayableTable
 	add_child_autofree(table)
 	assert_true(table.has_method("set_hybrid_enabled"),
-		"#405：PlayableTable 必须提供显式 hybrid opt-in/回退入口")
+		"#405：PlayableTable 必须提供默认 hybrid 的显式 2D 回退入口")
 	if table.has_method("set_hybrid_enabled"):
 		table.set_hybrid_enabled(true)
 	await get_tree().process_frame
 	return table
+
+
+func _make_full_table_3d() -> MahjongTable3D:
+	var table := MahjongTable3D.new()
+	add_child_autofree(table)
+	await get_tree().process_frame
+	assert_false(table.is_tile_overlay(),
+		"完整 3D 实验合同必须使用默认 FULL_TABLE profile")
+	return table
+
+
+func _trim_hand(seat: Seat, target_count: int) -> void:
+	while seat.hand.size() > target_count:
+		var tile := seat.hand.first()
+		assert_not_null(tile)
+		seat.hand.take_by_instance_id(tile.instance_id)
+	seat.last_drawn_instance_id = Tile.INVALID_INSTANCE_ID
+
+
+func _assert_meld_on_player_right(seat_id: int, hand: Rect2, meld: Rect2) -> void:
+	const GAP := 2.0
+	match seat_id:
+		0:
+			assert_gte(meld.position.x, hand.end.x + GAP,
+				"自家副露必须在手牌屏幕右侧")
+		1:
+			assert_lte(meld.end.y, hand.position.y - GAP,
+				"右家自身右侧对应屏幕上方")
+		2:
+			assert_lte(meld.end.x, hand.position.x - GAP,
+				"对家自身右侧对应屏幕左方")
+		3:
+			assert_gte(meld.position.y, hand.end.y + GAP,
+				"左家自身右侧对应屏幕下方")
 
 
 func test_hybrid_opt_in_keeps_one_2d_owner_and_one_visible_3d_entity_layer() -> void:
@@ -52,8 +86,18 @@ func test_hybrid_opt_in_keeps_one_2d_owner_and_one_visible_3d_entity_layer() -> 
 	if not (hybrid is MahjongTable3D):
 		return
 	assert_true((hybrid as MahjongTable3D).visible)
-	assert_false((table._table.get_node("TableStage") as CanvasItem).visible,
-		"hybrid 时 2D 桌布实体必须隐藏，禁止双桌叠加")
+	assert_true((hybrid as MahjongTable3D).is_tile_overlay())
+	assert_true((hybrid as MahjongTable3D)._vp.transparent_bg)
+	for stage_node in [&"Felt", &"FrameRing", &"CenterPlate", &"ZoneLines"]:
+		assert_null((hybrid as MahjongTable3D)._world_root.get_node_or_null(
+			NodePath(String(stage_node))),
+			"透明牌层不得创建完整 3D 桌体节点：%s" % stage_node)
+	assert_true((table._table.get_node("TableStage") as CanvasItem).visible,
+		"hybrid 必须保留 2.5D 桌布")
+	assert_true((table._table.get_node("Table/BoardFrame") as CanvasItem).visible,
+		"hybrid 必须保留 2.5D 木框")
+	assert_true(table._table.center_info.visible,
+		"hybrid 必须保留 2D 中央盘")
 	assert_true((table._table.get_node("Table") as CanvasItem).visible,
 		"2D HUD owner 仍须留在真实生产树中")
 	assert_eq(table._table.mouse_filter, Control.MOUSE_FILTER_PASS,
@@ -62,7 +106,7 @@ func test_hybrid_opt_in_keeps_one_2d_owner_and_one_visible_3d_entity_layer() -> 
 		"操作带必须继续位于 hybrid viewport 与 HUD 之上")
 
 
-func test_real_battle_state_updates_four_hands_walls_rivers_and_melds() -> void:
+func test_real_battle_state_updates_four_hands_rivers_and_melds_without_overlay_stage_entities() -> void:
 	var table := await _make_hybrid()
 	if not table.has_method("set_hybrid_enabled"):
 		return
@@ -92,7 +136,11 @@ func test_real_battle_state_updates_four_hands_walls_rivers_and_melds() -> void:
 	assert_eq(hybrid._river_tiles[0].size(), 1)
 	assert_eq(hybrid._river_tiles[1].size(), 1)
 	assert_eq(hybrid._meld_tiles[0].size(), 3)
-	assert_gt(hybrid._wall_tiles.size(), 0)
+	assert_eq(hybrid._wall_tiles.size(), 0, "透明牌层不渲染牌山")
+	assert_eq(hybrid._dead_wall_tiles.size(), 0)
+	assert_eq(hybrid._dora_tiles.size(), 0, "宝牌继续由 2D HUD 显示")
+	assert_eq(hybrid._riichi_stick_meshes.size(), 0,
+		"立直信息由 2D HUD 与横置河牌表达")
 	var hand_instance_ids: Array = []
 	for tile in hybrid._hand_tiles:
 		hand_instance_ids.append((tile as Tile3D).tile_instance_id)
@@ -166,6 +214,15 @@ func test_hybrid_hides_only_table_entities_and_keeps_hud_interactive() -> void:
 		"保留 HUD 控件必须继续接收输入")
 	assert_true(flat.caption_overlay.visible)
 	assert_true(flat.reward_pool_hud.visible)
+	assert_true((flat.get_node("TableStage") as CanvasItem).visible)
+	assert_true((flat.get_node("Table/BoardFrame") as CanvasItem).visible)
+	assert_true(flat.center_info.visible)
+	for panel in flat.seat_panels:
+		assert_false(panel._hand_tile_row.visible)
+	for river in flat.discard_rivers:
+		assert_false((river as CanvasItem).visible)
+	for meld_area in flat.meld_areas:
+		assert_false((meld_area as CanvasItem).visible)
 	assert_eq(flat.mouse_filter, Control.MOUSE_FILTER_PASS,
 		"根节点只能让空白区域继续下传给 3D 拾取")
 
@@ -188,10 +245,7 @@ func test_hybrid_input_owner_survives_real_play_hand_start() -> void:
 
 
 func test_production_stage_has_coplanar_symmetric_zone_lines_and_camera_views() -> void:
-	var table := await _make_hybrid()
-	if not table.has_method("set_hybrid_enabled"):
-		return
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var hybrid := await _make_full_table_3d()
 	if hybrid == null:
 		return
 	var world := hybrid._world_root
@@ -230,11 +284,18 @@ func test_production_stage_has_coplanar_symmetric_zone_lines_and_camera_views() 
 				"南北诊断相机必须由同一几何中心旋转得到")
 
 
-func test_main_camera_fills_safe_width_with_stable_near_far_perspective() -> void:
-	var table := await _make_hybrid()
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+func test_full_table_main_camera_fills_safe_width_with_stable_near_far_perspective() -> void:
+	var hybrid := await _make_full_table_3d()
+	for seat_id in range(4):
+		var river_pose := hybrid._river_pose(seat_id, 2, 0, false) as Dictionary
+		assert_almost_eq(float(river_pose.get("scale", 0.0)), 1.0, 0.0001,
+			"TILE_OVERLAY 的自家安全带不得改变 FULL_TABLE 四席河牌尺寸")
+		var outward := (river_pose["pos"] as Vector3).dot(
+			hybrid._seat_in_dir(seat_id))
+		assert_almost_eq(outward, hybrid.RIVER_INNER, 0.0001,
+			"FULL_TABLE 四席牌河必须继续保持旋转对称的内沿半径")
 	var state := BattleState.for_east_round(40506, 0, 1, 0, 0)
-	table.bind_table_state(state, 0, 4)
+	hybrid.bind_battle_state(state, 0, 4)
 	assert_true(hybrid.set_camera_view(&"main"))
 	await get_tree().process_frame
 	var frame := hybrid._world_root.get_node("FrameRing") as MeshInstance3D
@@ -271,11 +332,15 @@ func test_main_camera_fills_safe_width_with_stable_near_far_perspective() -> voi
 	assert_between(near_far_ratio, 1.28, 1.30,
 		"外沿近远比须与内沿 1.268 投影对应（外沿约 1.292），ratio=%s" \
 		% near_far_ratio)
-	var hand_bounds := _mesh_screen_bounds(hybrid._camera,
-		(hybrid._hand_tiles[0] as Tile3D)._mesh)
-	for tile in hybrid._hand_tiles.slice(1):
-		hand_bounds = hand_bounds.merge(_mesh_screen_bounds(hybrid._camera,
-			(tile as Tile3D)._mesh))
+
+
+func test_hybrid_main_hand_clears_action_bar_and_bottom_frame() -> void:
+	var table := await _make_hybrid()
+	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var state := BattleState.for_east_round(405061, 0, 1, 0, 0)
+	table.bind_table_state(state, 0, 4)
+	await get_tree().process_frame
+	var hand_bounds := _tile_array_screen_bounds(hybrid._camera, hybrid._hand_tiles)
 	var action_bottom := table._action_panel.position.y + table._action_panel.size.y
 	assert_gte(hand_bounds.position.y, action_bottom + 5.0,
 		"自家 3D 手牌必须完整落在现有操作带下方")
@@ -284,8 +349,7 @@ func test_main_camera_fills_safe_width_with_stable_near_far_perspective() -> voi
 
 
 func test_production_frame_preserves_369_five_layer_continuous_profile() -> void:
-	var table := await _make_hybrid()
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var hybrid := await _make_full_table_3d()
 	var frame := hybrid._world_root.get_node("FrameRing") as MeshInstance3D
 	assert_true(frame.mesh is ArrayMesh)
 	var mesh := frame.mesh as ArrayMesh
@@ -303,8 +367,7 @@ func test_production_frame_preserves_369_five_layer_continuous_profile() -> void
 
 
 func test_center_information_stays_compact_around_physical_plate() -> void:
-	var table := await _make_hybrid()
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var hybrid := await _make_full_table_3d()
 	for label in hybrid._center_side_labels:
 		var radial := Vector2((label as Label3D).position.x,
 			(label as Label3D).position.z).length()
@@ -315,10 +378,9 @@ func test_center_information_stays_compact_around_physical_plate() -> void:
 
 
 func test_wall_uses_fixed_68_stack_topology_without_floating_dead_wall() -> void:
-	var table := await _make_hybrid()
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var hybrid := await _make_full_table_3d()
 	var state := BattleState.for_east_round(40507, 0, 1, 0, 0)
-	table.bind_table_state(state, 0, 4)
+	hybrid.bind_battle_state(state, 0, 4)
 	assert_eq(hybrid.WALL_STACK_COUNT, 68,
 		"物理牌山拓扑容量必须固定为四边各 17 墩")
 	var expected_wall_count := state.wall.live_wall_size() \
@@ -353,7 +415,7 @@ func test_wall_uses_fixed_68_stack_topology_without_floating_dead_wall() -> void
 		"牌山 identity 必须与真实剩余物理牌一一对应")
 	for _draw in range(10):
 		state.wall.draw()
-	table.bind_table_state(state, 0, 4)
+	hybrid.bind_battle_state(state, 0, 4)
 	assert_eq(hybrid._wall_tiles.size(), expected_wall_count - 10,
 		"额外摸 10 张后只移除 draw order 对应的 10 张真实牌")
 	for tile in hybrid._wall_tiles:
@@ -365,16 +427,15 @@ func test_wall_uses_fixed_68_stack_topology_without_floating_dead_wall() -> void
 
 
 func test_wall_identity_rebuilds_when_authoritative_wall_changes_at_same_cursor() -> void:
-	var table := await _make_hybrid()
-	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var hybrid := await _make_full_table_3d()
 	var first := BattleState.for_east_round(40508, 0, 1, 0, 0, TileId.E, 0)
 	var restored := BattleState.for_east_round(40509, 0, 1, 0, 0, TileId.E, 1)
 	assert_eq(first.wall.draw_index(), restored.wall.draw_index())
-	table.bind_table_state(first, 0, 4)
+	hybrid.bind_battle_state(first, 0, 4)
 	var first_ids := {}
 	for tile in hybrid._wall_tiles:
 		first_ids[(tile as Tile3D).tile_instance_id] = true
-	table.bind_table_state(restored, 0, 4)
+	hybrid.bind_battle_state(restored, 0, 4)
 	for tile in hybrid._wall_tiles:
 		var iid := (tile as Tile3D).tile_instance_id
 		assert_false(first_ids.has(iid),
@@ -389,47 +450,81 @@ func test_closeup_layout_keeps_hands_river_melds_and_hud_readable() -> void:
 	var state := BattleState.for_east_round(40510, 0, 1, 0, 0)
 	var next_iid := 500000
 	for seat_id in range(4):
-		for index in range(18):
+		for index in range(24):
 			state.seats[seat_id].river.append_discard(Tile.new(
 				TileId.ALL[(seat_id * 5 + index) % TileId.ALL.size()],
 				false, seat_id, next_iid))
 			next_iid += 1
-	var pon: Array[Tile] = []
-	for _index in range(3):
-		pon.append(Tile.new(TileId.HAKU, false, 0, next_iid))
-		next_iid += 1
-	state.seats[0].melds.add_pon(pon, 2, pon[1])
+	for seat_id in range(4):
+		var pon: Array[Tile] = []
+		var source := (seat_id + 1) % 4
+		for _index in range(3):
+			pon.append(Tile.new(TileId.HAKU, false,
+				source if _index == 1 else seat_id, next_iid))
+			next_iid += 1
+		state.seats[seat_id].melds.add_pon(pon, source, pon[1])
+		_trim_hand(state.seats[seat_id], 10)
 	table.bind_table_state(state, 0, 4)
 	await get_tree().process_frame
 	var hand_bounds := _tile_array_screen_bounds(hybrid._camera, hybrid._hand_tiles)
-	assert_gte(hand_bounds.size.x, 820.0,
-		"自家牌须接近 2D 前景手牌宽度，当前=%s" % hand_bounds.size.x)
+	assert_gte(hand_bounds.size.x, 600.0,
+		"一组副露后的 10 张自家牌仍须保持前景可读宽度，当前=%s" % hand_bounds.size.x)
 	assert_between(hand_bounds.position.y, 750.0, 805.0)
 	assert_between(hand_bounds.end.y, 850.0, 880.0,
 		"自家牌须贴近底部形成清晰前景，同时完整保留木框")
 	var north_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[2])
 	assert_gte(north_hand.position.y, 12.0, "对家暗手不得贴顶或裁切")
-	var north_wall: Array = []
-	for wall in hybrid._wall_tiles:
-		if (wall as Tile3D).position.z < -0.6:
-			north_wall.append(wall)
-	var north_wall_bounds := _tile_array_screen_bounds(hybrid._camera, north_wall)
-	assert_lte(north_hand.end.y + 6.0, north_wall_bounds.position.y,
-		"对家手牌与内侧牌山须形成两条清晰空间带，不得视觉叠压")
 	var east_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[1])
 	var west_hand := _tile_array_screen_bounds(hybrid._camera, hybrid._opp_tiles[3])
 	assert_lte(east_hand.end.x, 1435.0, "右家暗手须从桌边向内收")
 	assert_gte(west_hand.position.x, 165.0, "左家暗手须从桌边向内收")
 	var south_river := _tile_array_screen_bounds(hybrid._camera, hybrid._river_tiles[0])
-	assert_lte(south_river.end.y, 625.0,
-		"三排牌河不得侵入操作栏/副露带")
-	var south_meld := _tile_array_screen_bounds(hybrid._camera, hybrid._meld_tiles[0])
-	assert_between(south_meld.position.y, 650.0, 700.0,
-		"南家副露须落在手牌上方的同席副露带")
-	assert_lte(south_meld.end.y, hand_bounds.position.y - 8.0,
-		"副露与自家手牌之间必须保留清晰间隔")
+	assert_lte(south_river.end.y, TableLayout.ACTION_BAR_RECT.position.y - 12.0,
+		"24 张牌河不得侵入操作栏")
 	for seat_id in range(4):
 		var hand_rect := hand_bounds if seat_id == 0 else _tile_array_screen_bounds(
 			hybrid._camera, hybrid._opp_tiles[seat_id])
+		var meld_rect := _tile_array_screen_bounds(
+			hybrid._camera, hybrid._meld_tiles[seat_id])
+		_assert_meld_on_player_right(seat_id, hand_rect, meld_rect)
+		assert_true(Rect2(Vector2.ZERO, Vector2(1600, 900)).encloses(meld_rect),
+			"副露不得被 1600×900 视口裁切，seat=%d rect=%s" % [seat_id, meld_rect])
 		assert_false(hand_rect.intersects(TableLayout.SEAT_HUD_RECTS[seat_id]),
 			"玩家头像/分数 HUD 不得遮挡对应席手牌，seat=%d" % seat_id)
+
+
+func test_hybrid_player_river_clears_center_hud_and_action_bar() -> void:
+	var table := await _make_hybrid()
+	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var state := BattleState.for_east_round(40511, 0, 1, 0, 0)
+	for index in range(24):
+		state.seats[0].river.append_discard(Tile.new(
+			TileId.ALL[index % TileId.ALL.size()], false, 0, 511000 + index))
+	table.bind_table_state(state, 0, 4)
+	await get_tree().process_frame
+	var river_bounds := _tile_array_screen_bounds(
+		hybrid._camera, hybrid._river_tiles[0])
+	var center_safe := TableLayout.center_plate()["screen_aabb"] as Rect2
+	assert_gte(river_bounds.position.y, center_safe.end.y + 8.0,
+		"自家牌河必须完整落在中央盘下方，不能再由上层 HUD 遮住；river=%s center=%s" \
+		% [river_bounds, center_safe])
+	assert_lte(river_bounds.end.y,
+		TableLayout.ACTION_BAR_RECT.position.y - 12.0,
+		"自家 24 张牌河外移后仍不得进入操作栏；river=%s" % river_bounds)
+
+
+func test_hybrid_player_hand_face_is_aligned_to_main_camera() -> void:
+	var table := await _make_hybrid()
+	var hybrid := table.get("_hybrid_table_3d") as MahjongTable3D
+	var state := BattleState.for_east_round(40512, 0, 1, 0, 0)
+	table.bind_table_state(state, 0, 4)
+	await get_tree().process_frame
+	assert_false(hybrid._hand_tiles.is_empty())
+	var center_tile := hybrid._hand_tiles[hybrid._hand_tiles.size() / 2] as Tile3D
+	var face_normal := center_tile.global_transform.basis.y.normalized()
+	var direction_to_camera := (
+		hybrid._camera.global_position - center_tile.global_position).normalized()
+	assert_gte(face_normal.dot(direction_to_camera), 0.985,
+		"自家牌面应像 2.5D 手牌一样正面对玩家，而不是保留桌面俯视夹角")
+	assert_gte(face_normal.y, 0.55,
+		"自家牌面法线必须朝上对准高位相机，消除牌面纵向压缩")

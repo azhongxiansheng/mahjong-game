@@ -9,6 +9,8 @@ const ViewerRevealStrip := preload(
 signal player_card_clicked(tile_instance_id: int)
 # 悬停手牌时通知桌面做全桌同名高亮（仍用 tile_id）。
 signal hand_tile_hover(tile_id: int, entered: bool)
+# renderer 切换/故障时由上层保存交互真源，避免状态随实体节点释放。
+signal hand_interaction_state_changed(state: Dictionary)
 
 # 麻将王 — 里程碑 3 第 2 步：单 seat 面板（plan-3 D4）
 #
@@ -69,6 +71,8 @@ var _visual_hand_slots: Array[Control] = []
 
 # 玩家手牌当前是否接受点击（轮到玩家出牌时切 true）
 var _hand_clickable: bool = false
+var _hand_dim_active: bool = false
+var _hand_dim_allowed_instances: Array = []
 
 var _seat_id: int = 0
 var _seat_wind: int = TileId.E
@@ -836,6 +840,7 @@ func set_hand_tile_owners(owners: Array) -> void:
 # 胡牌结算前：强制显示该 seat 手牌正面。
 var _force_reveal_hand: bool = false
 var _revealed_hand: Hand = null
+var _win_tile_id: int = -1
 
 
 ## #377：只读 seat DTO（core_table@1 seats[]）。show_faces=true 时用 concealed_tiles；
@@ -937,6 +942,7 @@ func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
 	var scale_y: float = th / float(CardTileBack.TILE_HEIGHT)
 	var x := 0.0
 	var i := 0
+	var win_marked := false
 	for tid in ids:
 		var is_red := false
 		for t in hand.tiles():
@@ -949,6 +955,9 @@ func _rebuild_revealed_hand_row(hand: Hand, animate: bool = false) -> void:
 		_hand_tile_row.add_child(tile)
 		tile.set_face_up(int(tid), is_red)
 		tile.set_clickable(false)
+		if not win_marked and int(tid) == _win_tile_id:
+			tile.set_win_tile(true)
+			win_marked = true
 		if animate and is_inside_tree():
 			tile.modulate.a = 0.0
 			tile.scale = Vector2(scale_x * 0.7, scale_y * 0.7)
@@ -1582,6 +1591,7 @@ static func _make_row_shadow(size_: Vector2) -> Panel:
 # 手牌槽：每张牌一个 Control 容器（棱 + CardTileBack），便于增量 reuse。
 # meta: hand_instance_id, hand_id, hand_red, is_drawn
 var _hand_slots: Array = []  # Array[Control]
+var _selected_hand_instance_ids: Array = []
 
 
 # 内部统一渲染：sorted 在左，drawn 在右；增量 reuse 同 (iid,id,red) 节点。
@@ -1714,8 +1724,12 @@ func _sync_player_hand_slots(targets: Array) -> void:
 			continue
 		tile.set_clickable(_hand_clickable)
 		tile.set_dora(_dora_ids.has(int(slot3.get_meta("hand_id", -1))))
-		tile.set_dim(false)
+		var slot_instance_id := int(slot3.get_meta(
+			"hand_instance_id", Tile.INVALID_INSTANCE_ID))
+		tile.set_dim(_hand_dim_active \
+			and not _hand_dim_allowed_instances.has(slot_instance_id))
 		tile.set_hover_match(false)
+		tile.set_lifted(_selected_hand_instance_ids.has(slot_instance_id))
 
 
 func _make_hand_slot(tile_id: int, is_red: bool, instance_id: int,
@@ -1801,17 +1815,29 @@ func highlight_hand_tile_id(tid: int) -> void:
 		tile.set_hover_match(on)
 
 
-# 飞牌定位：参数语义 = tile_instance_id（禁止 tile_id fallback）
-# 非法 instance（尤其 INVALID=-1）立即 ZERO，避免纯展示 slot 被误定位。
-func get_hand_slot_global_center(tile_instance_id: int) -> Vector2:
+# renderer-neutral 手牌实体查询：只暴露稳定 identity、牌面身份与屏幕几何，
+# 调用方无需读取 _hand_slots 或 CardTileBack 私有状态。
+func get_hand_tile_render_info(tile_instance_id: int) -> Dictionary:
 	if not Tile.is_valid_instance_id(tile_instance_id):
-		return Vector2.ZERO
+		return {}
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
 		if int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID)) == tile_instance_id:
-			return s.get_global_rect().get_center()
-	return Vector2.ZERO
+			return {
+				"tile_instance_id": tile_instance_id,
+				"tile_id": int(s.get_meta("hand_id", -1)),
+				"is_red_dora": bool(s.get_meta("hand_red", false)),
+				"screen_center": s.get_global_rect().get_center(),
+			}
+	return {}
+
+
+# 飞牌定位：参数语义 = tile_instance_id（禁止 tile_id fallback）
+# 非法 instance（尤其 INVALID=-1）立即 ZERO，避免纯展示 slot 被误定位。
+func get_hand_slot_global_center(tile_instance_id: int) -> Vector2:
+	return get_hand_tile_render_info(tile_instance_id).get(
+		"screen_center", Vector2.ZERO)
 
 # ---- T2 单牌状态接线(spec 2026-06-11 G2) ----
 
@@ -1837,6 +1863,8 @@ func _on_hand_tile_hover(tile_id: int, entered: bool) -> void:
 
 # 吃牌选搭子模式:候选之外的手牌压暗。allowed = tile_instance_id 列表。
 func dim_hand_except(allowed: Array) -> void:
+	_hand_dim_active = true
+	_hand_dim_allowed_instances = allowed.duplicate()
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
@@ -1844,17 +1872,53 @@ func dim_hand_except(allowed: Array) -> void:
 		if tile:
 			var iid: int = int(s.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID))
 			tile.set_dim(not allowed.has(iid))
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 func clear_hand_dim() -> void:
+	_hand_dim_active = false
+	_hand_dim_allowed_instances.clear()
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
 		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
 		if tile:
 			tile.set_dim(false)
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
+
+
+# renderer-neutral 多选状态；2D 回退与 Tile3D 使用同一物理牌 instance 接口。
+func set_selected_instances(instance_ids: Array) -> void:
+	_selected_hand_instance_ids = instance_ids.duplicate()
+	for slot in _hand_slots:
+		if slot == null or not is_instance_valid(slot):
+			continue
+		var tile := slot.get_node_or_null("Tile") as CardTileBack
+		if tile != null:
+			tile.set_lifted(_selected_hand_instance_ids.has(int(
+				slot.get_meta("hand_instance_id", Tile.INVALID_INSTANCE_ID))))
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
+
+
+func get_hand_interaction_state() -> Dictionary:
+	return {
+		"clickable": _hand_clickable,
+		"dim_active": _hand_dim_active,
+		"dim_allowed_instances": _hand_dim_allowed_instances.duplicate(),
+		"selected_instances": _selected_hand_instance_ids.duplicate(),
+	}
+
+
+func apply_hand_interaction_state(state: Dictionary) -> void:
+	set_hand_clickable(bool(state.get("clickable", false)))
+	if bool(state.get("dim_active", false)):
+		dim_hand_except(state.get("dim_allowed_instances", []) as Array)
+	else:
+		clear_hand_dim()
+	set_selected_instances(state.get("selected_instances", []) as Array)
 
 # 和牌张脉冲:标记手牌行中第一张匹配 tile_id 的牌(自摸/荣和宣告后、结算前)。
 func mark_win_tile(tile_id: int) -> void:
+	_win_tile_id = tile_id
 	for s in _hand_slots:
 		if s == null or not is_instance_valid(s):
 			continue
@@ -1863,6 +1927,26 @@ func mark_win_tile(tile_id: int) -> void:
 			if tile:
 				tile.set_win_tile(true)
 				return
+	if _hand_tile_row == null:
+		return
+	for child in _hand_tile_row.get_children():
+		if child is CardTileBack and int(child.get("_tile_id")) == tile_id:
+			(child as CardTileBack).set_win_tile(true)
+			return
+
+
+func clear_win_tile() -> void:
+	_win_tile_id = -1
+	for slot in _hand_slots:
+		if slot == null or not is_instance_valid(slot):
+			continue
+		var tile := slot.get_node_or_null("Tile") as CardTileBack
+		if tile != null:
+			tile.set_win_tile(false)
+	if _hand_tile_row != null:
+		for child in _hand_tile_row.get_children():
+			if child is CardTileBack:
+				(child as CardTileBack).set_win_tile(false)
 
 # T5:发牌演出期间整行隐藏/恢复。
 func set_hand_row_visible(b: bool) -> void:
@@ -2015,6 +2099,7 @@ func set_hand_clickable(b: bool) -> void:
 		var tile: CardTileBack = s.get_node_or_null("Tile") as CardTileBack
 		if tile:
 			tile.set_clickable(b)
+	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 func _on_player_tile_clicked(tile_instance_id: int) -> void:
 	if _seat_id != 0:

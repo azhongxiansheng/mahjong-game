@@ -42,12 +42,23 @@ static func build(world: Node3D) -> Dictionary:
 	_build_center(world)
 	_build_zone_lines(world)
 	_build_lights(world)
+	var camera := _build_camera(world)
+	return {"camera": camera, "frame": frame}
+
+
+## 透明混合模式只共享已校准相机与灯，不建立桌体或中央盘 mesh。
+static func build_tile_overlay(world: Node3D) -> Dictionary:
+	_build_lights(world)
+	return {"camera": _build_camera(world)}
+
+
+static func _build_camera(world: Node3D) -> Camera3D:
 	var camera := Camera3D.new()
 	camera.name = "Camera3D"
 	camera.near = 0.04
 	camera.current = true
 	world.add_child(camera)
-	return {"camera": camera, "frame": frame}
+	return camera
 
 
 static func set_camera_view(camera: Camera3D, view_name: StringName) -> bool:

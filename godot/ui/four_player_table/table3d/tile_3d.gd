@@ -28,6 +28,7 @@ static var _shared_meshes: Dictionary = {}
 static var _face_textures: Dictionary = {}
 static var _face_materials: Dictionary = {}
 static var _back_materials: Dictionary = {}
+static var _overlay_materials: Dictionary = {}
 static var _default_skin: Resource = null
 
 @export var tile_skin: Resource = null
@@ -43,6 +44,13 @@ var _collision: CollisionShape3D = null
 var _geometry_depth: float = TILE_D
 var _base_y: float = 0.0
 var _lifted: bool = false
+var _is_hovered: bool = false
+var _is_dora: bool = false
+var _is_hover_match: bool = false
+var _is_latest_discard: bool = false
+var _is_win_tile: bool = false
+var _is_selected: bool = false
+var _is_dim: bool = false
 
 
 func _ready() -> void:
@@ -150,9 +158,18 @@ func set_face_up(p_face_up: bool) -> void:
 func set_clickable(b: bool) -> void:
 	clickable = b
 	input_ray_pickable = true
+	if not clickable and _is_hovered:
+		_is_hovered = false
+		_refresh_lifted()
 
 
+# 兼容既有调用：旧的 lifted 即选中态；鼠标 hover 另由 _is_hovered 记录，
+# 两者合并后再驱动实际位移，避免 hover 退出清掉仍然有效的选中态。
 func set_lifted(b: bool) -> void:
+	set_selected(b)
+
+
+func _set_lifted_visual(b: bool) -> void:
 	if _lifted == b:
 		return
 	_lifted = b
@@ -164,6 +181,10 @@ func set_lifted(b: bool) -> void:
 		position.y = target_y
 
 
+func _refresh_lifted() -> void:
+	_set_lifted_visual(_is_selected or _is_hovered)
+
+
 func set_base_position(pos: Vector3) -> void:
 	_base_y = pos.y
 	position = pos
@@ -172,9 +193,104 @@ func set_base_position(pos: Vector3) -> void:
 
 
 func set_dim(b: bool) -> void:
-	if _mesh == null:
+	if _is_dim == b:
 		return
+	_is_dim = b
+	_ensure_mesh()
+	# dim 只使用 GeometryInstance3D 的透明度，不修改任一牌面材质的 RGB。
 	_mesh.transparency = 0.4 if b else 0.0
+
+
+func is_dim() -> bool:
+	return _is_dim
+
+
+func set_dora(b: bool) -> void:
+	if _is_dora == b:
+		return
+	_is_dora = b
+	_refresh_material_overlay()
+
+
+func set_hover_match(b: bool) -> void:
+	if _is_hover_match == b:
+		return
+	_is_hover_match = b
+	_refresh_material_overlay()
+
+
+func set_latest_discard(b: bool) -> void:
+	if _is_latest_discard == b:
+		return
+	_is_latest_discard = b
+	_refresh_material_overlay()
+
+
+func set_win_tile(b: bool) -> void:
+	if _is_win_tile == b:
+		return
+	_is_win_tile = b
+	_refresh_material_overlay()
+
+
+func set_selected(b: bool) -> void:
+	if _is_selected == b:
+		return
+	_is_selected = b
+	_refresh_material_overlay()
+	_refresh_lifted()
+
+
+func visual_state() -> Dictionary:
+	return {
+		"dora": _is_dora,
+		"hover_match": _is_hover_match,
+		"latest_discard": _is_latest_discard,
+		"win_tile": _is_win_tile,
+		"selected": _is_selected,
+		"dim": _is_dim,
+		"overlay": String(_active_overlay()),
+	}
+
+
+func _active_overlay() -> StringName:
+	if _is_win_tile:
+		return &"win"
+	if _is_latest_discard:
+		return &"latest"
+	if _is_selected:
+		return &"selected"
+	if _is_hover_match:
+		return &"hover_match"
+	if _is_dora:
+		return &"dora"
+	return &""
+
+
+func _refresh_material_overlay() -> void:
+	_ensure_mesh()
+	var overlay := _active_overlay()
+	_mesh.material_overlay = null if overlay == &"" \
+		else _overlay_material_for(overlay)
+
+
+static func _overlay_material_for(state: StringName) -> StandardMaterial3D:
+	if _overlay_materials.has(state):
+		return _overlay_materials[state] as StandardMaterial3D
+	var colors := {
+		&"dora": Color(1.0, 0.78, 0.18, 0.24),
+		&"hover_match": Color(0.24, 0.55, 0.86, 0.30),
+		&"selected": Color(0.96, 0.68, 0.16, 0.36),
+		&"latest": Color(1.0, 0.34, 0.16, 0.40),
+		&"win": Color(0.95, 0.20, 0.48, 0.46),
+	}
+	var material := StandardMaterial3D.new()
+	material.albedo_color = colors.get(state, Color.TRANSPARENT) as Color
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_overlay_materials[state] = material
+	return material
 
 
 # 平滑飞到目标位姿（切牌入河 / 摸牌落下）
@@ -625,11 +741,13 @@ func _input_event(_camera: Camera3D, event: InputEvent,
 
 func _on_mouse_entered() -> void:
 	if clickable:
-		set_lifted(true)
+		_is_hovered = true
+		_refresh_lifted()
 		tile_hover.emit(tile_id, true)
 
 
 func _on_mouse_exited() -> void:
 	if clickable:
-		set_lifted(false)
+		_is_hovered = false
+		_refresh_lifted()
 		tile_hover.emit(tile_id, false)

@@ -87,6 +87,7 @@ func mount_playable_table() -> PlayableTable:
 	_table.mouse_filter = Control.MOUSE_FILTER_STOP
 	lobby.add_child(_table)
 	lobby.move_child(_table, lobby.get_child_count() - 1)
+	_table.set_hybrid_enabled(true)
 	return _table
 
 

@@ -5,6 +5,23 @@ const ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.ts
 const SEAT_PANEL := preload("res://ui/four_player_table/seat_panel.tscn")
 
 
+class SelectionRendererSpy extends Node:
+	var selected_instances: Array = []
+	var hand_clickable := false
+
+	func set_hand_clickable(value: bool) -> void:
+		hand_clickable = value
+
+	func dim_hand_except(_allowed: Array) -> void:
+		pass
+
+	func clear_hand_dim() -> void:
+		pass
+
+	func set_selected_instances(instance_ids: Array) -> void:
+		selected_instances = instance_ids.duplicate()
+
+
 var _panel: PlayerActionPanel
 var _seat: SeatPanel
 var _adapter: TableDecisionAdapter
@@ -57,6 +74,28 @@ func test_claim_companions_request_uses_allowed_tile_instance_ids() -> void:
 	assert_eq(result.choice, {"action": "claim_tile_pick", "tile_instance_id": 12})
 	assert_false(result.choice.has("tile_id"))
 	assert_false(result.choice.has("allowed_tile_ids"))
+
+
+func test_claim_companions_forwards_and_clears_selected_instances() -> void:
+	var renderer := SelectionRendererSpy.new()
+	add_child_autofree(renderer)
+	var adapter := TableDecisionAdapter.new(_panel, renderer)
+	var result := {}
+	var request_runner := func():
+		result["choice"] = await adapter.request(&"claim_companions", {
+			"selected_tile_instance_ids": [12],
+			"allowed_tile_instance_ids": [11, 12, 14],
+		})
+	request_runner.call()
+	await get_tree().process_frame
+	assert_eq(renderer.selected_instances, [12],
+		"renderer 必须让已选实体保持抬起，而不是只做候选压暗")
+	adapter.present(&"clear_hand_selection")
+	assert_true(renderer.selected_instances.is_empty(),
+		"决策结束必须清除 renderer 选中态")
+	_panel.player_action_chosen.emit({"action": "skip"})
+	await get_tree().process_frame
+	assert_eq(result.get("choice", {}), {"action": "skip"})
 
 
 func test_idle_presentation_disables_hand_input() -> void:

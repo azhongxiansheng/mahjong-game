@@ -18,6 +18,7 @@ func _init(action_panel: PlayerActionPanel, seat_panel: Node) -> void:
 func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 	match kind:
 		&"discard":
+			_set_selected_instances([])
 			_action_panel.enter_waiting_discard(
 				bool(context.get("can_tsumo", false)),
 				bool(context.get("can_ankan", false)),
@@ -47,6 +48,8 @@ func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 				if not highlighted.has(iid):
 					highlighted.append(iid)
 			_seat_panel.dim_hand_except(highlighted)
+			_set_selected_instances(
+				context.get("selected_tile_instance_ids", []) as Array)
 	var message: String = String(context.get("message", ""))
 	if kind == &"claim_companions" and message == "":
 		var claim_kind: String = String(context.get("claim_kind", ""))
@@ -66,12 +69,19 @@ func present(state_name: StringName, context: Dictionary = {}) -> void:
 		&"idle":
 			_seat_panel.set_hand_clickable(false)
 			_seat_panel.clear_hand_dim()
+			_set_selected_instances([])
 			_action_panel.enter_idle(String(context.get("text", "等待 AI…")))
 		&"status":
 			_action_panel.set_status_text(String(context.get("text", "")))
 		&"clear_hand_selection":
 			_seat_panel.set_hand_clickable(false)
 			_seat_panel.clear_hand_dim()
+			_set_selected_instances([])
+
+
+func _set_selected_instances(instance_ids: Array) -> void:
+	if _seat_panel != null and _seat_panel.has_method("set_selected_instances"):
+		_seat_panel.call("set_selected_instances", instance_ids)
 
 
 func on_hand_tile_clicked(tile_instance_id: int) -> void:
