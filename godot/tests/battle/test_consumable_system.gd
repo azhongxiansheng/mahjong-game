@@ -191,3 +191,78 @@ func test_furiten_bomb_ignores_owner_ron_and_tsumo():
 	# 武装仍在：下一次对手荣和仍被取消
 	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0}))
 	assert_true(st.ron_cancelled[1], "武装保留到下一次对手荣和")
+
+
+# ============================================================
+# 第 6 组：道具 L2-score 计分上下文批（2026-07-28 spec §3.1 / §2.2 / §2.3）
+# ============================================================
+
+func test_double_payout_records_extra_han_cap_three():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"double_payout_v1", 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(float(ctx.han_multipliers.get(0, 1.0)), 2.0, "倍率仍 ×2")
+	assert_eq(int(ctx.han_multiplier_extra_caps.get(0, -1)), 3, "额外番上限 3")
+
+func test_apply_han_multiplier_caps_extra_and_skips_yakuman():
+	var yl := YakuList.new()
+	yl.add_yaku(&"riichi", 1)
+	yl.add_yaku(&"chinitsu", 6)
+	BattleController._apply_han_multiplier(yl, 2.0, 3)
+	assert_eq(yl.total_han(), 10, "7 番 ×2 上限 +3 → 10 番")
+	var yl2 := YakuList.new()
+	yl2.add_yaku(&"riichi", 1)
+	yl2.add_yaku(&"tsumo", 1)
+	BattleController._apply_han_multiplier(yl2, 2.0, 3)
+	assert_eq(yl2.total_han(), 4, "2 番 ×2 未触上限 → 4 番")
+	var yl3 := YakuList.new()
+	yl3.is_yakuman = true
+	yl3.yakuman_multiplier = 1
+	BattleController._apply_han_multiplier(yl3, 2.0, 3)
+	assert_eq(yl3.total_han(), 0, "役满不放大")
+	var yl4 := YakuList.new()
+	yl4.add_yaku(&"riichi", 1)
+	yl4.add_yaku(&"chinitsu", 6)
+	BattleController._apply_han_multiplier(yl4, 2.0)
+	assert_eq(yl4.total_han(), 14, "无上限调用保持原语义")
+
+func test_point_shield_refunds_30_percent_of_ron_net_after_settle():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"point_shield_v1", 0)
+	var before_winner: int = st.scores[1]
+	var before_owner: int = st.scores[0]
+	# 荣和净得点 7700（payout 各付家正数之和，不含立直棒）→ 返还 2300（30% 向下取整到 100）
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {
+		"discarder_seat": 0, "is_tsumo": false,
+		"payout": {0: 7700}, "points_won": 8700,
+	}))
+	assert_eq(st.scores[0], before_owner + 2300, "放铳者收回 30% 净得点")
+	assert_eq(st.scores[1], before_winner - 2300, "从和牌者本次得点中转移")
+	# consumed：第二次不再触发
+	var w1: int = st.scores[1]
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {
+		"discarder_seat": 0, "is_tsumo": false, "payout": {0: 7700},
+	}))
+	assert_eq(st.scores[1], w1, "consumed 后不再触发")
+
+func test_point_shield_ignores_other_discarder_and_tsumo():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"point_shield_v1", 0)
+	var snapshot: Array = st.scores.duplicate()
+	# 他家放铳不触发
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {
+		"discarder_seat": 2, "is_tsumo": false, "payout": {2: 7700},
+	}))
+	# 自摸不触发（无放铳人）
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {
+		"is_tsumo": true, "payout": {0: 4000, 2: 2000, 3: 2000},
+	}))
+	assert_eq(st.scores, snapshot, "非 owner 放铳与自摸均不触发")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_false(sk.consumed, "未触发不消耗")

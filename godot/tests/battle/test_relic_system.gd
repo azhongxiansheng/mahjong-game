@@ -53,14 +53,24 @@ func test_relic_iron_will_reduces_han():
 	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1, null, {"discarder_seat": 0}))
 	assert_eq(int(ctx.han_deltas.get(1, 0)), -1, "铁壁意志应给对手 -1 番")
 
-func test_relic_soul_mirror_steals_score():
+func test_relic_soul_mirror_transfers_5_percent_of_points_won():
 	var reg := SkillRegistry.new()
 	var st := BattleState.new()
 	var sched := SkillScheduler.new(reg, st)
 	RelicFactory.inject(reg, &"relic_soul_mirror_v1", 0)
 	var before_0: int = st.scores[0]
-	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1))
-	assert_gt(st.scores[0], before_0, "魂镜应偷取得分")
+	var before_1: int = st.scores[1]
+	# 对手本次实际得点 8000 → 5% = 400（向下取整到 100）
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {"points_won": 8000}))
+	assert_eq(st.scores[0], before_0 + 400, "魂镜按本次得点 5% 转移")
+	assert_eq(st.scores[1], before_1 - 400)
+	# 取整：3900 * 5% = 195 → 100
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 1, null, {"points_won": 3900}))
+	assert_eq(st.scores[0], before_0 + 400 + 100, "向下取整到 100 点")
+	# owner 自己胡牌不转移
+	var s0: int = st.scores[0]
+	sched.emit_event(BattleEvent.make(&"WIN_DECLARED", 0, null, {"points_won": 8000}))
+	assert_eq(st.scores[0], s0, "owner 自己胡牌不触发")
 
 
 # ============================================================
@@ -124,3 +134,86 @@ func test_negative_skill_han_delta_clamped_to_min_one_han():
 	yl3.dora_count = 2
 	BattleController._apply_skill_han_delta(yl3, -2)
 	assert_eq(yl3.total_han(), 1, "含 Dora 也按总计分番钳制到 1")
+
+
+func test_relic_dragon_seal_requires_dragon_triplet_yaku():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_dragon_seal_v1", 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.RIICHI, YakuId.YAKUHAI_HAKU]}))
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 1, "含白刻子役 +1 番")
+	var ctx2 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.YAKUHAI_HAKU, YakuId.YAKUHAI_HATSU, YakuId.YAKUHAI_CHUN]}))
+	assert_eq(int(ctx2.han_deltas.get(0, 0)), 1, "多种三元牌单件仍只 +1")
+	var ctx3 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.RIICHI, YakuId.TANYAO]}))
+	assert_eq(int(ctx3.han_deltas.get(0, 0)), 0, "无三元牌役不触发")
+
+func test_relic_wind_charm_requires_wind_yaku_once():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_wind_charm_v1", 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.YAKUHAI_BAKAZE]}))
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 1, "场风役 +1 番")
+	var ctx2 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.YAKUHAI_BAKAZE, YakuId.YAKUHAI_JIKAZE]}))
+	assert_eq(int(ctx2.han_deltas.get(0, 0)), 1, "连风牌单件仍只 +1")
+	var ctx3 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0, null,
+		{"yaku_ids": [YakuId.RIICHI]}))
+	assert_eq(int(ctx3.han_deltas.get(0, 0)), 0, "无风役不触发")
+
+func _add_tiles(seat: Seat, ids: Array, base_serial: int) -> void:
+	for i in range(ids.size()):
+		seat.add_to_hand(Tile.new(ids[i], false, Tile.NO_OWNER, base_serial + i))
+
+func test_relic_patience_stone_pays_1000_only_when_tenpai():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	for i in range(4):
+		st.seats.append(Seat.new(i, TileId.E))
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_patience_stone_v1", 0)
+	# owner 听牌：123m456m789m123s + 5p 单骑
+	_add_tiles(st.seats[0], [
+		TileId.W1, TileId.W2, TileId.W3, TileId.W4, TileId.W5, TileId.W6,
+		TileId.W7, TileId.W8, TileId.W9, TileId.S1, TileId.S2, TileId.S3,
+		TileId.T5,
+	], 1)
+	var before: int = st.scores[0]
+	sched.emit_event(BattleEvent.make(&"EXHAUSTIVE_DRAW", -1))
+	assert_eq(st.scores[0], before + 1000, "荒牌流局听牌 +1000")
+
+func test_relic_patience_stone_noten_gets_nothing():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	for i in range(4):
+		st.seats.append(Seat.new(i, TileId.E))
+	var sched := SkillScheduler.new(reg, st)
+	RelicFactory.inject(reg, &"relic_patience_stone_v1", 0)
+	# owner 未听牌（散张 + 孤立字牌，向听数 ≥ 2；注意全幺九 13 张会构成国士听牌）
+	_add_tiles(st.seats[0], [
+		TileId.W2, TileId.W5, TileId.W8, TileId.T2, TileId.T5, TileId.T8,
+		TileId.S2, TileId.S5, TileId.S8, TileId.E, TileId.S_WIND,
+		TileId.W_WIND, TileId.HAKU,
+	], 1)
+	var before: int = st.scores[0]
+	sched.emit_event(BattleEvent.make(&"EXHAUSTIVE_DRAW", -1))
+	assert_eq(st.scores[0], before, "未听牌不获得忍石奖励")
+
+func test_win_declared_pre_carries_yaku_ids_readonly_context():
+	for seed_value in range(1, 41):
+		var bc := BattleController.new(seed_value, 0, true)
+		var result: Dictionary = bc.run_to_end()
+		for value in result.events:
+			var event := value as BattleEvent
+			if event.type == &"WIN_DECLARED_PRE":
+				assert_true(event.extra.has("yaku_ids"),
+					"WIN_DECLARED_PRE 应携带 yaku_ids 只读上下文")
+				var ids: Array = event.extra["yaku_ids"]
+				assert_gt(ids.size(), 0, "胡牌至少 1 个役")
+				return
+	fail_test("40 个 seed 内应至少出现一次胡牌")

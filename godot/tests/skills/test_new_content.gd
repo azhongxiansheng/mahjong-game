@@ -83,36 +83,69 @@ func test_comeback_crown_no_bonus_when_other_wins():
 
 # ==== relic_speed_demon ====
 
-func test_speed_demon_adds_1_han_when_turn_low():
-	var ctx := _setup()
-	var reg: SkillRegistry = ctx[0]
-	var st: BattleState = ctx[1]
-	var sched: SkillScheduler = ctx[2]
-	st.turn_count = 5
-	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
-	var sk := _make_relic(&"relic_speed_demon_v1", SpeedDemonHook, triggers)
-	reg.register(sk, 0)
-	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 1, "turn < 8 = +1 han")
+func _seed_seats(st: BattleState) -> void:
+	for i in range(4):
+		st.seats.append(Seat.new(i, TileId.E))
 
-func test_speed_demon_no_bonus_when_turn_high():
+func _discard_n(seat: Seat, n: int, base_serial: int) -> void:
+	for i in range(n):
+		seat.river.append_discard(Tile.new(TileId.W1, false, Tile.NO_OWNER, base_serial + i))
+
+func test_speed_demon_adds_1_han_before_sixth_personal_discard():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	st.turn_count = 8
+	_seed_seats(st)
+	_discard_n(st.seats[0], 5, 1)
 	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
 	var sk := _make_relic(&"relic_speed_demon_v1", SpeedDemonHook, triggers)
 	reg.register(sk, 0)
 	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
-	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0, "turn >= 8 = no bonus")
+	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 1, "个人舍牌 < 6 = +1 han")
+
+func test_speed_demon_no_bonus_at_six_personal_discards():
+	var ctx := _setup()
+	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
+	var sched: SkillScheduler = ctx[2]
+	_seed_seats(st)
+	_discard_n(st.seats[0], 6, 1)
+	# 全局巡数很小也不触发——用的是个人舍牌数
+	st.turn_count = 1
+	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
+	var sk := _make_relic(&"relic_speed_demon_v1", SpeedDemonHook, triggers)
+	reg.register(sk, 0)
+	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0, "第 6 次舍牌完成后无加成")
+
+func test_speed_demon_counts_claimed_discards():
+	var ctx := _setup()
+	var reg: SkillRegistry = ctx[0]
+	var st: BattleState = ctx[1]
+	var sched: SkillScheduler = ctx[2]
+	_seed_seats(st)
+	_discard_n(st.seats[0], 5, 1)
+	# 第 6 张被下家碰走：河里只剩 5 张，但个人舍牌数应为 6
+	var pon_tiles: Array[Tile] = [
+		Tile.new(TileId.W5, false, Tile.NO_OWNER, 101),
+		Tile.new(TileId.W5, false, Tile.NO_OWNER, 102),
+		Tile.new(TileId.W5, false, Tile.NO_OWNER, 103),
+	]
+	var pon: Meld = Meld.make_pon(pon_tiles, 0, 1)
+	assert_true(st.seats[1].melds.restore([pon], 1))
+	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
+	var sk := _make_relic(&"relic_speed_demon_v1", SpeedDemonHook, triggers)
+	reg.register(sk, 0)
+	var out_ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_eq(int(out_ctx.han_deltas.get(0, 0)), 0, "被鸣走的舍牌也计入个人舍牌数")
 
 func test_speed_demon_no_bonus_when_other_wins():
 	var ctx := _setup()
 	var reg: SkillRegistry = ctx[0]
 	var st: BattleState = ctx[1]
 	var sched: SkillScheduler = ctx[2]
-	st.turn_count = 3
+	_seed_seats(st)
 	var triggers: Array[StringName] = [&"WIN_DECLARED_PRE"]
 	var sk := _make_relic(&"relic_speed_demon_v1", SpeedDemonHook, triggers)
 	reg.register(sk, 0)

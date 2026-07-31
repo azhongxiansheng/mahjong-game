@@ -10,6 +10,8 @@ var han_deltas: Dictionary = {}
 # hook 通过 multiply_han_for_seat 累乘；BattleController 在 ScoreCalc 之前读取
 # 以"补偿合成 yaku entry"形式作用到 yaku_list。
 var han_multipliers: Dictionary = {}
+# L2-score：倍率产生的额外番上限（seat → int；多来源取最小）。-1/缺失 = 无上限。
+var han_multiplier_extra_caps: Dictionary = {}
 # M7 ctx B3-mini：mangan 下限标记（Dictionary[int → bool]，true 时 winner
 # 该胡牌至少 5 番 = 满贯）。BattleController 在 ScoreCalc 之前补差。
 var mangan_floor_seats: Dictionary = {}
@@ -230,11 +232,15 @@ func mark_red_dora_for_seat(seat: int, count: int = 1) -> void:
 # 用于 pin9_haitei_double（spec "海底/河底役 ×2"）等 multiplicative 效果。
 # 注：本 PR 只暴露 ctx API + BattleController 读取；首批落地 hook 是
 # pin9_haitei_double 升级到真 ×2（替代 v1 +1 番桩）。
-func multiply_han_for_seat(seat: int, factor: float) -> void:
+func multiply_han_for_seat(seat: int, factor: float, extra_cap: int = -1) -> void:
 	if seat < 0 or seat >= 4:
 		return
 	var current: float = float(han_multipliers.get(seat, 1.0))
 	han_multipliers[seat] = current * factor
+	# extra_cap >= 0 时登记该 seat 倍率额外番上限；多来源取最小（spec 2026-07-28 §3.1）。
+	if extra_cap >= 0:
+		var existing: int = int(han_multiplier_extra_caps.get(seat, -1))
+		han_multiplier_extra_caps[seat] = extra_cap if existing < 0 else mini(existing, extra_cap)
 
 # M7 ctx B3-mini：ensure_mangan_for_seat。
 # 标记指定 seat 的胡牌至少满贯（≥ 5 番 → ScoreFormula 钳到满贯下限）。
@@ -265,6 +271,20 @@ func consume_self() -> void:
 		current_skill.consumed = true
 
 # ---- Read-only accessors ----
+
+# 个人舍牌数（含被鸣走的舍牌）：本席河牌数 + 各家副露中 from_seat 为本席的
+# 非暗杠副露数（每个此类副露恰好对应 1 张被鸣走的舍牌；加杠保留原碰的 from_seat）。
+func personal_discard_count(seat: int) -> int:
+	if seat < 0 or seat >= _state.seats.size():
+		return 0
+	var count: int = _state.seats[seat].river.size()
+	for other in _state.seats:
+		if other.seat_id == seat:
+			continue
+		for m in other.melds.all():
+			if m != null and m.kind != Meld.Kind.ANKAN and int(m.from_seat) == seat:
+				count += 1
+	return count
 
 func get_score(seat: int) -> int:
 	return _state.scores[seat]

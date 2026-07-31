@@ -788,12 +788,15 @@ func _settle_ron(ron_tile: Tile, ron_ti: TileSkillAnchor, winner_seat: int,
 		"is_tsumo": false,
 		"is_houtei": is_houtei,
 		"is_chankan": is_chankan,
+		# L2-score 只读上下文：本次胡牌命中的役 id（YakuId 常量）
+		"yaku_ids": yaku_list.id_list(),
 	}
 	pre_ctxs.append(_emit(&"WIN_DECLARED_PRE", winner_seat, ron_ti, pre_extra))
 	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(winner_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, winner_seat)
 	# M7 B3-mini：把 multiplicative effect（任一 pre ctx）应用到番数
-	_apply_han_multiplier(score_yaku_list, _composite_multiplier(winner_seat, pre_ctxs))
+	_apply_han_multiplier(score_yaku_list, _composite_multiplier(winner_seat, pre_ctxs),
+		_composite_multiplier_extra_cap(winner_seat, pre_ctxs))
 	# M7 B3-mini：满贯下限保底（white_mangan_floor 等消耗品）
 	if _has_mangan_floor(winner_seat, pre_ctxs):
 		_apply_mangan_floor(score_yaku_list)
@@ -856,11 +859,16 @@ func _settle_tsumo(drawn: Tile, wp: Dictionary, yaku_list, is_haitei: bool = fal
 	var pre_ctxs: Array = []
 	if is_haitei:
 		pre_ctxs.append(_emit(&"HAITEI", state.current_seat, ti, {}))
-	var pre_extra: Dictionary = {"is_tsumo": true, "is_haitei": is_haitei}
+	var pre_extra: Dictionary = {
+		"is_tsumo": true,
+		"is_haitei": is_haitei,
+		"yaku_ids": yaku_list.id_list(),
+	}
 	pre_ctxs.append(_emit(&"WIN_DECLARED_PRE", state.current_seat, ti, pre_extra))
 	_apply_skill_han_delta(score_yaku_list, _sum_skill_han(state.current_seat, pre_ctxs))
 	_apply_extra_dora(score_yaku_list, state.current_seat)
-	_apply_han_multiplier(score_yaku_list, _composite_multiplier(state.current_seat, pre_ctxs))
+	_apply_han_multiplier(score_yaku_list, _composite_multiplier(state.current_seat, pre_ctxs),
+		_composite_multiplier_extra_cap(state.current_seat, pre_ctxs))
 	if _has_mangan_floor(state.current_seat, pre_ctxs):
 		_apply_mangan_floor(score_yaku_list)
 	# M9 B3：force_yakuman 自摸路径
@@ -951,13 +959,28 @@ func _apply_extra_dora(yaku_list: YakuList, winner_seat: int) -> void:
 # 用合成"&\"skill_multiplier\""yaku entry 表达：(factor - 1) * total_han 番。
 # 例如 factor=2.0、当前 total_han=5 → 加 +5 番（合 10 番）。
 # factor <= 1.0 不操作（避免 ScoreFormula 钳制 < 0 番时混乱）。
-static func _apply_han_multiplier(yaku_list: YakuList, factor: float) -> void:
+static func _apply_han_multiplier(yaku_list: YakuList, factor: float, extra_cap: int = -1) -> void:
 	if factor <= 1.0:
+		return
+	# spec 2026-07-28 §3.1：役满不再放大。
+	if yaku_list.is_yakuman:
 		return
 	var current_total: int = yaku_list.total_han()
 	var added: int = int(current_total * (factor - 1.0))
+	# spec §3.1 倍率券：由倍率额外获得的番数受上限约束（如 +3）。
+	if extra_cap >= 0:
+		added = mini(added, extra_cap)
 	if added != 0:
 		yaku_list.add_yaku(&"skill_multiplier", added)
+
+# 收集 pre ctx 中该 seat 的倍率额外番上限；多来源取最小，无则 -1。
+static func _composite_multiplier_extra_cap(seat: int, ctxs: Array) -> int:
+	var cap: int = -1
+	for c in ctxs:
+		var v: int = int((c as SkillCtx).han_multiplier_extra_caps.get(seat, -1))
+		if v >= 0:
+			cap = v if cap < 0 else mini(cap, v)
+	return cap
 
 # 累加多个 ctx 中 winner_seat 的 han_deltas（用于 HAITEI/HOUTEI + WIN_DECLARED_PRE）
 static func _sum_skill_han(winner_seat: int, ctxs: Array) -> int:
