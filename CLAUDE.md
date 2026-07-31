@@ -163,7 +163,7 @@ scripts/e7_257_whisper_model_download_smoke.sh
 里程碑与差距：`docs/superpowers/specs/`（含牌桌 overhaul、gap analysis 等）。
 
 ### 道具领域（active）
-`items/item_catalog.gd` 统一登记当前 10 个战斗消耗品与 12 个遗物；`CardPool`、`ConsumableFactory`、`RelicFactory`、`ItemInventoryModule`、`ItemAuthority` 和牌桌 UI 只消费该目录，不再维护各自的具体 ID 白名单。`seat_swap_v1` / `tsubame_v1` 保留为已知但不可发放、不可使用；协议 DTO、`ItemInstance` 状态与 `ITEM_*` 事件仍由 `session/` 权威链维护。
+`items/item_catalog.gd` 统一登记当前 10 个战斗消耗品与 12 个遗物；`CardPool`、`ConsumableFactory`、`RelicFactory`、`ItemInventoryModule`、`ItemAuthority` 和牌桌 UI 只消费该目录，不再维护各自的具体 ID 白名单。道具能力语义以 2026-07-28 玩法设计 spec 为准，L0/L1、L2-score 与 L2-flow（除 `dora_flip_v1` 即时化）已落地：即时消耗品 hook 以 `consume_self()` 表示成功，失败的使用不消耗实例；`relic_pity_breaker_v1` 的跨局充能计数存 `ItemInventoryModule`（会话内部，不进 wire schema），由 `prepare_new_hand` 注入 `pity_charged` / 聚合 `pity_extra_han`。`seat_swap_v1` / `tsubame_v1` / `relic_pity_breaker_v1` 为已知但不可发放（后者语义已实现，发放待内容批）；协议 DTO、`ItemInstance` 状态与 `ITEM_*` 事件仍由 `session/` 权威链维护。
 
 ### 麻将牌领域模型
 
