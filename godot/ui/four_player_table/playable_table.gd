@@ -296,6 +296,11 @@ func _disconnect_seat_input_owner(owner) -> void:
 
 func _on_hand_interaction_state_changed(state: Dictionary) -> void:
 	_hand_interaction_state = state.duplicate(true)
+	if _action_panel != null \
+			and StringName(state.get("activation_mode", &"immediate")) \
+				== &"confirm_discard" \
+			and not (state.get("selected_instances", []) as Array).is_empty():
+		_action_panel.set_status_text("已选中，再点一次或上推切出")
 
 
 func _set_seat_input_owner(owner) -> void:
@@ -2682,6 +2687,8 @@ func _begin_or_submit_multi(kind: String, companion_count: int) -> void:
 		_action_panel.enter_waiting_claim_pick()
 		_action_panel.set_status_text("%s — 点选权威候选实体（%d 张）" % [kind, companion_count])
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except"):
@@ -2726,6 +2733,8 @@ func _begin_or_submit_kan(kan_kind: String) -> void:
 		_action_panel.enter_waiting_claim_pick()
 		_action_panel.set_status_text("KAN/%s — 点选权威候选" % kan_kind)
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except") and not union_ids.is_empty():
@@ -2750,6 +2759,8 @@ func _begin_or_submit_riichi() -> void:
 	if _action_panel != null:
 		_action_panel.set_status_text("立直 — 点选权威切牌实体")
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except"):
@@ -3283,6 +3294,9 @@ func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
 	var payload: Dictionary = ne.payload
 	var allowed: Array = payload.get("allowed_actions", []) as Array
 	if ne.kind == "TURN_PROMPT":
+		if _seat_panel_player != null \
+				and _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"confirm_discard")
 		var can_tsumo := false
 		var can_ankan := false
 		var can_added := false
@@ -3333,6 +3347,9 @@ func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
 			elif _seat_panel_player.has_method("clear_hand_dim"):
 				_seat_panel_player.clear_hand_dim()
 	elif ne.kind == "CLAIM_WINDOW":
+		if _seat_panel_player != null \
+				and _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		var can_ron := false
 		var can_chi := false
 		var can_pon := false

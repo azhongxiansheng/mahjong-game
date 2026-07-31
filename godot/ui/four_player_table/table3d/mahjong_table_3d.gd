@@ -17,6 +17,9 @@ signal hand_interaction_state_changed(state: Dictionary)
 
 enum RenderProfile { FULL_TABLE, TILE_OVERLAY }
 
+const HAND_ACTIVATION_IMMEDIATE: StringName = &"immediate"
+const HAND_ACTIVATION_CONFIRM_DISCARD: StringName = &"confirm_discard"
+
 const TABLE_W: float = 2.4
 const TABLE_D: float = 2.4
 const TABLE_TOP_Y: float = Table3DStage.TABLE_TOP_Y
@@ -59,6 +62,7 @@ var _dead_wall_tiles: Array = []
 var _riichi_stick_meshes: Array = []
 var _center_side_labels: Array = []
 var _hand_clickable: bool = false
+var _hand_activation_mode: StringName = HAND_ACTIVATION_IMMEDIATE
 var _state: BattleState = null
 var _center_label: Label3D = null
 var _center_plate: MeshInstance3D = null
@@ -396,6 +400,15 @@ func set_hand_clickable(b: bool) -> void:
 	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 
+func set_hand_activation_mode(mode: StringName) -> void:
+	var normalized := HAND_ACTIVATION_CONFIRM_DISCARD \
+		if mode == HAND_ACTIVATION_CONFIRM_DISCARD else HAND_ACTIVATION_IMMEDIATE
+	if _hand_activation_mode == normalized:
+		return
+	_hand_activation_mode = normalized
+	set_selected_instances([])
+
+
 func dim_hand_except(allowed: Array) -> void:
 	# allowed = tile_instance_id 列表
 	_hand_dim_active = true
@@ -433,6 +446,7 @@ func set_selected_instances(instance_ids: Array) -> void:
 func get_hand_interaction_state() -> Dictionary:
 	return {
 		"clickable": _hand_clickable,
+		"activation_mode": _hand_activation_mode,
 		"dim_active": _hand_dim_active,
 		"dim_allowed_instances": _hand_dim_allowed_instances.duplicate(),
 		"selected_instances": _selected_hand_instance_ids.duplicate(),
@@ -440,6 +454,8 @@ func get_hand_interaction_state() -> Dictionary:
 
 
 func apply_hand_interaction_state(state: Dictionary) -> void:
+	set_hand_activation_mode(StringName(state.get(
+		"activation_mode", HAND_ACTIVATION_IMMEDIATE)))
 	set_hand_clickable(bool(state.get("clickable", false)))
 	if bool(state.get("dim_active", false)):
 		dim_hand_except(state.get("dim_allowed_instances", []) as Array)
@@ -1042,6 +1058,8 @@ func _rebuild_player_hand_tiles(source_tiles: Array, drawn_iid: int,
 		tile.set_selected(_selected_hand_instance_ids.has(source.instance_id))
 		if not tile.tile_clicked.is_connected(_on_tile_clicked):
 			tile.tile_clicked.connect(_on_tile_clicked)
+		if not tile.tile_flicked.is_connected(_on_tile_flicked):
+			tile.tile_flicked.connect(_on_tile_flicked)
 		if not tile.tile_hover.is_connected(_on_tile_hover):
 			tile.tile_hover.connect(_on_tile_hover)
 		if animate_draw and not existed and has_drawn \
@@ -1374,8 +1392,29 @@ func _rebuild_dora(state: BattleState) -> void:
 
 
 func _on_tile_clicked(tile_instance_id: int) -> void:
-	if _hand_clickable and Tile.is_valid_instance_id(tile_instance_id):
+	if not _is_hand_tile_actionable(tile_instance_id):
+		return
+	if _hand_activation_mode == HAND_ACTIVATION_CONFIRM_DISCARD:
+		if _selected_hand_instance_ids == [tile_instance_id]:
+			player_card_clicked.emit(tile_instance_id)
+		else:
+			set_selected_instances([tile_instance_id])
+		return
+	player_card_clicked.emit(tile_instance_id)
+
+
+func _on_tile_flicked(tile_instance_id: int) -> void:
+	if _is_hand_tile_actionable(tile_instance_id):
 		player_card_clicked.emit(tile_instance_id)
+
+
+func _is_hand_tile_actionable(tile_instance_id: int) -> bool:
+	if not _hand_clickable or not Tile.is_valid_instance_id(tile_instance_id):
+		return false
+	for value in _hand_tiles:
+		if value is Tile3D and (value as Tile3D).tile_instance_id == tile_instance_id:
+			return not (value as Tile3D).is_dim()
+	return false
 
 
 func _on_tile_hover(tile_id: int, entered: bool) -> void:

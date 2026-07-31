@@ -18,6 +18,7 @@ func _init(action_panel: PlayerActionPanel, seat_panel: Node) -> void:
 func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 	match kind:
 		&"discard":
+			_set_hand_activation_mode(&"confirm_discard")
 			_set_selected_instances([])
 			_action_panel.enter_waiting_discard(
 				bool(context.get("can_tsumo", false)),
@@ -37,6 +38,7 @@ func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 		&"kyuusyu":
 			_action_panel.enter_waiting_kyuusyu()
 		&"claim_companions":
+			_set_hand_activation_mode(&"immediate")
 			# 从吃/碰按钮进入实体选择：切 WAITING_CLAIM + 仅 skip，清掉鸣牌按钮残留
 			_action_panel.enter_waiting_claim_pick()
 			_seat_panel.set_hand_clickable(true)
@@ -67,6 +69,7 @@ func request(kind: StringName, context: Dictionary = {}) -> Dictionary:
 func present(state_name: StringName, context: Dictionary = {}) -> void:
 	match state_name:
 		&"idle":
+			_set_hand_activation_mode(&"immediate")
 			_seat_panel.set_hand_clickable(false)
 			_seat_panel.clear_hand_dim()
 			_set_selected_instances([])
@@ -82,6 +85,11 @@ func present(state_name: StringName, context: Dictionary = {}) -> void:
 func _set_selected_instances(instance_ids: Array) -> void:
 	if _seat_panel != null and _seat_panel.has_method("set_selected_instances"):
 		_seat_panel.call("set_selected_instances", instance_ids)
+
+
+func _set_hand_activation_mode(mode: StringName) -> void:
+	if _seat_panel != null and _seat_panel.has_method("set_hand_activation_mode"):
+		_seat_panel.call("set_hand_activation_mode", mode)
 
 
 func on_hand_tile_clicked(tile_instance_id: int) -> void:

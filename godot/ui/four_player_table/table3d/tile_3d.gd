@@ -19,9 +19,11 @@ const BEVEL_SEGMENTS: int = 4
 const BACK_LAYER_RATIO: float = 0.5
 const DEFAULT_SKIN_PATH := \
 	"res://ui/four_player_table/table3d/skins/qinglan_weave.tres"
+const FLICK_UP_THRESHOLD_PX: float = 32.0
 
 # E2-02 / #232：点击发 tile_instance_id；hover 仍发 tile_id（同名联动）
 signal tile_clicked(tile_instance_id: int)
+signal tile_flicked(tile_instance_id: int)
 signal tile_hover(tile_id: int, entered: bool)
 
 static var _shared_meshes: Dictionary = {}
@@ -51,6 +53,8 @@ var _is_latest_discard: bool = false
 var _is_win_tile: bool = false
 var _is_selected: bool = false
 var _is_dim: bool = false
+var _pointer_pressed: bool = false
+var _pointer_press_position: Vector2 = Vector2.ZERO
 
 
 func _ready() -> void:
@@ -158,6 +162,8 @@ func set_face_up(p_face_up: bool) -> void:
 func set_clickable(b: bool) -> void:
 	clickable = b
 	input_ray_pickable = true
+	if not clickable:
+		_pointer_pressed = false
 	if not clickable and _is_hovered:
 		_is_hovered = false
 		_refresh_lifted()
@@ -736,7 +742,37 @@ func _input_event(_camera: Camera3D, event: InputEvent,
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			if not Tile.is_valid_instance_id(tile_instance_id):
 				return
+			_pointer_pressed = true
+			_pointer_press_position = mb.position
 			tile_clicked.emit(tile_instance_id)
+		elif not mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_pointer_pressed = false
+	elif event is InputEventMouseMotion and _pointer_pressed:
+		var motion := event as InputEventMouseMotion
+		_try_emit_flick(motion.position)
+	elif event is InputEventScreenTouch:
+		var touch := event as InputEventScreenTouch
+		if touch.pressed:
+			if not Tile.is_valid_instance_id(tile_instance_id):
+				return
+			_pointer_pressed = true
+			_pointer_press_position = touch.position
+			tile_clicked.emit(tile_instance_id)
+		else:
+			_pointer_pressed = false
+	elif event is InputEventScreenDrag and _pointer_pressed:
+		_try_emit_flick((event as InputEventScreenDrag).position)
+
+
+func _try_emit_flick(current_position: Vector2) -> void:
+	var delta := current_position - _pointer_press_position
+	if delta.y > -FLICK_UP_THRESHOLD_PX:
+		return
+	if absf(delta.y) < absf(delta.x) * 1.2:
+		return
+	_pointer_pressed = false
+	if Tile.is_valid_instance_id(tile_instance_id):
+		tile_flicked.emit(tile_instance_id)
 
 
 func _on_mouse_entered() -> void:
