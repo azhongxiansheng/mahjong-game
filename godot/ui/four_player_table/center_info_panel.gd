@@ -36,17 +36,14 @@ var _riichi_sticks: int = 0
 func _ready() -> void:
 	_restyle_plate()
 	_build_seat_sides()
+	_label_riichi.visible = false
 	_dora_row = Node2D.new()
 	# 放在 panel 中心稍下，让"Dora:"label 上面，牌图在下面
 	_dora_row.position = Vector2(-60, 30)
 	add_child(_dora_row)
-	# 立直棒 / 本场棒 视觉行(VBox 末追加,与文字 label 呼应)
+	# 立直棒已移至左上宝牌区；中央盘只保留本场棒视觉行。
 	var vbox: VBoxContainer = $VBox
 	if vbox:
-		_riichi_sticks_row = HBoxContainer.new()
-		_riichi_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
-		_riichi_sticks_row.add_theme_constant_override("separation", DT.GAP_TIGHT)
-		vbox.add_child(_riichi_sticks_row)
 		_honba_sticks_row = HBoxContainer.new()
 		_honba_sticks_row.alignment = BoxContainer.ALIGNMENT_CENTER
 		_honba_sticks_row.add_theme_constant_override("separation", DT.GAP_TIGHT)
@@ -73,47 +70,37 @@ var _side_nodes: Array = []
 var _seats_summary: Array = []
 
 func _restyle_plate() -> void:
-	# 圆角金边深蓝盘 + 外环暗影（雀魂中心台）
+	# 深蓝盘严格使用 TableLayout 的桌面四角投影，不再以屏幕矩形冒充桌面物件。
 	var bg := get_node_or_null("Bg")
 	if bg:
 		bg.visible = false
-	var plate := Panel.new()
+	var quad := TableLayout.center_plate()["local_quad"] as PackedVector2Array
+	var shadow := Polygon2D.new()
+	shadow.name = "CenterPlateShadow"
+	shadow.polygon = TableLayout.offset_polygon(quad, Vector2(0, 5))
+	shadow.color = Color(0, 0, 0, 0.48)
+	add_child(shadow)
+	var plate := Polygon2D.new()
 	plate.name = "CenterPlate"
-	plate.position = Vector2(-PLATE_HALF, -PLATE_HALF)
-	plate.size = Vector2(PLATE_HALF * 2, PLATE_HALF * 2)
-	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(0.07, 0.09, 0.16, 0.96)
-	sb.border_color = Color(0.92, 0.78, 0.40, 0.65)
-	sb.set_border_width_all(3)
-	sb.set_corner_radius_all(18)
-	sb.shadow_color = Color(0, 0, 0, 0.65)
-	sb.shadow_size = 18
-	sb.shadow_offset = Vector2(0, 4)
-	plate.add_theme_stylebox_override("panel", sb)
+	plate.polygon = quad
+	plate.color = Color(0.07, 0.09, 0.16, 0.96)
 	add_child(plate)
-	move_child(plate, 0)
+	var border := Line2D.new()
+	border.name = "CenterPlateBorder"
+	border.points = PackedVector2Array([quad[0], quad[1], quad[2], quad[3], quad[0]])
+	border.width = 3.0
+	border.default_color = Color(0.92, 0.78, 0.40, 0.65)
+	border.joint_mode = Line2D.LINE_JOINT_ROUND
+	add_child(border)
+	move_child(shadow, 0)
+	move_child(plate, 1)
+	move_child(border, 2)
 	var vbox := get_node_or_null("VBox") as Control
 	if vbox:
 		vbox.offset_left = -78
 		vbox.offset_right = 78
 		vbox.offset_top = -56
 		vbox.offset_bottom = 60
-	# 顶缘高光
-	var sheen := ColorRect.new()
-	sheen.color = Color(0.75, 0.80, 0.95, 0.10)
-	sheen.position = Vector2(-PLATE_HALF + 4, -PLATE_HALF + 4)
-	sheen.size = Vector2(PLATE_HALF * 2 - 8, 48)
-	sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(sheen)
-	move_child(sheen, 1)
-	# 底缘金线
-	var gold_line := ColorRect.new()
-	gold_line.color = Color(0.9, 0.75, 0.35, 0.35)
-	gold_line.position = Vector2(-PLATE_HALF + 20, PLATE_HALF - 14)
-	gold_line.size = Vector2(PLATE_HALF * 2 - 40, 2)
-	gold_line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(gold_line)
 
 func _build_seat_sides() -> void:
 	_side_nodes = []

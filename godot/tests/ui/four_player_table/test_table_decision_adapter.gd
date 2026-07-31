@@ -8,6 +8,7 @@ const SEAT_PANEL := preload("res://ui/four_player_table/seat_panel.tscn")
 class SelectionRendererSpy extends Node:
 	var selected_instances: Array = []
 	var hand_clickable := false
+	var activation_mode: StringName = &"immediate"
 
 	func set_hand_clickable(value: bool) -> void:
 		hand_clickable = value
@@ -20,6 +21,9 @@ class SelectionRendererSpy extends Node:
 
 	func set_selected_instances(instance_ids: Array) -> void:
 		selected_instances = instance_ids.duplicate()
+
+	func set_hand_activation_mode(mode: StringName) -> void:
+		activation_mode = mode
 
 
 var _panel: PlayerActionPanel
@@ -88,6 +92,8 @@ func test_claim_companions_forwards_and_clears_selected_instances() -> void:
 		})
 	request_runner.call()
 	await get_tree().process_frame
+	assert_eq(renderer.activation_mode, &"immediate",
+		"吃碰组合选牌保持单击立即选择")
 	assert_eq(renderer.selected_instances, [12],
 		"renderer 必须让已选实体保持抬起，而不是只做候选压暗")
 	adapter.present(&"clear_hand_selection")
@@ -96,6 +102,21 @@ func test_claim_companions_forwards_and_clears_selected_instances() -> void:
 	_panel.player_action_chosen.emit({"action": "skip"})
 	await get_tree().process_frame
 	assert_eq(result.get("choice", {}), {"action": "skip"})
+
+
+func test_discard_request_uses_confirm_activation_and_idle_resets_it() -> void:
+	var renderer := SelectionRendererSpy.new()
+	add_child_autofree(renderer)
+	var adapter := TableDecisionAdapter.new(_panel, renderer)
+	var request_runner := func():
+		await adapter.request(&"discard")
+	request_runner.call()
+	await get_tree().process_frame
+	assert_eq(renderer.activation_mode, &"confirm_discard")
+
+	adapter.present(&"idle")
+	assert_eq(renderer.activation_mode, &"immediate")
+	_panel.player_action_chosen.emit({"action": "discard", "tile_instance_id": 7})
 
 
 func test_idle_presentation_disables_hand_input() -> void:

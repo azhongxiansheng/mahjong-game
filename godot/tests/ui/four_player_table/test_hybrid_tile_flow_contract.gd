@@ -78,6 +78,16 @@ func test_four_rivers_render_24_tiles_riichi_rotation_and_latest_marker() -> voi
 		assert_lte(_yaw_delta((river[RIICHI_INDEX] as Tile3D).rotation_degrees.y,
 			float(base_yaws[seat_id]) + 90.0), 0.01,
 			"seat=%d：立直弃牌必须横置" % seat_id)
+		var scale_ := MahjongTable3D.SELF_RIVER_SCALE \
+			if seat_id == 0 else 1.0
+		var minimum_step := (Tile3D.TILE_W + Tile3D.TILE_H) * 0.5 * scale_ \
+			+ 0.004 * scale_
+		for neighbor_index in [RIICHI_INDEX - 1, RIICHI_INDEX + 1]:
+			var actual_step := _planar_step(
+				river[RIICHI_INDEX] as Tile3D,
+				river[neighbor_index] as Tile3D)
+			assert_gte(actual_step, minimum_step - 0.0001,
+				"seat=%d：立直横牌不得与同排相邻牌碰撞" % seat_id)
 		for index in range(river.size()):
 			assert_eq(bool((river[index] as Tile3D).visual_state().get(
 				"latest_discard", false)), index == 23,

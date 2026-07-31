@@ -17,6 +17,9 @@ signal hand_interaction_state_changed(state: Dictionary)
 
 enum RenderProfile { FULL_TABLE, TILE_OVERLAY }
 
+const HAND_ACTIVATION_IMMEDIATE: StringName = &"immediate"
+const HAND_ACTIVATION_CONFIRM_DISCARD: StringName = &"confirm_discard"
+
 const TABLE_W: float = 2.4
 const TABLE_D: float = 2.4
 const TABLE_TOP_Y: float = Table3DStage.TABLE_TOP_Y
@@ -26,6 +29,9 @@ const RIVER_INNER: float = 0.32
 # 自家 24 张牌河必须完整避开上层中央盘与操作栏：适度外移并压缩网格。
 const SELF_RIVER_INNER: float = 0.404
 const SELF_RIVER_SCALE: float = 0.82
+# 混合桌横向（初始东/西家）牌河按各自朝向做轻微镜像倾角；抬高中心点
+# 抵消旋转后的垂直包围盒，既增强桌面贴合感也避免牌角穿入毡面。
+const OVERLAY_HORIZONTAL_RIVER_PITCH_DEGREES: float = 7.0
 const WALL_RADIUS: float = 0.70
 const WALL_GAP: float = 0.080
 const WALL_STACKS_PER_SIDE_MAX: int = 17
@@ -59,6 +65,7 @@ var _dead_wall_tiles: Array = []
 var _riichi_stick_meshes: Array = []
 var _center_side_labels: Array = []
 var _hand_clickable: bool = false
+var _hand_activation_mode: StringName = HAND_ACTIVATION_IMMEDIATE
 var _state: BattleState = null
 var _center_label: Label3D = null
 var _center_plate: MeshInstance3D = null
@@ -396,6 +403,15 @@ func set_hand_clickable(b: bool) -> void:
 	hand_interaction_state_changed.emit(get_hand_interaction_state())
 
 
+func set_hand_activation_mode(mode: StringName) -> void:
+	var normalized := HAND_ACTIVATION_CONFIRM_DISCARD \
+		if mode == HAND_ACTIVATION_CONFIRM_DISCARD else HAND_ACTIVATION_IMMEDIATE
+	if _hand_activation_mode == normalized:
+		return
+	_hand_activation_mode = normalized
+	set_selected_instances([])
+
+
 func dim_hand_except(allowed: Array) -> void:
 	# allowed = tile_instance_id 列表
 	_hand_dim_active = true
@@ -433,6 +449,7 @@ func set_selected_instances(instance_ids: Array) -> void:
 func get_hand_interaction_state() -> Dictionary:
 	return {
 		"clickable": _hand_clickable,
+		"activation_mode": _hand_activation_mode,
 		"dim_active": _hand_dim_active,
 		"dim_allowed_instances": _hand_dim_allowed_instances.duplicate(),
 		"selected_instances": _selected_hand_instance_ids.duplicate(),
@@ -440,6 +457,8 @@ func get_hand_interaction_state() -> Dictionary:
 
 
 func apply_hand_interaction_state(state: Dictionary) -> void:
+	set_hand_activation_mode(StringName(state.get(
+		"activation_mode", HAND_ACTIVATION_IMMEDIATE)))
 	set_hand_clickable(bool(state.get("clickable", false)))
 	if bool(state.get("dim_active", false)):
 		dim_hand_except(state.get("dim_allowed_instances", []) as Array)
@@ -1042,6 +1061,8 @@ func _rebuild_player_hand_tiles(source_tiles: Array, drawn_iid: int,
 		tile.set_selected(_selected_hand_instance_ids.has(source.instance_id))
 		if not tile.tile_clicked.is_connected(_on_tile_clicked):
 			tile.tile_clicked.connect(_on_tile_clicked)
+		if not tile.tile_flicked.is_connected(_on_tile_flicked):
+			tile.tile_flicked.connect(_on_tile_flicked)
 		if not tile.tile_hover.is_connected(_on_tile_hover):
 			tile.tile_hover.connect(_on_tile_hover)
 		if animate_draw and not existed and has_drawn \
@@ -1079,7 +1100,11 @@ func _rebuild_river(seat_id: int, tiles: Array, riichi_idx: int, animate_last: b
 		tile.set_dim(false)
 		var col: int = i % 6
 		var row: int = int(i / 6.0)
-		var lr: Dictionary = _river_pose(seat_id, col, row, i == riichi_idx and riichi_idx >= 0)
+		var is_riichi := i == riichi_idx and riichi_idx >= 0
+		var riichi_col := riichi_idx % 6 \
+			if riichi_idx >= 0 and int(riichi_idx / 6.0) == row else -1
+		var lr: Dictionary = _river_pose(
+			seat_id, col, row, is_riichi, riichi_col)
 		tile.scale = Vector3.ONE * float(lr.get("scale", 1.0))
 		if animate_last and i == last_i:
 			if not existed:
@@ -1109,35 +1134,85 @@ func _seat_in_dir(seat_id: int) -> Vector3:
 	return Vector3.ZERO
 
 
-func _river_pose(seat_id: int, col: int, row: int, riichi: bool) -> Dictionary:
+func _river_pose(seat_id: int, col: int, row: int, riichi: bool,
+		riichi_col: int = -1) -> Dictionary:
 	# 6 列；row 0 靠中心，向外涨，不压中心盘
 	var use_player_overlay_safe_band := seat_id == 0 and is_tile_overlay()
 	var tile_scale := SELF_RIVER_SCALE if use_player_overlay_safe_band else 1.0
-	var gx: float = (Tile3D.TILE_W + 0.004) * tile_scale
 	var gz: float = (Tile3D.TILE_H + 0.004) * tile_scale
 	var y: float = TABLE_TOP_Y + Tile3D.APPROVED_TILE_D * 0.5
-	var dx: float = (col - 2.5) * gx
+	var dx := _river_row_center_offset(col, tile_scale, riichi_col)
 	var inner := SELF_RIVER_INNER if use_player_overlay_safe_band else RIVER_INNER
 	var outward: float = inner + row * gz
 	var pos: Vector3
-	var rot: Vector3 = Vector3.ZERO
+	var yaw := 0.0
+	var pitch := 0.0
 	match seat_id:
 		0:  # 自家：+Z
 			pos = Vector3(dx, y, outward)
+			if is_tile_overlay():
+				pitch = OVERLAY_HORIZONTAL_RIVER_PITCH_DEGREES
 		1:  # 右：+X
 			pos = Vector3(outward, y, -dx)
-			rot = Vector3(0, -90, 0)
+			yaw = -90.0
 		2:  # 对家：-Z
 			pos = Vector3(-dx, y, -outward)
-			rot = Vector3(0, 180, 0)
+			yaw = 180.0
+			if is_tile_overlay():
+				pitch = -OVERLAY_HORIZONTAL_RIVER_PITCH_DEGREES
 		3:  # 左：-X
 			pos = Vector3(-outward, y, dx)
-			rot = Vector3(0, 90, 0)
+			yaw = 90.0
 		_:
 			pos = Vector3(dx, y, outward)
 	if riichi:
-		rot.y += 90.0
-	return {"pos": pos, "rot": rot, "scale": tile_scale}
+		yaw += 90.0
+	# 先建立整行共享的桌面倾斜，再在这个倾斜平面内旋转牌面朝向。
+	# 直接写 Vector3(pitch, yaw, 0) 会按默认欧拉顺序让 yaw 旋转法线，
+	# 因而只有立直横牌翘离桌面。
+	var surface_basis := Basis(Vector3.RIGHT, deg_to_rad(pitch)) \
+		* Basis(Vector3.UP, deg_to_rad(yaw))
+	var rot := surface_basis.get_euler()
+	rot = Vector3(rad_to_deg(rot.x), rad_to_deg(rot.y), rad_to_deg(rot.z))
+	if not is_zero_approx(pitch):
+		# 用最终 basis 的真实世界 Y 包围盒计算接触高度；普通牌、横牌和任意
+		# 后续朝向都共用同一公式，不再猜测当前应取长边还是短边。
+		var vertical_half := (
+			absf(surface_basis.x.y) * Tile3D.TILE_W
+			+ absf(surface_basis.y.y) * Tile3D.APPROVED_TILE_D
+			+ absf(surface_basis.z.y) * Tile3D.TILE_H
+		) * tile_scale * 0.5
+		pos.y = TABLE_TOP_Y + vertical_half
+	return {
+		"pos": pos,
+		"rot": rot,
+		"basis": surface_basis,
+		"yaw": yaw,
+		"pitch": pitch,
+		"scale": tile_scale,
+	}
+
+
+## 立直牌横置后沿河牌行方向占用 TILE_H，而普通牌只占 TILE_W。
+## 整行按真实占宽重新居中，避免只旋转 mesh 导致左右各吃进相邻牌。
+static func _river_row_center_offset(col: int, tile_scale: float,
+		riichi_col: int = -1) -> float:
+	assert(col >= 0 and col < 6)
+	var gap := 0.004 * tile_scale
+	var widths: Array[float] = []
+	var total := gap * 5.0
+	for index in range(6):
+		var width := (Tile3D.TILE_H if index == riichi_col \
+			else Tile3D.TILE_W) * tile_scale
+		widths.append(width)
+		total += width
+	var cursor := -total * 0.5
+	for index in range(6):
+		var center := cursor + widths[index] * 0.5
+		if index == col:
+			return center
+		cursor += widths[index] + gap
+	return 0.0
 
 
 func _hand_basis(seat_id: int) -> Basis:
@@ -1374,8 +1449,32 @@ func _rebuild_dora(state: BattleState) -> void:
 
 
 func _on_tile_clicked(tile_instance_id: int) -> void:
-	if _hand_clickable and Tile.is_valid_instance_id(tile_instance_id):
+	if not _is_hand_tile_actionable(tile_instance_id):
+		return
+	if _hand_activation_mode == HAND_ACTIVATION_CONFIRM_DISCARD:
+		if _selected_hand_instance_ids == [tile_instance_id]:
+			player_card_clicked.emit(tile_instance_id)
+		else:
+			set_selected_instances([tile_instance_id])
+		return
+	player_card_clicked.emit(tile_instance_id)
+
+
+func _on_tile_flicked(tile_instance_id: int) -> void:
+	# immediate 模式已在 pointer-down 提交；只让两段式弃牌消费上推，避免一次手势
+	# 同时产生 click + flick 两条权威动作。
+	if _hand_activation_mode == HAND_ACTIVATION_CONFIRM_DISCARD \
+			and _is_hand_tile_actionable(tile_instance_id):
 		player_card_clicked.emit(tile_instance_id)
+
+
+func _is_hand_tile_actionable(tile_instance_id: int) -> bool:
+	if not _hand_clickable or not Tile.is_valid_instance_id(tile_instance_id):
+		return false
+	for value in _hand_tiles:
+		if value is Tile3D and (value as Tile3D).tile_instance_id == tile_instance_id:
+			return not (value as Tile3D).is_dim()
+	return false
 
 
 func _on_tile_hover(tile_id: int, entered: bool) -> void:

@@ -475,7 +475,8 @@ func _build_layout() -> void:
 	_inventory_btn.name = "InventoryButton"
 	_inventory_btn.text = ""
 	_inventory_btn.focus_mode = Control.FOCUS_ALL
-	_inventory_btn.position = Vector2(1536.0, 8.0)
+	# 与技能印并排，保持在 PlayableTable 规则/设置按钮左侧。
+	_inventory_btn.position = Vector2(1344.0, 8.0)
 	_inventory_btn.size = Vector2(48.0, 48.0)
 	_inventory_btn.custom_minimum_size = Vector2(48.0, 48.0)
 	_inventory_btn.icon = TABLE_ICON_RESOLVER.texture(TABLE_ICON_RESOLVER.INVENTORY_ICON)

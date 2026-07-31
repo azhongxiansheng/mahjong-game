@@ -5,7 +5,8 @@ class_name PlayableTable extends Control
 # 组合 FourPlayerTable + PlayerActionPanel + PlayableBattleController，
 # 跑一局完整东风局玩家可玩对战。
 #
-# 生产默认复用 FourPlayerTable 2D 完整路径；3D 仅保留为实验模式。
+# 生产默认使用 FourPlayerTable 2.5D 桌体 + 透明真 3D 牌层；
+# 完整真 3D 桌仍只保留为显式实验模式。
 
 const FOUR_PLAYER_TABLE := preload("res://ui/four_player_table/four_player_table.tscn")
 const PLAYER_ACTION_PANEL := preload("res://ui/four_player_table/player_action_panel.tscn")
@@ -46,6 +47,8 @@ var _decision_adapter: TableDecisionAdapter = null
 var _seat_panel_player = null  # SeatPanel 或 MahjongTable3D
 # 完整真 3D 桌仍仅供显式实验；生产入口默认使用 2.5D 桌体+透明 3D 牌层。
 var _use_3d: bool = false
+# PlayableTable 自身持有生产默认值，避免任何直接场景入口漏掉协调器补开关。
+@export var hybrid_enabled: bool = true
 # 保留 FourPlayerTable 为唯一状态/HUD owner，仅替换牌实体视觉层。
 var _hybrid_table_3d: MahjongTable3D = null
 var _last_bound_state: BattleState = null
@@ -131,9 +134,11 @@ func _build_layout() -> void:
 	_dora_widget = DoraWidget.new()
 	_dora_widget.position = Vector2(180, 100)
 	add_child(_dora_widget)
-	_dora_widget.update_state([], 0)
+	_dora_widget.update_state([], 0, 0)
 	# 操作条在牌桌、3D 视口（实验模式）及 HUD 之上。
 	move_child(_action_panel, get_child_count() - 1)
+	if not _use_3d:
+		set_hybrid_enabled(hybrid_enabled)
 
 
 # 顶栏：stage-header 透明容器 + logo + HUD + loadout + 规则/设置。
@@ -210,6 +215,7 @@ func _clear_hybrid_interaction_state() -> void:
 
 
 func set_hybrid_enabled(enabled: bool) -> void:
+	hybrid_enabled = enabled
 	if _use_3d or not (_table is FourPlayerTable):
 		return
 	if not is_instance_valid(_seat_panel_player):
@@ -233,6 +239,12 @@ func set_hybrid_enabled(enabled: bool) -> void:
 	var hybrid_active := enabled and _hybrid_renderer_ready()
 	if not hybrid_active:
 		_clear_hybrid_interaction_state()
+		# renderer 指针与 FourPlayerTable 已挂载层不一致时，必须关闭旧层；否则
+		# 2D 牌虽然恢复，输入 owner 仍会被隐藏契约之外的旧 3D 层抢走。
+		var mounted_renderer: Node = _table.get_tile_entity_renderer()
+		if mounted_renderer != null and mounted_renderer != _hybrid_table_3d \
+				and mounted_renderer is CanvasItem:
+			(mounted_renderer as CanvasItem).visible = false
 	if _hybrid_table_3d != null:
 		_hybrid_table_3d.visible = hybrid_active
 	_table.set_2d_tile_entities_visible(not hybrid_active)
@@ -296,6 +308,11 @@ func _disconnect_seat_input_owner(owner) -> void:
 
 func _on_hand_interaction_state_changed(state: Dictionary) -> void:
 	_hand_interaction_state = state.duplicate(true)
+	if _action_panel != null \
+			and StringName(state.get("activation_mode", &"immediate")) \
+				== &"confirm_discard" \
+			and not (state.get("selected_instances", []) as Array).is_empty():
+		_action_panel.set_status_text("已选中，再点一次或上推切出")
 
 
 func _set_seat_input_owner(owner) -> void:
@@ -441,7 +458,7 @@ func _sync_dora_widget(state: BattleState) -> void:
 		for tile in state.dora_indicators.visible_tiles():
 			if tile != null:
 				indicator_ids.append(tile.id)
-	_dora_widget.update_state(indicator_ids, state.honba)
+	_dora_widget.update_state(indicator_ids, state.honba, state.riichi_sticks)
 
 
 # 调 StatsManager 把本局结果存进去 — 主要根据 events 找 WIN_DECLARED + 玩家
@@ -2682,6 +2699,8 @@ func _begin_or_submit_multi(kind: String, companion_count: int) -> void:
 		_action_panel.enter_waiting_claim_pick()
 		_action_panel.set_status_text("%s — 点选权威候选实体（%d 张）" % [kind, companion_count])
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except"):
@@ -2726,6 +2745,8 @@ func _begin_or_submit_kan(kan_kind: String) -> void:
 		_action_panel.enter_waiting_claim_pick()
 		_action_panel.set_status_text("KAN/%s — 点选权威候选" % kan_kind)
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except") and not union_ids.is_empty():
@@ -2750,6 +2771,8 @@ func _begin_or_submit_riichi() -> void:
 	if _action_panel != null:
 		_action_panel.set_status_text("立直 — 点选权威切牌实体")
 	if _seat_panel_player != null:
+		if _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		if _seat_panel_player.has_method("set_hand_clickable"):
 			_seat_panel_player.set_hand_clickable(true)
 		if _seat_panel_player.has_method("dim_hand_except"):
@@ -3283,6 +3306,9 @@ func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
 	var payload: Dictionary = ne.payload
 	var allowed: Array = payload.get("allowed_actions", []) as Array
 	if ne.kind == "TURN_PROMPT":
+		if _seat_panel_player != null \
+				and _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"confirm_discard")
 		var can_tsumo := false
 		var can_ankan := false
 		var can_added := false
@@ -3333,6 +3359,9 @@ func _present_public_allowed_actions(ne: NetworkedEvent) -> void:
 			elif _seat_panel_player.has_method("clear_hand_dim"):
 				_seat_panel_player.clear_hand_dim()
 	elif ne.kind == "CLAIM_WINDOW":
+		if _seat_panel_player != null \
+				and _seat_panel_player.has_method("set_hand_activation_mode"):
+			_seat_panel_player.call("set_hand_activation_mode", &"immediate")
 		var can_ron := false
 		var can_chi := false
 		var can_pon := false

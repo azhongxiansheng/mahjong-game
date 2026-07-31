@@ -9,7 +9,8 @@ var _affinity_icons: Array = []
 
 func _ready() -> void:
 	name = "AbilityBadge"
-	position = Vector2(1480.0, 8.0)
+	# 为 PlayableTable 的规则/设置按钮预留右侧安全区。
+	position = Vector2(1288.0, 8.0)
 	size = Vector2(48.0, 48.0)
 	custom_minimum_size = size
 	mouse_filter = Control.MOUSE_FILTER_STOP

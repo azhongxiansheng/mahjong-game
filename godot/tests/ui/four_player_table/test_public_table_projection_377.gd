@@ -757,16 +757,12 @@ func test_turn_prompt_maps_real_kan_riichi_kyuusyu_and_dim_discards() -> void:
 	var allow_t0: int = int(_tile(TileId.W1, 0)["instance_id"])
 	var allow_t1: int = int(_tile(TileId.S2, 0)["instance_id"])
 	var blocked_w5: int = int(_tile(TileId.W5, 1)["instance_id"])
-	var bottom = fpt.seat_panels[0]
+	var renderer := fpt.get_tile_entity_renderer() as MahjongTable3D
+	assert_not_null(renderer, "生产默认入口必须由混合 3D 牌层接收手牌候选状态")
 	var saw_allowed := false
 	var saw_blocked_dim := false
-	for slot in bottom.get("_hand_slots"):
-		if slot == null or not is_instance_valid(slot):
-			continue
-		var iid: int = int(slot.get_meta("hand_instance_id", -1))
-		var tile_n = slot.get_node_or_null("Tile")
-		if tile_n == null or not tile_n.has_method("is_dim"):
-			continue
+	for tile_n in renderer._hand_tiles:
+		var iid: int = int((tile_n as Tile3D).tile_instance_id)
 		if iid == allow_t0 or iid == allow_t1:
 			assert_false(tile_n.is_dim(), "合法 DISCARD 实体不得 dim iid=%d" % iid)
 			saw_allowed = true

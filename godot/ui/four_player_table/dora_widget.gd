@@ -1,17 +1,18 @@
 class_name DoraWidget extends Control
 
-# 参考桌面左上角：五个宝牌指示槽与本场棒计数共用一条紧凑信息框。
+# 参考桌面左上角：五个宝牌指示槽与本场棒、立直棒共用一条紧凑信息框。
 # 已翻槽使用真实牌面；未翻槽使用固定深绿牌背，避免复用红色 back.png。
 
 const SLOT_W: float = 26.0
 const SLOT_H: float = 34.0
 const SLOT_GAP: float = 2.0
 const SLOTS: int = 5
-const WIDGET_SIZE := Vector2(204.0, 50.0)
+const WIDGET_SIZE := Vector2(246.0, 50.0)
 const GREEN_BACK_COLOR := Color("2c5e3f")
 
 var _rendered_key: String = "__unset__"
 var _honba: int = 0
+var _riichi_sticks: int = 0
 
 
 func _init() -> void:
@@ -23,13 +24,15 @@ func _init() -> void:
 
 # 兼容旧调用；只有宝牌变化时保留当前本场数。
 func update_indicators(indicators: Array) -> void:
-	update_state(indicators, _honba)
+	update_state(indicators, _honba, _riichi_sticks)
 
 
-func update_state(indicators: Array, honba: int) -> void:
+func update_state(indicators: Array, honba: int, riichi_sticks: int) -> void:
 	_honba = maxi(0, honba)
-	var key := "%s|%d" % [
-		",".join(indicators.map(func(value): return str(value))), _honba,
+	_riichi_sticks = maxi(0, riichi_sticks)
+	var key := "%s|%d|%d" % [
+		",".join(indicators.map(func(value): return str(value))),
+		_honba, _riichi_sticks,
 	]
 	if key == _rendered_key:
 		return
@@ -45,6 +48,8 @@ func update_state(indicators: Array, honba: int) -> void:
 	add_child(_make_separator())
 	add_child(_make_honba_stick())
 	add_child(_make_honba_count())
+	add_child(_make_riichi_stick())
+	add_child(_make_riichi_count())
 
 
 static func _make_background() -> Panel:
@@ -120,13 +125,13 @@ static func _make_separator() -> ColorRect:
 static func _make_honba_stick() -> Control:
 	var marker := Control.new()
 	marker.name = "HonbaStick"
-	marker.position = Vector2(157, 8)
-	marker.size = Vector2(7, 34)
+	marker.position = Vector2(158, 8)
+	marker.size = Vector2(28, 12)
 	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var body := Panel.new()
 	body.name = "StickBody"
-	body.position = Vector2(1, 1)
-	body.size = Vector2(5, 32)
+	body.position = Vector2(0, 2)
+	body.size = Vector2(28, 7)
 	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("ecece4")
@@ -138,7 +143,7 @@ static func _make_honba_stick() -> Control:
 	for dot_index in range(3):
 		var dot := ColorRect.new()
 		dot.name = "RedDot%d" % dot_index
-		dot.position = Vector2(2, 7 + dot_index * 7)
+		dot.position = Vector2(7 + dot_index * 7, 4)
 		dot.size = Vector2(3, 3)
 		dot.color = Color("b7372e")
 		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -149,12 +154,56 @@ static func _make_honba_stick() -> Control:
 func _make_honba_count() -> Label:
 	var count := Label.new()
 	count.name = "HonbaCount"
-	count.position = Vector2(167, 8)
-	count.size = Vector2(33, 34)
+	count.position = Vector2(190, 2)
+	count.size = Vector2(50, 22)
 	count.text = "×%d" % _honba
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	count.add_theme_font_size_override("font_size", 16)
+	count.add_theme_font_size_override("font_size", 14)
+	count.add_theme_color_override("font_color", Color("f3f0e5"))
+	count.add_theme_color_override("font_outline_color", Color("11150f"))
+	count.add_theme_constant_override("outline_size", 2)
+	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return count
+
+
+static func _make_riichi_stick() -> Control:
+	var marker := Control.new()
+	marker.name = "RiichiStick"
+	marker.position = Vector2(158, 29)
+	marker.size = Vector2(28, 12)
+	marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var body := Panel.new()
+	body.name = "StickBody"
+	body.position = Vector2(0, 2)
+	body.size = Vector2(28, 7)
+	body.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("f2f0e7")
+	style.border_color = Color("3b332b")
+	style.set_border_width_all(1)
+	style.set_corner_radius_all(2)
+	body.add_theme_stylebox_override("panel", style)
+	marker.add_child(body)
+	var dot := ColorRect.new()
+	dot.name = "RedDot"
+	dot.position = Vector2(12, 3)
+	dot.size = Vector2(5, 5)
+	dot.color = Color("c62f2b")
+	dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	marker.add_child(dot)
+	return marker
+
+
+func _make_riichi_count() -> Label:
+	var count := Label.new()
+	count.name = "RiichiCount"
+	count.position = Vector2(190, 23)
+	count.size = Vector2(50, 22)
+	count.text = "×%d" % _riichi_sticks
+	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	count.add_theme_font_size_override("font_size", 14)
 	count.add_theme_color_override("font_color", Color("f3f0e5"))
 	count.add_theme_color_override("font_outline_color", Color("11150f"))
 	count.add_theme_constant_override("outline_size", 2)

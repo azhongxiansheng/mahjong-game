@@ -319,7 +319,7 @@ func enter_waiting_discard(
 	_stop_dots_animation()
 	_stop_countdown()
 	_state = State.WAITING_DISCARD
-	_label_status.text = "轮到你出牌（点手牌切）"
+	_label_status.text = "轮到你出牌（点一下选中，再点或上推切出）"
 	if can_riichi:
 		_show_btn(_btn_riichi)
 	else:

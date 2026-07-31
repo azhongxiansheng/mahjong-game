@@ -20,8 +20,8 @@ const PRIZE_GROUP_RECTS := [
 	Rect2(16.0, 124.0, 208.0, 152.0),
 	Rect2(1376.0, 124.0, 208.0, 152.0),
 ]
-const ABILITY_SEAL_RECT := Rect2(1480.0, 8.0, 48.0, 48.0)
-const INVENTORY_SEAL_RECT := Rect2(1536.0, 8.0, 48.0, 48.0)
+const ABILITY_SEAL_RECT := Rect2(1288.0, 8.0, 48.0, 48.0)
+const INVENTORY_SEAL_RECT := Rect2(1344.0, 8.0, 48.0, 48.0)
 
 
 func _item_icon_path(item_id: String) -> String:

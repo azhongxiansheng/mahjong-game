@@ -1,6 +1,6 @@
 extends GutTest
 
-# 参考桌面左上角：五个紧凑宝牌槽 + 本场棒 ×N，同一条内实时同步。
+# 参考桌面左上角：五个紧凑宝牌槽 + 本场棒/立直棒计数，同一条内实时同步。
 
 
 func _make_widget() -> DoraWidget:
@@ -13,8 +13,8 @@ func test_reference_strip_geometry_green_backs_and_honba_counter() -> void:
 	var widget := _make_widget()
 	widget.update_indicators([])
 	await get_tree().process_frame
-	assert_eq(widget.size, Vector2(204, 50),
-		"宝牌/本场组合条必须保持参考图 204×50 紧凑轮廓")
+	assert_eq(widget.size, Vector2(246, 50),
+		"宝牌区必须为本场棒和立直棒保留同一条紧凑轮廓")
 	for slot_index in range(5):
 		var slot := widget.get_node_or_null("IndicatorSlot%d" % slot_index) as Control
 		assert_not_null(slot, "宝牌槽 %d 存在" % slot_index)
@@ -28,15 +28,29 @@ func test_reference_strip_geometry_green_backs_and_honba_counter() -> void:
 	if counter != null:
 		assert_eq(counter.text, "×0")
 	assert_true(widget.get_node_or_null("HonbaStick") is Control)
+	assert_true(widget.get_node_or_null("RiichiStick") is Control)
+	var riichi_counter := widget.get_node_or_null("RiichiCount") as Label
+	assert_not_null(riichi_counter)
+	if riichi_counter != null:
+		assert_eq(riichi_counter.text, "×0")
 
 
-func test_update_state_reveals_real_indicator_and_updates_honba() -> void:
+func test_update_state_reveals_indicator_and_updates_both_stick_counts() -> void:
 	var widget := _make_widget()
 	assert_true(widget.has_method("update_state"),
 		"组合条需要一次性同步宝牌与本场数")
 	if not widget.has_method("update_state"):
 		return
-	widget.call("update_state", [TileId.W5], 1)
+	var update_method: Dictionary = {}
+	for method in widget.get_method_list():
+		if method.name == "update_state":
+			update_method = method
+			break
+	assert_eq((update_method.get("args", []) as Array).size(), 3,
+		"组合条 update_state 必须同时接收宝牌、本场棒和立直棒")
+	if (update_method.get("args", []) as Array).size() != 3:
+		return
+	widget.call("update_state", [TileId.W5], 1, 3)
 	await get_tree().process_frame
 	var slot0 := widget.get_node_or_null("IndicatorSlot0") as Control
 	assert_not_null(slot0)
@@ -53,6 +67,10 @@ func test_update_state_reveals_real_indicator_and_updates_honba() -> void:
 	assert_not_null(counter)
 	if counter != null:
 		assert_eq(counter.text, "×1")
+	var riichi_counter := widget.get_node_or_null("RiichiCount") as Label
+	assert_not_null(riichi_counter)
+	if riichi_counter != null:
+		assert_eq(riichi_counter.text, "×3")
 
 
 func test_initial_playable_bind_syncs_dora_and_honba_before_first_event() -> void:
@@ -61,6 +79,7 @@ func test_initial_playable_bind_syncs_dora_and_honba_before_first_event() -> voi
 	add_child_autofree(playable)
 	await get_tree().process_frame
 	var state := BattleState.for_east_round(20260729, 0, 1, 2, 0)
+	state.riichi_sticks = 2
 	playable._bind_state_for_deal(state, 0, 4)
 	await get_tree().process_frame
 	var widget := playable._dora_widget as DoraWidget
@@ -81,3 +100,13 @@ func test_initial_playable_bind_syncs_dora_and_honba_before_first_event() -> voi
 	assert_not_null(counter)
 	if counter != null:
 		assert_eq(counter.text, "×2")
+	var riichi_counter := widget.get_node_or_null("RiichiCount") as Label
+	assert_not_null(riichi_counter)
+	if riichi_counter != null:
+		assert_eq(riichi_counter.text, "×2")
+	var center := (playable._table as FourPlayerTable).center_info as CenterInfoPanel
+	assert_false(center._label_riichi.visible,
+		"立直棒文字不得继续写在中央盘")
+	assert_true(center._riichi_sticks_row == null \
+		or not center._riichi_sticks_row.visible,
+		"中央盘不得继续绘制立直棒图形")

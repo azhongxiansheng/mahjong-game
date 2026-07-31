@@ -504,11 +504,23 @@ static func center_plate() -> Dictionary:
 		Vector2(BOARD_TRACKS.y, BOARD_TRACKS.y) - CENTER_PLATE_SIZE) * 0.5
 	var css_size := CENTER_PLATE_SIZE * CENTER_CSS_SCALE
 	var css_origin := unscaled_origin - (css_size - CENTER_PLATE_SIZE) * 0.5
+	var screen_quad := PackedVector2Array([
+		project_table_point(css_origin),
+		project_table_point(Vector2(css_origin.x + css_size.x, css_origin.y)),
+		project_table_point(css_origin + css_size),
+		project_table_point(Vector2(css_origin.x, css_origin.y + css_size.y)),
+	])
 	var projected := _projected_rect_aabb(Rect2(css_origin, css_size))
+	var local_quad := PackedVector2Array()
+	var projected_scale := projected.size / CENTER_PLATE_SIZE
+	for point in screen_quad:
+		local_quad.append((point - projected.get_center()) / projected_scale)
 	return {
 		"position": projected.get_center(),
-		"scale": projected.size / CENTER_PLATE_SIZE,
+		"scale": projected_scale,
 		"screen_aabb": projected,
+		"screen_quad": screen_quad,
+		"local_quad": local_quad,
 	}
 
 

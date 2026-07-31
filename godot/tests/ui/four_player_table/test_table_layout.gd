@@ -247,12 +247,25 @@ func test_center_plate_and_felt_remain_visible() -> void:
 	add_child_autofree(table)
 	await get_tree().process_frame
 	var center := table.center_info
-	var plate := center.get_node_or_null("CenterPlate") as Panel
+	var plate := center.get_node_or_null("CenterPlate") as Polygon2D
 	assert_not_null(plate)
 	if plate != null:
-		assert_eq(plate.size, Vector2(220.0, 220.0))
-		assert_true(VIEW_RECT.encloses(_global_aabb(
-			plate, Rect2(Vector2.ZERO, plate.size))))
+		assert_eq(plate.polygon.size(), 4)
+		var top_width := plate.polygon[0].distance_to(plate.polygon[1])
+		var bottom_width := plate.polygon[3].distance_to(plate.polygon[2])
+		assert_lt(top_width, bottom_width,
+			"中央盘顶边必须随桌面透视收窄，不能继续是正对屏幕的矩形")
+		var expected := TableLayout.center_plate()["screen_aabb"] as Rect2
+		var points := PackedVector2Array()
+		for point in plate.polygon:
+			points.append(center.to_global(point))
+		var minimum := points[0]
+		var maximum := points[0]
+		for point in points:
+			minimum = minimum.min(point)
+			maximum = maximum.max(point)
+		assert_true(expected.is_equal_approx(Rect2(minimum, maximum - minimum)),
+			"中央盘四角必须落在 TableLayout 的真实桌面投影上")
 	var stage := table.get_node_or_null("TableStage") as Control
 	var fallback := table.get_node_or_null("TableBg") as ColorRect
 	assert_true(fallback == null or fallback.get_index() < stage.get_index()
