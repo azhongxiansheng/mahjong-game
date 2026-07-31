@@ -16,7 +16,7 @@ const ACTION_BAR_Y: float = 680.0
 const ACTION_BAR_H: float = 78.0
 const ACTION_BAR_RECT := Rect2(440.0, ACTION_BAR_Y, 720.0, ACTION_BAR_H)
 const HAND_SAFE_RECT := Rect2(218.0, 778.0, 1164.0, 92.0)
-const RESULT_PANEL_RECT := Rect2(490.0, 90.0, 620.0, 560.0)
+const RESULT_PANEL_RECT := Rect2(350.0, 24.0, 900.0, 650.0)
 
 # 四席状态印安全区；身份信息本身不再铺常驻面板。
 const SEAT_HUD_RECTS := [

@@ -1,12 +1,13 @@
 class_name LobbyCodexOverlay extends Control
 
 # 大厅单一全屏资料馆（E1-05 / #229）。
-# 角色 / 道具 / 规则三入口复用本实例；页签切换复用同一 CodexContent。
+# 角色 / 道具 / 役种 / 规则复用本实例；页签切换复用同一 CodexContent。
 
 signal closed
 
 const PAGE_CHARACTERS := &"characters"
 const PAGE_ITEMS := &"items"
+const PAGE_YAKU := &"yaku"
 const PAGE_RULES := &"rules"
 
 var _current_page: StringName = PAGE_CHARACTERS
@@ -27,7 +28,9 @@ var _detail_content: VBoxContainer = null
 var _roster_buttons: Array[Button] = []
 var _character_tab: Button = null
 var _item_tab: Button = null
+var _yaku_tab: Button = null
 var _rules_tab: Button = null
+var _search_input: LineEdit = null
 var _close_btn: Button = null
 var _tab_group: ButtonGroup = null
 var _built: bool = false
@@ -64,7 +67,9 @@ func get_hook_nodes() -> Array[Node]:
 		_close_btn,
 		_character_tab,
 		_item_tab,
+		_yaku_tab,
 		_rules_tab,
+		_search_input,
 		_content_host,
 	]:
 		if n != null:
@@ -210,6 +215,15 @@ func _build_header() -> Control:
 	_header_title.add_theme_color_override("font_color", DesignTokens.SHARED_TEXT_TITLE)
 	header.add_child(_header_title)
 
+	_search_input = LineEdit.new()
+	_search_input.name = "CodexSearchInput"
+	_search_input.placeholder_text = "搜索役种"
+	_search_input.custom_minimum_size = Vector2(260, 46)
+	_search_input.focus_mode = Control.FOCUS_ALL
+	_search_input.visible = false
+	_search_input.text_changed.connect(func(_text: String) -> void: _rebuild_content())
+	header.add_child(_search_input)
+
 	_close_btn = DesignTokens.make_button("关闭", DesignTokens.BtnRole.PRIMARY, Vector2(140, 52))
 	_close_btn.name = "CodexCloseButton"
 	_close_btn.focus_mode = Control.FOCUS_ALL
@@ -229,9 +243,11 @@ func _build_tabs() -> Control:
 
 	_character_tab = _make_tab("CodexCharacterTab", "角色", PAGE_CHARACTERS)
 	_item_tab = _make_tab("CodexItemTab", "道具", PAGE_ITEMS)
+	_yaku_tab = _make_tab("CodexYakuTab", "役种", PAGE_YAKU)
 	_rules_tab = _make_tab("CodexRulesTab", "规则", PAGE_RULES)
 	_tabs.add_child(_character_tab)
 	_tabs.add_child(_item_tab)
+	_tabs.add_child(_yaku_tab)
 	_tabs.add_child(_rules_tab)
 	return _tabs
 
@@ -249,6 +265,10 @@ func _make_tab(btn_name: String, text: String, page: StringName) -> Button:
 
 func _set_page(page: StringName) -> void:
 	_current_page = page
+	if _search_input:
+		_search_input.visible = page == PAGE_YAKU
+		if page != PAGE_YAKU and not _search_input.text.is_empty():
+			_search_input.text = ""
 	_sync_tab_state()
 	_rebuild_content()
 
@@ -258,6 +278,8 @@ func _sync_tab_state() -> void:
 		_character_tab.button_pressed = _current_page == PAGE_CHARACTERS
 	if _item_tab:
 		_item_tab.button_pressed = _current_page == PAGE_ITEMS
+	if _yaku_tab:
+		_yaku_tab.button_pressed = _current_page == PAGE_YAKU
 	if _rules_tab:
 		_rules_tab.button_pressed = _current_page == PAGE_RULES
 
@@ -299,13 +321,24 @@ func _rebuild_content() -> void:
 
 
 func _page_rows() -> Array:
+	var rows: Array
 	match _current_page:
 		PAGE_ITEMS:
-			return _catalog.items()
+			rows = _catalog.items()
+		PAGE_YAKU:
+			rows = _catalog.yakus()
 		PAGE_RULES:
-			return _catalog.rules()
+			rows = _catalog.rules()
 		_:
-			return _catalog.characters()
+			rows = _catalog.characters()
+	if _current_page != PAGE_YAKU or _search_input == null \
+			or _search_input.text.strip_edges().is_empty():
+		return rows
+	var query := _search_input.text.strip_edges().to_lower()
+	return rows.filter(func(row: Dictionary) -> bool:
+		return String(row.get("display_name", "")).to_lower().contains(query) \
+			or String(row.get("category", "")).to_lower().contains(query) \
+			or String(row.get("description", "")).to_lower().contains(query))
 
 
 func _entry_title(row: Dictionary) -> String:
@@ -340,6 +373,15 @@ func _render_stage(row: Dictionary) -> void:
 		art.texture = load(path) as Texture2D
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_stage_body.add_child(art)
+	if _current_page == PAGE_YAKU:
+		var category := _label(String(row.get("category", "")), DesignTokens.FONT_SUBTITLE,
+			DesignTokens.SHARED_TEXT_TITLE, false)
+		category.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_stage_body.add_child(category)
+		var value := _yaku_value_label(row)
+		var value_label := _label(value, 36, DesignTokens.SHARED_TEXT_TITLE, false)
+		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		_stage_body.add_child(value_label)
 	var caption := _label(_entry_title(row), DesignTokens.FONT_SUBTITLE, DesignTokens.LOBBY_WASHI_TEXT, false)
 	caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_stage_body.add_child(caption)
@@ -362,6 +404,20 @@ func _render_detail(row: Dictionary) -> void:
 		var meta := "%s · %s" % [String(row.get("category", "")), String(row.get("rarity_label", ""))]
 		_detail_content.add_child(_label(meta, DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, false))
 		_detail_content.add_child(_label(String(row.get("description", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
+	elif _current_page == PAGE_YAKU:
+		_detail_content.add_child(_label(
+			"%s · %s" % [String(row.get("category", "")), _yaku_value_label(row)],
+			DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, false))
+		_detail_content.add_child(_label(String(row.get("description", "")),
+			DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
+		_detail_content.add_child(_label("成立条件", DesignTokens.FONT_SUBTITLE,
+			DesignTokens.SHARED_TEXT_TITLE, false))
+		_detail_content.add_child(_label(String(row.get("condition", "")),
+			DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
+		_detail_content.add_child(_label("示例牌型", DesignTokens.FONT_SUBTITLE,
+			DesignTokens.SHARED_TEXT_TITLE, false))
+		_detail_content.add_child(_label(String(row.get("example", "")),
+			DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 	else:
 		_detail_content.add_child(_label(String(row.get("body", "")), DesignTokens.FONT_BODY, DesignTokens.SHARED_TEXT_BODY, true))
 	var summary_parts := PackedStringArray()
@@ -374,6 +430,19 @@ func _render_detail(row: Dictionary) -> void:
 		_detail_content.add_child(_label(
 			" · ".join(summary_parts), DesignTokens.FONT_CAPTION, DesignTokens.SHARED_TEXT_MUTED, true
 		))
+
+
+func _yaku_value_label(row: Dictionary) -> String:
+	if bool(row.get("is_yakuman", false)):
+		var multiplier := int(row.get("yakuman_multiplier", 1))
+		return "双倍役满" if multiplier >= 2 else "役满"
+	var closed_han := int(row.get("closed_han", 0))
+	var open_han := int(row.get("open_han", 0))
+	if open_han <= 0:
+		return "门清 %d番" % closed_han
+	if open_han == closed_han:
+		return "门清／副露 %d番" % closed_han
+	return "门清 %d番 · 副露 %d番" % [closed_han, open_han]
 
 
 func _clear_children(parent: Node) -> void:
@@ -396,27 +465,36 @@ func _label(text: String, font_size: int, color: Color, enable_autowrap: bool) -
 
 func _wire_focus_graph() -> void:
 	# 关闭 → 三页签 → 木札名录 → 关闭，Tab/Shift+Tab 不落到底层。
-	if _close_btn == null or _character_tab == null or _item_tab == null or _rules_tab == null:
+	if _close_btn == null or _character_tab == null or _item_tab == null \
+			or _yaku_tab == null or _rules_tab == null:
 		return
 	if not is_inside_tree():
 		return
 	_close_btn.focus_next = _close_btn.get_path_to(_character_tab)
 	_character_tab.focus_next = _character_tab.get_path_to(_item_tab)
-	_item_tab.focus_next = _item_tab.get_path_to(_rules_tab)
+	_item_tab.focus_next = _item_tab.get_path_to(_yaku_tab)
+	_yaku_tab.focus_next = _yaku_tab.get_path_to(_rules_tab)
+	var after_tabs: Control = _search_input if _search_input != null \
+		and _search_input.visible else (_roster_buttons[0] if not _roster_buttons.is_empty() else _close_btn)
+	_rules_tab.focus_next = _rules_tab.get_path_to(after_tabs)
+	if _search_input != null and _search_input.visible:
+		var after_search: Control = _roster_buttons[0] if not _roster_buttons.is_empty() else _close_btn
+		_search_input.focus_next = _search_input.get_path_to(after_search)
 	if _roster_buttons.is_empty():
-		_rules_tab.focus_next = _rules_tab.get_path_to(_close_btn)
-		_close_btn.focus_previous = _close_btn.get_path_to(_rules_tab)
+		_close_btn.focus_previous = _close_btn.get_path_to(
+			_search_input if _search_input != null and _search_input.visible else _rules_tab)
 	else:
-		_rules_tab.focus_next = _rules_tab.get_path_to(_roster_buttons[0])
 		for index in range(_roster_buttons.size()):
 			var next_control: Control = _close_btn if index == _roster_buttons.size() - 1 else _roster_buttons[index + 1]
-			var previous_control: Control = _rules_tab if index == 0 else _roster_buttons[index - 1]
+			var previous_control: Control = (_search_input if _search_input != null \
+				and _search_input.visible else _rules_tab) if index == 0 else _roster_buttons[index - 1]
 			_roster_buttons[index].focus_next = _roster_buttons[index].get_path_to(next_control)
 			_roster_buttons[index].focus_previous = _roster_buttons[index].get_path_to(previous_control)
 		_close_btn.focus_previous = _close_btn.get_path_to(_roster_buttons[-1])
 	_character_tab.focus_previous = _character_tab.get_path_to(_close_btn)
 	_item_tab.focus_previous = _item_tab.get_path_to(_character_tab)
-	_rules_tab.focus_previous = _rules_tab.get_path_to(_item_tab)
+	_yaku_tab.focus_previous = _yaku_tab.get_path_to(_item_tab)
+	_rules_tab.focus_previous = _rules_tab.get_path_to(_yaku_tab)
 
 
 func _on_close_pressed() -> void:

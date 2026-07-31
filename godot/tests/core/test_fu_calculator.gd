@@ -215,3 +215,39 @@ func test_yakuman_returns_zero():
 	y.yakuman_multiplier = 1
 	y.add_yaku(&"daisangen", 13)
 	assert_eq(FuCalculator.calculate(d, [], ctx, y), 0, "役满 fu 不参与")
+
+
+func test_breakdown_exposes_authoritative_fu_components_and_rounding():
+	var d := {
+		"melds": [
+			[TileId.W2, TileId.W2, TileId.W2],
+			[TileId.T2, TileId.T3, TileId.T4],
+			[TileId.T2, TileId.T3, TileId.T4],
+			[TileId.S6, TileId.S7, TileId.S8],
+		],
+		"pair": TileId.E,
+	}
+	var ctx := ScoreContext.ron(Tile.new(TileId.S7), TileId.E, TileId.E, 0, 0, 2)
+	var y := _make_yaku_list([[&"riichi", 1]])
+	var breakdown: Dictionary = FuCalculator.breakdown(d, [], ctx, y)
+	assert_eq(breakdown.get("kind"), "standard")
+	assert_eq(breakdown.get("raw_fu"), 38)
+	assert_eq(breakdown.get("rounded_fu"), 40)
+	var items: Array = breakdown.get("items", [])
+	assert_eq(items.map(func(item: Dictionary): return item.get("key")), [
+		"base", "menzen_ron", "pair", "wait", "meld",
+	])
+	assert_eq(items.map(func(item: Dictionary): return item.get("fu")), [20, 10, 2, 2, 4])
+	for item in items:
+		assert_false(String(item.get("label", "")).is_empty(), "每项符必须有玩家可读标签")
+
+
+func test_breakdown_keeps_fixed_fu_special_cases_explicit():
+	var d := {"melds": [], "pair": -1}
+	var ctx := ScoreContext.tsumo(Tile.new(TileId.W5), TileId.E, TileId.E, 0, 0)
+	var chiitoi := _make_yaku_list([[&"chiitoitsu", 2]])
+	var breakdown: Dictionary = FuCalculator.breakdown(d, [], ctx, chiitoi)
+	assert_eq(breakdown.get("kind"), "chiitoi")
+	assert_eq(breakdown.get("raw_fu"), 25)
+	assert_eq(breakdown.get("rounded_fu"), 25)
+	assert_eq(breakdown.get("items"), [{"key": "chiitoi", "label": "七对子固定", "fu": 25}])
