@@ -217,3 +217,81 @@ func test_win_declared_pre_carries_yaku_ids_readonly_context():
 				assert_gt(ids.size(), 0, "胡牌至少 1 个役")
 				return
 	fail_test("40 个 seed 内应至少出现一次胡牌")
+
+
+func test_relic_wall_eye_reveal_depth_stacks_with_instance_count():
+	# spec 2026-07-28 §4.1：墙眼 1/2/3+ 件分别查看牌墙接下来 1/2/3 张，至多 3。
+	for pair in [[1, 1], [2, 2], [3, 3], [4, 3]]:
+		var instances: int = pair[0]
+		var expected: int = pair[1]
+		var reg := SkillRegistry.new()
+		var st := BattleState.new()
+		st.wall = Wall.new_full_set()
+		st.wall.shuffle(7)
+		st.wall.reserve_dead_wall(14)
+		for i in range(4):
+			st.seats.append(Seat.new(i, TileId.E))
+		var sched := SkillScheduler.new(reg, st)
+		var definition := ItemCatalog.definition(&"relic_wall_eye_v1")
+		for k in range(instances):
+			var sk := ItemSkillBuilder.build(definition, "ii_wall_eye_%d" % k)
+			assert_not_null(sk)
+			reg.register(sk, 0)
+		sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+		assert_eq(st.revealed_tiles.size(), expected,
+			"%d 件墙眼应查看 %d 张" % [instances, expected])
+		# 只向 owner 显示
+		for row in st.revealed_tiles:
+			assert_eq(row.get("visible_to", []), [0])
+
+func test_relic_wall_eye_ignores_other_seat_draws():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	st.wall = Wall.new_full_set()
+	st.wall.reserve_dead_wall(14)
+	for i in range(4):
+		st.seats.append(Seat.new(i, TileId.E))
+	var sched := SkillScheduler.new(reg, st)
+	var sk := ItemSkillBuilder.build(ItemCatalog.definition(&"relic_wall_eye_v1"), "ii_we_0")
+	reg.register(sk, 0)
+	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 2))
+	assert_eq(st.revealed_tiles.size(), 0, "他家摸牌不触发墙眼")
+
+func test_relic_pity_breaker_charged_win_mangan_floor_plus_aggregate_han():
+	# spec §5.3：充能后下一次合法胡牌满贯保底；N 件充能追加 N-1 番（单实例聚合）。
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	var definition := ItemCatalog.definition(&"relic_pity_breaker_v1")
+	var sk1 := ItemSkillBuilder.build(definition, "ii_pity_a")
+	var sk2 := ItemSkillBuilder.build(definition, "ii_pity_b")
+	assert_not_null(sk1, "天命打破应可构建为战斗技能")
+	assert_not_null(sk2)
+	sk1.params["pity_charged"] = true
+	sk1.params["pity_extra_han"] = 1
+	sk2.params["pity_charged"] = true
+	sk2.params["pity_extra_han"] = 0
+	reg.register(sk1, 0)
+	reg.register(sk2, 0)
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_true(bool(ctx.mangan_floor_seats.get(0, false)), "充能胡牌应满贯保底")
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 1, "N=2 件追加 N-1=1 番")
+
+func test_relic_pity_breaker_uncharged_or_other_win_no_effect():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	var definition := ItemCatalog.definition(&"relic_pity_breaker_v1")
+	var sk := ItemSkillBuilder.build(definition, "ii_pity_c")
+	assert_not_null(sk)
+	reg.register(sk, 0)
+	# 未充能（params 默认）→ 无效果
+	var ctx := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 0))
+	assert_false(bool(ctx.mangan_floor_seats.get(0, false)), "未充能不保底")
+	assert_eq(int(ctx.han_deltas.get(0, 0)), 0)
+	# 充能但他家胡 → 无效果
+	sk.params["pity_charged"] = true
+	sk.params["pity_extra_han"] = 0
+	var ctx2 := sched.emit_event(BattleEvent.make(&"WIN_DECLARED_PRE", 1))
+	assert_false(bool(ctx2.mangan_floor_seats.get(1, false)))
+	assert_eq(int(ctx2.han_deltas.get(1, 0)), 0)

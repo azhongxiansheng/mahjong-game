@@ -21,6 +21,10 @@ var _id_index: Dictionary = {}
 ## 已登记到 SkillRegistry 的实例（relic 获赠 / consumable armed）
 ## value: { "skill": SkillResource, "seat": int }
 var _registered_skills: Dictionary = {}
+# 天命打破（spec 2026-07-28 §5.3）：iid → 连续"本局未胡"的已完成局数。
+# 会话内部权威状态，不进 wire schema；重放经命令流确定性重建。
+var _pity_miss_counts: Dictionary = {}
+var _pity_last_counted_hand_seq: int = -1
 ## 公开 match/session 命名空间（写实例 ID；不含 seed）
 var match_namespace: String = ""
 
@@ -256,11 +260,39 @@ func clear_match() -> void:
 	_instances.clear()
 	_id_index.clear()
 	_registered_skills.clear()
+	_pity_miss_counts.clear()
+	_pity_last_counted_hand_seq = -1
 	for seat in range(4):
 		_arm_by_seat[seat] = {
 			"active_window_id": null,
 			"pending_window_id": null,
 		}
+
+
+func pity_miss_count(item_instance_id: String) -> int:
+	return int(_pity_miss_counts.get(item_instance_id, 0))
+
+
+## 一局权威完成后登记天命计数：winner_seats 含该席 → 重置；否则 +1。
+## hand_seq >= 0 时按局幂等（发布重试不得二次计数）；-1 供单测直接驱动。
+func pity_record_hand_completed(winner_seats: Array, hand_seq: int = -1) -> void:
+	if hand_seq >= 0:
+		if hand_seq == _pity_last_counted_hand_seq:
+			return
+		_pity_last_counted_hand_seq = hand_seq
+	for inst_v in _instances:
+		if not (inst_v is ItemInstance):
+			continue
+		var inst: ItemInstance = inst_v as ItemInstance
+		if inst.item_id != "relic_pity_breaker_v1":
+			continue
+		if inst.status == ItemInstance.STATUS_CONSUMED:
+			continue
+		var iid := inst.item_instance_id
+		if winner_seats.has(inst.seat):
+			_pity_miss_counts[iid] = 0
+		else:
+			_pity_miss_counts[iid] = int(_pity_miss_counts.get(iid, 0)) + 1
 
 
 func remember_registered_skill(
@@ -351,6 +383,8 @@ func capture_state() -> Dictionary:
 		"instances": insts,
 		"arm_by_seat": arms,
 		"match_namespace": match_namespace,
+		"pity_miss_counts": _pity_miss_counts.duplicate(),
+		"pity_last_counted_hand_seq": _pity_last_counted_hand_seq,
 	}
 
 
@@ -394,6 +428,10 @@ func restore_state(snap: Dictionary) -> bool:
 	_arm_by_seat = new_arms
 	# registered_skills 由调用方用 ARS registry + rebind_registered_from_registry 重建
 	_registered_skills.clear()
+	var pity_snap: Variant = snap.get("pity_miss_counts", {})
+	_pity_miss_counts = (pity_snap as Dictionary).duplicate() \
+			if typeof(pity_snap) == TYPE_DICTIONARY else {}
+	_pity_last_counted_hand_seq = int(snap.get("pity_last_counted_hand_seq", -1))
 	if snap.has("match_namespace"):
 		match_namespace = String(snap.get("match_namespace", ""))
 	return true

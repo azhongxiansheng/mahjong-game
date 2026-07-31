@@ -2469,6 +2469,13 @@ func _publish_hand_settled_payload(payload: Dictionary) -> bool:
 		(_journals[seat2] as Array).append(prepared[seat2])
 	_hand_settled_emitted = true
 	_reward_hand_settled_deferred = false
+	# 天命打破跨局计数：一局权威完成后登记（按 hand_seq 幂等；spec §5.3）
+	if mode_modules != null and mode_modules.is_trash_talk() and _item_module() != null:
+		ItemAuthority.pity_on_hand_completed(
+			_item_module(),
+			payload.get("winner_seats", []) as Array,
+			int(payload.get("hand_seq", -1))
+		)
 
 	# 判定是否终场（推进前）；随后统一先推进 GameDriver
 	var expect_match_end: bool = _is_match_ended_for_hand(payload)

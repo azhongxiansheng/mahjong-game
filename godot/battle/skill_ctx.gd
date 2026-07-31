@@ -25,6 +25,10 @@ var current_skill: SkillResource = null  # 由 scheduler 在每个 candidate 派
 # is_ability 仅供结算层区分角色/能力反馈与普通牌技能。
 var triggered_skills: Array = []
 
+# L2-flow：由 SkillScheduler 注入的注册表引用，仅供只读实例计数；
+# ItemEffectRunner 等无注册表路径保持 null。
+var _registry = null
+
 func _init(p_state: BattleState, p_event: BattleEvent) -> void:
 	_state = p_state
 	_event = p_event
@@ -285,6 +289,20 @@ func personal_discard_count(seat: int) -> int:
 			if m != null and m.kind != Meld.Kind.ANKAN and int(m.from_seat) == seat:
 				count += 1
 	return count
+
+# 同 ID 未消耗能力实例数（anchor 为该 seat 的 ability 注册项）。
+# 多实例遗物按件数分档（如墙眼 1/2/3 张）。无注册表时按单件处理。
+func count_active_ability_instances(skill_id: StringName, seat: int) -> int:
+	if _registry == null:
+		return 1
+	var n: int = 0
+	for entry in _registry.get_all_entries():
+		var sk: SkillResource = entry["skill"]
+		if sk == null or sk.consumed or not sk.is_ability or sk.id != skill_id:
+			continue
+		if typeof(entry["anchor"]) == TYPE_INT and int(entry["anchor"]) == seat:
+			n += 1
+	return n
 
 func get_score(seat: int) -> int:
 	return _state.scores[seat]

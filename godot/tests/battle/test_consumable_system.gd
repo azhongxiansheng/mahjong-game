@@ -87,17 +87,59 @@ func test_factory_unknown_id_returns_false():
 # 第 4 组：消耗品在真实战斗中触发
 # ============================================================
 
-func test_iron_shield_cancels_ron_and_consumes():
+func _anchor(tid: int, serial: int) -> TileSkillAnchor:
+	return TileSkillAnchor.make(Tile.new(tid, false, Tile.NO_OWNER, serial), 0)
+
+func test_iron_shield_cancels_all_rons_on_same_discard_then_consumes():
+	# spec 2026-07-28 §3.1 / §2.2：铁盾保护一次完整放铳事件——
+	# 同一弃牌的多家荣和全部取消；CLAIM 窗结束（下一次摸牌）后消耗。
 	var reg := SkillRegistry.new()
 	var st := BattleState.new()
 	var sched := SkillScheduler.new(reg, st)
 	ConsumableFactory.inject(reg, &"iron_shield_v1", 0)
-	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0}))
-	assert_true(st.ron_cancelled[1], "铁盾应取消荣胡")
-	# 第二次不触发（已 consumed）
-	st.ron_cancelled[1] = false
-	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, null, {"discarder_seat": 0}))
-	assert_false(st.ron_cancelled[1], "consumed 后不再触发")
+	var protected := _anchor(TileId.W5, 900)
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, protected, {"discarder_seat": 0}))
+	assert_true(st.ron_cancelled[1], "铁盾应取消第一家荣和")
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 2, protected, {"discarder_seat": 0}))
+	assert_true(st.ron_cancelled[2], "同一弃牌的第二家荣和也应取消")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_false(sk.consumed, "CLAIM 窗内保持保护，不提前消耗")
+	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 1))
+	assert_true(sk.consumed, "保护窗结束（下一次摸牌）后消耗")
+
+func test_iron_shield_does_not_protect_later_discard():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"iron_shield_v1", 0)
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, _anchor(TileId.W5, 900),
+		{"discarder_seat": 0}))
+	assert_true(st.ron_cancelled[1])
+	# 之后另一张弃牌产生的荣和：保护已结束 → 不取消并消耗
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 2, _anchor(TileId.T3, 901),
+		{"discarder_seat": 0}))
+	assert_false(st.ron_cancelled[2], "另一弃牌的荣和不再受保护")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_true(sk.consumed, "保护窗过后消耗")
+
+func test_iron_shield_untriggered_stays_armed_and_ignores_others():
+	var reg := SkillRegistry.new()
+	var st := BattleState.new()
+	var sched := SkillScheduler.new(reg, st)
+	ConsumableFactory.inject(reg, &"iron_shield_v1", 0)
+	# 未触发前的摸牌 / 他家放铳不消耗
+	sched.emit_event(BattleEvent.make(&"TILE_DRAWN", 0))
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 1, _anchor(TileId.W5, 900),
+		{"discarder_seat": 2}))
+	assert_false(st.ron_cancelled[1], "他家放铳不取消")
+	var sk: SkillResource = reg.get_all_entries()[0]["skill"]
+	assert_false(sk.consumed, "未触发时跨事件保持武装")
+	# 触发保护后在本局结束（荒牌流局）时消耗
+	sched.emit_event(BattleEvent.make(&"RON_DECLARED", 3, _anchor(TileId.S9, 902),
+		{"discarder_seat": 0}))
+	assert_true(st.ron_cancelled[3])
+	sched.emit_event(BattleEvent.make(&"EXHAUSTIVE_DRAW", -1))
+	assert_true(sk.consumed, "局末兜底消耗")
 
 func test_wall_peek_reveals_on_game_begin():
 	var reg := SkillRegistry.new()

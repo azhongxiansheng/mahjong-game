@@ -112,6 +112,53 @@ static func register_relic_for_grant(
 	return true
 
 
+## 天命打破（spec 2026-07-28 §5.3）——
+## 计数：一局权威完成（HAND_SETTLED 提交成功）后调用；owner 胡牌重置，否则 +1。
+static func pity_on_hand_completed(
+	inv: ItemInventoryModule, winner_seats: Array, hand_seq: int = -1
+) -> void:
+	if inv == null:
+		return
+	inv.pity_record_hand_completed(winner_seats, hand_seq)
+
+
+## 重建 relic 技能时注入充能状态（连续 >=2 局未胡 → charged）。
+static func _inject_pity_params(
+	sk: SkillResource, inv: ItemInventoryModule, inst: ItemInstance
+) -> void:
+	if inst.item_id != "relic_pity_breaker_v1":
+		return
+	sk.params = sk.params.duplicate(true)
+	sk.params["pity_charged"] = inv.pity_miss_count(inst.item_instance_id) >= 2
+	sk.params["pity_extra_han"] = 0
+
+
+## N 件充能（同席）→ 追加 N-1 番，由字典序最小 iid 的实例统一施加，
+## 其余保持 0，避免多实例 dispatch 重复叠加。
+static func _assign_pity_aggregate_extra_han(inv: ItemInventoryModule) -> void:
+	var charged_by_seat: Dictionary = {}
+	for inst_v in inv.all_instances():
+		if not (inst_v is ItemInstance):
+			continue
+		var inst: ItemInstance = inst_v as ItemInstance
+		if inst.item_id != "relic_pity_breaker_v1":
+			continue
+		var sk: SkillResource = inv.registered_skill(inst.item_instance_id)
+		if sk == null or not bool(sk.params.get("pity_charged", false)):
+			continue
+		if not charged_by_seat.has(inst.seat):
+			charged_by_seat[inst.seat] = []
+		(charged_by_seat[inst.seat] as Array).append(inst.item_instance_id)
+	for seat in charged_by_seat:
+		var iids: Array = charged_by_seat[seat]
+		if iids.size() < 2:
+			continue
+		iids.sort()
+		var primary: SkillResource = inv.registered_skill(String(iids[0]))
+		if primary != null:
+			primary.params["pity_extra_han"] = iids.size() - 1
+
+
 ## #253 Round 7：新一局权威启动时，以库存实例为源把跨局 held relic / armed 延迟件
 ## 重建到新 BC.registry。fail-closed：失败时回滚本函数造成的全部 registry 写入。
 ## active 窗口武装不跨已结束窗；pending 保留供 OPEN→ARM。
@@ -166,6 +213,7 @@ static func prepare_new_hand(
 			if rsk == null:
 				_fail_prepare(bc, registered, slots, slots_snap, inv, inv_snap, reg_snap)
 				return {"ok": false, "reason": "RELIC_BUILD_FAIL"}
+			_inject_pity_params(rsk, inv, inst)
 			bc.registry.register(rsk, seat3)
 			registered.append({"skill": rsk, "seat": seat3})
 			inv.remember_registered_skill(iid, rsk, seat3)
@@ -187,6 +235,7 @@ static func prepare_new_hand(
 	for slot_value in slots:
 		if slot_value is CharacterAbilitySlot:
 			_clear_lingering_character_state(slot_value as CharacterAbilitySlot)
+	_assign_pity_aggregate_extra_han(inv)
 	return {"ok": true}
 
 

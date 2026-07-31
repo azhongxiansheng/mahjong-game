@@ -13,8 +13,10 @@ static func all() -> Array:
 
 static func _build_definitions() -> Array:
 	return [
-		_consumable(&"iron_shield_v1", "铁盾", "本局被荣胡时取消 1 次（消耗品）",
-			Rarity.Kind.UNCOMMON, ItemDefinition.UseMode.ARMED, [&"RON_DECLARED"],
+		_consumable(&"iron_shield_v1", "铁盾", "你下一次放铳的弃牌，其全部荣和被取消（消耗品）",
+			Rarity.Kind.UNCOMMON, ItemDefinition.UseMode.ARMED,
+			[&"RON_DECLARED", &"TILE_DRAWN", &"WIN_DECLARED",
+				&"EXHAUSTIVE_DRAW", &"ABORTIVE_DRAW"],
 			"consumable_iron_shield_hook.gd", "item_iron_shield.png"),
 		_consumable(&"wall_peek_v1", "千里眼", "查看牌墙接下来 3 张，仅自己可见（消耗品）",
 			Rarity.Kind.COMMON, ItemDefinition.UseMode.IMMEDIATE, [&"GAME_BEGIN"],
@@ -52,7 +54,7 @@ static func _build_definitions() -> Array:
 		_relic(&"relic_soul_mirror_v1", "魂镜", "对手胡牌结算后转移其本次得点 5% 给你",
 			Rarity.Kind.EPIC, [&"WIN_DECLARED"],
 			"relic_soul_mirror_hook.gd", "item_relic_soul_mirror.png"),
-		_relic(&"relic_wall_eye_v1", "墙眼", "每次摸牌后预知下 1 张",
+		_relic(&"relic_wall_eye_v1", "墙眼", "每次摸牌后查看牌墙接下来 1/2/3 张（按持有件数）",
 			Rarity.Kind.LEGENDARY, [&"TILE_DRAWN"],
 			"relic_wall_eye_hook.gd", "item_relic_wall_eye.png"),
 		_relic(&"relic_red_string_v1", "红线", "门清胡牌额外 +1 赤 Dora",
@@ -76,8 +78,9 @@ static func _build_definitions() -> Array:
 		_relic(&"relic_comeback_crown_v1", "逆转王冠", "胡牌时严格最低分 +2 番，并列最低 +1 番",
 			Rarity.Kind.EPIC, [&"WIN_DECLARED_PRE"],
 			"relic_comeback_crown_hook.gd", "item_relic_comeback_crown.png"),
-		_relic(&"relic_pity_breaker_v1", "天命打破", "保底概率提升（被动 gacha 修改器）",
-			Rarity.Kind.LEGENDARY, [], "relic_pity_breaker_hook.gd", "", false),
+		_relic(&"relic_pity_breaker_v1", "天命打破", "连续两局未胡后充能：下次胡牌至少满贯",
+			Rarity.Kind.LEGENDARY, [&"WIN_DECLARED_PRE"],
+			"relic_pity_breaker_hook.gd", "", false),
 	]
 
 

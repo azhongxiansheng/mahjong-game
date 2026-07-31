@@ -27,6 +27,7 @@ func emit_event(event: BattleEvent) -> SkillCtx:
 		_state.event_chain_depth -= 1
 		return SkillCtx.new(_state, event)
 	var ctx := SkillCtx.new(_state, event)
+	ctx._registry = _registry
 	var candidates := _collect(event)
 	_sort(candidates)
 	_dispatch(candidates, event, ctx)
@@ -45,6 +46,7 @@ func emit_single_skill_event(
 	_next_chain_id += 1
 	_state.event_chain_depth += 1
 	var ctx := SkillCtx.new(_state, event)
+	ctx._registry = _registry
 	if _state.event_chain_depth > BattleState.MAX_EVENT_CHAIN_DEPTH:
 		_state.event_chain_depth -= 1
 		return ctx
