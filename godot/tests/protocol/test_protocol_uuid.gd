@@ -8,7 +8,9 @@ extends GutTest
 const UUID_PATH := "res://protocol/protocol_uuid.gd"
 const ACTION_PATH := "res://protocol/action.gd"
 const CR_PATH := "res://protocol/command_result.gd"
-const NE_PATH := "res://protocol/networked_event.gd"
+# ARCH-03 #393：command_id 校验随 payload codec 拆分迁移到领域 codec 文件
+const NE_TABLE_CODEC_PATH := "res://protocol/table_flow_payload_codec.gd"
+const NE_REWARD_CODEC_PATH := "res://protocol/reward_item_payload_codec.gd"
 
 const VALID_V4 := "550e8400-e29b-41d4-a716-446655440000"
 const VALID_V4_B := "550e8400-e29b-41d4-b716-4466554400aa"
@@ -129,7 +131,7 @@ func test_action_command_result_networked_event_use_shared_protocol_uuid() -> vo
 	if not ResourceLoader.exists(UUID_PATH):
 		return
 
-	for path in [ACTION_PATH, CR_PATH, NE_PATH]:
+	for path in [ACTION_PATH, CR_PATH, NE_TABLE_CODEC_PATH, NE_REWARD_CODEC_PATH]:
 		assert_true(FileAccess.file_exists(path), "DTO 源码存在: %s" % path)
 		var src: String = _source_text(path)
 		assert_false(src.is_empty(), "DTO 源码可读: %s" % path)

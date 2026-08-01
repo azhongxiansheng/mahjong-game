@@ -119,7 +119,7 @@ func test_wall_collapse_immediate_use_reduces_wall() -> void:
 	assert_eq(str(evs[0]["kind"]), "ITEM_APPLIED")
 	assert_eq(str(evs[1]["kind"]), "ITEM_CONSUMED")
 	var after: int = bc.state.wall.live_wall_size()
-	assert_eq(after, maxi(0, before - 10), "须减少最多 10 张 live wall")
+	assert_eq(after, before - 6, "牌墙崩塌须移除 6 张 live wall（spec 2026-07-28 §3.1）")
 	assert_eq(inv.instance_count(), 0)
 
 
