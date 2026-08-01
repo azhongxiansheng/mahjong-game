@@ -36,8 +36,13 @@ var _started: bool = false
 var _rollback_failed: bool = false
 # 每席独立 NetworkedEvent 日志（同逻辑 seq 可有不同 view_hash）
 var _journals: Array = [[], [], [], []]
-# command_id → { "fingerprint": String, "result": CommandResult }
-var _command_cache: Dictionary = {}
+# ARCH-02 #392：命令指纹/幂等缓存委托 AuthorityCommandProcessor。
+var _commands := AuthorityCommandProcessor.new()
+# 只读内省兼容面（characterization 测试经 get("_command_cache") 看 size/键集）；
+# 一切写路径必须走 _commands。
+var _command_cache: Dictionary:
+	get:
+		return _commands.entries()
 # seat → participant wire ("HUMAN"/"AI")
 var _participants: Array = []
 # 本局起始分：仅 start 成功后冻结；失败 start 不得污染（空 = 未冻结）
@@ -146,7 +151,7 @@ func _init(
 	_started = false
 	_rollback_failed = false
 	_journals = [[], [], [], []]
-	_command_cache = {}
+	_commands.clear()
 	_hand_start_scores = []
 	_hand_start_honba = 0
 	_hand_start_riichi_sticks = 0
@@ -224,7 +229,7 @@ func start() -> bool:
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_started: bool = _started
 	var frozen_hand_start: Array = _hand_start_scores.duplicate()
 	var frozen_hand_start_honba: int = _hand_start_honba
@@ -351,7 +356,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_ai: Dictionary = _ai_control_seats.duplicate(true)
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
@@ -383,14 +388,14 @@ func start_next_hand(new_bc: BattleController) -> bool:
 	# #379：新 BC.events 从 0 起投影
 	_skill_bc_proj_upto = 0
 	# 新局命令指纹与上一局隔离（hand_seq 已变；缓存仍清以免 stale）
-	_command_cache = {}
+	_commands.clear()
 
 	var snap: AuthorityReplaySnapshot = AuthorityReplaySnapshot.capture(_bc)
 	if snap == null or not snap.can_restore():
 		_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
 		_server_seq = frozen_seq
 		_journals = frozen_journals
-		_command_cache = frozen_cache
+		_commands.restore(frozen_cache)
 		_ai_control_seats = frozen_ai
 		_hand_settled_emitted = true
 		_skill_bc_proj_upto = frozen_skill_proj
@@ -403,7 +408,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 		_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
 		_server_seq = frozen_seq
 		_journals = frozen_journals
-		_command_cache = frozen_cache
+		_commands.restore(frozen_cache)
 		_ai_control_seats = frozen_ai
 		_hand_settled_emitted = true
 		_skill_bc_proj_upto = frozen_skill_proj
@@ -421,7 +426,7 @@ func start_next_hand(new_bc: BattleController) -> bool:
 			_restore_bc_after_next_hand_fail(prev_owned, prev_injected, prev_bc)
 			_server_seq = frozen_seq
 			_journals = frozen_journals
-			_command_cache = frozen_cache
+			_commands.restore(frozen_cache)
 			_ai_control_seats = frozen_ai
 			_hand_settled_emitted = true
 			_skill_bc_proj_upto = frozen_skill_proj
@@ -534,7 +539,7 @@ func _fail_next_hand_rollback(
 			_journals.append(frozen_journals[s])
 		else:
 			_journals.append([])
-	_command_cache = frozen_cache
+	_commands.restore(frozen_cache)
 	_ai_control_seats = frozen_ai
 	_hand_settled_emitted = true
 	_settlement_tracker = HandSettlement.empty_tracker()
@@ -790,11 +795,10 @@ func _process_action_core(
 		return _reject_result(action.command_id, "INVALID_ACTION")
 
 	var cmd: String = action.command_id
-	if _command_cache.has(cmd):
-		var entry: Dictionary = _command_cache[cmd] as Dictionary
-		var cached_fp: String = str(entry.get("fingerprint", ""))
-		if cached_fp == fp:
-			return _clone_cr(entry.get("result") as CommandResult)
+	var cached: Dictionary = _commands.lookup(cmd, fp)
+	if str(cached.get("status", "")) == AuthorityCommandProcessor.STATUS_HIT:
+		return _clone_cr(cached.get("result") as CommandResult)
+	if str(cached.get("status", "")) == AuthorityCommandProcessor.STATUS_CONFLICT:
 		# 异指纹：不覆盖 cache、不分配 seq、不改 journal/BC
 		return _reject_result(cmd, ERROR_COMMAND_ID_CONFLICT)
 
@@ -839,7 +843,7 @@ func _process_action_core(
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
 	var frozen_claim_seen: bool = _reward_claim_seen_open
@@ -1050,7 +1054,7 @@ func _rollback_transaction(
 		return false
 	_server_seq = frozen_seq
 	_journals = frozen_journals
-	_command_cache = frozen_cache
+	_commands.restore(frozen_cache)
 	var restored_inv_reg := false
 	if not frozen_rw.is_empty():
 		if not _reward_restore_state(frozen_rw):
@@ -1096,43 +1100,13 @@ func _rollback_transaction(
 ## bound_session_id：JOIN 绑定的客户端 session；空串时退回 config.session_id（练习/直连）。
 ## 公共 Worker 路径必须传入已验签 session，不得依赖 room_id 冒充。
 func _business_fingerprint(action: Action, bound_session_id: String = "") -> String:
-	if action == null:
-		return ""
-	var sid: String = bound_session_id.strip_edges()
-	if sid.is_empty():
-		if _config == null:
-			return ""
-		sid = str(_config.session_id)
-	if sid.is_empty():
-		return ""
-	var kind_str: String = str(action.kind)
-	var raw_payload: Dictionary = action.payload if typeof(action.payload) == TYPE_DICTIONARY else {}
-	var canon_pl: Variant = Action.normalize_payload(kind_str, raw_payload)
-	if canon_pl == null or typeof(canon_pl) != TYPE_DICTIONARY:
-		return ""
-	var payload_sha: String = ProtocolViewCodec.compute_view_hash(canon_pl)
-	if payload_sha.is_empty() or payload_sha.length() != 64:
-		return ""
-	var material := {
-		"session_id": sid,
-		"room_id": str(action.room_id),
-		"seat": int(action.seat),
-		"hand_seq": int(action.hand_seq),
-		"decision_id": str(action.decision_id),
-		"kind": kind_str,
-		"payload_sha256": payload_sha,
-	}
-	var fp: String = ProtocolViewCodec.compute_view_hash(material)
-	if fp.is_empty() or fp.length() != 64:
-		return ""
-	return fp
+	# ARCH-02 #392：指纹算法事实源迁至 AuthorityCommandProcessor；此处仅补会话兜底。
+	var fallback: String = str(_config.session_id) if _config != null else ""
+	return AuthorityCommandProcessor.business_fingerprint(action, fallback, bound_session_id)
 
 
 func _cache_command(cmd: String, fingerprint: String, cr: CommandResult) -> void:
-	_command_cache[cmd] = {
-		"fingerprint": fingerprint,
-		"result": cr,
-	}
+	_commands.store(cmd, fingerprint, cr)
 
 
 ## #242：确定性核心事件摘要（固定 recipient seat；排除 view_hash 与 Reward/Item/Ability）。
@@ -1178,11 +1152,10 @@ func reject_action_cached(
 	if fp.is_empty():
 		return _reject_result(action.command_id, code if not code.is_empty() else "INVALID_ACTION")
 	var cmd: String = action.command_id
-	if _command_cache.has(cmd):
-		var entry: Dictionary = _command_cache[cmd] as Dictionary
-		var cached_fp: String = str(entry.get("fingerprint", ""))
-		if cached_fp == fp:
-			return _clone_cr(entry.get("result") as CommandResult)
+	var cached: Dictionary = _commands.lookup(cmd, fp)
+	if str(cached.get("status", "")) == AuthorityCommandProcessor.STATUS_HIT:
+		return _clone_cr(cached.get("result") as CommandResult)
+	if str(cached.get("status", "")) == AuthorityCommandProcessor.STATUS_CONFLICT:
 		return _reject_result(cmd, ERROR_COMMAND_ID_CONFLICT)
 	var err: String = code if not code.is_empty() else "INVALID_ACTION"
 	var cr := _reject_result(cmd, err)
@@ -1483,7 +1456,7 @@ func publish_resync_snapshot_and_prompt() -> Dictionary:
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
 	var frozen_claim_seen: bool = _reward_claim_seen_open
@@ -1570,7 +1543,7 @@ func step_ai_once() -> Dictionary:
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_rw_clock: int = _reward_authority_now_ms
 	var frozen_claim_seen: bool = _reward_claim_seen_open
@@ -2345,7 +2318,7 @@ func _build_ai_claim_action(seat: int) -> Action:
 
 func _next_cmd() -> String:
 	# 与 BC 风格一致的确定性 uuid
-	var n: int = _server_seq * 10 + 1 + _command_cache.size()
+	var n: int = _server_seq * 10 + 1 + _commands.size()
 	return "550e8400-e29b-41d4-a716-%012d" % (n + 1000)
 
 
@@ -3224,7 +3197,7 @@ func advance_reward_time(now_ms: int) -> bool:
 	var frozen_journals: Array = []
 	for s in range(4):
 		frozen_journals.append(_clone_events(_journals[s] as Array))
-	var frozen_cache: Dictionary = _command_cache.duplicate(true)
+	var frozen_cache: Dictionary = _commands.capture()
 	var frozen_rw: Dictionary = _reward_capture_state()
 	var frozen_clock: int = _reward_authority_now_ms
 	var frozen_claim: bool = _reward_claim_seen_open
