@@ -65,7 +65,14 @@ var _settlement_tracker: Dictionary = HandSettlement.empty_tracker()
 # E2-04：构造期模式模块包（STANDARD 四零 / TRASH_TALK 最小对象）
 var mode_modules: ModeModuleBundle = null
 # #241：快照 module provider 注册表（STANDARD 仅 core_table；TRASH_TALK + reward_window）
-var snapshot_registry: SnapshotModuleRegistry = null
+# ARCH-02 #392：snapshot registry / 按席 SNAP 组装委托 AuthoritySnapshotService；
+# 属性透传保持公开内省面（snapshot_registry）不变。
+var _snapshots := AuthoritySnapshotService.new()
+var snapshot_registry: SnapshotModuleRegistry:
+	get:
+		return _snapshots.registry
+	set(value):
+		_snapshots.registry = value
 # #241：HUMAN 席临时 AI 接管（不改 participants 配置）
 var _ai_control_seats: Dictionary = {}  # seat(int) -> bool
 # 测试：下一次 publish_snapshot 强制失败（不改业务路径）
@@ -1219,6 +1226,7 @@ func _reject_result(cmd: String, code: String) -> CommandResult:
 func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 	# #241：经 registry 组合 modules；组合器不改写模块业务 payload
 	# #252/#253：TRASH_TALK 传入 RewardWindow + ItemInventory（按席裁剪）
+	# ARCH-02 #392：ctx 组装留在 façade；组合/校验委托 AuthoritySnapshotService。
 	if snapshot_registry == null or _bc == null:
 		return {}
 	var ctx: Dictionary = {"state": _bc.state}
@@ -1235,40 +1243,15 @@ func _build_room_snapshot_payload(seat: int, seq: int) -> Dictionary:
 		ctx["config"] = _config
 	# #376 R5：Headless（match_owner）必须有合法 match_authority；失败整 SNAP 失败。
 	# Practice/无 owner：optional fallback（BC 派生）。
-	var match_pl: Dictionary = _match_authority_payload()
-	if match_owner != null:
-		if match_pl.is_empty():
-			return {}
-		ctx["match_authority"] = match_pl
-	elif not match_pl.is_empty():
-		ctx["match_authority"] = match_pl
+	ctx["match_authority"] = _match_authority_payload()
+	ctx["has_match_owner"] = match_owner != null
 	var rw: RewardWindowModule = _reward_module()
 	if rw != null:
 		ctx["reward_window"] = rw
 	var inv: ItemInventoryModule = _item_module()
 	if inv != null:
 		ctx["item_inventory"] = inv
-	var ser: Dictionary = snapshot_registry.serialize_modules(ctx, seat)
-	if not bool(ser.get("ok", false)):
-		return {}
-	var modules: Array = ser.get("modules", [])
-	if typeof(modules) != TYPE_ARRAY or (modules as Array).is_empty():
-		return {}
-	# Headless：committed SNAP 必须恰好含 match_authority@1（禁静默省略）
-	if match_owner != null:
-		var ma_n := 0
-		for m in modules:
-			if typeof(m) == TYPE_DICTIONARY \
-					and str((m as Dictionary).get("module_key", "")) == "match_authority":
-				ma_n += 1
-		if ma_n != 1:
-			return {}
-	return {
-		"snapshot_server_seq": seq,
-		"next_server_seq": seq + 1,
-		"seat_view": seat,
-		"modules": modules,
-	}
+	return _snapshots.build_room_snapshot_payload(ctx, seat, seq)
 
 
 ## #376 R5 测试：下一帧 match_authority 强制失败（生产不可达）。
@@ -1786,19 +1769,8 @@ func _public_view_hash_for_seq(seat: int, snap_seq: int) -> String:
 func _last_committed_snapshot_view_hash(recipient_seat: int) -> String:
 	if recipient_seat < 0 or recipient_seat > 3:
 		return ""
-	var journal: Array = _journals[recipient_seat] as Array
-	for i in range(journal.size() - 1, -1, -1):
-		var item = journal[i]
-		if not (item is NetworkedEvent):
-			continue
-		var ne: NetworkedEvent = item as NetworkedEvent
-		if ne.kind != "ROOM_SNAPSHOT":
-			continue
-		var vh: String = str(ne.view_hash)
-		if vh.is_empty() or vh.length() != 64:
-			return ""
-		return vh
-	return ""
+	return AuthoritySnapshotService.last_committed_snapshot_view_hash(
+		_journals[recipient_seat] as Array)
 
 
 ## 可 override 的逐席事件构建 seam：make → null 即 null；再 from_dict 严格 roundtrip clone。
