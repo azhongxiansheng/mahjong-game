@@ -30,12 +30,22 @@ var _bc: BattleController:
 		_bc_owned = value
 		_bc_injected = null
 var _room_id: String = ""
-var _server_seq: int = 0
+var _server_seq: int:
+	get:
+		return _publisher.server_seq
+	set(value):
+		_publisher.server_seq = value
 var _started: bool = false
 # restore 失败后不可再证明权威状态；实例永久 fail-closed，只能丢弃重建。
 var _rollback_failed: bool = false
-# 每席独立 NetworkedEvent 日志（同逻辑 seq 可有不同 view_hash）
-var _journals: Array = [[], [], [], []]
+# ARCH-02 #392：server_seq / 四席 journal 所有权委托 AuthorityEventPublisher；
+# 本类经属性透传保持全部既有读写点与测试内省面不变。
+var _publisher := AuthorityEventPublisher.new()
+var _journals: Array:
+	get:
+		return _publisher.journals
+	set(value):
+		_publisher.journals = value
 # ARCH-02 #392：命令指纹/幂等缓存委托 AuthorityCommandProcessor。
 var _commands := AuthorityCommandProcessor.new()
 # 只读内省兼容面（characterization 测试经 get("_command_cache") 看 size/键集）；
@@ -1183,13 +1193,7 @@ func _append_event(seat: int, ne: NetworkedEvent) -> void:
 
 
 func _clone_events(src: Array) -> Array:
-	var out: Array = []
-	for ne in src:
-		if ne is NetworkedEvent:
-			var c: NetworkedEvent = NetworkedEvent.from_dict((ne as NetworkedEvent).to_dict())
-			if c != null:
-				out.append(c)
-	return out
+	return AuthorityEventPublisher.clone_events(src)
 
 
 func _clone_cr(cr: CommandResult) -> CommandResult:
@@ -1802,10 +1806,7 @@ func _last_committed_snapshot_view_hash(recipient_seat: int) -> String:
 func _build_recipient_event(
 	kind: String, _recipient_seat: int, seq: int, payload: Dictionary, view_hash: String
 ) -> NetworkedEvent:
-	var ne: NetworkedEvent = NetworkedEvent.make(kind, seq, _room_id, payload, view_hash)
-	if ne == null:
-		return null
-	return NetworkedEvent.from_dict(ne.to_dict())
+	return _publisher.build_recipient_event(kind, seq, _room_id, payload, view_hash)
 
 
 ## ACTION_APPLIED 与紧随的 ROOM_SNAPSHOT 共用 post-apply public view_hash。
