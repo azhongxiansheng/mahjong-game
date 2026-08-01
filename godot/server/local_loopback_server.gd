@@ -13,7 +13,9 @@ const ERROR_UNAUTHORIZED := "UNAUTHORIZED"
 const ERROR_COMMAND_ID_CONFLICT := "COMMAND_ID_CONFLICT"
 const ERROR_EVENT_PUBLISH_FAILED := "EVENT_PUBLISH_FAILED"
 ## E5-04：可回放权威时钟基线（ms）；grace_deadline_at 不得依赖墙钟。
-const REWARD_CLOCK_BASE_MS := 1_700_000_000_000
+# ARCH-02 #392：时钟基准单源化到 AuthorityRewardCoordinator；
+# 本别名保留供 headless_room_session / 测试沿用 LocalLoopbackServer.* 引用。
+const REWARD_CLOCK_BASE_MS := AuthorityRewardCoordinator.CLOCK_BASE_MS
 
 var _config: GameSessionConfig = null
 var _dealer_seat: int = 0
@@ -96,15 +98,35 @@ var _match_settled_emitted: bool = false
 var event_journal_call_count: int = 0
 ## #379：BC.events 已投影到 journal 的下标（O(新增) 游标；禁止 action 热路径 event_journal）
 var _skill_bc_proj_upto: int = 0
+# ARCH-02 #392：奖励窗运行时标量状态归 AuthorityRewardCoordinator 所有；
+# 下列四个 _reward_* 成员改为属性透传，保持既有读写点与内省面逐字不变。
+var _rewards := AuthorityRewardCoordinator.new()
 ## E5-04：权威奖励时钟（仅 advance_reward_time 单调推进；禁止墙钟/伪造跳跃）
-var _reward_authority_now_ms: int = REWARD_CLOCK_BASE_MS
+var _reward_authority_now_ms: int:
+	get:
+		return _rewards.now_ms
+	set(value):
+		_rewards.now_ms = value
 ## 整场是否结束：仅显式注入；默认 null=未知→流局按 match 继续(FULL_GRANT)
 ## #376：生产路径优先 match_end_after_hand；本字段仅保留测试/遗留 seam。
-var _reward_match_ended = null
+## 三态（null/true/false）：禁止收窄为 bool。
+var _reward_match_ended: Variant:
+	get:
+		return _rewards.match_ended
+	set(value):
+		_rewards.match_ended = value
 ## CLOSING 后是否曾见过开放 CLAIM/ROB 窗（用于区分「尚未开 CLAIM」与「CLAIM 已终态」）
-var _reward_claim_seen_open: bool = false
+var _reward_claim_seen_open: bool:
+	get:
+		return _rewards.claim_seen_open
+	set(value):
+		_rewards.claim_seen_open = value
 ## 流局/终场 scoring close 因 grace 延迟：须先 SETTLED 再 HAND_SETTLED
-var _reward_hand_settled_deferred: bool = false
+var _reward_hand_settled_deferred: bool:
+	get:
+		return _rewards.hand_settled_deferred
+	set(value):
+		_rewards.hand_settled_deferred = value
 ## #253：权威内部 apply 中，禁止 PBC 再路由回 Loopback
 var _internal_apply: bool = false
 ## #376：Callable(settlement: Dictionary) -> bool；生产由 HeadlessRoomSession 绑定。
@@ -399,9 +421,8 @@ func start_next_hand(new_bc: BattleController) -> bool:
 	_hand_start_scores = []
 	_hand_start_honba = 0
 	_hand_start_riichi_sticks = 0
-	_reward_claim_seen_open = false
-	_reward_hand_settled_deferred = false
-	_reward_match_ended = null
+	# 跨局清 CLAIM/延迟/终场标记；权威时钟跨局单调，不在此重置
+	_rewards.reset_for_new_hand()
 	# #379：新 BC.events 从 0 起投影
 	_skill_bc_proj_upto = 0
 	# 新局命令指纹与上一局隔离（hand_seq 已变；缓存仍清以免 stale）
@@ -2552,12 +2573,8 @@ func _reward_module() -> RewardWindowModule:
 
 
 func _reward_hard_reset() -> void:
-	var rw: RewardWindowModule = _reward_module()
-	if rw != null:
-		rw.hard_reset()
-	_reward_authority_now_ms = REWARD_CLOCK_BASE_MS
-	_reward_claim_seen_open = false
-	_reward_hand_settled_deferred = false
+	# 注：不重置 _reward_match_ended（终场 seam 由 start / start_next_hand 显式清）
+	_rewards.hard_reset(_reward_module())
 
 
 func _reward_capture_state() -> Dictionary:
@@ -2921,8 +2938,8 @@ func _is_match_ended_now() -> bool:
 func _is_match_ended_for_hand(hand_payload: Dictionary) -> bool:
 	if match_end_after_hand.is_valid() and not hand_payload.is_empty():
 		return bool(match_end_after_hand.call(hand_payload))
-	if typeof(_reward_match_ended) == TYPE_BOOL:
-		return bool(_reward_match_ended)
+	if _rewards.match_ended_decided():
+		return _rewards.match_ended_is_true()
 	if hand_payload.has("match_ended") and typeof(hand_payload["match_ended"]) == TYPE_BOOL:
 		return bool(hand_payload["match_ended"])
 	if match_end_after_hand.is_valid():
@@ -3271,12 +3288,11 @@ func set_reward_match_ended(ended: bool) -> void:
 
 
 func _is_int_ms(v: Variant) -> bool:
-	return typeof(v) == TYPE_INT
+	return AuthorityRewardCoordinator.is_int_ms(v)
 
 
 func _reward_is_closing() -> bool:
-	var rw: RewardWindowModule = _reward_module()
-	return rw != null and rw.phase == RewardWindowModule.PHASE_CLOSING
+	return _rewards.is_closing(_reward_module())
 
 
 func _claim_or_rob_window_open() -> bool:
@@ -3291,20 +3307,15 @@ func _claim_or_rob_window_open() -> bool:
 
 
 func _reward_note_claim_visibility() -> void:
-	if _reward_is_closing() and _claim_or_rob_window_open():
-		_reward_claim_seen_open = true
+	# _claim_or_rob_window_open() 为纯读（_bc._active_window），提前求值无副作用。
+	_rewards.note_claim_visibility(_reward_module(), _claim_or_rob_window_open())
 
 
 ## 是否允许下一普通摸牌/出牌/TURN_PROMPT（屏障 fail-closed）。
 ## CLOSING 期间一律禁止普通推进；CLAIM 提示走 _emit_prompt_respecting_reward_barrier。
 func _reward_allows_normal_progress() -> bool:
-	var rw: RewardWindowModule = _reward_module()
-	if rw == null:
-		return true
 	# 未 settle 的 CLOSING 不得越过（即使 barrier 已 released 但 try_settle 失败）
-	if rw.phase == RewardWindowModule.PHASE_CLOSING:
-		return false
-	return true
+	return _rewards.allows_normal_progress(_reward_module())
 
 
 func _maybe_open_reward_window() -> bool:
@@ -3504,16 +3515,7 @@ func _reward_on_action_applied(action: Action, aa_seq: int) -> bool:
 
 
 func _reward_public_has_aa_seq(aa_seq: int) -> bool:
-	var rw: RewardWindowModule = _reward_module()
-	if rw == null:
-		return false
-	for ev in rw.get("_public_events") as Array:
-		if typeof(ev) != TYPE_DICTIONARY:
-			continue
-		var d: Dictionary = ev
-		if str(d.get("kind", "")) == "ACTION_APPLIED" and int(d.get("server_seq", -1)) == aa_seq:
-			return true
-	return false
+	return _rewards.public_has_aa_seq(_reward_module(), aa_seq)
 
 
 func _reward_append_journal_event(server_seq: int) -> bool:
